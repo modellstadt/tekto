@@ -18,8 +18,8 @@
   },
   "scripts": {
     "prepare":       "npm run build",
-    "build":         "tsup src/index.ts --format cjs,esm --dts --external three --external react --external react-dom",
-    "dev":           "tsup src/index.ts --format cjs,esm --dts --watch --external three --external react --external react-dom",
+    "build":         "tsup src/index.ts --format cjs,esm --dts --external three --external react --external react-dom --external web-ifc",
+    "dev":           "tsup src/index.ts --format cjs,esm --dts --watch --external three --external react --external react-dom --external web-ifc",
     "lint":          "tsc --noEmit -p tsconfig.lint.json",
     "test":          "vitest run",
     "test:watch":    "vitest",

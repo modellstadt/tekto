@@ -40,7 +40,11 @@ export const IfcFile = {
     const recenter = options.recenter ?? true;
     const log      = options.onProgress ?? (() => {});
 
-    // Dynamic import — keeps web-ifc out of the main Tekto bundle
+    // Dynamic import — keeps web-ifc out of the main Tekto bundle.
+    // web-ifc is an OPTIONAL peer dependency: only apps that actually call
+    // IfcFile install it, so it may be absent when the library itself is built.
+    // Resolved at runtime by the consumer.
+    // @ts-ignore - optional peer dependency, not present in the library's own build
     const { IfcAPI } = await import("web-ifc");
 
     const api = new IfcAPI();
@@ -61,7 +65,7 @@ export const IfcFile = {
 
     const t1 = performance.now();
     let meshCount = 0;
-    api.StreamAllMeshes(modelID, (flatMesh) => {
+    api.StreamAllMeshes(modelID, (flatMesh: any) => {
       const placedGeoms = flatMesh.geometries;
       const n = placedGeoms.size();
       for (let i = 0; i < n; i++) {
