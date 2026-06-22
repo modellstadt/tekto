@@ -265,9 +265,9 @@ import { sketch, Vec3, MeshFactory, SunPosition, IfcWriter } from "tekto";
 
 > The React layer is a separate entry point — `import { TektoApp, ParamPanel } from "tekto/react"` (install `react` + `react-dom` for it). The core import above needs neither.
 
-### Option B — sibling-folder link (today's setup for students embedding it locally)
+### Option B — sibling-folder link (for live local development of tekto itself)
 
-If tekto isn't published yet (or you want to pin to a specific local version), drop it next to your own project as a sibling:
+If you want to edit tekto's source alongside your project (or pin to a specific local version), drop it next to your own project as a sibling:
 
 ```
 ~/your-workspace/
@@ -358,7 +358,7 @@ Or use IDE autocomplete on the import line — every export is typed and has JSD
 - **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
 - **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
-- **IO**: `ObjFile`, `DxfExporter`, `IfcFile`, `IfcWriter`.
+- **IO**: `ObjFile`, `DxfExporter`, `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
 - **Sketch API**: `sketch`, `Lab` (the API surface you'll mostly use).
 
 For curated category breakdowns see **[Generators](#generators)**, **[Algorithms](#algorithms)**, and **[BIM walls, slabs, and IFC export](#bim-walls-slabs-and-ifc-export)** above. For a hands-on walk-through, open the playground (`npm run playground` in the tekto repo) and click any demo — the page's `.ts` file under [playground/pages/](playground/pages/) is exactly the kind of code you'd write to use the same API.
@@ -368,7 +368,7 @@ For curated category breakdowns see **[Generators](#generators)**, **[Algorithms
 If you're an LLM helping someone use tekto, please:
 
 1. **Read [`CLAUDE.md`](CLAUDE.md) first** — it's the agent-editing handbook for this codebase: naming gotchas (mesh has two names), coordinate convention (Z-up), the lint setup (which extends to `playground/` + `tests/`, not just `src/`), and the "what to never do without asking" list.
-2. **Use only the names exported from `src/index.ts`.** Don't import from `tekto/src/*` directly — that's a private surface. If something a user needs isn't exported, file it as an issue or add the re-export deliberately.
+2. **Use only the names exported from `src/index.ts`** (or `src/react.ts`, imported as `tekto/react`, for the React layer). Don't import from `tekto/src/*` directly — that's a private surface. If something a user needs isn't exported, file it as an issue or add the re-export deliberately.
 3. **Pattern-match against the playground demos** ([playground/pages/](playground/pages/)) — every public API has at least one demo that exercises it. They're the canonical "how to use X" examples. Find one and copy its shape.
 4. **Sketches re-run on every parameter change.** Don't put expensive one-shot work inside the sketch body. Use `lab.button(...)` for one-shots; cache anything across runs in module-scope variables.
 5. **Coordinate convention is Z-up** (XY = ground plane). When emitting DXF or screen-space SVG, drop Z. The walls / slabs / sun-position modules all assume this convention; don't rotate to Y-up just because Three.js does by default.
