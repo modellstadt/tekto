@@ -1,0 +1,75 @@
+{
+  "name": "tekto",
+  "version": "0.2.0",
+  "description": "Computational Geometry Toolkit — interactive 3D mesh generation, algorithms, and visualization",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build":         "tsup src/index.ts --format cjs,esm --dts --external three --external react --external react-dom",
+    "dev":           "tsup src/index.ts --format cjs,esm --dts --watch --external three --external react --external react-dom",
+    "lint":          "tsc --noEmit -p tsconfig.lint.json",
+    "test":          "vitest run",
+    "test:watch":    "vitest",
+    "test:coverage": "vitest run --coverage",
+    "playground":    "vite playground"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0",
+    "three": ">=0.150.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "@types/three": "^0.160.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.183.1",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  },
+  "keywords": [
+    "computational-geometry",
+    "mesh",
+    "threejs",
+    "react",
+    "interactive",
+    "visualization",
+    "algorithms",
+    "subdivision",
+    "convex-hull",
+    "triangulation"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modellstadt/tekto.git"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0"
+  }
+}

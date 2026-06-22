@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tekto TestBench</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; background: #07080e; color: #c8cad0; font-family: 'IBM Plex Mono', 'Menlo', monospace; }
+
+    /* ── Top bar ──────────────────────────────────────────────────── */
+    #topbar {
+      position: fixed; top: 0; left: 0; right: 0; height: 36px; z-index: 1000;
+      display: flex; align-items: center; gap: 10px; padding: 0 12px;
+      background: #0a0b14; border-bottom: 1px solid #16182a;
+      font-size: 12px;
+    }
+    #topbar .brand {
+      font-weight: 600; color: #38d9a9; font-size: 13px;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    #topbar .sep { width: 1px; height: 16px; background: #16182a; }
+    #topbar .spacer { flex: 1 1 auto; }
+    #topbar select, #topbar button {
+      background: #12132a; color: #c8cad0; border: 1px solid #262840;
+      border-radius: 3px; padding: 4px 8px; font-size: 11px;
+      font-family: inherit; outline: none; cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    #topbar select:hover, #topbar button:hover { border-color: #38d9a9; }
+    #topbar button:disabled, #topbar button[hidden] { display: none; }
+    #topbar .label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: #7a80a0;
+    }
+    #topbar .group {
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    #topbar #export-menu, #topbar #import-menu {
+      position: relative;
+    }
+    #topbar .menu-list {
+      position: absolute; top: 100%; right: 0; margin-top: 4px;
+      background: #0c0d16; border: 1px solid #262840; border-radius: 4px;
+      min-width: 160px; padding: 4px; z-index: 1010;
+      box-shadow: 0 4px 12px rgba(0,0,0,.4);
+    }
+    #topbar .menu-list[hidden] { display: none; }
+    #topbar .menu-list .item {
+      display: block; width: 100%; text-align: left;
+      padding: 6px 10px; border-radius: 3px; cursor: pointer;
+      background: transparent; border: none; color: #c8cad0;
+      font-family: inherit; font-size: 11px;
+    }
+    #topbar .menu-list .item:hover { background: rgba(56,217,169,.12); color: #38d9a9; }
+
+    /* Sun popover — wider, form-style with rows of label+input */
+    #topbar #sun-popover { min-width: 260px; padding: 10px; }
+    #topbar #sun-popover .row {
+      display: grid; grid-template-columns: 60px 1fr; align-items: center;
+      gap: 8px; margin: 4px 0;
+    }
+    #topbar #sun-popover .row.split {
+      grid-template-columns: 60px 1fr 60px 1fr; gap: 6px;
+    }
+    #topbar #sun-popover .row label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+      color: #7a80a0;
+    }
+    #topbar #sun-popover input[type="number"],
+    #topbar #sun-popover input[type="date"],
+    #topbar #sun-popover input[type="range"],
+    #topbar #sun-popover select {
+      width: 100%; background: #12132a; color: #c8cad0; border: 1px solid #262840;
+      border-radius: 3px; padding: 3px 6px; font-size: 11px; font-family: inherit;
+      outline: none;
+    }
+    #topbar #sun-popover .footer {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 8px; padding-top: 8px;
+      border-top: 1px solid #16182a;
+    }
+    #topbar #sun-popover .altaz {
+      flex: 1 1 auto; font-size: 11px; color: #38d9a9;
+      font-variant-numeric: tabular-nums;
+    }
+    #topbar #sun-popover button.now {
+      background: #16182a; color: #38d9a9; border: 1px solid #262840;
+      padding: 4px 10px; border-radius: 3px;
+      font-family: inherit; font-size: 10px; cursor: pointer;
+      text-transform: uppercase; letter-spacing: .08em;
+    }
+    #topbar #sun-popover button.now:hover { border-color: #38d9a9; }
+    #topbar #sun-btn .alt-az {
+      color: #7a80a0; font-variant-numeric: tabular-nums; margin-left: 4px;
+    }
+
+    #app { position: absolute; left: 0; top: 36px; right: 0; bottom: 0; }
+  </style>
+</head>
+<body>
+  <header id="topbar">
+    <span class="brand">&#x2B21; Tekto</span>
+    <span class="sep"></span>
+    <span class="group">
+      <span class="label">Page</span>
+      <select id="page-chooser" title="Switch demo"></select>
+    </span>
+
+    <span class="spacer"></span>
+
+    <span class="group" id="render-group">
+      <span class="label">Render</span>
+      <select id="render-mode">
+        <option value="solid">Solid</option>
+        <option value="wireframe">Wireframe</option>
+        <option value="hiddenline">Hidden Line</option>
+      </select>
+    </span>
+    <span class="group" id="light-group">
+      <span class="label">Light</span>
+      <select id="lighting-mode">
+        <option value="flat">Flat</option>
+        <option value="studio">Studio</option>
+      </select>
+    </span>
+
+    <div id="sun-menu">
+      <button id="sun-btn" title="Sun position (date + location)">
+        &#x2600;<span class="alt-az" id="sun-btn-label">—</span> &#x25BE;
+      </button>
+      <div id="sun-popover" class="menu-list" hidden>
+        <div class="row">
+          <label>City</label>
+          <select id="sun-city"></select>
+        </div>
+        <div class="row split">
+          <label>Lat</label> <input id="sun-lat" type="number" step="0.01" min="-85"  max="85"  />
+          <label>Lon</label> <input id="sun-lon" type="number" step="0.01" min="-180" max="180" />
+        </div>
+        <div class="row">
+          <label>TZ (h)</label>
+          <input id="sun-tz" type="number" step="0.5" min="-12" max="14" />
+        </div>
+        <div class="row">
+          <label>Date</label>
+          <input id="sun-date" type="date" />
+        </div>
+        <div class="row">
+          <label>Time</label>
+          <input id="sun-time" type="range" min="0" max="24" step="0.25" />
+        </div>
+        <div class="footer">
+          <span class="altaz" id="sun-altaz">—</span>
+          <button class="now" id="sun-now">Now</button>
+        </div>
+      </div>
+    </div>
+
+    <span class="sep"></span>
+
+    <div id="export-menu">
+      <button id="export-btn" hidden title="Export current sketch">Export &#x25BE;</button>
+      <div id="export-list" class="menu-list" hidden></div>
+    </div>
+    <div id="import-menu">
+      <button id="import-btn" hidden title="Import data into current sketch">Import &#x25BE;</button>
+      <div id="import-list" class="menu-list" hidden></div>
+      <input type="file" id="import-file" hidden />
+    </div>
+  </header>
+
+  <div id="app"></div>
+
+  <script type="module" src="./testbench.ts"></script>
+</body>
+</html>

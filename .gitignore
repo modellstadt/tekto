@@ -1,0 +1,10 @@
+node_modules/
+*.log
+.DS_Store
+
+# Build outputs
+dist/
+
+# Vite / Vitest caches — pollute the working tree on every test/build
+node_modules/.vite/
+.vite/

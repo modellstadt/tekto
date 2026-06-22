@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationDir": null,
+    "outDir": null,
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src", "playground", "tests"],
+  "exclude": ["node_modules", "dist", "apps"]
+}
