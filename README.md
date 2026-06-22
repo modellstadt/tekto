@@ -11,7 +11,8 @@ Computational geometry toolkit for interactive 3D visualization. Built for teach
 ## Quick Start
 
 ```bash
-npm install tekto three react react-dom
+npm install github:modellstadt/tekto three
+# add `react react-dom` only if you import from "tekto/react"
 ```
 
 ### Sketch API (easiest)
@@ -126,7 +127,7 @@ src/
 
 1. **Sketch API** — one function, zero framework knowledge. For students and quick experiments.
 2. **Scene + Params** — framework-agnostic. For apps without React.
-3. **React components** — `<ParamPanel>`, `<InspectorPanel>`, hooks. For full applications.
+3. **React components** — `<ParamPanel>`, `<InspectorPanel>`, hooks, imported from **`tekto/react`** (install `react` + `react-dom`). For full applications. The core `tekto` barrel is React-free, so non-React apps need neither.
 
 ## Generators
 
@@ -250,17 +251,19 @@ The testbench's *Timber + IFC* page is the canonical showcase of the BIM walls/s
 
 ## Using tekto in your own project
 
-### Option A — npm install (recommended once tekto is published)
+### Option A — install straight from GitHub (recommended)
 
 ```bash
-npm install tekto three
+npm install github:modellstadt/tekto three
 ```
 
-Then in any file:
+This builds tekto automatically on install (via its `prepare` hook). Then in any file:
 
 ```ts
 import { sketch, Vec3, MeshFactory, SunPosition, IfcWriter } from "tekto";
 ```
+
+> The React layer is a separate entry point — `import { TektoApp, ParamPanel } from "tekto/react"` (install `react` + `react-dom` for it). The core import above needs neither.
 
 ### Option B — sibling-folder link (today's setup for students embedding it locally)
 

@@ -196,9 +196,5 @@ export type {
   Lab2D, Sketch2DConfig, Sketch2DFn, DrawFn, AnimateFn, Pointer2D, PointerFn,
 } from "./sketch/Sketch2D";
 
-// React (Level 3 — advanced)
-export {
-  TektoApp, useScene, useSceneObjects, useSelection, useParams,
-  ParamPanel, InspectorPanel, Toolbar,
-} from "./react/components";
-export type { ToolbarAction } from "./react/components";
+// React (Level 3 — advanced) lives in its own entry point so the main "tekto"
+// barrel stays React-free. Import from "tekto/react" (needs react + react-dom).
