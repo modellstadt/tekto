@@ -1,6 +1,8 @@
 # ⬡ Tekto
 
-Computational geometry toolkit for interactive 3D visualization. Built for teaching and experimentation.
+Computational geometry toolkit for **interactive 3D generation, analysis, and visualization**. Built for teaching and experimentation.
+
+It's not just meshes: curves & **NURBS** surfaces, **SDF** fields, voxels, graphs (incl. planar/Delaunay), **BIM** timber framing + **IFC** export, solar, and physics — plus analysis (curvature, mesh metrics, convex hull) and renderers, all in one toolkit.
 
 **Mesh** (adjacency-tracked) → for editing, subdivision, topology queries  
 **FlatMesh** (typed arrays) → for rendering, animation, large meshes (500K+ tris)  
@@ -121,7 +123,7 @@ src/
 | 10K verts | 50ms build, 10MB | 2ms build, 0.2MB |
 | 100K verts | 800ms build, 100MB | 8ms build, 2.4MB |
 | Best for | Subdivision, topology, teaching | Rendering, animation, large data |
-| Conversion | `FlatMesh.fromMesh(m)` | `flat.toMesh()` |
+| Conversion | `FlatMesh.fromConnectedMesh(m)` | `flat.toConnectedMesh()` |
 
 ### Three access levels
 
@@ -139,12 +141,15 @@ src/
 | `torus(majorR, minorR, segments, sides)` | Torus |
 | `grid(w, d, divsX, divsZ, heightFn?)` | Height-mapped grid |
 | `revolve(profile, segments)` | Revolution surface from 2D profile |
-| `extrude(polygon, direction)` | Extrude polygon along vector |
-| `loft(profiles)` | Loft between cross-sections |
+| `extrude(polygon, direction)` | Extrude polygon along vector — **`MeshGen` only** |
+| `loft(profiles)` | Loft between cross-sections — **`MeshGen` only** |
 | `subdivide(mesh)` | Catmull-Clark subdivision |
-| `triangulate(mesh)` | Fan triangulation |
+| `triangulate(mesh)` | Fan triangulation — **`MeshGen` only** |
+| `pipe(path, radius, sides)` | Tube swept along a 3D polyline — **`MeshGen` only** |
 
-All available on both `MeshGen` (→ Mesh) and `FlatMeshGen` (→ FlatMesh).
+`MeshGen` (→ Mesh) implements all eleven. `FlatMeshGen` (→ FlatMesh) implements the seven that
+don't need adjacency — `box`, `sphere`, `cylinder`, `torus`, `grid`, `revolve`, `subdivide` — but
+not `extrude`, `loft`, `triangulate`, or `pipe`.
 
 ## Algorithms
 
@@ -200,7 +205,7 @@ Two presets, switchable from the top bar's *Light* dropdown (persisted in `local
 | **Flat** (default) | `MeshPhongMaterial`, 3 cheap lights | none | linear | Inspection, fast iteration, large mesh counts |
 | **Studio** | `MeshStandardMaterial` (PBR) | PCF-soft, 2048² map, 30 m frustum | ACES filmic + sRGB | Renderings, daylight studies, architecture demos |
 
-The sun direction is driven from the top-bar Sun popover (`SunPosition.compute(date, lat, lon)` → `SketchInstance.setSunDirection(direction)`). Inside a sketch, `lab.setSunDirection(dir)` lets the sketch override per-frame (animated daily cycles, etc.).
+The sun direction is driven from the top-bar Sun popover (`SunPosition.compute({ date, latitude, longitude })` → `SketchInstance.setSunDirection(direction)`). Inside a sketch, `lab.setSunDirection(dir)` lets the sketch override per-frame (animated daily cycles, etc.).
 
 ### Flat vs smooth shading
 
@@ -353,7 +358,7 @@ console.log(Object.keys(G).sort());
 Or use IDE autocomplete on the import line — every export is typed and has JSDoc. The big buckets:
 
 - **Math + primitives**: `Vec2`, `Vec3`, `Vec4`, `Mat4`, `MathUtils`, `Ray`, `Plane`, `Triangle`, `AABB`, `Sphere`, `Polygon2D`, `Intersections`.
-- **Meshes**: `Mesh` / `ConnectedMesh` (adjacency), `FlatMesh` / `RenderMesh` (typed arrays), `MeshFactory` / `MeshGen` (primitives + extrude + revolve + loft + subdivide), `FlatMeshGen`, `MeshAnalysis`, `MeshOffset`.
+- **Meshes**: `Mesh` / `ConnectedMesh` (adjacency), `FlatMesh` / `RenderMesh` (typed arrays), `MeshFactory` / `MeshGen` (primitives + extrude + revolve + loft + subdivide), `FlatMeshGen`, `MeshAnalysis`.
 - **Curves + surfaces**: `LineCurve`, `ArcCurve`, `HelixCurve`, `NurbsCurve`, `CubicBezierCurve`, `NurbsSurface`.
 - **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
 - **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.

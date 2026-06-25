@@ -11,18 +11,28 @@ Stand-alone applications that *consume* the library live in their own separate, 
 This is a teaching/research toolkit, not a shipping product. The maintainer is iterating quickly on architectural-geometry experiments. Optimise for:
 - **Readable diffs** over clever refactors.
 - **One concrete change per request** — do not bundle unrelated cleanups unless asked.
-- **Reading the surrounding code before editing.** The same concept (e.g. mesh) often has two names because of backward-compat aliases. See [README.md → Conventions / invariants](README.md#conventions--invariants).
+- **Reading the surrounding code before editing.** The same concept (e.g. mesh) often has two names because of backward-compat aliases. See [README.md → Mesh vs FlatMesh](README.md#mesh-vs-flatmesh).
 - **Anything an outside consumer needs must be re-exported from `src/index.ts`.** Deep imports like `from "tekto/src/scene/Scene"` are forbidden — apps can only see the public surface. If you add a new module that an app will use, also add the export here. **Exception — the React layer:** React components/hooks are exported from `src/react.ts` (the separate `tekto/react` entry), *not* `src/index.ts`. This keeps the core `tekto` barrel React-free so non-React apps don't need react installed. Anything that imports `react` belongs in `src/react.ts`, never in the core barrel.
+
+## Where things live
+
+The public surface is [src/index.ts](src/index.ts) — **read it first**; it's the authoritative export map. The README Architecture tree is a conceptual sketch and lags the real folders (it still shows `core/primitives/`). Actual layout:
+
+- math → `src/core/math/`
+- geometry primitives (Ray, Plane, Triangle, AABB, Sphere), 2D polygon ops, curves, surfaces → `src/core/geometry/` (**not** `core/primitives/` — that dir was removed)
+- the two mesh classes → `src/core/geometry/mesh/` (`ConnectedMesh.ts` = `Mesh`, `Mesh.ts` = `FlatMesh`/`RenderMesh`); the `FlatMeshGen` generators → `src/core/mesh/FlatMesh.ts`
+- BIM → `src/bim/`, IO → `src/io/`, renderers → `src/render/`
 
 ## The two things that catch agents out most
 
-1. **Mesh has two names.** `ConnectedMesh` (Map-backed, edit-friendly) is also exported as `Mesh`. The other mesh — `Mesh` (typed arrays, render-friendly) — is exported as `FlatMesh` and `RenderMesh`. When reading code you will see all four names. Don't "fix" the aliases; check [src/index.ts](src/index.ts) before assuming a type. The old `core/mesh/Mesh.ts` and `core/mesh/MeshGen.ts` shims have been removed — `core/mesh/FlatMesh.ts` still exists but only holds the `FlatMeshGen` generators.
+1. **Mesh has two names.** `ConnectedMesh` (Map-backed, edit-friendly) is also exported as `Mesh`. The other mesh — `Mesh` (typed arrays, render-friendly) — is exported as `FlatMesh` and `RenderMesh`. When reading code you will see all four names. Don't "fix" the aliases; check [src/index.ts](src/index.ts) before assuming a type. **Recently removed — don't reference them:** `src/core/primitives/primitives.ts` (the whole `core/primitives/` dir is gone; primitives now live directly in `src/core/geometry/` — `Ray.ts`, `Triangle.ts`, `AABB.ts`, `Sphere.ts`, etc.) and the `src/core/geometry/mesh/MeshData.ts` stub. The deprecated `FlatMesh.fromMesh` / `.toMesh` conversion pair is also gone — canonical conversions are now `FlatMesh.fromConnectedMesh(m)` and `flat.toConnectedMesh()`. (Other classes — `Wall`, `Slab`, `ExtrudedRibbon`, `NurbsSurface`, `BspTree` — still legitimately have their own `toMesh()` that builds a `ConnectedMesh`; those are unrelated and live.) `src/core/mesh/FlatMesh.ts` still exists but only holds the `FlatMeshGen` generators.
 2. **The Sketch function re-runs end-to-end on every parameter change.** No memoisation, no diffing. If you put expensive work inside the function body, every slider drag re-runs it. One-shot work goes in button callbacks; cached state goes into module-scope variables.
 3. **Lint = `tsconfig.lint.json`, not the default tsconfig.json.** The default config scopes to `src/` (for clean tsup declarations); the lint config widens the scope to `src + playground + tests`. Type errors in demos surface at `npm run lint`, *not* only at runtime in the browser. Always re-run `npm run lint` after touching anything under `playground/`.
+4. **A couple of recent additions/omissions.** `Polygon2D` gained `openRing` / `closeRing` / `polylineLength` ([src/core/geometry/Polygon2D.ts](src/core/geometry/Polygon2D.ts):83,95,67) — also reachable via `Algo.*`, since `Algo` spreads `Polygon2D`; don't re-implement them. `MeshOffset` ([src/core/geometry/mesh/MeshOffset.ts](src/core/geometry/mesh/MeshOffset.ts)) exists but is intentionally **not** re-exported from `src/index.ts` — leave it internal unless the maintainer asks.
 
 ## Vec immutability
 
-`Vec2`/`Vec3`/`Vec4`/`Mat4` use `readonly` fields. All ops return new instances. There are a few intentional escape hatches — `(p as any).x = …` in `Algo.laplacianSmooth` and `translate`. Search the repo for `as any` before adding a new one; if you find a clean way to express the mutation in legal TS, prefer it.
+`Vec2`/`Vec3`/`Vec4`/`Mat4` use `readonly` fields. All ops return new instances. There are a few intentional escape hatches that mutate a node's position in place via `(node as any).position = …` — in `MeshAnalysis.laplacianSmooth` (re-exported as `Algo.laplacianSmooth`) and in the rotate handlers in `src/sketch/Sketch.ts`. These mutate `MeshNode.position`, which is a mutable field — *not* the `readonly` Vec components — so `MeshTransform.translate`/`scale` reassign `node.position` directly, no `as any` needed. Search the repo for `as any` before adding a new one; if you find a clean way to express the mutation in legal TS, prefer it.
 
 ## Coordinate convention
 
@@ -31,7 +41,7 @@ Z-up. XY is the ground plane. The `Top` camera preset is "looking down -Z, up=+Y
 ## What to use, what to avoid
 
 - **Use `MeshFactory`** for procedural meshes that need adjacency (e.g., subdivision, topology editing).
-- **Use `FlatMeshGen`** for big rendered meshes (heightfields, large NURBS evaluations).
+- **Use `FlatMeshGen`** for big rendered meshes (heightfields, large NURBS evaluations). It has 7 generators — `box`, `sphere`, `cylinder`, `torus`, `grid`, `revolve`, `subdivide`. The adjacency-dependent `extrude` / `loft` / `triangulate` / `pipe` are `MeshFactory`/`MeshGen` only.
 - **Use `sketch(...)`** to build a runnable demo. Don't reach for the React app shell unless you specifically need persistent state, multiple panels, or routing.
 - **Avoid** importing `three` inside `src/` — it's an externalised peer dep. Add new Three.js calls in `src/render/ThreeRenderer.ts` and expose what you need through the renderer interface.
 - **Avoid** adding new files when an existing file is a good home. The library prefers a handful of larger, well-organised modules over many tiny ones.
@@ -40,16 +50,16 @@ Z-up. XY is the ground plane. The `Top` camera preset is "looking down -Z, up=+Y
 
 Before writing the edit:
 
-- [ ] I've located the canonical file via `src/index.ts` or `README.md → Map of the Library`.
+- [ ] I've located the canonical file via `src/index.ts` (authoritative export map); the [README Architecture tree](README.md#architecture) is a conceptual overview and may lag the real folder names.
 - [ ] I've read the surrounding 50–100 lines, not just the symbol I'm changing.
 - [ ] I've checked whether the same concept has multiple names (`ConnectedMesh`/`Mesh`, `Mesh`/`FlatMesh`/`RenderMesh`).
-- [ ] If touching a "known issue" function (see [README.md](README.md#known-issues--dont-reinvent-these)), I'm either avoiding it or actually fixing it.
+- [ ] If touching a fragile or aliased function (see [src/index.ts](src/index.ts) and [README.md → Mesh vs FlatMesh](README.md#mesh-vs-flatmesh)), I'm either avoiding it or actually fixing it.
 
 After the edit:
 
 - [ ] `npm run lint` (which is `tsc --noEmit -p tsconfig.lint.json`, covering `src/` + `playground/` + `tests/`) is clean.
 - [ ] Affected tests pass (`npm test`). Add a test if the change is non-trivial *and* the rest of the module has tests; otherwise don't pad the suite.
-- [ ] If the change touches the public API (anything exported from `src/index.ts`), I've updated the README's module map / common-tasks index.
+- [ ] If the change touches the public API (anything exported from `src/index.ts`), I've updated the README's [What's available from `tekto`](README.md#whats-available-from-tekto) list. (Sanity-check exact names against `src/index.ts` — that bucket list paraphrases; e.g. it must use the canonical conversions `fromConnectedMesh`/`toConnectedMesh`, never the removed `fromMesh`/`toMesh`.)
 
 ## What to *never* do without asking
 
@@ -92,7 +102,7 @@ Shadow flags are applied in `addToThree` based on the current lighting mode, so 
 - Run `npm run lint` to see what TypeScript thinks of your change.
 - Search for prior art: most APIs in `src/` are exercised by at least one playground page. Find one and pattern-match.
 - If you're working through an assistant that keeps cross-conversation memory, read what's already there before re-deriving context.
-- Open a clarifying question rather than guess — see the doctrine in the top-level CLAUDE.md (this file) about "explorations should be 2-3 sentences with a recommendation, not a decided plan."
+- Open a clarifying question rather than guess; when exploring, give a 2-3-sentence recommendation, not a decided plan.
 
 ## Style
 
