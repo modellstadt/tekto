@@ -241,11 +241,8 @@ export class Slab {
    * Uses `Polygon2D.triangulate2D` (ear-clipping) for the caps.
    */
   toMesh(): Mesh {
-    const b = this.boundary;
     // Drop the duplicate closing vertex if the polygon is closed.
-    const ring = b.length >= 3 && b[0].distSqTo(b[b.length - 1]) < 1e-12
-      ? b.slice(0, -1)
-      : b.slice();
+    const ring = Polygon2D.openRing(this.boundary);
     const n = ring.length;
     if (n < 3) {
       return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());

@@ -60,6 +60,45 @@ export const Polygon2D = {
     return total;
   },
 
+  /**
+   * Total arc length of an open polyline (no implied closing edge).
+   * Sums segment lengths between consecutive vertices.
+   */
+  polylineLength(polyline: Vec2[]): number {
+    let total = 0;
+    for (let i = 0; i < polyline.length - 1; i++)
+      total += polyline[i].distTo(polyline[i + 1]);
+    return total;
+  },
+
+  // ================================================================
+  // RING NORMALIZATION
+  // ================================================================
+
+  /**
+   * Return `polygon` with the closing duplicate vertex stripped (open ring).
+   * Only strips when the polygon has ≥3 vertices and its first/last vertices
+   * coincide within `eps`. Always returns a fresh array.
+   */
+  openRing(polygon: Vec2[], eps = 1e-12): Vec2[] {
+    return polygon.length >= 3 &&
+      polygon[0].distSqTo(polygon[polygon.length - 1]) < eps
+      ? polygon.slice(0, -1)
+      : polygon.slice();
+  },
+
+  /**
+   * Return `polygon` with a closing duplicate vertex appended (closed ring).
+   * Polygons with <3 vertices are returned as a fresh copy unchanged.
+   * Always returns a fresh array.
+   */
+  closeRing(polygon: Vec2[], eps = 1e-12): Vec2[] {
+    if (polygon.length < 3) return polygon.slice();
+    return polygon[0].distSqTo(polygon[polygon.length - 1]) < eps
+      ? polygon.slice()
+      : [...polygon, polygon[0]];
+  },
+
   /** Returns true if polygon vertices are in counter-clockwise order. */
   isCCW(polygon: Vec2[]): boolean {
     return Polygon2D.signedArea(polygon) > 0;

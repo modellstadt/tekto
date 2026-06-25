@@ -250,23 +250,16 @@ export function JoistedSlab(options: JoistedSlabOptions = {}): SlabConstruction 
 
 /** Return `polygon` with the closing duplicate vertex stripped (open ring). */
 function stripClose(polygon: Vec2[]): Vec2[] {
-  return polygon.length >= 3 && polygon[0].distSqTo(polygon[polygon.length - 1]) < 1e-12
-    ? polygon.slice(0, -1)
-    : polygon.slice();
+  return Polygon2D.openRing(polygon);
 }
 
 /** Return `polygon` with a closing duplicate vertex (closed ring). */
 function ensureClosedRing(polygon: Vec2[]): Vec2[] {
-  if (polygon.length < 3) return polygon.slice();
-  return polygon[0].distSqTo(polygon[polygon.length - 1]) < 1e-12
-    ? polygon.slice()
-    : [...polygon, polygon[0]];
+  return Polygon2D.closeRing(polygon);
 }
 
 function ringPerimeter(closedRing: Vec2[]): number {
-  let total = 0;
-  for (let i = 0; i < closedRing.length - 1; i++) total += closedRing[i].distTo(closedRing[i + 1]);
-  return total;
+  return Polygon2D.polylineLength(closedRing);
 }
 
 // ─── Helper: thin extruded plate from a 2D polygon ──────────────────
@@ -278,9 +271,7 @@ import { Mesh } from "../../core/geometry/mesh/Mesh";
  * starting at `baseZ`. Used for the sheathing / ceiling / topping layers.
  */
 function makeFlatPlate(boundary: Vec2[], baseZ: number, thickness: number): Mesh {
-  const ring = boundary.length >= 3 && boundary[0].distSqTo(boundary[boundary.length - 1]) < 1e-12
-    ? boundary.slice(0, -1)
-    : boundary.slice();
+  const ring = Polygon2D.openRing(boundary);
   const n = ring.length;
   if (n < 3) return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
 

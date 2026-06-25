@@ -20,9 +20,9 @@
 import type { Wall, WallOpening } from "../../core/geometry/walls";
 import type { WallConstruction, WallPart, PartProfile, WallContext } from "./types";
 import {
-  makePlate, makeStud, makeBeam,
-  pointAt, tangentAt, subCenterline, polylineLength,
-  placeCripples,
+  makePlate, makeStud,
+  pointAt, tangentAt,
+  addHeaderSillCripples,
   effectiveStartArc, effectiveEndArc, addChannelStuds,
   addEndAndCornerStuds,
 } from "./framing-helpers";
@@ -164,10 +164,6 @@ function addOpeningFramingNA(
   const stud  = opts.studProfile;
   const plate = opts.plateProfile;
   const plateVerticalH  = plate.w;
-  const plateAcrossWall = plate.h;
-  const topAll = plateVerticalH * opts.topPlateCount;
-  const wallH = wall.height;
-  const isDoor = opening.sillHeight <= 0.001;
 
   // King studs (just outside opening edges).
   parts.push(makeStud(
@@ -195,50 +191,20 @@ function addOpeningFramingNA(
     jackZ0, jackHeight, stud, opts.material,
   ));
 
-  // Header (across-wall = stud depth; depth scales with width).
-  const headerDepth = opts.headerDepth(opening.width);
-  const headerZ    = baseZ + opening.headHeight;
-  const headerCl   = subCenterline(cl, uL - stud.h * 0.5, uR + stud.h * 0.5);
-  if (headerCl.length >= 2 && polylineLength(headerCl) > 1e-3) {
-    parts.push(makeBeam(
-      `Header (op ${idx})`, "header", headerCl,
-      headerZ, headerDepth, stud.h, opts.material,
-      { w: stud.h, h: headerDepth, name: `Header ${(headerDepth*1000).toFixed(0)}` },
-    ));
-  }
-
-  // Cripples above header.
-  const upperZ0 = headerZ + headerDepth;
-  const upperZ1 = baseZ + wallH - topAll;
-  const upperH  = upperZ1 - upperZ0;
-  if (upperH > 0.05) {
-    placeCripples(
-      parts, cl, uL, uR, stud, opts.material,
-      opts.studSpacing, upperZ0, upperH, "cripple",
-      `Cripple ↑ (op ${idx})`,
-    );
-  }
-
-  // Rough sill + lower cripples — windows only.
-  if (!isDoor) {
-    const sillZ = baseZ + opening.sillHeight;
-    const sillCl = subCenterline(cl, uL - stud.h * 0.5, uR + stud.h * 0.5);
-    if (sillCl.length >= 2 && polylineLength(sillCl) > 1e-3) {
-      parts.push(makeBeam(
-        `Rough sill (op ${idx})`, "blocking", sillCl,
-        sillZ - plateVerticalH, plateVerticalH, plateAcrossWall, opts.material,
-        { w: plate.w, h: plate.h, name: "Sill blocking" },
-      ));
-    }
-    const lowerZ0 = baseZ + plateVerticalH;
-    const lowerZ1 = sillZ - plateVerticalH;
-    const lowerH  = lowerZ1 - lowerZ0;
-    if (lowerH > 0.05) {
-      placeCripples(
-        parts, cl, uL, uR, stud, opts.material,
-        opts.studSpacing, lowerZ0, lowerH, "cripple",
-        `Cripple ↓ (op ${idx})`,
-      );
-    }
-  }
+  // Header, above-header cripples, rough sill + below-sill cripples (shared).
+  addHeaderSillCripples(
+    parts, wall, opening, uL, uR, idx,
+    stud, plate, opts.material, opts.topPlateCount,
+    opts.studSpacing, opts.headerDepth,
+    {
+      headerMargin: stud.h * 0.5,
+      headerLabel: "Header",
+      headerName: "Header",
+      sillMargin: stud.h * 0.5,
+      sillLabel: "Rough sill",
+      sillName: "Sill blocking",
+      crippleUpLabel: "Cripple ↑",
+      crippleDownLabel: "Cripple ↓",
+    },
+  );
 }

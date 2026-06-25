@@ -13,10 +13,11 @@
 // See `types.ts → PartProfile` for the canonical definition.
 
 import { Vec2 } from "../../core/math/vectors";
+import { Polygon2D } from "../../core/geometry/Polygon2D";
 import {
   ExtrudedRibbon, RibbonEndTrim, newBuffers, finishMesh, intersectLines, safeNormalize,
 } from "../../core/geometry/ExtrudedRibbon";
-import type { Wall } from "../../core/geometry/walls";
+import type { Wall, WallOpening } from "../../core/geometry/walls";
 import type { PartProfile, WallPart, WallPartRole, WallTJunction } from "./types";
 
 // ─── Geometry primitives ─────────────────────────────────────────────
@@ -113,9 +114,7 @@ export function makeBeam(
 
 /** Total polyline arc length. */
 export function polylineLength(cl: Vec2[]): number {
-  let total = 0;
-  for (let i = 0; i < cl.length - 1; i++) total += cl[i].distTo(cl[i + 1]);
-  return total;
+  return Polygon2D.polylineLength(cl);
 }
 
 /** Point at arc-length `m` along a polyline. */
@@ -227,7 +226,7 @@ export function effectiveEndArc(centerline: Vec2[], endTrim: RibbonEndTrim | nul
  * Used to position end posts so their outer face is flush with the
  * plate's outer face.
  */
-export function envelopeStartArc(centerline: Vec2[], startTrim: RibbonEndTrim | null): number {
+function envelopeStartArc(centerline: Vec2[], startTrim: RibbonEndTrim | null): number {
   if (!startTrim || centerline.length < 2) return 0;
   const dir = safeNormalize(centerline[1].sub(centerline[0]));
   const hit = intersectLines(centerline[0], dir, startTrim.leftTrimPoint, startTrim.leftTrimDir);
@@ -240,7 +239,7 @@ export function envelopeStartArc(centerline: Vec2[], startTrim: RibbonEndTrim | 
  * `total` indicate envelope extension (through-wall); values below
  * `total` indicate shortening (butt-wall).
  */
-export function envelopeEndArc(centerline: Vec2[], endTrim: RibbonEndTrim | null): number {
+function envelopeEndArc(centerline: Vec2[], endTrim: RibbonEndTrim | null): number {
   const total = polylineLength(centerline);
   if (!endTrim || centerline.length < 2) return total;
   const n = centerline.length;
@@ -255,7 +254,7 @@ export function envelopeEndArc(centerline: Vec2[], endTrim: RibbonEndTrim | null
  * endpoints when `m < 0` or `m > total`. Used to position end posts at
  * extended envelope ends.
  */
-export function pointAtExtrapolating(cl: Vec2[], m: number): Vec2 {
+function pointAtExtrapolating(cl: Vec2[], m: number): Vec2 {
   if (cl.length < 2) return cl[0] ?? new Vec2(0, 0);
   const total = polylineLength(cl);
   if (m < 0) {
@@ -407,5 +406,118 @@ export function placeCripples(
       pointAt(cl, m), tangentAt(cl, m),
       z0, h, studProfile, material,
     ));
+  }
+}
+
+// ─── Opening framing: header + sill + cripples ────────────────────────
+
+/**
+ * Convention-specific labels and margins for {@link addHeaderSillCripples}.
+ *
+ * The header beam, rough sill, and upper/lower cripple courses are identical
+ * in structure across framing conventions (NA balloon, DE Holzrahmenbau); the
+ * only differences are the horizontal margins (driven by the edge-stud
+ * strategy) and the member labels. This keeps those differences explicit.
+ */
+export interface HeaderSillConfig {
+  /**
+   * Extra arc-length added beyond each opening edge when spanning the header
+   * and rough sill (NA: stud depth; DE: stud width). The header/sill centerline
+   * runs from `uL - margin` to `uR + margin`.
+   */
+  headerMargin: number;
+  /** Label for the header beam, e.g. `"Header"` / `"Sturz"`. */
+  headerLabel: string;
+  /** Profile-name prefix for the header beam, e.g. `"Header"` / `"Sturz"`. */
+  headerName: string;
+  /** Extra arc-length added beyond each opening edge for the rough sill. */
+  sillMargin: number;
+  /** Label for the rough sill beam, e.g. `"Rough sill"` / `"Brüstungsriegel"`. */
+  sillLabel: string;
+  /** Profile name for the rough sill, e.g. `"Sill blocking"` / `"Brüstungsriegel"`. */
+  sillName: string;
+  /** Label for upper (above-header) cripples, e.g. `"Cripple ↑"` / `"Kopfriegel"`. */
+  crippleUpLabel: string;
+  /** Label for lower (below-sill) cripples, e.g. `"Cripple ↓"` / `"Fußriegel"`. */
+  crippleDownLabel: string;
+  /**
+   * Margin passed to {@link placeCripples} for both courses. When omitted the
+   * `placeCripples` default (`studProfile.h * 1.5`) is used (NA); DE passes a
+   * wider value to clear the Doppelständer.
+   */
+  crippleMargin?: number;
+}
+
+/**
+ * Emit the header beam, above-header cripples, and (for windows) the rough sill
+ * plus below-sill cripples for one opening. Shared by the NA balloon-frame and
+ * DE Holzrahmenbau builders, which differ only in the edge-stud strategy
+ * (handled by their callers) and the labels/margins captured in `cfg`.
+ */
+export function addHeaderSillCripples(
+  parts: WallPart[], wall: Wall, opening: WallOpening,
+  uL: number, uR: number, idx: number,
+  studProfile: PartProfile, plateProfile: PartProfile,
+  material: string, topPlateCount: number,
+  studSpacing: number, headerDepthFor: (width: number) => number,
+  cfg: HeaderSillConfig,
+): void {
+  const cl    = wall.centerline;
+  const baseZ = wall.baseElevation;
+  const stud  = studProfile;
+  const plate = plateProfile;
+  const plateVerticalH  = plate.w;
+  const plateAcrossWall = plate.h;
+  const topAll = plateVerticalH * topPlateCount;
+  const wallH = wall.height;
+  const isDoor = opening.sillHeight <= 0.001;
+
+  // Header (across-wall = stud depth; depth scales with width).
+  const headerDepth = headerDepthFor(opening.width);
+  const headerZ    = baseZ + opening.headHeight;
+  const headerCl   = subCenterline(cl, uL - cfg.headerMargin, uR + cfg.headerMargin);
+  if (headerCl.length >= 2 && polylineLength(headerCl) > 1e-3) {
+    parts.push(makeBeam(
+      `${cfg.headerLabel} (op ${idx})`, "header", headerCl,
+      headerZ, headerDepth, stud.h, material,
+      { w: stud.h, h: headerDepth, name: `${cfg.headerName} ${(headerDepth*1000).toFixed(0)}` },
+    ));
+  }
+
+  // Cripples above header.
+  const upperZ0 = headerZ + headerDepth;
+  const upperZ1 = baseZ + wallH - topAll;
+  const upperH  = upperZ1 - upperZ0;
+  if (upperH > 0.05) {
+    placeCripples(
+      parts, cl, uL, uR, stud, material,
+      studSpacing, upperZ0, upperH, "cripple",
+      `${cfg.crippleUpLabel} (op ${idx})`,
+      cfg.crippleMargin,
+    );
+  }
+
+  // Rough sill + lower cripples — windows only.
+  if (!isDoor) {
+    const sillZ = baseZ + opening.sillHeight;
+    const sillCl = subCenterline(cl, uL - cfg.sillMargin, uR + cfg.sillMargin);
+    if (sillCl.length >= 2 && polylineLength(sillCl) > 1e-3) {
+      parts.push(makeBeam(
+        `${cfg.sillLabel} (op ${idx})`, "blocking", sillCl,
+        sillZ - plateVerticalH, plateVerticalH, plateAcrossWall, material,
+        { w: plate.w, h: plate.h, name: cfg.sillName },
+      ));
+    }
+    const lowerZ0 = baseZ + plateVerticalH;
+    const lowerZ1 = sillZ - plateVerticalH;
+    const lowerH  = lowerZ1 - lowerZ0;
+    if (lowerH > 0.05) {
+      placeCripples(
+        parts, cl, uL, uR, stud, material,
+        studSpacing, lowerZ0, lowerH, "cripple",
+        `${cfg.crippleDownLabel} (op ${idx})`,
+        cfg.crippleMargin,
+      );
+    }
   }
 }

@@ -30,9 +30,9 @@ import type {
   WallConstruction, WallPart, PartProfile, MaterialLayer, WallContext,
 } from "./types";
 import {
-  makePlate, makeStud, makeBeam,
-  pointAt, tangentAt, subCenterline, polylineLength,
-  placeCripples,
+  makePlate, makeStud,
+  pointAt, tangentAt,
+  addHeaderSillCripples,
   effectiveStartArc, effectiveEndArc, addChannelStuds,
   addEndAndCornerStuds,
 } from "./framing-helpers";
@@ -190,14 +190,8 @@ function addOpeningFramingDE(
   studZ0: number, studH: number,
 ): void {
   const cl    = wall.centerline;
-  const baseZ = wall.baseElevation;
   const stud  = opts.studProfile;
   const plate = opts.plateProfile;
-  const plateVerticalH  = plate.w;
-  const plateAcrossWall = plate.h;
-  const topAll = plateVerticalH * opts.topPlateCount;
-  const wallH = wall.height;
-  const isDoor = opening.sillHeight <= 0.001;
 
   // ── Doppelständer (or single king) at each opening edge ──
   // First stud sits flush with the rough-opening edge; the second sits
@@ -223,55 +217,25 @@ function addOpeningFramingDE(
   placeEdgeKings(uL, "L");
   placeEdgeKings(uR, "R");
 
-  // ── Sturz (header beam) — single KVH/BSH spanning between edge studs ──
-  // Across-wall width = stud depth (centered in the cavity).
-  const headerDepth = opts.headerDepth(opening.width);
-  const headerZ    = baseZ + opening.headHeight;
-  const headerCl   = subCenterline(cl, uL - stud.w * 0.5, uR + stud.w * 0.5);
-  if (headerCl.length >= 2 && polylineLength(headerCl) > 1e-3) {
-    parts.push(makeBeam(
-      `Sturz (op ${idx})`, "header", headerCl,
-      headerZ, headerDepth, stud.h, opts.material,
-      { w: stud.h, h: headerDepth, name: `Sturz ${(headerDepth*1000).toFixed(0)}` },
-    ));
-  }
-
-  // ── Kopfriegel (cripples above header) ──
-  const upperZ0 = headerZ + headerDepth;
-  const upperZ1 = baseZ + wallH - topAll;
-  const upperH  = upperZ1 - upperZ0;
-  if (upperH > 0.05) {
-    placeCripples(
-      parts, cl, uL, uR, stud, opts.material,
-      opts.studSpacing, upperZ0, upperH, "cripple",
-      `Kopfriegel (op ${idx})`,
-      stud.w * 2.5, // wider margin — Doppelständer is wider than NA king+jack
-    );
-  }
-
-  // ── Brüstungsriegel + Fußriegel (rough sill + cripples below) ──
-  if (!isDoor) {
-    const sillZ = baseZ + opening.sillHeight;
-    const sillCl = subCenterline(cl, uL - stud.w * 0.5, uR + stud.w * 0.5);
-    if (sillCl.length >= 2 && polylineLength(sillCl) > 1e-3) {
-      parts.push(makeBeam(
-        `Brüstungsriegel (op ${idx})`, "blocking", sillCl,
-        sillZ - plateVerticalH, plateVerticalH, plateAcrossWall, opts.material,
-        { w: plate.w, h: plate.h, name: "Brüstungsriegel" },
-      ));
-    }
-    const lowerZ0 = baseZ + plateVerticalH;
-    const lowerZ1 = sillZ - plateVerticalH;
-    const lowerH  = lowerZ1 - lowerZ0;
-    if (lowerH > 0.05) {
-      placeCripples(
-        parts, cl, uL, uR, stud, opts.material,
-        opts.studSpacing, lowerZ0, lowerH, "cripple",
-        `Fußriegel (op ${idx})`,
-        stud.w * 2.5,
-      );
-    }
-  }
+  // Sturz (header), Kopfriegel + Brüstungsriegel/Fußriegel (shared).
+  // Header/sill span ±stud.w (edge studs are centered at the rough edge);
+  // the wider cripple margin (stud.w * 2.5) clears the Doppelständer.
+  addHeaderSillCripples(
+    parts, wall, opening, uL, uR, idx,
+    stud, plate, opts.material, opts.topPlateCount,
+    opts.studSpacing, opts.headerDepth,
+    {
+      headerMargin: stud.w * 0.5,
+      headerLabel: "Sturz",
+      headerName: "Sturz",
+      sillMargin: stud.w * 0.5,
+      sillLabel: "Brüstungsriegel",
+      sillName: "Brüstungsriegel",
+      crippleUpLabel: "Kopfriegel",
+      crippleDownLabel: "Fußriegel",
+      crippleMargin: stud.w * 2.5,
+    },
+  );
 }
 
 // ─── Default layered build-up ────────────────────────────────────────

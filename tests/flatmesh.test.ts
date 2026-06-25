@@ -26,7 +26,7 @@ describe("FlatMesh", () => {
 
   it("converts from Mesh", () => {
     const mesh = MeshGen.sphere(1, 12, 8);
-    const fm = FlatMesh.fromMesh(mesh);
+    const fm = FlatMesh.fromConnectedMesh(mesh);
 
     expect(fm.vertexCount).toBe(mesh.nodeCount);
     expect(fm.triangleCount).toBeGreaterThan(0);
@@ -34,8 +34,8 @@ describe("FlatMesh", () => {
 
   it("converts back to Mesh", () => {
     const mesh = MeshGen.box(1, 1, 1);
-    const fm = FlatMesh.fromMesh(mesh);
-    const mesh2 = fm.toMesh();
+    const fm = FlatMesh.fromConnectedMesh(mesh);
+    const mesh2 = fm.toConnectedMesh();
 
     expect(mesh2.nodeCount).toBe(fm.vertexCount);
     expect(mesh2.faceCount).toBe(fm.triangleCount);

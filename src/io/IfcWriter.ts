@@ -25,6 +25,7 @@
 //     types and instances (Pset_WallCommon when applicable).
 
 import type { Vec2 } from "../core/math/vectors";
+import { Polygon2D } from "../core/geometry/Polygon2D";
 import type { Wall, WallOpening, WallSystem } from "../core/geometry/walls";
 import type { PropertyMap, WallType, MaterialLayer } from "../bim/walls/types";
 import type { WallJoint } from "../bim/walls/joints";
@@ -458,10 +459,7 @@ export class IfcWriter {
     storey?: number;
   } = {}): number {
     const storey = this.resolveStorey(opts.storey);
-    const boundary = slab.boundary;
-    const ring = boundary.length >= 3 && boundary[0].distSqTo(boundary[boundary.length - 1]) < 1e-12
-      ? boundary.slice(0, -1)
-      : boundary.slice();
+    const ring = Polygon2D.openRing(slab.boundary);
 
     // ── Boundary → IfcCartesianPoint (2D) → IfcPolyline → profile ──
     const ptRefs: number[] = [];
@@ -675,9 +673,7 @@ export class IfcWriter {
    */
   addSpace(space: Space, opts: { storey?: number; boundaries?: Wall[] } = {}): number {
     const storey = this.resolveStorey(opts.storey);
-    const ring = space.boundary[0].distSqTo(space.boundary[space.boundary.length - 1]) < 1e-12
-      ? space.boundary.slice(0, -1)
-      : space.boundary.slice();
+    const ring = Polygon2D.openRing(space.boundary);
 
     // Boundary → IfcPolyline → closed profile.
     const ptRefs: number[] = [];

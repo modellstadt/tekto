@@ -395,11 +395,6 @@ export class Mesh {
     return new Mesh(data.positions, data.indices, data.normals);
   }
 
-  /** @deprecated Use fromConnectedMesh instead */
-  static fromMesh(mesh: ConnectedMesh): Mesh {
-    return Mesh.fromConnectedMesh(mesh);
-  }
-
   toConnectedMesh(): ConnectedMesh {
     const positions: Vec3[] = [];
     for (let i = 0; i < this.positions.length; i += 3) {
@@ -407,11 +402,6 @@ export class Mesh {
     }
     const indices: number[] = Array.from(this.indices);
     return ConnectedMesh.fromIndexedTriangles(positions, indices);
-  }
-
-  /** @deprecated Use toConnectedMesh instead */
-  toMesh(): ConnectedMesh {
-    return this.toConnectedMesh();
   }
 
   static fromArrays(

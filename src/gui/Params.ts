@@ -91,19 +91,6 @@ export type ParamDef =
 
 export type ParamSchema = Record<string, ParamDef>;
 
-// ─── Value types ─────────────────────────────
-
-export type ParamValue<T extends ParamDef> =
-  T extends FloatParam ? number :
-  T extends IntParam ? number :
-  T extends BoolParam ? boolean :
-  T extends SelectParam ? string :
-  T extends ColorParam ? string :
-  T extends StringParam ? string :
-  T extends Vec3Param ? [number, number, number] :
-  T extends ButtonParam ? never :
-  never;
-
 // ─── Param Store ─────────────────────────────
 
 export type ParamChangeListener = (key: string, value: any, allValues: Record<string, any>) => void;

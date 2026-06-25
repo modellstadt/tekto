@@ -11,6 +11,7 @@
 import { Vec3 } from "../core/math/vectors";
 import { ConnectedMesh as Mesh } from "../core/geometry/mesh/ConnectedMesh";
 import type { MeshData } from "../io";
+import type { MeshData as RenderMeshData } from "../core/geometry/mesh/Mesh";
 
 // ─── Scene Object ────────────────────────────
 
@@ -107,48 +108,15 @@ export interface SceneTransform {
   scale?: Vec3;
 }
 
-/** Flat mesh data for direct rendering (positions/normals/indices + optional vertex colors) */
-export interface FlatMeshData {
-  positions: Float32Array;
-  normals: Float32Array;
-  indices: Uint32Array;
+/**
+ * Flat mesh data for direct rendering (positions/normals/indices + optional
+ * vertex colors). Extends the core render-mesh `MeshData` (inheriting
+ * `positions`/`normals`/`indices`/`colors`/`uvs`) and adds named sub-groups.
+ */
+export interface FlatMeshData extends RenderMeshData {
   colors?: Float32Array;    // RGBA per vertex (4 floats per vertex)
   /** Named sub-groups as contiguous index ranges (from OBJ `g` lines or manual splits). */
   groups?: { name: string; indexStart: number; indexCount: number }[];
-}
-
-/**
- * Split a FlatMeshData with groups into separate per-group FlatMeshData objects.
- * If the mesh has no groups, returns a single entry wrapping the whole mesh.
- */
-export function splitFlatMesh(mesh: FlatMeshData): { name: string; mesh: FlatMeshData }[] {
-  if (!mesh.groups?.length) return [{ name: "default", mesh }];
-  return mesh.groups.map(g => {
-    // Collect unique vertex indices used by this group
-    const usedSet = new Set<number>();
-    for (let i = g.indexStart; i < g.indexStart + g.indexCount; i++) usedSet.add(mesh.indices[i]);
-    const oldVerts = Array.from(usedSet).sort((a, b) => a - b);
-    const remap = new Map<number, number>();
-    oldVerts.forEach((v, i) => remap.set(v, i));
-
-    const n = oldVerts.length;
-    const positions = new Float32Array(n * 3);
-    const normals = new Float32Array(n * 3);
-    for (const oldV of oldVerts) {
-      const newV = remap.get(oldV)!;
-      positions[newV * 3]     = mesh.positions[oldV * 3];
-      positions[newV * 3 + 1] = mesh.positions[oldV * 3 + 1];
-      positions[newV * 3 + 2] = mesh.positions[oldV * 3 + 2];
-      normals[newV * 3]       = mesh.normals[oldV * 3];
-      normals[newV * 3 + 1]   = mesh.normals[oldV * 3 + 1];
-      normals[newV * 3 + 2]   = mesh.normals[oldV * 3 + 2];
-    }
-
-    const indices = new Uint32Array(g.indexCount);
-    for (let i = 0; i < g.indexCount; i++) indices[i] = remap.get(mesh.indices[g.indexStart + i])!;
-
-    return { name: g.name, mesh: { positions, normals, indices } };
-  });
 }
 
 // ─── Events ──────────────────────────────────
