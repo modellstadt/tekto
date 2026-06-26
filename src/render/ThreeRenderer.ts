@@ -82,6 +82,8 @@ export class ThreeRenderer {
   // When true, line/point "helper" objects are hidden (e.g. a clean render view
   // that shows only solid meshes). Solid geometry is unaffected.
   private hideHelpers = false;
+  private gridHelper: THREE.Object3D | null = null;
+  private axesHelper: THREE.Object3D | null = null;
   // Invisible shadow-catcher plane added only in Studio mode so the
   // PCF-soft shadows have a surface to land on.
   private shadowGround: THREE.Mesh | null = null;
@@ -167,10 +169,12 @@ export class ThreeRenderer {
     if (cfg.showGrid) {
       const grid = new THREE.GridHelper(cfg.gridSize, cfg.gridDivisions, 0x3a3c5a, 0x2a2c4a);
       if (this.isZUp) grid.rotation.x = Math.PI / 2;
+      this.gridHelper = grid;
       this.threeScene.add(grid);
     }
     if (cfg.showAxes) {
-      this.threeScene.add(new THREE.AxesHelper(cfg.axesSize));
+      this.axesHelper = new THREE.AxesHelper(cfg.axesSize);
+      this.threeScene.add(this.axesHelper);
     }
 
     // Orbit controls
@@ -351,6 +355,8 @@ export class ThreeRenderer {
    */
   setHelpersVisible(visible: boolean): void {
     this.hideHelpers = !visible;
+    if (this.gridHelper) this.gridHelper.visible = visible;
+    if (this.axesHelper) this.axesHelper.visible = visible;
     this.threeScene.traverse((o) => {
       if (this._isHelper(o.userData?.objType)) {
         o.visible = visible ? (o.userData.styleVisible ?? true) : false;
