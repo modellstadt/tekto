@@ -75,6 +75,10 @@ export class ThreeRenderer {
   // Invisible shadow-catcher plane added only in Studio mode so the
   // PCF-soft shadows have a surface to land on.
   private shadowGround: THREE.Mesh | null = null;
+  // Prefiltered (PMREM) environment map for image-based reflections.
+  // Built lazily once on first enable, then reused. Only visibly affects
+  // studio PBR materials.
+  private envMap: THREE.Texture | null = null;
   private container: HTMLElement;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -208,6 +212,9 @@ export class ThreeRenderer {
         // so existing objects re-create their materials in the new family.
         this.rebuildAllMeshes();
         break;
+      case "scene:environment":
+        this._applyEnvironment(event.enabled);
+        break;
     }
   }
 
@@ -278,7 +285,9 @@ export class ThreeRenderer {
    * and tonemapping); Flat mode returns the original `MeshPhongMaterial`.
    * Same option surface — caller doesn't have to care which one comes back.
    */
-  private _makeMaterial(opts: THREE.MeshPhongMaterialParameters): THREE.MeshPhongMaterial | THREE.MeshStandardMaterial {
+  private _makeMaterial(
+    opts: THREE.MeshPhongMaterialParameters & { metalness?: number; roughness?: number },
+  ): THREE.MeshPhongMaterial | THREE.MeshStandardMaterial {
     if (this.currentLighting === "studio") {
       return new THREE.MeshStandardMaterial({
         color:             opts.color,
@@ -292,11 +301,13 @@ export class ThreeRenderer {
         depthTest:         opts.depthTest,
         depthWrite:        opts.depthWrite,
         vertexColors:      opts.vertexColors,
-        roughness:         0.65,
-        metalness:         0.0,
+        roughness:         opts.roughness ?? 0.65,
+        metalness:         opts.metalness ?? 0.0,
       });
     }
-    return new THREE.MeshPhongMaterial(opts);
+    // Phong has no metalness/roughness — strip them before constructing.
+    const { metalness: _m, roughness: _r, ...rest } = opts;
+    return new THREE.MeshPhongMaterial(rest);
   }
 
   /**
@@ -388,6 +399,69 @@ export class ThreeRenderer {
     }
   }
 
+  /**
+   * Toggle a prefiltered environment map on `threeScene.environment`. Only
+   * studio PBR (`MeshStandardMaterial`) materials sample it, so this is a
+   * no-op visually in flat mode — but it's safe to enable in either mode.
+   * The map is built once on first enable and reused thereafter.
+   */
+  private _applyEnvironment(enabled: boolean): void {
+    if (enabled) {
+      if (!this.envMap) this.envMap = this._buildEnvironment();
+      this.threeScene.environment = this.envMap;
+    } else {
+      this.threeScene.environment = null;
+    }
+  }
+
+  /**
+   * Build a prefiltered (PMREM) environment from a procedural vertical
+   * gradient — bright neutral sky at the top, mid horizon, darker ground —
+   * using core Three only (no `three/examples` RoomEnvironment). Returns the
+   * PMREM-filtered cube texture; the source `DataTexture` and the generator
+   * are disposed before returning.
+   */
+  private _buildEnvironment(): THREE.Texture {
+    const W = 16, H = 256; // narrow: the gradient is purely vertical
+    const data = new Uint8Array(W * H * 4);
+    const sky    = [0.85, 0.88, 0.95]; // top
+    const horizon = [0.55, 0.55, 0.55];
+    const ground = [0.12, 0.12, 0.13]; // bottom
+    for (let y = 0; y < H; y++) {
+      // t: 0 at bottom row → 1 at top row (DataTexture row 0 is bottom).
+      const t = y / (H - 1);
+      let r: number, g: number, b: number;
+      if (t < 0.5) {
+        const k = t / 0.5;
+        r = ground[0] + (horizon[0] - ground[0]) * k;
+        g = ground[1] + (horizon[1] - ground[1]) * k;
+        b = ground[2] + (horizon[2] - ground[2]) * k;
+      } else {
+        const k = (t - 0.5) / 0.5;
+        r = horizon[0] + (sky[0] - horizon[0]) * k;
+        g = horizon[1] + (sky[1] - horizon[1]) * k;
+        b = horizon[2] + (sky[2] - horizon[2]) * k;
+      }
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        data[i]     = Math.round(r * 255);
+        data[i + 1] = Math.round(g * 255);
+        data[i + 2] = Math.round(b * 255);
+        data[i + 3] = 255;
+      }
+    }
+    const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const env = pmrem.fromEquirectangular(tex).texture;
+    pmrem.dispose();
+    tex.dispose();
+    return env;
+  }
+
   private convert(obj: SceneObject): THREE.Object3D | null {
     const s = obj.style;
     switch (obj.type) {
@@ -396,6 +470,7 @@ export class ThreeRenderer {
         const mat = this._makeMaterial({
           color: s.color, emissive: s.color, emissiveIntensity: 0.3,
           opacity: s.opacity, transparent: s.opacity < 1,
+          metalness: s.metalness, roughness: s.roughness,
         });
         const mesh = new THREE.Mesh(geo, mat);
         if (obj.position) mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
@@ -429,6 +504,7 @@ export class ThreeRenderer {
           geo.translate(0, 0, len / 2); // origin at start
           const mesh = new THREE.Mesh(geo, this._makeMaterial({
             color: s.color, opacity: s.opacity, transparent: s.opacity < 1,
+            metalness: s.metalness, roughness: s.roughness,
           }));
           // Orient: look from a towards b
           mesh.position.copy(a);
@@ -477,6 +553,7 @@ export class ThreeRenderer {
             const shapeGeo = new THREE.ShapeGeometry(shape);
             group.add(new THREE.Mesh(shapeGeo, this._makeMaterial({
               color: s.color, opacity: s.opacity, transparent: true, side: THREE.DoubleSide,
+              metalness: s.metalness, roughness: s.roughness,
             })));
           } else {
             const shape = new THREE.Shape(obj.vertices.map(v => new THREE.Vector2(v.x, v.z)));
@@ -484,6 +561,7 @@ export class ThreeRenderer {
             shapeGeo.rotateX(-Math.PI / 2);
             group.add(new THREE.Mesh(shapeGeo, this._makeMaterial({
               color: s.color, opacity: s.opacity, transparent: true, side: THREE.DoubleSide,
+              metalness: s.metalness, roughness: s.roughness,
             })));
           }
         }
@@ -520,6 +598,7 @@ export class ThreeRenderer {
         const geo = new THREE.PlaneGeometry(10, 10);
         const mat = this._makeMaterial({
           color: s.color, opacity: s.opacity, transparent: true, side: THREE.DoubleSide,
+          metalness: s.metalness, roughness: s.roughness,
         });
         const mesh = new THREE.Mesh(geo, mat);
         const n = new THREE.Vector3(obj.normal.x, obj.normal.y, obj.normal.z).normalize();
@@ -568,6 +647,7 @@ export class ThreeRenderer {
         transparent: s.opacity < 1 || s.wireframe,
         side,
         flatShading: s.flatShading ?? false,
+        metalness: s.metalness, roughness: s.roughness,
         polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
       }));
       const group = new THREE.Group();
@@ -630,6 +710,7 @@ export class ThreeRenderer {
         transparent: s.opacity < 1 || s.wireframe,
         side: s.backfaceColor ? THREE.DoubleSide : side,
         flatShading: s.flatShading ?? false,
+        metalness: s.metalness, roughness: s.roughness,
         polygonOffset: true,
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1,
@@ -1244,6 +1325,9 @@ export class ThreeRenderer {
   dispose() {
     this.unsub?.();
     this.clearThree();
+    this.threeScene.environment = null;
+    this.envMap?.dispose();
+    this.envMap = null;
     cancelAnimationFrame(this.rafId);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;

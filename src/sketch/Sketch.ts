@@ -1651,6 +1651,15 @@ export class SketchInstance {
   }
 
   /**
+   * Toggle a procedural environment map for image-based reflections. Only
+   * visibly affects `"studio"` PBR materials (it modulates their specular
+   * highlights / reflections); harmless in `"flat"` mode.
+   */
+  setEnvironment(enabled: boolean) {
+    this.scene.setEnvironment(enabled);
+  }
+
+  /**
    * Aim the main directional light from outside the sketch fn — used
    * by host shells (testbench, custom apps) to push a sun position
    * computed from their own date/location UI. Inside a sketch, prefer

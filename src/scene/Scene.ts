@@ -62,6 +62,10 @@ export interface VisualStyle {
   label?: string;
   labelColor?: string;
   tubeRadius?: number;
+  /** PBR metalness (studio lighting only): 0 = dielectric, 1 = metal. Default 0. */
+  metalness?: number;
+  /** PBR roughness (studio lighting only): 0 = mirror, 1 = diffuse. Default 0.65. */
+  roughness?: number;
 }
 
 const DEFAULT_STYLE: VisualStyle = {
@@ -131,6 +135,7 @@ export type SceneEvent =
   | { type: "scene:clear" }
   | { type: "scene:renderMode"; mode: RenderMode }
   | { type: "scene:lightingMode"; mode: LightingMode }
+  | { type: "scene:environment"; enabled: boolean }
   | { type: "camera:change" };
 
 export type SceneEventListener = (event: SceneEvent) => void;
@@ -148,6 +153,7 @@ export class Scene {
   private suspendDepth = 0;
   renderMode: RenderMode = "solid";
   lightingMode: LightingMode = "flat";
+  environmentEnabled = false;
 
   setRenderMode(mode: RenderMode): void {
     if (this.renderMode === mode) return;
@@ -159,6 +165,12 @@ export class Scene {
     if (this.lightingMode === mode) return;
     this.lightingMode = mode;
     this.emit({ type: "scene:lightingMode", mode });
+  }
+
+  setEnvironment(enabled: boolean): void {
+    if (this.environmentEnabled === enabled) return;
+    this.environmentEnabled = enabled;
+    this.emit({ type: "scene:environment", enabled });
   }
 
   // ── Subscription ──
