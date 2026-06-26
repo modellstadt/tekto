@@ -1669,6 +1669,14 @@ export class SketchInstance {
   }
 
   /**
+   * Show/hide line + point "helper" objects (axes, construction lines, markers,
+   * labels) while keeping solid meshes — e.g. for a clean render view.
+   */
+  setHelpersVisible(visible: boolean) {
+    this.renderer.setHelpersVisible(visible);
+  }
+
+  /**
    * Aim the main directional light from outside the sketch fn — used
    * by host shells (testbench, custom apps) to push a sun position
    * computed from their own date/location UI. Inside a sketch, prefer

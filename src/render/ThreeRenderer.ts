@@ -79,6 +79,9 @@ export class ThreeRenderer {
   // When set, forces this color on studio meshes (overriding their own); null = keep per-mesh color.
   private studioColor: string | null = null;
   private studioFlatShading = false;
+  // When true, line/point "helper" objects are hidden (e.g. a clean render view
+  // that shows only solid meshes). Solid geometry is unaffected.
+  private hideHelpers = false;
   // Invisible shadow-catcher plane added only in Studio mode so the
   // PCF-soft shadows have a surface to land on.
   private shadowGround: THREE.Mesh | null = null;
@@ -232,7 +235,9 @@ export class ThreeRenderer {
     if (!t) return;
     t.userData.geomId = obj.id;
     t.userData.pickable = obj.pickable !== false;
-    t.visible = obj.style.visible;
+    t.userData.objType = obj.type;
+    t.userData.styleVisible = obj.style.visible;
+    t.visible = obj.style.visible && !(this.hideHelpers && (obj.type === "line" || obj.type === "point"));
     this.applyTransform(t, obj);
     // Apply the current lighting's shadow flags so freshly-added meshes
     // immediately participate in the shadow map (Studio mode) without
@@ -332,6 +337,21 @@ export class ThreeRenderer {
     this.studioRoughness = roughness;
     this.studioColor = color;
     this.studioFlatShading = flatShading;
+  }
+
+  /**
+   * Show/hide line + point "helper" objects (axes, construction lines, markers,
+   * labels). Solid meshes are unaffected. Applies immediately to existing
+   * objects and to all future ones until changed.
+   */
+  setHelpersVisible(visible: boolean): void {
+    this.hideHelpers = !visible;
+    this.threeScene.traverse((o) => {
+      const ty = o.userData?.objType;
+      if (ty === "line" || ty === "point") {
+        o.visible = visible ? (o.userData.styleVisible ?? true) : false;
+      }
+    });
   }
 
   /**
