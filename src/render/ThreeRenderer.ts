@@ -90,6 +90,9 @@ export class ThreeRenderer {
   // When true, the studio shadow-catcher plane (at the world origin) is hidden —
   // e.g. when the app provides its own ground to receive shadows.
   private shadowGroundHidden = false;
+  // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
+  // sketch re-runs (clearThree only touches objectMap-managed objects).
+  private externalObjects = new Map<string, THREE.Object3D>();
   // Prefiltered (PMREM) environment map for image-based reflections.
   // Built lazily once on first enable, then reused. Only visibly affects
   // studio PBR materials.
@@ -369,6 +372,27 @@ export class ThreeRenderer {
   setShadowGroundVisible(visible: boolean): void {
     this.shadowGroundHidden = !visible;
     if (this.shadowGround) this.shadowGround.visible = visible;
+  }
+
+  /**
+   * Add a raw THREE.Object3D (e.g. a loaded glTF/GLB scene) to the renderer,
+   * persisting across sketch re-runs. Re-adding the same id replaces it.
+   * Meshes are flagged to cast + receive shadows (visible in Studio lighting).
+   */
+  addExternalObject(obj: THREE.Object3D, id: string): void {
+    const prev = this.externalObjects.get(id);
+    if (prev) this.threeScene.remove(prev);
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+    });
+    this.externalObjects.set(id, obj);
+    this.threeScene.add(obj);
+  }
+
+  removeExternalObject(id: string): void {
+    const prev = this.externalObjects.get(id);
+    if (prev) { this.threeScene.remove(prev); this.externalObjects.delete(id); }
   }
 
   setHelpersVisible(visible: boolean): void {

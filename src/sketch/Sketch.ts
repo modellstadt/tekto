@@ -1673,6 +1673,18 @@ export class SketchInstance {
   }
 
   /**
+   * Add a raw THREE.Object3D (e.g. a glTF/GLB scene loaded with GLTFLoader) to
+   * the scene, kept across sketch re-runs. Re-adding the same id replaces it.
+   */
+  addExternalObject(obj: import("three").Object3D, id: string) {
+    this.renderer.addExternalObject(obj, id);
+  }
+
+  removeExternalObject(id: string) {
+    this.renderer.removeExternalObject(id);
+  }
+
+  /**
    * Studio-mode default PBR material for meshes that don't set their own
    * metalness/roughness in their VisualStyle. metalness 0..1 (1 = metal),
    * roughness 0..1 (0 = mirror). Applies on the next sketch re-run.
