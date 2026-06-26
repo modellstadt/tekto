@@ -87,6 +87,9 @@ export class ThreeRenderer {
   // Invisible shadow-catcher plane added only in Studio mode so the
   // PCF-soft shadows have a surface to land on.
   private shadowGround: THREE.Mesh | null = null;
+  // When true, the studio shadow-catcher plane (at the world origin) is hidden —
+  // e.g. when the app provides its own ground to receive shadows.
+  private shadowGroundHidden = false;
   // Prefiltered (PMREM) environment map for image-based reflections.
   // Built lazily once on first enable, then reused. Only visibly affects
   // studio PBR materials.
@@ -353,6 +356,16 @@ export class ThreeRenderer {
    * labels). Solid meshes are unaffected. Applies immediately to existing
    * objects and to all future ones until changed.
    */
+  /**
+   * Show/hide the studio shadow-catcher plane at the world origin. Hide it when
+   * the app supplies its own ground mesh to receive shadows (avoids a duplicate
+   * shadow at z=0).
+   */
+  setShadowGroundVisible(visible: boolean): void {
+    this.shadowGroundHidden = !visible;
+    if (this.shadowGround) this.shadowGround.visible = visible;
+  }
+
   setHelpersVisible(visible: boolean): void {
     this.hideHelpers = !visible;
     if (this.gridHelper) this.gridHelper.visible = visible;
@@ -444,6 +457,7 @@ export class ThreeRenderer {
       // Drop slightly below the grid so it doesn't z-fight with anything
       // sitting at the ground plane.
       this.shadowGround.position.set(0, this.isZUp ? 0 : -0.001, this.isZUp ? -0.001 : 0);
+      this.shadowGround.visible = !this.shadowGroundHidden;
       this.threeScene.add(this.shadowGround);
     } else if (!studio && this.shadowGround) {
       this.threeScene.remove(this.shadowGround);

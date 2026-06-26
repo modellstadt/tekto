@@ -1677,6 +1677,14 @@ export class SketchInstance {
   }
 
   /**
+   * Show/hide tekto's studio shadow-catcher plane at the origin. Hide it when
+   * your sketch provides its own ground to receive shadows.
+   */
+  setShadowGroundVisible(visible: boolean) {
+    this.renderer.setShadowGroundVisible(visible);
+  }
+
+  /**
    * Aim the main directional light from outside the sketch fn — used
    * by host shells (testbench, custom apps) to push a sun position
    * computed from their own date/location UI. Inside a sketch, prefer
