@@ -1667,6 +1667,11 @@ export class SketchInstance {
     this.renderer.setEnvironmentSource(equirect);
   }
 
+  /** Show the environment source (e.g. the HDR) as the visible sky backdrop. */
+  setEnvironmentBackground(visible: boolean) {
+    this.renderer.setEnvironmentBackground(visible);
+  }
+
   /**
    * Studio-mode default PBR material for meshes that don't set their own
    * metalness/roughness in their VisualStyle. metalness 0..1 (1 = metal),

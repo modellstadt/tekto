@@ -98,6 +98,7 @@ export class ThreeRenderer {
   // null → the built-in procedural gradient. The app owns/disposes this texture.
   private envSourceTex: THREE.Texture | null = null;
   private envEnabled = false;
+  private envBackground = false;   // show the equirect source as the scene backdrop
   private container: HTMLElement;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -499,6 +500,24 @@ export class ThreeRenderer {
     if (this.envEnabled) {
       this.envMap = this._buildEnvironment();
       this.threeScene.environment = this.envMap;
+    }
+    this._applyBackground();
+  }
+
+  /**
+   * Show the equirectangular environment source as the scene backdrop (sky).
+   * No-op until a source is set via setEnvironmentSource. When off, the
+   * background is left to setBackground().
+   */
+  setEnvironmentBackground(visible: boolean): void {
+    this.envBackground = visible;
+    this._applyBackground();
+  }
+
+  private _applyBackground(): void {
+    if (this.envBackground && this.envSourceTex) {
+      this.envSourceTex.mapping = THREE.EquirectangularReflectionMapping;
+      this.threeScene.background = this.envSourceTex;
     }
   }
 
