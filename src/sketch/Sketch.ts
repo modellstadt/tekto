@@ -1660,6 +1660,15 @@ export class SketchInstance {
   }
 
   /**
+   * Studio-mode default PBR material for meshes that don't set their own
+   * metalness/roughness in their VisualStyle. metalness 0..1 (1 = metal),
+   * roughness 0..1 (0 = mirror). Applies on the next sketch re-run.
+   */
+  setStudioMaterial(metalness: number, roughness: number) {
+    this.renderer.setStudioMaterial(metalness, roughness);
+  }
+
+  /**
    * Aim the main directional light from outside the sketch fn — used
    * by host shells (testbench, custom apps) to push a sun position
    * computed from their own date/location UI. Inside a sketch, prefer

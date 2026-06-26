@@ -72,6 +72,10 @@ export class ThreeRenderer {
   private dirLight!:     THREE.DirectionalLight;
   private hemiLight!:    THREE.HemisphereLight;
   private currentLighting: import("../scene/Scene").LightingMode = "flat";
+  // Studio-mode default PBR material, used when a mesh sets no explicit
+  // metalness/roughness in its VisualStyle. Configurable via setStudioMaterial.
+  private studioMetalness = 0.0;
+  private studioRoughness = 0.65;
   // Invisible shadow-catcher plane added only in Studio mode so the
   // PCF-soft shadows have a surface to land on.
   private shadowGround: THREE.Mesh | null = null;
@@ -301,13 +305,23 @@ export class ThreeRenderer {
         depthTest:         opts.depthTest,
         depthWrite:        opts.depthWrite,
         vertexColors:      opts.vertexColors,
-        roughness:         opts.roughness ?? 0.65,
-        metalness:         opts.metalness ?? 0.0,
+        roughness:         opts.roughness ?? this.studioRoughness,
+        metalness:         opts.metalness ?? this.studioMetalness,
       });
     }
     // Phong has no metalness/roughness — strip them before constructing.
     const { metalness: _m, roughness: _r, ...rest } = opts;
     return new THREE.MeshPhongMaterial(rest);
+  }
+
+  /**
+   * Set the Studio-mode default PBR material applied to meshes that don't
+   * carry their own metalness/roughness. Takes effect on the next material
+   * build (e.g. the next sketch re-run). metalness/roughness in 0..1.
+   */
+  setStudioMaterial(metalness: number, roughness: number): void {
+    this.studioMetalness = metalness;
+    this.studioRoughness = roughness;
   }
 
   /**
