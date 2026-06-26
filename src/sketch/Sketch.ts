@@ -1672,6 +1672,11 @@ export class SketchInstance {
     this.renderer.setEnvironmentBackground(visible);
   }
 
+  /** Rotate the environment + background (Euler radians); aligns a Y-up HDRI to Z-up. */
+  setEnvironmentRotation(x: number, y: number, z: number) {
+    this.renderer.setEnvironmentRotation(x, y, z);
+  }
+
   /**
    * Add a raw THREE.Object3D (e.g. a glTF/GLB scene loaded with GLTFLoader) to
    * the scene, kept across sketch re-runs. Re-adding the same id replaces it.

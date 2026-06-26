@@ -538,6 +538,22 @@ export class ThreeRenderer {
     this._applyBackground();
   }
 
+  /**
+   * Rotate the environment + background (Euler radians) — e.g. to align a Y-up
+   * HDRI/equirect source with a Z-up scene (tilt ~90° about X).
+   */
+  setEnvironmentRotation(x: number, y: number, z: number): void {
+    // environment/backgroundRotation exist on three >= r163; the consuming app
+    // supplies three 0.183 at runtime (peer dep). tekto's type-check three may
+    // predate them, so reach through a cast and no-op gracefully if absent.
+    const s = this.threeScene as unknown as {
+      environmentRotation?: THREE.Euler;
+      backgroundRotation?: THREE.Euler;
+    };
+    s.environmentRotation?.set(x, y, z);
+    s.backgroundRotation?.set(x, y, z);
+  }
+
   private _applyBackground(): void {
     if (this.envBackground && this.envSourceTex) {
       this.envSourceTex.mapping = THREE.EquirectangularReflectionMapping;
