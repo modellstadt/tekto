@@ -2,8 +2,8 @@ node_modules/
 *.log
 .DS_Store
 
-# Build outputs
-dist/
+# Build outputs: dist/ IS committed so `github:` installs need no build step
+# (the consuming app installs the prebuilt files; no `prepare`/tsup on install).
 
 # Vite / Vitest caches — pollute the working tree on every test/build
 node_modules/.vite/
