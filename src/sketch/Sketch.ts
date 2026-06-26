@@ -1660,6 +1660,14 @@ export class SketchInstance {
   }
 
   /**
+   * Set an equirectangular source texture (e.g. an HDR loaded via RGBELoader)
+   * for the environment map. Pass null for the built-in procedural gradient.
+   */
+  setEnvironmentSource(equirect: import("three").Texture | null) {
+    this.renderer.setEnvironmentSource(equirect);
+  }
+
+  /**
    * Studio-mode default PBR material for meshes that don't set their own
    * metalness/roughness in their VisualStyle. metalness 0..1 (1 = metal),
    * roughness 0..1 (0 = mirror). Applies on the next sketch re-run.

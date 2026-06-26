@@ -94,6 +94,10 @@ export class ThreeRenderer {
   // Built lazily once on first enable, then reused. Only visibly affects
   // studio PBR materials.
   private envMap: THREE.Texture | null = null;
+  // Optional equirectangular source (e.g. a loaded HDR) for the environment.
+  // null → the built-in procedural gradient. The app owns/disposes this texture.
+  private envSourceTex: THREE.Texture | null = null;
+  private envEnabled = false;
   private container: HTMLElement;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -474,11 +478,27 @@ export class ThreeRenderer {
    * The map is built once on first enable and reused thereafter.
    */
   private _applyEnvironment(enabled: boolean): void {
+    this.envEnabled = enabled;
     if (enabled) {
       if (!this.envMap) this.envMap = this._buildEnvironment();
       this.threeScene.environment = this.envMap;
     } else {
       this.threeScene.environment = null;
+    }
+  }
+
+  /**
+   * Set an equirectangular source texture for the environment (e.g. a loaded
+   * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
+   * The texture is PMREM-prefiltered here; the caller keeps ownership of it.
+   */
+  setEnvironmentSource(equirect: THREE.Texture | null): void {
+    if (this.envSourceTex === equirect) return;
+    this.envSourceTex = equirect;
+    if (this.envMap) { this.envMap.dispose(); this.envMap = null; }
+    if (this.envEnabled) {
+      this.envMap = this._buildEnvironment();
+      this.threeScene.environment = this.envMap;
     }
   }
 
@@ -490,6 +510,14 @@ export class ThreeRenderer {
    * are disposed before returning.
    */
   private _buildEnvironment(): THREE.Texture {
+    // App-supplied equirectangular source (e.g. an HDR) takes precedence.
+    if (this.envSourceTex) {
+      this.envSourceTex.mapping = THREE.EquirectangularReflectionMapping;
+      const pmremSrc = new THREE.PMREMGenerator(this.renderer);
+      const envSrc = pmremSrc.fromEquirectangular(this.envSourceTex).texture;
+      pmremSrc.dispose();
+      return envSrc;
+    }
     const W = 16, H = 256; // narrow: the gradient is purely vertical
     const data = new Uint8Array(W * H * 4);
     const sky    = [0.85, 0.88, 0.95]; // top
