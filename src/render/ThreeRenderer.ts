@@ -76,6 +76,9 @@ export class ThreeRenderer {
   // metalness/roughness in its VisualStyle. Configurable via setStudioMaterial.
   private studioMetalness = 0.0;
   private studioRoughness = 0.65;
+  // When set, forces this color on studio meshes (overriding their own); null = keep per-mesh color.
+  private studioColor: string | null = null;
+  private studioFlatShading = false;
   // Invisible shadow-catcher plane added only in Studio mode so the
   // PCF-soft shadows have a surface to land on.
   private shadowGround: THREE.Mesh | null = null;
@@ -294,14 +297,14 @@ export class ThreeRenderer {
   ): THREE.MeshPhongMaterial | THREE.MeshStandardMaterial {
     if (this.currentLighting === "studio") {
       return new THREE.MeshStandardMaterial({
-        color:             opts.color,
+        color:             this.studioColor ?? opts.color,
         emissive:          opts.emissive,
         emissiveIntensity: opts.emissiveIntensity,
         opacity:           opts.opacity,
         transparent:       opts.transparent,
         side:              opts.side,
         wireframe:         opts.wireframe,
-        flatShading:       opts.flatShading,
+        flatShading:       opts.flatShading ?? this.studioFlatShading,
         depthTest:         opts.depthTest,
         depthWrite:        opts.depthWrite,
         vertexColors:      opts.vertexColors,
@@ -319,9 +322,16 @@ export class ThreeRenderer {
    * carry their own metalness/roughness. Takes effect on the next material
    * build (e.g. the next sketch re-run). metalness/roughness in 0..1.
    */
-  setStudioMaterial(metalness: number, roughness: number): void {
+  setStudioMaterial(
+    metalness: number,
+    roughness: number,
+    color: string | null = null,
+    flatShading = false,
+  ): void {
     this.studioMetalness = metalness;
     this.studioRoughness = roughness;
+    this.studioColor = color;
+    this.studioFlatShading = flatShading;
   }
 
   /**

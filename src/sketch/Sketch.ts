@@ -1664,8 +1664,8 @@ export class SketchInstance {
    * metalness/roughness in their VisualStyle. metalness 0..1 (1 = metal),
    * roughness 0..1 (0 = mirror). Applies on the next sketch re-run.
    */
-  setStudioMaterial(metalness: number, roughness: number) {
-    this.renderer.setStudioMaterial(metalness, roughness);
+  setStudioMaterial(metalness: number, roughness: number, color: string | null = null, flatShading = false) {
+    this.renderer.setStudioMaterial(metalness, roughness, color, flatShading);
   }
 
   /**
