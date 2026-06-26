@@ -237,7 +237,7 @@ export class ThreeRenderer {
     t.userData.pickable = obj.pickable !== false;
     t.userData.objType = obj.type;
     t.userData.styleVisible = obj.style.visible;
-    t.visible = obj.style.visible && !(this.hideHelpers && (obj.type === "line" || obj.type === "point"));
+    t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
     this.applyTransform(t, obj);
     // Apply the current lighting's shadow flags so freshly-added meshes
     // immediately participate in the shadow map (Studio mode) without
@@ -339,6 +339,11 @@ export class ThreeRenderer {
     this.studioFlatShading = flatShading;
   }
 
+  // Line/point "helper" object types (vs solid meshes/polygons/planes).
+  private _isHelper(type: unknown): boolean {
+    return type === "segment" || type === "polyline" || type === "point" || type === "circle";
+  }
+
   /**
    * Show/hide line + point "helper" objects (axes, construction lines, markers,
    * labels). Solid meshes are unaffected. Applies immediately to existing
@@ -347,8 +352,7 @@ export class ThreeRenderer {
   setHelpersVisible(visible: boolean): void {
     this.hideHelpers = !visible;
     this.threeScene.traverse((o) => {
-      const ty = o.userData?.objType;
-      if (ty === "line" || ty === "point") {
+      if (this._isHelper(o.userData?.objType)) {
         o.visible = visible ? (o.userData.styleVisible ?? true) : false;
       }
     });
