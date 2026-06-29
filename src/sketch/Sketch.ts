@@ -58,7 +58,7 @@ export type {
 import type {
   Lab, SketchConfig, ExportRegistration, ImportRegistration,
   MeshHandle, PointHandle, LineHandle, ShapeMode,
-  Reactive,
+  Reactive, DragSpace, HandleSetOpts,
 } from "./SketchTypes";
 
 // ═══════════════════════════════════════════════
@@ -66,6 +66,45 @@ import type {
 // ═══════════════════════════════════════════════
 
 type SketchFn = (lab: Lab) => void;
+
+/** Convert a DragSpace into a constrain(x,y,z)→[x,y,z] projection for registerDragHandle. */
+function spaceToConstrain(space: DragSpace): ((x: number, y: number, z: number) => [number, number, number]) | undefined {
+  switch (space.kind) {
+    case "free":
+    case "ground":
+      return undefined;                                   // free = unconstrained; ground = renderer default
+    case "plane": {
+      const o = space.origin, n = space.normal;
+      const nl = Math.hypot(n.x, n.y, n.z) || 1;
+      const nx = n.x / nl, ny = n.y / nl, nz = n.z / nl;
+      return (x, y, z) => {                                // project onto the plane
+        const d = (x - o.x) * nx + (y - o.y) * ny + (z - o.z) * nz;
+        return [x - nx * d, y - ny * d, z - nz * d];
+      };
+    }
+    case "axis": {
+      const o = space.origin, dir = space.dir;
+      const dl2 = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z || 1;
+      return (x, y, z) => {                                // project onto the line
+        const t = ((x - o.x) * dir.x + (y - o.y) * dir.y + (z - o.z) * dir.z) / dl2;
+        return [o.x + dir.x * t, o.y + dir.y * t, o.z + dir.z * t];
+      };
+    }
+    case "curve": {
+      const m = space.samples ?? 64;
+      const pts: Vec3[] = [];
+      for (let i = 0; i <= m; i++) pts.push(space.at(i / m));
+      return (x, y, z) => {                                // snap to the closest sample on the curve
+        let bx = pts[0].x, by = pts[0].y, bz = pts[0].z, bestD = Infinity;
+        for (const p of pts) {
+          const d = (p.x - x) ** 2 + (p.y - y) ** 2 + (p.z - z) ** 2;
+          if (d < bestD) { bestD = d; bx = p.x; by = p.y; bz = p.z; }
+        }
+        return [bx, by, bz];
+      };
+    }
+  }
+}
 
 interface ParamState {
   key: string;
@@ -853,6 +892,19 @@ export class SketchInstance {
 
       // ── Drag handles ──
       dragHandle(x, y, z, opts) { return self.registerDragHandle(x, y, z, opts); },
+      handles<T>(items: T[], opts: HandleSetOpts<T>) {
+        const active = self.renderer.getActiveDragHandle();
+        items.forEach((item, i) => {
+          const name = opts.key(item, i);
+          const m = opts.position(item, i);
+          // Model = source of truth: re-seed the stored handle to the model each run,
+          // except the one being actively dragged (whose moved value we read below).
+          if (name !== active) self._dragHandles.set(name, m);
+          const constrain = opts.space ? spaceToConstrain(opts.space(item, i)) : undefined;
+          const v = self.registerDragHandle(m.x, m.y, m.z, { name, color: opts.color, size: opts.size, constrain });
+          if (v.value.distTo(m) > 1e-6) opts.onDrag(item, v.value, i);
+        });
+      },
       onHandlePick(fn) { self._onHandlePick = fn; },
       setHandleSelected(name) { self.setHandleSelected(name); },
       get selectedHandle() { return self.selectedHandle; },

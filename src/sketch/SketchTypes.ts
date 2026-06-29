@@ -167,6 +167,27 @@ export type ShapeMode = "triangles" | "lines" | "line_strip" | "quads";
 // ─── Lab (the API surface a sketch function receives) ────────────────
 
 /** The Lab context passed to every sketch function */
+/** Where an interactive handle may move (used by lab.handles). */
+export type DragSpace =
+  | { kind: "free" }                                              // unconstrained (ground-plane drag)
+  | { kind: "ground" }                                            // world-up-perpendicular plane
+  | { kind: "plane"; origin: Vec3; normal: Vec3 }                 // arbitrary plane
+  | { kind: "axis"; origin: Vec3; dir: Vec3 }                     // slide along a line
+  | { kind: "curve"; at: (t: number) => Vec3; samples?: number }; // slide along a param curve (t ∈ [0,1])
+
+/** Options for lab.handles — a data-bound set of draggable handles. The model is
+ *  the source of truth: handles re-seed from `position` each run (so slider/other
+ *  edits are followed) except the one actively being dragged, whose moved position
+ *  is written back via `onDrag`. */
+export interface HandleSetOpts<T> {
+  key: (item: T, i: number) => string;            // stable id across runs (mark-and-sweep)
+  position: (item: T, i: number) => Vec3;         // current model position
+  space?: (item: T, i: number) => DragSpace;      // movement constraint (default: free)
+  onDrag: (item: T, p: Vec3, i: number) => void;  // write the moved position back to the model
+  color?: string;
+  size?: number;
+}
+
 export interface Lab {
   // ── GUI Controls (create UI + return reactive value) ──
   slider(label: string, min: number, max: number, defaultValue: number, opts?: SliderOpts): Reactive<number>;
@@ -401,6 +422,15 @@ export interface Lab {
       plane?: "ground" | "screen";
     },
   ): Reactive<Vec3>;
+
+  /**
+   * Data-bound set of draggable handles. Declare it every run with your model
+   * items; each gets a handle keyed by `key`. The model is the source of truth —
+   * handles re-seed from `position` each run (so slider/other edits are followed)
+   * except the one actively being dragged, whose moved position is written back
+   * via `onDrag`. Built on dragHandle + the mark-and-sweep lifecycle.
+   */
+  handles<T>(items: T[], opts: HandleSetOpts<T>): void;
 
   /**
    * Register a callback invoked when a drag handle is clicked (with or

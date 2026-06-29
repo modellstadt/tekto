@@ -18847,6 +18847,49 @@ var LayerPanel = class {
 
 // src/sketch/Sketch.ts
 import * as THREE4 from "three";
+function spaceToConstrain(space) {
+  switch (space.kind) {
+    case "free":
+    case "ground":
+      return void 0;
+    // free = unconstrained; ground = renderer default
+    case "plane": {
+      const o = space.origin, n = space.normal;
+      const nl = Math.hypot(n.x, n.y, n.z) || 1;
+      const nx = n.x / nl, ny = n.y / nl, nz = n.z / nl;
+      return (x, y, z) => {
+        const d = (x - o.x) * nx + (y - o.y) * ny + (z - o.z) * nz;
+        return [x - nx * d, y - ny * d, z - nz * d];
+      };
+    }
+    case "axis": {
+      const o = space.origin, dir = space.dir;
+      const dl2 = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z || 1;
+      return (x, y, z) => {
+        const t = ((x - o.x) * dir.x + (y - o.y) * dir.y + (z - o.z) * dir.z) / dl2;
+        return [o.x + dir.x * t, o.y + dir.y * t, o.z + dir.z * t];
+      };
+    }
+    case "curve": {
+      const m = space.samples ?? 64;
+      const pts = [];
+      for (let i = 0; i <= m; i++) pts.push(space.at(i / m));
+      return (x, y, z) => {
+        let bx = pts[0].x, by = pts[0].y, bz = pts[0].z, bestD = Infinity;
+        for (const p of pts) {
+          const d = (p.x - x) ** 2 + (p.y - y) ** 2 + (p.z - z) ** 2;
+          if (d < bestD) {
+            bestD = d;
+            bx = p.x;
+            by = p.y;
+            bz = p.z;
+          }
+        }
+        return [bx, by, bz];
+      };
+    }
+  }
+}
 function sketch(fn, config) {
   return new SketchInstance(fn, config ?? {});
 }
@@ -19559,6 +19602,17 @@ var SketchInstance = class {
       // ── Drag handles ──
       dragHandle(x, y, z, opts) {
         return self.registerDragHandle(x, y, z, opts);
+      },
+      handles(items, opts) {
+        const active = self.renderer.getActiveDragHandle();
+        items.forEach((item, i) => {
+          const name = opts.key(item, i);
+          const m = opts.position(item, i);
+          if (name !== active) self._dragHandles.set(name, m);
+          const constrain = opts.space ? spaceToConstrain(opts.space(item, i)) : void 0;
+          const v = self.registerDragHandle(m.x, m.y, m.z, { name, color: opts.color, size: opts.size, constrain });
+          if (v.value.distTo(m) > 1e-6) opts.onDrag(item, v.value, i);
+        });
       },
       onHandlePick(fn) {
         self._onHandlePick = fn;

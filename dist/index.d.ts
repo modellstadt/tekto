@@ -4246,6 +4246,36 @@ interface LineHandle {
 /** Shape mode for beginShape/endShape */
 type ShapeMode = "triangles" | "lines" | "line_strip" | "quads";
 /** The Lab context passed to every sketch function */
+/** Where an interactive handle may move (used by lab.handles). */
+type DragSpace = {
+    kind: "free";
+} | {
+    kind: "ground";
+} | {
+    kind: "plane";
+    origin: Vec3;
+    normal: Vec3;
+} | {
+    kind: "axis";
+    origin: Vec3;
+    dir: Vec3;
+} | {
+    kind: "curve";
+    at: (t: number) => Vec3;
+    samples?: number;
+};
+/** Options for lab.handles — a data-bound set of draggable handles. The model is
+ *  the source of truth: handles re-seed from `position` each run (so slider/other
+ *  edits are followed) except the one actively being dragged, whose moved position
+ *  is written back via `onDrag`. */
+interface HandleSetOpts<T> {
+    key: (item: T, i: number) => string;
+    position: (item: T, i: number) => Vec3;
+    space?: (item: T, i: number) => DragSpace;
+    onDrag: (item: T, p: Vec3, i: number) => void;
+    color?: string;
+    size?: number;
+}
 interface Lab {
     slider(label: string, min: number, max: number, defaultValue: number, opts?: SliderOpts$1): Reactive$1<number>;
     /**
@@ -4471,6 +4501,14 @@ interface Lab {
         constrain?: (x: number, y: number, z: number) => [number, number, number];
         plane?: "ground" | "screen";
     }): Reactive$1<Vec3>;
+    /**
+     * Data-bound set of draggable handles. Declare it every run with your model
+     * items; each gets a handle keyed by `key`. The model is the source of truth —
+     * handles re-seed from `position` each run (so slider/other edits are followed)
+     * except the one actively being dragged, whose moved position is written back
+     * via `onDrag`. Built on dragHandle + the mark-and-sweep lifecycle.
+     */
+    handles<T>(items: T[], opts: HandleSetOpts<T>): void;
     /**
      * Register a callback invoked when a drag handle is clicked (with or
      * without movement). `name` is null when the user clicks empty space.
