@@ -180,7 +180,7 @@ export class SketchInstance {
   private _onKeyReleased: ((key: string) => void) | null = null;
 
   // Picking + gizmo state
-  private _onPick: ((id: string | null) => void) | null = null;
+  private _onPick: ((id: string | null, pick?: { tag?: string; layer?: string }) => void) | null = null;
   private _selectedId: string | null = null;
   private _pickEnabled = false;
   private _pickUnsub: (() => void) | null = null;
@@ -462,7 +462,10 @@ export class SketchInstance {
     if (enabled) {
       this._pickUnsub = this.renderer.onPick((id) => {
         this.setSelected(id);
-        if (this._onPick) this._onPick(id);
+        if (this._onPick) {
+          const o = id ? this.scene.get(id) : null;
+          this._onPick(id, o ? { tag: o.pickTag, layer: o.style.layer } : undefined);
+        }
         // Re-run the sketch so user code can read the new selection.
         this.runSketch();
       });
@@ -964,6 +967,8 @@ export class SketchInstance {
             radius(r) { for (const h of handles) h.radius(r); return compound; },
             layer(name) { for (const h of handles) h.layer(name); return compound; },
             dashed(size, gap) { for (const h of handles) h.dashed(size, gap); return compound; },
+            pickTag(tag) { for (const h of handles) h.pickTag(tag); return compound; },
+            pickable(p = true) { for (const h of handles) h.pickable(p); return compound; },
           };
           return compound;
         }
@@ -1166,6 +1171,8 @@ export class SketchInstance {
       radius(r) { self.scene.setStyle(obj.id, { tubeRadius: r }); return handle; },
       layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
       dashed(size, gap) { self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } }); return handle; },
+      pickTag(tag) { self.scene.update(obj.id, { pickTag: tag }); return handle; },
+      pickable(p = true) { self.scene.update(obj.id, { pickable: p }); return handle; },
     };
     return handle;
   }
@@ -1182,6 +1189,8 @@ export class SketchInstance {
       radius(_r) { return handle; },
       layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
       dashed(size, gap) { self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } }); return handle; },
+      pickTag(tag) { self.scene.update(obj.id, { pickTag: tag }); return handle; },
+      pickable(p = true) { self.scene.update(obj.id, { pickable: p }); return handle; },
     };
     return handle;
   }

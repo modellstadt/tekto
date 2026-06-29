@@ -105,6 +105,8 @@ export interface SceneObject {
   transform?: SceneTransform;
   /** Pickable in the viewport (click → select). Default: true. */
   pickable?: boolean;
+  /** Semantic pick tag surfaced in lab.onPick — select by meaning, not raw scene id. */
+  pickTag?: string;
 }
 
 /** A renderer-applied transform on top of baked geometry. All fields optional. */

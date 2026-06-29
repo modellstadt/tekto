@@ -159,6 +159,10 @@ export interface LineHandle {
   /** Render dashed (world-unit dash/gap), via THREE.LineDashedMaterial.
    *  Defaults: size 0.05, gap = size. */
   dashed(size?: number, gap?: number): LineHandle;
+  /** Tag this line for selection — surfaced as `pick.tag` in lab.onPick. */
+  pickTag(tag: string): LineHandle;
+  /** Enable/disable click-picking for this line (default true). */
+  pickable(p?: boolean): LineHandle;
 }
 
 /** Shape mode for beginShape/endShape */
@@ -385,7 +389,7 @@ export interface Lab {
    */
   enablePicking(enabled?: boolean): void;
   /** Register a callback invoked on every click pick. `id` is null for background clicks. */
-  onPick(fn: (id: string | null) => void): void;
+  onPick(fn: (id: string | null, pick?: { tag?: string; layer?: string }) => void): void;
   /** Set the gizmo mode: translate (W), rotate (E), scale (R), or none. */
   setGizmoMode(mode: "translate" | "rotate" | "scale" | "none"): void;
   /** Programmatically select an object (shows the gizmo + highlight). */

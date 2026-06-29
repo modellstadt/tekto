@@ -1201,6 +1201,11 @@ export class ThreeRenderer {
       -((clientY - rect.top)  / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(ndc, this.activeCamera);
+    // Thin lines need a hit tolerance, or they're near-impossible to click. Scale it to
+    // the view: ortho → from the camera frustum height; perspective → a small world default.
+    const cam = this.activeCamera as THREE.OrthographicCamera & THREE.PerspectiveCamera;
+    this.raycaster.params.Line.threshold =
+      cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
     const pickable: THREE.Object3D[] = [];
     for (const t of this.objectMap.values()) {
       if (t.userData.pickable !== false) pickable.push(t);

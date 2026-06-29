@@ -1,5 +1,5 @@
-import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode } from './Params-CJHFpFUZ.js';
-export { B as BoolParam, e as ButtonParam, f as ColorParam, g as FlatMeshJSON, h as FloatParam, I as IntParam, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, P as ParamDef, n as ParamFolder, o as ParamLayout, p as ParamSchema, q as ParamStore, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-CJHFpFUZ.js';
+import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode } from './Params-c5RUx8In.js';
+export { B as BoolParam, e as ButtonParam, f as ColorParam, g as FlatMeshJSON, h as FloatParam, I as IntParam, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, P as ParamDef, n as ParamFolder, o as ParamLayout, p as ParamSchema, q as ParamStore, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-c5RUx8In.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
@@ -4242,6 +4242,10 @@ interface LineHandle {
     /** Render dashed (world-unit dash/gap), via THREE.LineDashedMaterial.
      *  Defaults: size 0.05, gap = size. */
     dashed(size?: number, gap?: number): LineHandle;
+    /** Tag this line for selection — surfaced as `pick.tag` in lab.onPick. */
+    pickTag(tag: string): LineHandle;
+    /** Enable/disable click-picking for this line (default true). */
+    pickable(p?: boolean): LineHandle;
 }
 /** Shape mode for beginShape/endShape */
 type ShapeMode = "triangles" | "lines" | "line_strip" | "quads";
@@ -4469,7 +4473,10 @@ interface Lab {
      */
     enablePicking(enabled?: boolean): void;
     /** Register a callback invoked on every click pick. `id` is null for background clicks. */
-    onPick(fn: (id: string | null) => void): void;
+    onPick(fn: (id: string | null, pick?: {
+        tag?: string;
+        layer?: string;
+    }) => void): void;
     /** Set the gizmo mode: translate (W), rotate (E), scale (R), or none. */
     setGizmoMode(mode: "translate" | "rotate" | "scale" | "none"): void;
     /** Programmatically select an object (shows the gizmo + highlight). */

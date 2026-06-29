@@ -20257,6 +20257,8 @@ var ThreeRenderer = class {
       -((clientY - rect.top) / rect.height) * 2 + 1
     );
     this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const cam = this.activeCamera;
+    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
     const pickable = [];
     for (const t of this.objectMap.values()) {
       if (t.userData.pickable !== false) pickable.push(t);
@@ -21166,7 +21168,10 @@ var SketchInstance = class {
     if (enabled) {
       this._pickUnsub = this.renderer.onPick((id) => {
         this.setSelected(id);
-        if (this._onPick) this._onPick(id);
+        if (this._onPick) {
+          const o = id ? this.scene.get(id) : null;
+          this._onPick(id, o ? { tag: o.pickTag, layer: o.style.layer } : void 0);
+        }
         this.runSketch();
       });
     } else {
@@ -21683,6 +21688,14 @@ var SketchInstance = class {
             dashed(size, gap) {
               for (const h of handles) h.dashed(size, gap);
               return compound;
+            },
+            pickTag(tag) {
+              for (const h of handles) h.pickTag(tag);
+              return compound;
+            },
+            pickable(p = true) {
+              for (const h of handles) h.pickable(p);
+              return compound;
             }
           };
           return compound;
@@ -22000,6 +22013,14 @@ var SketchInstance = class {
       dashed(size, gap) {
         self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
         return handle;
+      },
+      pickTag(tag) {
+        self.scene.update(obj.id, { pickTag: tag });
+        return handle;
+      },
+      pickable(p = true) {
+        self.scene.update(obj.id, { pickable: p });
+        return handle;
       }
     };
     return handle;
@@ -22029,6 +22050,14 @@ var SketchInstance = class {
       },
       dashed(size, gap) {
         self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
+        return handle;
+      },
+      pickTag(tag) {
+        self.scene.update(obj.id, { pickTag: tag });
+        return handle;
+      },
+      pickable(p = true) {
+        self.scene.update(obj.id, { pickable: p });
         return handle;
       }
     };
