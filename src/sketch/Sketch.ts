@@ -888,6 +888,7 @@ export class SketchInstance {
 
       // ── Picking + transform gizmo ──
       enablePicking(enabled = true) { self.enablePicking(enabled); },
+      setOrbitRotateEnabled(enabled) { self.renderer.setOrbitRotateEnabled(enabled); },
       onPick(fn) { self._onPick = fn; },
       setGizmoMode(mode) { self.setGizmoMode(mode); },
       setSelected(id) { self.setSelected(id); },

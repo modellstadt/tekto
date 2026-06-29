@@ -3930,6 +3930,8 @@ declare class ThreeRenderer {
         y: number;
         visible: boolean;
     };
+    /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
+    setOrbitRotateEnabled(enabled: boolean): void;
     /** Enable/disable click-to-pick on the canvas. */
     setPickEnabled(enabled: boolean): void;
     /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background. */
@@ -4472,6 +4474,8 @@ interface Lab {
      * other than "none" is active). Default: disabled.
      */
     enablePicking(enabled?: boolean): void;
+    /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view. */
+    setOrbitRotateEnabled(enabled: boolean): void;
     /** Register a callback invoked on every click pick. `id` is null for background clicks. */
     onPick(fn: (id: string | null, pick?: {
         tag?: string;

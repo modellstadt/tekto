@@ -959,6 +959,11 @@ export class ThreeRenderer {
 
   // ── Picking ──
 
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
+  setOrbitRotateEnabled(enabled: boolean): void {
+    if (this.controls) (this.controls as { enableRotate?: boolean }).enableRotate = enabled;
+  }
+
   /** Enable/disable click-to-pick on the canvas. */
   setPickEnabled(enabled: boolean): void {
     if (enabled === this.pickEnabled) return;

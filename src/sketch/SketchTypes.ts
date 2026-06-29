@@ -388,6 +388,8 @@ export interface Lab {
    * other than "none" is active). Default: disabled.
    */
   enablePicking(enabled?: boolean): void;
+  /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view. */
+  setOrbitRotateEnabled(enabled: boolean): void;
   /** Register a callback invoked on every click pick. `id` is null for background clicks. */
   onPick(fn: (id: string | null, pick?: { tag?: string; layer?: string }) => void): void;
   /** Set the gizmo mode: translate (W), rotate (E), scale (R), or none. */

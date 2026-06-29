@@ -18113,6 +18113,10 @@ var ThreeRenderer = class {
     return { x, y, visible };
   }
   // ── Picking ──
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
+  setOrbitRotateEnabled(enabled) {
+    if (this.controls) this.controls.enableRotate = enabled;
+  }
   /** Enable/disable click-to-pick on the canvas. */
   setPickEnabled(enabled) {
     if (enabled === this.pickEnabled) return;
@@ -19591,6 +19595,9 @@ var SketchInstance = class {
       // ── Picking + transform gizmo ──
       enablePicking(enabled = true) {
         self.enablePicking(enabled);
+      },
+      setOrbitRotateEnabled(enabled) {
+        self.renderer.setOrbitRotateEnabled(enabled);
       },
       onPick(fn) {
         self._onPick = fn;
