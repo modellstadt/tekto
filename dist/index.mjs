@@ -17795,6 +17795,14 @@ var ThreeRenderer = class {
     tex.dispose();
     return env;
   }
+  /** Build a THREE.Line for a line-type object — dashed material (+ line distances)
+   *  when the style requests it, else a basic line material. */
+  _makeLine(geo, s) {
+    const mat = s.dash ? new THREE3.LineDashedMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1, dashSize: s.dash.size, gapSize: s.dash.gap }) : new THREE3.LineBasicMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1 });
+    const line = new THREE3.Line(geo, mat);
+    if (s.dash) line.computeLineDistances();
+    return line;
+  }
   convert(obj) {
     const s = obj.style;
     switch (obj.type) {
@@ -17846,12 +17854,7 @@ var ThreeRenderer = class {
           return mesh;
         }
         const geo = new THREE3.BufferGeometry().setFromPoints([a, b]);
-        const mat = new THREE3.LineBasicMaterial({
-          color: s.color,
-          opacity: s.opacity,
-          transparent: s.opacity < 1
-        });
-        return new THREE3.Line(geo, mat);
+        return this._makeLine(geo, s);
       }
       case "polyline": {
         if (!obj.vertices || obj.vertices.length < 2) return null;
@@ -17865,11 +17868,7 @@ var ThreeRenderer = class {
         }
         const geo = new THREE3.BufferGeometry();
         geo.setAttribute("position", new THREE3.BufferAttribute(arr, 3));
-        return new THREE3.Line(geo, new THREE3.LineBasicMaterial({
-          color: s.color,
-          opacity: s.opacity,
-          transparent: s.opacity < 1
-        }));
+        return this._makeLine(geo, s);
       }
       case "polygon": {
         if (!obj.vertices || obj.vertices.length < 2) return null;
@@ -17925,11 +17924,7 @@ var ThreeRenderer = class {
           }
         }
         const geo = new THREE3.BufferGeometry().setFromPoints(pts);
-        return new THREE3.Line(geo, new THREE3.LineBasicMaterial({
-          color: s.color,
-          opacity: s.opacity,
-          transparent: s.opacity < 1
-        }));
+        return this._makeLine(geo, s);
       }
       case "plane": {
         if (!obj.normal) return null;
@@ -19632,6 +19627,10 @@ var SketchInstance = class {
             layer(name) {
               for (const h of handles) h.layer(name);
               return compound;
+            },
+            dashed(size, gap) {
+              for (const h of handles) h.dashed(size, gap);
+              return compound;
             }
           };
           return compound;
@@ -19945,6 +19944,10 @@ var SketchInstance = class {
       layer(name) {
         self.scene.setStyle(obj.id, { layer: name });
         return handle;
+      },
+      dashed(size, gap) {
+        self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
+        return handle;
       }
     };
     return handle;
@@ -19970,6 +19973,10 @@ var SketchInstance = class {
       },
       layer(name) {
         self.scene.setStyle(obj.id, { layer: name });
+        return handle;
+      },
+      dashed(size, gap) {
+        self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
         return handle;
       }
     };

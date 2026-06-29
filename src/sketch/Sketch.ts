@@ -911,6 +911,7 @@ export class SketchInstance {
             opacity(o) { for (const h of handles) h.opacity(o); return compound; },
             radius(r) { for (const h of handles) h.radius(r); return compound; },
             layer(name) { for (const h of handles) h.layer(name); return compound; },
+            dashed(size, gap) { for (const h of handles) h.dashed(size, gap); return compound; },
           };
           return compound;
         }
@@ -1112,6 +1113,7 @@ export class SketchInstance {
       opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
       radius(r) { self.scene.setStyle(obj.id, { tubeRadius: r }); return handle; },
       layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
+      dashed(size, gap) { self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } }); return handle; },
     };
     return handle;
   }
@@ -1127,6 +1129,7 @@ export class SketchInstance {
       // tubeRadius has no effect on the buffered Line — kept for API parity.
       radius(_r) { return handle; },
       layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
+      dashed(size, gap) { self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } }); return handle; },
     };
     return handle;
   }

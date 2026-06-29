@@ -617,6 +617,17 @@ export class ThreeRenderer {
     return env;
   }
 
+  /** Build a THREE.Line for a line-type object — dashed material (+ line distances)
+   *  when the style requests it, else a basic line material. */
+  private _makeLine(geo: THREE.BufferGeometry, s: SceneObject["style"]): THREE.Line {
+    const mat = s.dash
+      ? new THREE.LineDashedMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1, dashSize: s.dash.size, gapSize: s.dash.gap })
+      : new THREE.LineBasicMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1 });
+    const line = new THREE.Line(geo, mat);
+    if (s.dash) line.computeLineDistances();
+    return line;
+  }
+
   private convert(obj: SceneObject): THREE.Object3D | null {
     const s = obj.style;
     switch (obj.type) {
@@ -668,10 +679,7 @@ export class ThreeRenderer {
         }
 
         const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
-        const mat = new THREE.LineBasicMaterial({
-          color: s.color, opacity: s.opacity, transparent: s.opacity < 1,
-        });
-        return new THREE.Line(geo, mat);
+        return this._makeLine(geo, s);
       }
 
       case "polyline": {
@@ -686,9 +694,7 @@ export class ThreeRenderer {
         }
         const geo = new THREE.BufferGeometry();
         geo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
-        return new THREE.Line(geo, new THREE.LineBasicMaterial({
-          color: s.color, opacity: s.opacity, transparent: s.opacity < 1,
-        }));
+        return this._makeLine(geo, s);
       }
 
       case "polygon": {
@@ -743,9 +749,7 @@ export class ThreeRenderer {
           }
         }
         const geo = new THREE.BufferGeometry().setFromPoints(pts);
-        return new THREE.Line(geo, new THREE.LineBasicMaterial({
-          color: s.color, opacity: s.opacity, transparent: s.opacity < 1,
-        }));
+        return this._makeLine(geo, s);
       }
 
       case "plane": {

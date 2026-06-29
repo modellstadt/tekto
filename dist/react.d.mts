@@ -1,5 +1,5 @@
 import React, { CSSProperties, ReactNode } from 'react';
-import { q as ParamStore, o as ParamLayout, S as Scene, p as ParamSchema, u as SceneObject } from './Params-DxXdFE4U.mjs';
+import { q as ParamStore, o as ParamLayout, S as Scene, p as ParamSchema, u as SceneObject } from './Params-CJHFpFUZ.mjs';
 
 /**
  * Tekto React Integration

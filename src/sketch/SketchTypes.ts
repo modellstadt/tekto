@@ -156,6 +156,9 @@ export interface LineHandle {
   radius(r: number): LineHandle;
   /** Assign a semantic layer / class name (used by exports, filtering, debug). */
   layer(name: string): LineHandle;
+  /** Render dashed (world-unit dash/gap), via THREE.LineDashedMaterial.
+   *  Defaults: size 0.05, gap = size. */
+  dashed(size?: number, gap?: number): LineHandle;
 }
 
 /** Shape mode for beginShape/endShape */

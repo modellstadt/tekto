@@ -1,5 +1,5 @@
-import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode } from './Params-DxXdFE4U.js';
-export { B as BoolParam, e as ButtonParam, f as ColorParam, g as FlatMeshJSON, h as FloatParam, I as IntParam, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, P as ParamDef, n as ParamFolder, o as ParamLayout, p as ParamSchema, q as ParamStore, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-DxXdFE4U.js';
+import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode } from './Params-CJHFpFUZ.js';
+export { B as BoolParam, e as ButtonParam, f as ColorParam, g as FlatMeshJSON, h as FloatParam, I as IntParam, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, P as ParamDef, n as ParamFolder, o as ParamLayout, p as ParamSchema, q as ParamStore, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-CJHFpFUZ.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
@@ -3907,6 +3907,9 @@ declare class ThreeRenderer {
      * are disposed before returning.
      */
     private _buildEnvironment;
+    /** Build a THREE.Line for a line-type object — dashed material (+ line distances)
+     *  when the style requests it, else a basic line material. */
+    private _makeLine;
     private convert;
     /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
     private convertMesh;
@@ -4236,6 +4239,9 @@ interface LineHandle {
     radius(r: number): LineHandle;
     /** Assign a semantic layer / class name (used by exports, filtering, debug). */
     layer(name: string): LineHandle;
+    /** Render dashed (world-unit dash/gap), via THREE.LineDashedMaterial.
+     *  Defaults: size 0.05, gap = size. */
+    dashed(size?: number, gap?: number): LineHandle;
 }
 /** Shape mode for beginShape/endShape */
 type ShapeMode = "triangles" | "lines" | "line_strip" | "quads";

@@ -66,6 +66,9 @@ export interface VisualStyle {
   metalness?: number;
   /** PBR roughness (studio lighting only): 0 = mirror, 1 = diffuse. Default 0.65. */
   roughness?: number;
+  /** Dashed line (segment / polyline / circle): world-unit dash + gap lengths.
+   *  Renders via THREE.LineDashedMaterial (+ computeLineDistances). */
+  dash?: { size: number; gap: number };
 }
 
 const DEFAULT_STYLE: VisualStyle = {
