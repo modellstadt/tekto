@@ -27,6 +27,8 @@ export type { FilletResult } from "./core/geometry/Polygon2D";
 export { PolygonBool, setClipSnap } from "./core/geometry/PolygonBool";
 export type { Ring2, Poly2, MultiPoly2 } from "./core/geometry/PolygonBool";
 export { NoFitPolygon } from "./core/geometry/NoFitPolygon";
+export { perpVisibility, perpVisibilityOfPolys, edgeOutwardVisibility } from "./core/geometry/PerpVisibility";
+export type { PerpSegment } from "./core/geometry/PerpVisibility";
 export { MeshAnalysis } from "./core/geometry/mesh/MeshAnalysis";
 
 // Mesh (new canonical names + backward-compat aliases)
