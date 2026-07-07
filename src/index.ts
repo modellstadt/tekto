@@ -24,6 +24,9 @@ export type { Intersect2DResult } from "./core/geometry/Intersections";
 // Geometry Algorithms
 export { Polygon2D, polygonIntersection } from "./core/geometry/Polygon2D";
 export type { FilletResult } from "./core/geometry/Polygon2D";
+export { PolygonBool, setClipSnap } from "./core/geometry/PolygonBool";
+export type { Ring2, Poly2, MultiPoly2 } from "./core/geometry/PolygonBool";
+export { NoFitPolygon } from "./core/geometry/NoFitPolygon";
 export { MeshAnalysis } from "./core/geometry/mesh/MeshAnalysis";
 
 // Mesh (new canonical names + backward-compat aliases)

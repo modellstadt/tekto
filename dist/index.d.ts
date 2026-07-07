@@ -1,5 +1,5 @@
-import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode } from './Params-c5RUx8In.js';
-export { B as BoolParam, e as ButtonParam, f as ColorParam, g as FlatMeshJSON, h as FloatParam, I as IntParam, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, P as ParamDef, n as ParamFolder, o as ParamLayout, p as ParamSchema, q as ParamStore, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-c5RUx8In.js';
+import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode } from './Params-C3VyxFeD.js';
+export { B as BoolParam, e as ButtonParam, f as ColorParam, g as FlatMeshJSON, h as FloatParam, I as IntParam, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, P as ParamDef, n as ParamFolder, o as ParamLayout, p as ParamSchema, q as ParamStore, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-C3VyxFeD.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
@@ -623,6 +623,109 @@ declare const Polygon2D: {
  * Inspired by Java's Area.intersect() — treats polygons as filled regions.
  */
 declare function polygonIntersection(subjPoly: Vec2[], clipPoly: Vec2[]): Vec2[][];
+
+/**
+ * Tekto PolygonBool — robust 2D boolean operations on polygons *with holes*.
+ *
+ * Thin, Vec2-native wrapper over `polygon-clipping` (pure-JS, sweepline-robust).
+ * Unlike {@link polygonIntersection} (Greiner–Hormann, two simple rings, no
+ * holes), these operate on multipolygons that may contain holes — which is
+ * exactly what you need when a packed/placed region encloses a gap, or when a
+ * No-Fit Polygon develops an interior void.
+ *
+ * Representation:
+ *   Ring2      = Vec2[]            one ring, *open* (no repeated closing vertex)
+ *   Poly2      = Ring2[]           [outerRing, ...holeRings]
+ *   MultiPoly2 = Poly2[]           zero or more disjoint polygons, each w/ holes
+ *
+ * Winding is not required on input (polygon-clipping normalises). On output,
+ * outer rings are CCW and holes CW, following polygon-clipping's convention.
+ */
+
+type Ring2 = Vec2[];
+type Poly2 = Ring2[];
+type MultiPoly2 = Poly2[];
+/** Set the coordinate snap grid used before boolean ops (mm). 0 disables it. */
+declare function setClipSnap(grid: number): void;
+declare const PolygonBool: {
+    /** Wrap a single solid ring as a multipolygon. */
+    fromRing(ring: Ring2): MultiPoly2;
+    /** Flatten every ring (outer + holes, all polygons) — handy for drawing. */
+    rings(mp: MultiPoly2): Ring2[];
+    /** True when the multipolygon encloses no area. */
+    isEmpty(mp: MultiPoly2): boolean;
+    /**
+     * Total enclosed area (outer rings minus holes). Always non-negative; relies
+     * on polygon-clipping's CCW-outer / CW-hole output, but uses absolute ring
+     * areas so it is also correct for hand-built input with consistent winding.
+     */
+    area(mp: MultiPoly2): number;
+    /** Union of one or more multipolygons. */
+    union(...mps: MultiPoly2[]): MultiPoly2;
+    /** `subject` minus every `clip`. */
+    difference(subject: MultiPoly2, ...clips: MultiPoly2[]): MultiPoly2;
+    /** Intersection of two or more multipolygons. */
+    intersection(...mps: MultiPoly2[]): MultiPoly2;
+};
+
+/**
+ * Tekto NoFitPolygon — Minkowski sums, No-Fit Polygons (NFP), and Inner-Fit
+ * regions for 2D nesting / packing.
+ *
+ * The NFP of B about A is the locus of B's reference point (the origin of B's
+ * local frame) at which B *touches* A without overlapping it:
+ *
+ *     interior(NFP) ⇔ B overlaps A   (forbidden)
+ *     boundary(NFP) ⇔ B touches A     (the tightest legal placements)
+ *     exterior(NFP) ⇔ B disjoint A    (loose)
+ *
+ * and is computed as the Minkowski sum  NFP(A, B) = A ⊕ (−B).
+ *
+ * Concave shapes are handled the robust way: decompose A and B into convex
+ * pieces, Minkowski-sum every pair (a convex sum is just the convex hull of the
+ * pairwise vertex sums), then union the lot — which naturally produces the
+ * interior holes a concave NFP can have (e.g. B trapped in a pocket of A).
+ *
+ * Depends on tekto's own {@link Polygon2D.convexHull2D} and {@link PolygonBool};
+ * the only external piece is `poly-decomp` for the convex decomposition.
+ */
+
+declare const NoFitPolygon: {
+    /** Reflect a ring through the origin (negate every vertex) — forms −B. */
+    reflect(ring: Ring2): Ring2;
+    /**
+     * Decompose a simple polygon into convex pieces (poly-decomp quickDecomp).
+     * Input may have any winding; pieces come back CCW. Triangles and convex
+     * inputs pass through as a single piece.
+     */
+    decomposeConvex(ring: Ring2): Ring2[];
+    /**
+     * Minkowski sum of two *convex* rings = convex hull of all pairwise vertex
+     * sums. O(|a|·|b|) but the inputs are small convex pieces.
+     */
+    minkowskiSumConvex(a: Ring2, b: Ring2): Ring2;
+    /**
+     * Minkowski sum of two arbitrary simple polygons. Decomposes both into convex
+     * pieces, sums every pair, and unions the results (may produce holes).
+     */
+    minkowskiSum(a: Ring2, b: Ring2): MultiPoly2;
+    /**
+     * No-Fit Polygon of `orbiting` about `fixed`: NFP = fixed ⊕ (−orbiting).
+     * Both polygons are given in absolute coordinates; the result is the locus of
+     * `orbiting`'s reference point (its frame origin) for touching placements on
+     * the boundary, overlapping placements in the interior.
+     */
+    nfp(fixed: Ring2, orbiting: Ring2): MultiPoly2;
+    /**
+     * Inner-Fit region: the locus of `orbiting`'s reference point such that
+     * `orbiting` stays fully inside `container`.
+     *
+     * Computed as ∩ over vertices v of conv(orbiting) of (container − v). This is
+     * exact for convex or rectangular containers (the common surface case) and a
+     * mild over-approximation for concave containers.
+     */
+    innerFit(container: Ring2, orbiting: Ring2): MultiPoly2;
+};
 
 /**
  * Tekto MeshAnalysis — Mesh measurement and processing algorithms.
@@ -4897,4 +5000,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, IfcFile, type IfcParseOptions, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, Polygon2D, PolylineCurve, type ProjectedSegment, type PropertyMap, Ray, type Reactive$1 as Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts$1 as SelectOpts, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts$1 as SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, extractVisiblePolylines, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, noise, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, sketch, sketch2d };
+export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, IfcFile, type IfcParseOptions, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type PropertyMap, Ray, type Reactive$1 as Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts$1 as SelectOpts, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts$1 as SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, extractVisiblePolylines, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, noise, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d };

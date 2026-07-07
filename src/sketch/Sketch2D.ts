@@ -253,13 +253,11 @@ export class Sketch2DInstance {
       background:${panelBg}; border-bottom:1px solid ${border};
     `;
     header.innerHTML = `
-      <span style="font-weight:600;font-size:14px;
-        background:linear-gradient(135deg,#38d9a9,#4dabf7);
-        -webkit-background-clip:text;-webkit-text-fill-color:transparent">
+      <span style="font-weight:600;font-size:14px;color:#ffffff">
         &#x2B21; ${this.config.title ?? "Tekto Sketch2D"}
       </span>
       <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-        background:rgba(56,217,169,.1);color:#38d9a9">2D</span>
+        background:rgba(255,255,255,.08);color:#ffffff">2D</span>
     `;
     root.appendChild(header);
 
@@ -536,10 +534,10 @@ export class Sketch2DInstance {
             <div style="margin-bottom:6px;">
               <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
                 <span style="color:${dk ? '#7a80a0' : '#5a6080'}">${p.label}</span>
-                <span style="color:#38d9a9;font-weight:500" data-val="${p.key}">${typeof p.value === 'number' ? (Number.isInteger(step) && step >= 1 ? p.value : p.value.toFixed(2)) : p.value}</span>
+                <span style="color:#ffffff;font-weight:500" data-val="${p.key}">${typeof p.value === 'number' ? (Number.isInteger(step) && step >= 1 ? p.value : p.value.toFixed(2)) : p.value}</span>
               </div>
               <input type="range" data-key="${p.key}" min="${min}" max="${max}" step="${step}" value="${p.value}"
-                style="width:100%;height:4px;accent-color:#38d9a9;cursor:pointer;">
+                style="width:100%;height:4px;accent-color:#ffffff;cursor:pointer;">
             </div>
           `);
         } else if (p.type === "toggle") {
@@ -550,9 +548,9 @@ export class Sketch2DInstance {
                 <input type="checkbox" data-key="${p.key}" ${p.value ? 'checked' : ''}
                   style="position:absolute;opacity:0;width:0;height:0;">
                 <span style="position:absolute;inset:0;border-radius:9px;transition:.2s;
-                  background:${p.value ? '#38d9a9' : (dk ? '#1e2040' : '#d0d4e0')};">
+                  background:${p.value ? '#ffffff' : (dk ? '#1e2040' : '#d0d4e0')};">
                   <span style="position:absolute;left:${p.value ? '16px' : '2px'};top:2px;width:14px;height:14px;
-                    border-radius:50%;background:white;transition:.2s;"></span>
+                    border-radius:50%;background:${p.value ? '#16182c' : 'white'};transition:.2s;"></span>
                 </span>
               </label>
             </div>
@@ -620,6 +618,9 @@ export class Sketch2DInstance {
       const input = el as HTMLInputElement;
       input.addEventListener("change", () => {
         this.params.get(input.dataset.key!)!.value = input.checked;
+        // the knob visual is baked into the panel HTML from the value at build
+        // time — without a rebuild the switch never moves and looks dead
+        this.rebuildPanel();
         this.scheduleRerun();
       });
     });

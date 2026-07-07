@@ -30,6 +30,10 @@
     "test:coverage": "vitest run --coverage",
     "playground":    "vite playground"
   },
+  "dependencies": {
+    "polygon-clipping": "^0.15.7",
+    "poly-decomp": "^0.3.0"
+  },
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-dom": ">=18.0.0",

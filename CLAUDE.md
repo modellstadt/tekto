@@ -112,6 +112,15 @@ No JSDoc preamble on small helpers; keep blocks short. Use JSDoc on public expor
 
 When you need a constant for tuning (e.g., "this taper margin should be ~0.5 m"), make it a named `const` near the top of the function, not a magic number.
 
+## GUI defaults (sketch2d / lab panels)
+
+Panel chrome is WHITE on the dark background: white slider accents and value
+labels, white toggle tracks (dark knob when ON), plain white title — NO green
+accents (#38d9a9) and NO gradient text in labels/titles. This is the intended
+default for every tekto app; if you build a new control type for the lab
+panel, style it white-on-dark to match. (The `colorPicker` DEFAULT COLOR VALUE
+is content, not chrome — it may stay whatever the sketch wants.)
+
 ## When to update this file
 
 Add a rule here only when the same agent mistake has happened twice. If a single misstep was avoidable by reading the README, that's a README issue — fix the README instead.

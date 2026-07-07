@@ -74,6 +74,7 @@ __export(index_exports, {
   MeshGen: () => MeshFactory,
   MeshSubdivide: () => MeshSubdivide,
   MeshTransform: () => MeshTransform,
+  NoFitPolygon: () => NoFitPolygon,
   NurbsCurve: () => NurbsCurve,
   NurbsSurface: () => NurbsSurface,
   OBB2D: () => OBB2D,
@@ -89,6 +90,7 @@ __export(index_exports, {
   PlanarGraphRepair: () => PlanarGraphRepair,
   Plane: () => HPlane,
   Polygon2D: () => Polygon2D,
+  PolygonBool: () => PolygonBool,
   PolylineCurve: () => PolylineCurve,
   Ray: () => Ray,
   RenderMesh: () => Mesh,
@@ -186,6 +188,7 @@ __export(index_exports, {
   realizeSlab: () => realizeSlab,
   repelBodies: () => repelBodies,
   segmentSegmentClosest: () => segmentSegmentClosest,
+  setClipSnap: () => setClipSnap,
   sketch: () => sketch,
   sketch2d: () => sketch2d
 });
@@ -2924,6 +2927,165 @@ function polygonIntersection(subjPoly, clipPoly) {
   } while (cur !== subj);
   return results;
 }
+
+// src/core/geometry/PolygonBool.ts
+var import_polygon_clipping = __toESM(require("polygon-clipping"));
+var SNAP = 1e-3;
+function setClipSnap(grid) {
+  SNAP = grid > 0 ? grid : 0;
+}
+function snap(n) {
+  return SNAP > 0 ? Math.round(n / SNAP) * SNAP : n;
+}
+function ringToPC(ring) {
+  return ring.map((v) => [snap(v.x), snap(v.y)]);
+}
+function multiToPC(mp) {
+  return mp.map((poly) => poly.map(ringToPC));
+}
+function pcRingToRing(r) {
+  const pts = r.map(([x, y]) => new Vec2(x, y));
+  if (pts.length > 1) {
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    if (a.x === b.x && a.y === b.y) pts.pop();
+  }
+  return pts;
+}
+function pcToMulti(geom) {
+  return geom.map((poly) => poly.map(pcRingToRing));
+}
+var PolygonBool = {
+  // ── construction / inspection ──
+  /** Wrap a single solid ring as a multipolygon. */
+  fromRing(ring) {
+    return [[ring]];
+  },
+  /** Flatten every ring (outer + holes, all polygons) — handy for drawing. */
+  rings(mp) {
+    const out = [];
+    for (const poly of mp) for (const ring of poly) out.push(ring);
+    return out;
+  },
+  /** True when the multipolygon encloses no area. */
+  isEmpty(mp) {
+    return mp.length === 0 || mp.every((poly) => poly.length === 0);
+  },
+  /**
+   * Total enclosed area (outer rings minus holes). Always non-negative; relies
+   * on polygon-clipping's CCW-outer / CW-hole output, but uses absolute ring
+   * areas so it is also correct for hand-built input with consistent winding.
+   */
+  area(mp) {
+    let total = 0;
+    for (const poly of mp) {
+      poly.forEach((ring, i) => {
+        const a = Math.abs(Polygon2D.signedArea(ring));
+        total += i === 0 ? a : -a;
+      });
+    }
+    return total;
+  },
+  // ── boolean ops ──
+  /** Union of one or more multipolygons. */
+  union(...mps) {
+    const nonEmpty = mps.filter((m) => !PolygonBool.isEmpty(m));
+    if (nonEmpty.length === 0) return [];
+    const [first, ...rest] = nonEmpty.map(multiToPC);
+    return pcToMulti(import_polygon_clipping.default.union(first, ...rest));
+  },
+  /** `subject` minus every `clip`. */
+  difference(subject, ...clips) {
+    if (PolygonBool.isEmpty(subject)) return [];
+    const clipsNonEmpty = clips.filter((m) => !PolygonBool.isEmpty(m));
+    if (clipsNonEmpty.length === 0) return PolygonBool.union(subject);
+    return pcToMulti(
+      import_polygon_clipping.default.difference(multiToPC(subject), ...clipsNonEmpty.map(multiToPC))
+    );
+  },
+  /** Intersection of two or more multipolygons. */
+  intersection(...mps) {
+    if (mps.length === 0 || mps.some((m) => PolygonBool.isEmpty(m))) return [];
+    const [first, ...rest] = mps.map(multiToPC);
+    return pcToMulti(import_polygon_clipping.default.intersection(first, ...rest));
+  }
+};
+
+// src/core/geometry/NoFitPolygon.ts
+var import_poly_decomp = require("poly-decomp");
+var NoFitPolygon = {
+  /** Reflect a ring through the origin (negate every vertex) — forms −B. */
+  reflect(ring) {
+    return ring.map((v) => new Vec2(-v.x, -v.y));
+  },
+  /**
+   * Decompose a simple polygon into convex pieces (poly-decomp quickDecomp).
+   * Input may have any winding; pieces come back CCW. Triangles and convex
+   * inputs pass through as a single piece.
+   */
+  decomposeConvex(ring) {
+    if (ring.length <= 3) return [ring.slice()];
+    const pts = ring.map((v) => [v.x, v.y]);
+    (0, import_poly_decomp.removeCollinearPoints)(pts, 0.01);
+    if (pts.length <= 3) return [pts.map(([x, y]) => new Vec2(x, y))];
+    (0, import_poly_decomp.makeCCW)(pts);
+    const pieces = (0, import_poly_decomp.quickDecomp)(pts);
+    return pieces.map((piece) => piece.map(([x, y]) => new Vec2(x, y)));
+  },
+  /**
+   * Minkowski sum of two *convex* rings = convex hull of all pairwise vertex
+   * sums. O(|a|·|b|) but the inputs are small convex pieces.
+   */
+  minkowskiSumConvex(a, b) {
+    const pts = [];
+    for (const pa of a) for (const pb of b) pts.push(pa.add(pb));
+    return Polygon2D.convexHull2D(pts);
+  },
+  /**
+   * Minkowski sum of two arbitrary simple polygons. Decomposes both into convex
+   * pieces, sums every pair, and unions the results (may produce holes).
+   */
+  minkowskiSum(a, b) {
+    const ca = NoFitPolygon.decomposeConvex(a);
+    const cb = NoFitPolygon.decomposeConvex(b);
+    const parts = [];
+    for (const pa of ca) {
+      for (const pb of cb) {
+        const sum = NoFitPolygon.minkowskiSumConvex(pa, pb);
+        if (sum.length >= 3) parts.push(PolygonBool.fromRing(sum));
+      }
+    }
+    return PolygonBool.union(...parts);
+  },
+  /**
+   * No-Fit Polygon of `orbiting` about `fixed`: NFP = fixed ⊕ (−orbiting).
+   * Both polygons are given in absolute coordinates; the result is the locus of
+   * `orbiting`'s reference point (its frame origin) for touching placements on
+   * the boundary, overlapping placements in the interior.
+   */
+  nfp(fixed, orbiting) {
+    return NoFitPolygon.minkowskiSum(fixed, NoFitPolygon.reflect(orbiting));
+  },
+  /**
+   * Inner-Fit region: the locus of `orbiting`'s reference point such that
+   * `orbiting` stays fully inside `container`.
+   *
+   * Computed as ∩ over vertices v of conv(orbiting) of (container − v). This is
+   * exact for convex or rectangular containers (the common surface case) and a
+   * mild over-approximation for concave containers.
+   */
+  innerFit(container, orbiting) {
+    const hull = Polygon2D.convexHull2D(orbiting);
+    if (hull.length === 0) return [];
+    let acc = null;
+    for (const v of hull) {
+      const shifted = PolygonBool.fromRing(container.map((c) => new Vec2(c.x - v.x, c.y - v.y)));
+      acc = acc === null ? shifted : PolygonBool.intersection(acc, shifted);
+      if (PolygonBool.isEmpty(acc)) return [];
+    }
+    return acc ?? [];
+  }
+};
 
 // src/core/geometry/mesh/ConnectedMesh.ts
 var ConnectedMesh = class _ConnectedMesh {
@@ -20012,6 +20174,7 @@ var ThreeRenderer = class {
       const occlusionMat = new THREE3.MeshBasicMaterial({
         color: this.config.backgroundColor,
         side,
+        toneMapped: false,
         polygonOffset: true,
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1
@@ -20019,7 +20182,7 @@ var ThreeRenderer = class {
       group.add(new THREE3.Mesh(geo, occlusionMat));
       const edgeAngle = s.edgeAngle ?? 30;
       const wireGeo = new THREE3.EdgesGeometry(geo, edgeAngle);
-      const wireMat = new THREE3.LineBasicMaterial({ color: 11579568 });
+      const wireMat = new THREE3.LineBasicMaterial({ color: s.edgeColor ?? 11579568, toneMapped: false });
       group.add(new THREE3.LineSegments(wireGeo, wireMat));
     } else {
       const solidMat = this._makeMaterial({
@@ -20414,10 +20577,17 @@ var ThreeRenderer = class {
     if (this._isOrtho && !wasOrtho) {
       this._orthoCam.position.copy(this.camera.position);
       this._orthoCam.quaternion.copy(this.camera.quaternion);
+      this._orthoCam.zoom = 1;
       this._syncOrthoCamFrustum();
     } else if (!this._isOrtho && wasOrtho) {
       this.camera.position.copy(this._orthoCam.position);
       this.camera.quaternion.copy(this._orthoCam.quaternion);
+      const zoom = this._orthoCam.zoom;
+      if (zoom !== 1 && this.controls) {
+        const t = this.controls.target;
+        this.camera.position.sub(t).divideScalar(zoom).add(t);
+        this._orthoCam.zoom = 1;
+      }
     }
     if (this.controls) {
       this.controls.object = this.activeCamera;
@@ -22701,13 +22871,11 @@ var Sketch2DInstance = class {
       background:${panelBg}; border-bottom:1px solid ${border};
     `;
     header.innerHTML = `
-      <span style="font-weight:600;font-size:14px;
-        background:linear-gradient(135deg,#38d9a9,#4dabf7);
-        -webkit-background-clip:text;-webkit-text-fill-color:transparent">
+      <span style="font-weight:600;font-size:14px;color:#ffffff">
         &#x2B21; ${this.config.title ?? "Tekto Sketch2D"}
       </span>
       <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-        background:rgba(56,217,169,.1);color:#38d9a9">2D</span>
+        background:rgba(255,255,255,.08);color:#ffffff">2D</span>
     `;
     root.appendChild(header);
     this.panelEl = document.createElement("div");
@@ -22984,10 +23152,10 @@ var Sketch2DInstance = class {
             <div style="margin-bottom:6px;">
               <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
                 <span style="color:${dk ? "#7a80a0" : "#5a6080"}">${p.label}</span>
-                <span style="color:#38d9a9;font-weight:500" data-val="${p.key}">${typeof p.value === "number" ? Number.isInteger(step) && step >= 1 ? p.value : p.value.toFixed(2) : p.value}</span>
+                <span style="color:#ffffff;font-weight:500" data-val="${p.key}">${typeof p.value === "number" ? Number.isInteger(step) && step >= 1 ? p.value : p.value.toFixed(2) : p.value}</span>
               </div>
               <input type="range" data-key="${p.key}" min="${min}" max="${max}" step="${step}" value="${p.value}"
-                style="width:100%;height:4px;accent-color:#38d9a9;cursor:pointer;">
+                style="width:100%;height:4px;accent-color:#ffffff;cursor:pointer;">
             </div>
           `);
         } else if (p.type === "toggle") {
@@ -22998,9 +23166,9 @@ var Sketch2DInstance = class {
                 <input type="checkbox" data-key="${p.key}" ${p.value ? "checked" : ""}
                   style="position:absolute;opacity:0;width:0;height:0;">
                 <span style="position:absolute;inset:0;border-radius:9px;transition:.2s;
-                  background:${p.value ? "#38d9a9" : dk ? "#1e2040" : "#d0d4e0"};">
+                  background:${p.value ? "#ffffff" : dk ? "#1e2040" : "#d0d4e0"};">
                   <span style="position:absolute;left:${p.value ? "16px" : "2px"};top:2px;width:14px;height:14px;
-                    border-radius:50%;background:white;transition:.2s;"></span>
+                    border-radius:50%;background:${p.value ? "#16182c" : "white"};transition:.2s;"></span>
                 </span>
               </label>
             </div>
@@ -23060,6 +23228,7 @@ var Sketch2DInstance = class {
       const input = el;
       input.addEventListener("change", () => {
         this.params.get(input.dataset.key).value = input.checked;
+        this.rebuildPanel();
         this.scheduleRerun();
       });
     });
@@ -23163,6 +23332,7 @@ var Sketch2DInstance = class {
   MeshGen,
   MeshSubdivide,
   MeshTransform,
+  NoFitPolygon,
   NurbsCurve,
   NurbsSurface,
   OBB2D,
@@ -23178,6 +23348,7 @@ var Sketch2DInstance = class {
   PlanarGraphRepair,
   Plane,
   Polygon2D,
+  PolygonBool,
   PolylineCurve,
   Ray,
   RenderMesh,
@@ -23275,6 +23446,7 @@ var Sketch2DInstance = class {
   realizeSlab,
   repelBodies,
   segmentSegmentClosest,
+  setClipSnap,
   sketch,
   sketch2d
 });
