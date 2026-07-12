@@ -107,6 +107,8 @@ export interface MeshHandle {
   wireframe(w?: boolean): MeshHandle;
   visible(v?: boolean): MeshHandle;
   label(l: string): MeshHandle;
+  /** Font-size multiplier for this object's label sprite (1 = default, 0.5 = half). */
+  labelScale(s: number): MeshHandle;
   doubleSided(d?: boolean): MeshHandle;
   /** Show back-faces in this color (debug: reveals flipped normals). */
   backfaceColor(c: string | undefined): MeshHandle;
@@ -142,6 +144,8 @@ export interface PointHandle {
   color(c: string): PointHandle;
   size(s: number): PointHandle;
   label(l: string): PointHandle;
+  /** Font-size multiplier for this object's label sprite (1 = default, 0.5 = half). */
+  labelScale(s: number): PointHandle;
   moveTo(x: number, y: number, z: number): PointHandle;
   position(): Vec3;
   /** Assign a semantic layer / class name (used by exports, filtering, debug). */

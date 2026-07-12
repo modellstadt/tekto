@@ -644,7 +644,7 @@ export class ThreeRenderer {
         if (s.label) {
           const group = new THREE.Group();
           group.add(mesh);
-          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color);
+          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color, s.labelScale ?? 1);
           if (obj.position) sprite.position.set(obj.position.x, obj.position.y, obj.position.z);
           // Offset label slightly above the point
           if (this.isZUp) sprite.position.z += s.pointSize + 0.15;
@@ -911,7 +911,7 @@ export class ThreeRenderer {
 
   // ── Text Sprites ──
 
-  private createTextSprite(text: string, color: string): THREE.Sprite {
+  private createTextSprite(text: string, color: string, labelScale = 1): THREE.Sprite {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d")!;
     const fontSize = 48;
@@ -931,7 +931,7 @@ export class ThreeRenderer {
     tex.minFilter = THREE.LinearFilter;
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sprite = new THREE.Sprite(mat);
-    const scale = 0.005;
+    const scale = 0.005 * labelScale;
     sprite.scale.set(w * scale, h * scale, 1);
     return sprite;
   }

@@ -61,6 +61,8 @@ export interface VisualStyle {
   layer?: string;
   label?: string;
   labelColor?: string;
+  /** Font-size multiplier for the label sprite (1 = default, 0.5 = half). */
+  labelScale?: number;
   tubeRadius?: number;
   /** PBR metalness (studio lighting only): 0 = dielectric, 1 = metal. Default 0. */
   metalness?: number;

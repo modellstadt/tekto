@@ -1027,6 +1027,7 @@ export class SketchInstance {
       wireframe(w = true) { self.scene.setStyle(obj.id, { wireframe: w }); return handle; },
       visible(v = true) { self.scene.setStyle(obj.id, { visible: v }); return handle; },
       label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
+      labelScale(s) { self.scene.setStyle(obj.id, { labelScale: s }); return handle; },
       doubleSided(d = true) { self.scene.setStyle(obj.id, { doubleSided: d }); return handle; },
       backfaceColor(c) { self.scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c }); return handle; },
       groupColor(_name, _color) { return handle; },
@@ -1120,6 +1121,7 @@ export class SketchInstance {
       wireframe(w = true) { self.scene.setStyle(obj.id, { wireframe: w }); return handle; },
       visible(v = true) { self.scene.setStyle(obj.id, { visible: v }); return handle; },
       label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
+      labelScale(s) { self.scene.setStyle(obj.id, { labelScale: s }); return handle; },
       doubleSided(d = true) { self.scene.setStyle(obj.id, { doubleSided: d }); return handle; },
       backfaceColor(c) { self.scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c }); return handle; },
       groupColor(name, color) {
@@ -1154,6 +1156,7 @@ export class SketchInstance {
       color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
       size(s) { self.scene.setStyle(obj.id, { pointSize: s }); return handle; },
       label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
+      labelScale(s) { self.scene.setStyle(obj.id, { labelScale: s }); return handle; },
       layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
       moveTo(x, y, z) { self.scene.update(obj.id, { position: new Vec3(x, y, z) }); return handle; },
       position() { return self.scene.get(obj.id)?.position ?? pos; },
