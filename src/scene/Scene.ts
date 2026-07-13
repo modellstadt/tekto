@@ -50,6 +50,10 @@ export interface VisualStyle {
    *  across a flat wall — are dropped, leaving a clean technical-drawing look.
    *  Default 30. */
   edgeAngle?: number;
+  /** Hidden-line render mode: color of this object's feature-edge lines.
+   *  Default #b0b0b0 — a neutral gray line drawing; set per object to keep
+   *  its identity color readable in the hidden-line view. */
+  edgeColor?: string;
   /** When set, renders back-faces in this color (enables doubleSided automatically). */
   backfaceColor?: string;
   /** Per-group colors keyed by group name (only used when FlatMeshData has groups). */

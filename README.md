@@ -153,7 +153,7 @@ not `extrude`, `loft`, `triangulate`, or `pipe`.
 
 ## Algorithms
 
-**2D:** convex hull, ear-clipping triangulation, point-in-polygon, segment intersection, signed area, centroid, min enclosing circle (Welzl)
+**2D:** convex hull, ear-clipping triangulation, point-in-polygon, segment intersection, signed area, centroid, min enclosing circle (Welzl), robust boolean ops with holes (`PolygonBool`: union/difference/intersection), Minkowski sum / No-Fit Polygon / inner-fit for nesting (`NoFitPolygon`), perpendicular edge-visibility regions (`perpVisibility` / `edgeOutwardVisibility`)
 
 **3D:** convex hull (incremental), mesh volume/surface area/centroid, Laplacian smoothing
 
@@ -235,10 +235,13 @@ The **hidden-line** render mode draws **sharp (feature) edges only** — built w
 faces exceeds `style.edgeAngle` (default **30°**). Coplanar tessellation edges —
 a quad's diagonal split, or the tiling seams across a flat wall — drop out,
 leaving a clean technical-drawing look. Lower the angle to reveal gentler creases
-on curved surfaces; raise it to show only the hardest edges:
+on curved surfaces; raise it to show only the hardest edges. Lines draw in a
+neutral gray unless the object sets `style.edgeColor`, which keeps its identity
+color readable in the line drawing:
 
 ```ts
-scene.addMesh(building, { edgeAngle: 20 });   // a touch more detail
+scene.addMesh(building, { edgeAngle: 20 });                      // a touch more detail
+scene.addMesh(flat, { color: "#e0a14f", edgeColor: "#e0a14f" }); // colored edges
 ```
 
 Note this draws creases, not view-dependent silhouettes — a smooth sphere has no
@@ -360,7 +363,7 @@ Or use IDE autocomplete on the import line — every export is typed and has JSD
 - **Math + primitives**: `Vec2`, `Vec3`, `Vec4`, `Mat4`, `MathUtils`, `Ray`, `Plane`, `Triangle`, `AABB`, `Sphere`, `Polygon2D`, `Intersections`.
 - **Meshes**: `Mesh` / `ConnectedMesh` (adjacency), `FlatMesh` / `RenderMesh` (typed arrays), `MeshFactory` / `MeshGen` (primitives + extrude + revolve + loft + subdivide), `FlatMeshGen`, `MeshAnalysis`.
 - **Curves + surfaces**: `LineCurve`, `ArcCurve`, `HelixCurve`, `NurbsCurve`, `CubicBezierCurve`, `NurbsSurface`.
-- **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
+- **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `PolygonBool` (boolean ops with holes), `NoFitPolygon` (Minkowski / NFP / inner-fit for nesting), `perpVisibility` (collimated edge-visibility polygons), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
 - **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
 - **IO**: `ObjFile`, `DxfExporter`, `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).

@@ -841,10 +841,14 @@ export class ThreeRenderer {
       group.add(new THREE.Mesh(geo, wireMat));
 
     } else if (mode === "hiddenline") {
-      // Pass 1: solid in background color for depth occlusion
+      // Pass 1: solid in background color for depth occlusion. toneMapped:false
+      // on both passes — the background clear color is never tone-mapped, so in
+      // Studio lighting (ACES) a tone-mapped fill would read as a visible gray
+      // silhouette, and edge colors would shift from their set edgeColor.
       const occlusionMat = new THREE.MeshBasicMaterial({
         color: this.config.backgroundColor,
         side,
+        toneMapped: false,
         polygonOffset: true,
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1,
@@ -856,7 +860,7 @@ export class ThreeRenderer {
       // seams (quad diagonals, flat-wall tiling) drop out — a clean line drawing.
       const edgeAngle = s.edgeAngle ?? 30; // degrees
       const wireGeo = new THREE.EdgesGeometry(geo, edgeAngle);
-      const wireMat = new THREE.LineBasicMaterial({ color: 0xb0b0b0 });
+      const wireMat = new THREE.LineBasicMaterial({ color: s.edgeColor ?? 0xb0b0b0, toneMapped: false });
       group.add(new THREE.LineSegments(wireGeo, wireMat));
 
     } else {
@@ -1372,11 +1376,20 @@ export class ThreeRenderer {
       // Copy current perspective camera state to ortho
       this._orthoCam.position.copy(this.camera.position);
       this._orthoCam.quaternion.copy(this.camera.quaternion);
+      this._orthoCam.zoom = 1; // fresh session — the frustum comes from the view distance
       this._syncOrthoCamFrustum();
     } else if (!this._isOrtho && wasOrtho) {
       // Sync back to persp position (OrbitControls already tracks target)
       this.camera.position.copy(this._orthoCam.position);
       this.camera.quaternion.copy(this._orthoCam.quaternion);
+      // Ortho wheel-zoom scales _orthoCam.zoom (the position stays put) — fold
+      // it into the perspective distance so the framing carries over.
+      const zoom = this._orthoCam.zoom;
+      if (zoom !== 1 && this.controls) {
+        const t = this.controls.target;
+        this.camera.position.sub(t).divideScalar(zoom).add(t);
+        this._orthoCam.zoom = 1;
+      }
     }
     // Swap OrbitControls to the active camera
     if (this.controls) {
