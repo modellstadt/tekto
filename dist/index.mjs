@@ -1766,6 +1766,96 @@ var NoFitPolygon = {
   }
 };
 
+// src/core/geometry/PerpVisibility.ts
+function clipSlabY(px, py, qx, qy, top) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = qx - px;
+  const dy = qy - py;
+  const clip = (p, q) => {
+    if (Math.abs(p) < 1e-12) return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  if (!clip(-dy, py)) return null;
+  if (!clip(dy, top - py)) return null;
+  if (t1 < t0) return null;
+  return [px + t0 * dx, py + t0 * dy, px + t1 * dx, py + t1 * dy];
+}
+function perpVisibility(a, b, obstacles, maxDist) {
+  const L = Math.hypot(b.x - a.x, b.y - a.y);
+  if (L < 1e-9 || maxDist <= 0) return [];
+  const ux = (b.x - a.x) / L;
+  const uy = (b.y - a.y) / L;
+  const nx = -uy;
+  const ny = ux;
+  const fwdX = (p) => (p.x - a.x) * ux + (p.y - a.y) * uy;
+  const fwdY = (p) => (p.x - a.x) * nx + (p.y - a.y) * ny;
+  const back = (x, y) => new Vec2(a.x + x * ux + y * nx, a.y + x * uy + y * ny);
+  const shadows = [];
+  for (const [p, q] of obstacles) {
+    const clip = clipSlabY(fwdX(p), fwdY(p), fwdX(q), fwdY(q), maxDist);
+    if (!clip) continue;
+    const [px, py, qx, qy] = clip;
+    if (Math.abs(px - qx) < 1e-9) continue;
+    shadows.push(PolygonBool.fromRing([
+      new Vec2(px, py),
+      new Vec2(qx, qy),
+      new Vec2(qx, maxDist),
+      new Vec2(px, maxDist)
+    ]));
+  }
+  const base = PolygonBool.fromRing([
+    new Vec2(0, 0),
+    new Vec2(L, 0),
+    new Vec2(L, maxDist),
+    new Vec2(0, maxDist)
+  ]);
+  let lit;
+  try {
+    lit = shadows.length ? PolygonBool.difference(base, PolygonBool.union(...shadows)) : base;
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const poly of lit) {
+    for (const ring of poly) {
+      if (ring.length >= 3) out.push(ring.map((v) => back(v.x, v.y)));
+    }
+  }
+  return out;
+}
+function perpVisibilityOfPolys(a, b, polygons, maxDist, skipEdge) {
+  const same = (u, v) => Math.abs(u.x - v.x) < 1e-6 && Math.abs(u.y - v.y) < 1e-6;
+  const segs = [];
+  for (const ring of polygons) {
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i];
+      const q = ring[(i + 1) % ring.length];
+      if (skipEdge && (same(p, skipEdge[0]) && same(q, skipEdge[1]) || same(p, skipEdge[1]) && same(q, skipEdge[0]))) {
+        continue;
+      }
+      segs.push([p, q]);
+    }
+  }
+  return perpVisibility(a, b, segs, maxDist);
+}
+function edgeOutwardVisibility(ring, i, obstacles, maxDist) {
+  const p = ring[i];
+  const q = ring[(i + 1) % ring.length];
+  const ccw = Polygon2D.signedArea(ring) > 0;
+  const a = ccw ? q : p;
+  const b = ccw ? p : q;
+  return perpVisibilityOfPolys(a, b, obstacles, maxDist, [p, q]);
+}
+
 // src/core/geometry/mesh/MeshAnalysis.ts
 var MeshAnalysis = {
   /** Compute mesh volume (for closed, consistent-winding triangle meshes) */
@@ -17981,7 +18071,7 @@ var ThreeRenderer = class {
         if (s.label) {
           const group = new THREE3.Group();
           group.add(mesh);
-          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color);
+          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color, s.labelScale ?? 1);
           if (obj.position) sprite.position.set(obj.position.x, obj.position.y, obj.position.z);
           if (this.isZUp) sprite.position.z += s.pointSize + 0.15;
           else sprite.position.y += s.pointSize + 0.15;
@@ -18231,7 +18321,7 @@ var ThreeRenderer = class {
     return group;
   }
   // ── Text Sprites ──
-  createTextSprite(text, color) {
+  createTextSprite(text, color, labelScale = 1) {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     const fontSize = 48;
@@ -18250,7 +18340,7 @@ var ThreeRenderer = class {
     tex.minFilter = THREE3.LinearFilter;
     const mat = new THREE3.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sprite = new THREE3.Sprite(mat);
-    const scale = 5e-3;
+    const scale = 5e-3 * labelScale;
     sprite.scale.set(w * scale, h * scale, 1);
     return sprite;
   }
@@ -19945,6 +20035,10 @@ var SketchInstance = class {
         self.scene.setStyle(obj.id, { label: l });
         return handle;
       },
+      labelScale(s) {
+        self.scene.setStyle(obj.id, { labelScale: s });
+        return handle;
+      },
       doubleSided(d = true) {
         self.scene.setStyle(obj.id, { doubleSided: d });
         return handle;
@@ -20070,6 +20164,10 @@ var SketchInstance = class {
         self.scene.setStyle(obj.id, { label: l });
         return handle;
       },
+      labelScale(s) {
+        self.scene.setStyle(obj.id, { labelScale: s });
+        return handle;
+      },
       doubleSided(d = true) {
         self.scene.setStyle(obj.id, { doubleSided: d });
         return handle;
@@ -20147,6 +20245,10 @@ var SketchInstance = class {
       },
       label(l) {
         self.scene.setStyle(obj.id, { label: l });
+        return handle;
+      },
+      labelScale(s) {
+        self.scene.setStyle(obj.id, { labelScale: s });
         return handle;
       },
       layer(name) {
@@ -21428,6 +21530,7 @@ export {
   createLayout,
   createParams,
   createRandom,
+  edgeOutwardVisibility,
   extractVisiblePolylines,
   hiddenLineIdBuffer,
   holzrahmenbauLayers,
@@ -21436,6 +21539,8 @@ export {
   joistDirectionFromSupports,
   lineClipPolygon,
   noise,
+  perpVisibility,
+  perpVisibilityOfPolys,
   polygonFromVertices,
   polygonIntersection,
   polylinesToSVG,
