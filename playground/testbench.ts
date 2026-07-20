@@ -92,6 +92,7 @@ const GROUPS: PageGroup[] = [
   { name: "BIM", pages: [
     { slug: "timber",   label: "Timber + IFC", load: () => import("./pages/timber") },
     { slug: "dxf-test", label: "DXF Test",     load: () => import("./pages/dxf-test") },
+    { slug: "dxf-3d",   label: "DXF 3D Writer", load: () => import("./pages/dxf-3d") },
   ]},
 ];
 

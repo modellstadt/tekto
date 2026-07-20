@@ -366,7 +366,7 @@ Or use IDE autocomplete on the import line — every export is typed and has JSD
 - **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `PolygonBool` (boolean ops with holes), `NoFitPolygon` (Minkowski / NFP / inner-fit for nesting), `perpVisibility` (collimated edge-visibility polygons), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
 - **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
-- **IO**: `ObjFile`, `DxfExporter`, `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
+- **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — both emit AutoCAD-safe R12), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
 - **Sketch API**: `sketch`, `Lab` (the API surface you'll mostly use).
 
 For curated category breakdowns see **[Generators](#generators)**, **[Algorithms](#algorithms)**, and **[BIM walls, slabs, and IFC export](#bim-walls-slabs-and-ifc-export)** above. For a hands-on walk-through, open the playground (`npm run playground` in the tekto repo) and click any demo — the page's `.ts` file under [playground/pages/](playground/pages/) is exactly the kind of code you'd write to use the same API.

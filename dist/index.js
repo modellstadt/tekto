@@ -193,7 +193,8 @@ __export(index_exports, {
   segmentSegmentClosest: () => segmentSegmentClosest,
   setClipSnap: () => setClipSnap,
   sketch: () => sketch,
-  sketch2d: () => sketch2d
+  sketch2d: () => sketch2d,
+  writeDxf3D: () => writeDxf3D
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -15321,25 +15322,59 @@ function _hiddenLineDebug(tris, edges, view, triNormals, _depthBias) {
   }
   return result;
 }
-function _writeDxf(segs, layers, scale, prec) {
-  const f2 = (n) => (n * scale).toFixed(prec);
-  const lines = [];
-  if (layers.length > 0) {
-    lines.push("0", "SECTION", "2", "TABLES");
-    lines.push("0", "TABLE", "2", "LAYER", "70", String(layers.length));
-    for (const l of layers) {
-      lines.push("0", "LAYER", "2", l.name, "70", "0", "62", String(l.color ?? 7), "6", l.lineType ?? "CONTINUOUS");
+function _sanLayer(s) {
+  return s.trim().replace(/[^A-Za-z0-9$_-]/g, "_").slice(0, 31) || "LAYER0";
+}
+function _real(n) {
+  if (!Number.isFinite(n) || Math.abs(n) < 1e-9) return "0";
+  let s = n.toFixed(9);
+  if (s.indexOf(".") >= 0) s = s.replace(/0+$/, "").replace(/\.$/, "");
+  return s;
+}
+function _resolveLayers(defs, used) {
+  const colorOf = /* @__PURE__ */ new Map();
+  const names = [];
+  for (const d of defs) {
+    const n = _sanLayer(d.name);
+    if (!colorOf.has(n)) {
+      names.push(n);
+      colorOf.set(n, d.color ?? 7);
     }
-    lines.push("0", "ENDTAB");
-    lines.push("0", "ENDSEC");
   }
+  for (const raw of used) {
+    const n = _sanLayer(raw);
+    if (!colorOf.has(n)) {
+      names.push(n);
+      colorOf.set(n, 7);
+    }
+  }
+  return { names, colorOf };
+}
+function _writeR12Prologue(lines, names, colorOf) {
+  lines.push("0", "SECTION", "2", "HEADER", "9", "$ACADVER", "1", "AC1009", "0", "ENDSEC");
+  lines.push("0", "SECTION", "2", "TABLES");
+  lines.push("0", "TABLE", "2", "LTYPE", "70", "1");
+  lines.push("0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0");
+  lines.push("0", "ENDTAB");
+  lines.push("0", "TABLE", "2", "LAYER", "70", String(names.length));
+  for (const name of names) lines.push("0", "LAYER", "2", name, "70", "0", "62", String(colorOf.get(name) ?? 7), "6", "CONTINUOUS");
+  lines.push("0", "ENDTAB", "0", "ENDSEC");
+  lines.push("0", "SECTION", "2", "BLOCKS", "0", "ENDSEC");
+}
+function _writeDxf(segs, layers, scale, prec) {
+  const f2 = (n) => Number.isFinite(n) ? (n * scale).toFixed(prec) : "0";
+  const lines = [];
+  const used = /* @__PURE__ */ new Set();
+  for (const s of segs) used.add(s.layer);
+  const { names, colorOf } = _resolveLayers(layers, used);
+  _writeR12Prologue(lines, names, colorOf);
   lines.push("0", "SECTION", "2", "ENTITIES");
   for (const s of segs) {
     lines.push(
       "0",
       "LINE",
       "8",
-      s.layer,
+      _sanLayer(s.layer),
       "10",
       f2(s.u0),
       "20",
@@ -15353,6 +15388,91 @@ function _writeDxf(segs, layers, scale, prec) {
       "31",
       "0.0"
     );
+  }
+  lines.push("0", "ENDSEC", "0", "EOF");
+  return lines.join("\r\n") + "\r\n";
+}
+function writeDxf3D(content) {
+  const polylines = content.polylines ?? [];
+  const lineSegs = content.lines ?? [];
+  const points = content.points ?? [];
+  const arcs = content.arcs ?? [];
+  const circles = content.circles ?? [];
+  const lines = [];
+  const okR = (r) => Number.isFinite(r) && r > 1e-9;
+  const used = /* @__PURE__ */ new Set();
+  for (const p of polylines) if (p.points.length >= 2) used.add(p.layer);
+  for (const s of lineSegs) used.add(s.layer);
+  for (const a of arcs) if (okR(a.radius)) used.add(a.layer);
+  for (const c of circles) if (okR(c.radius)) used.add(c.layer);
+  for (const pt of points) used.add(pt.layer);
+  const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
+  _writeR12Prologue(lines, names, colorOf);
+  const emitCircle = (layer, c, r) => lines.push("0", "CIRCLE", "8", _sanLayer(layer), "10", _real(c.x), "20", _real(c.y), "30", _real(c.z), "40", _real(r));
+  lines.push("0", "SECTION", "2", "ENTITIES");
+  for (const poly of polylines) {
+    if (poly.points.length < 2) continue;
+    const layer = _sanLayer(poly.layer);
+    lines.push("0", "POLYLINE", "8", layer, "66", "1", "70", poly.closed ? "9" : "8");
+    lines.push("10", "0", "20", "0", "30", "0");
+    for (const p of poly.points) {
+      lines.push("0", "VERTEX", "8", layer, "10", _real(p.x), "20", _real(p.y), "30", _real(p.z), "70", "32");
+    }
+    lines.push("0", "SEQEND", "8", layer);
+  }
+  for (const s of lineSegs) {
+    lines.push(
+      "0",
+      "LINE",
+      "8",
+      _sanLayer(s.layer),
+      "10",
+      _real(s.start.x),
+      "20",
+      _real(s.start.y),
+      "30",
+      _real(s.start.z),
+      "11",
+      _real(s.end.x),
+      "21",
+      _real(s.end.y),
+      "31",
+      _real(s.end.z)
+    );
+  }
+  for (const c of circles) if (okR(c.radius)) emitCircle(c.layer, c.center, c.radius);
+  for (const a of arcs) {
+    if (!okR(a.radius)) continue;
+    if (Math.abs(a.endDeg - a.startDeg) >= 360 - 1e-6) {
+      emitCircle(a.layer, a.center, a.radius);
+      continue;
+    }
+    const norm = (d) => {
+      let x = d % 360;
+      if (x < 0) x += 360;
+      return x;
+    };
+    lines.push(
+      "0",
+      "ARC",
+      "8",
+      _sanLayer(a.layer),
+      "10",
+      _real(a.center.x),
+      "20",
+      _real(a.center.y),
+      "30",
+      _real(a.center.z),
+      "40",
+      _real(a.radius),
+      "50",
+      _real(norm(a.startDeg)),
+      "51",
+      _real(norm(a.endDeg))
+    );
+  }
+  for (const pt of points) {
+    lines.push("0", "POINT", "8", _sanLayer(pt.layer), "10", _real(pt.position.x), "20", _real(pt.position.y), "30", _real(pt.position.z));
   }
   lines.push("0", "ENDSEC", "0", "EOF");
   return lines.join("\r\n") + "\r\n";
@@ -23556,5 +23676,6 @@ var Sketch2DInstance = class {
   segmentSegmentClosest,
   setClipSnap,
   sketch,
-  sketch2d
+  sketch2d,
+  writeDxf3D
 });

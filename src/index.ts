@@ -102,8 +102,8 @@ export type { RigidBodyConfig, SpringConfig } from "./core/physics/RigidBody2D";
 // IO
 export { ObjFile } from "./io";
 export type { MeshData as ObjMeshData } from "./io";
-export { DxfExporter, processWorkerRequest } from "./io/DxfExporter";
-export type { DxfView, DxfLayerDef, DxfMeshOptions, DxfEdgeOptions, DxfWriteOptions, DxfSegment, DxfWorkerRequest } from "./io/DxfExporter";
+export { DxfExporter, processWorkerRequest, writeDxf3D } from "./io/DxfExporter";
+export type { DxfView, DxfLayerDef, DxfMeshOptions, DxfEdgeOptions, DxfWriteOptions, DxfSegment, DxfWorkerRequest, Dxf3DContent, Dxf3DPolyline, Dxf3DLine, Dxf3DPoint, Dxf3DArc, Dxf3DCircle } from "./io/DxfExporter";
 export { hiddenLineIdBuffer } from "./io/IdBufferHiddenLine";
 export { extractVisiblePolylines, polylinesToSVG } from "./io/PolylineVisibility";
 export type {
