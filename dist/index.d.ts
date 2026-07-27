@@ -1,5 +1,5 @@
-import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode } from './Params-BaZAHxGQ.js';
-export { B as BoolParam, e as ButtonParam, f as ColorParam, g as FlatMeshJSON, h as FloatParam, I as IntParam, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, P as ParamDef, n as ParamFolder, o as ParamLayout, p as ParamSchema, q as ParamStore, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-BaZAHxGQ.js';
+import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, P as ParamStore, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode, e as ParamSchema } from './Params-BOo9_1p_.js';
+export { B as BoolParam, f as ButtonParam, g as ColorParam, h as FlatMeshJSON, i as FloatParam, I as IntParam, j as MeshEdge, k as MeshFace, l as MeshJSON, m as MeshNode, O as ObjFile, n as ObjMeshData, o as ParamDef, p as ParamFolder, q as ParamLayout, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-BOo9_1p_.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
@@ -3921,6 +3921,147 @@ interface JoistedSlabOptions {
 declare function JoistedSlab(options?: JoistedSlabOptions): SlabConstruction;
 
 /**
+ * Tekto GUI theme — the single source of panel chrome colors.
+ *
+ * Every tekto panel (sketch, sketch2d, appShell, LayerPanel, ControlPanel)
+ * derives its colors from here instead of re-declaring hex literals inline.
+ *
+ * Chrome is WHITE on the dark background by design: white slider accents and
+ * value labels, white toggle tracks, plain white titles — no colored accents
+ * in panel chrome. (Content colors — e.g. a colorPicker's default value — are
+ * the sketch's business, not the theme's.)
+ */
+interface Theme {
+    isDark: boolean;
+    /** App background behind the viewport */
+    bg: string;
+    /** Panel / header background */
+    panelBg: string;
+    /** Elevated surface (dropdowns, popovers) */
+    popupBg: string;
+    /** Hairline borders between panel sections */
+    border: string;
+    /** Borders on individual controls (inputs, selects, buttons) */
+    controlBorder: string;
+    /** Primary text */
+    text: string;
+    /** Secondary text (control labels) */
+    textDim: string;
+    /** Tertiary text (group headers, disabled) */
+    textFaint: string;
+    /** Chrome accent — white on dark, near-black on light */
+    accent: string;
+    /** Hover wash for rows / buttons */
+    hoverBg: string;
+    /** Input field background (selects, text inputs) */
+    fieldBg: string;
+    /** Panel font stack */
+    font: string;
+}
+declare function getTheme(mode?: "dark" | "light"): Theme;
+
+/**
+ * ControlPanel — the shared panel/control renderer for all tekto GUIs.
+ *
+ * One implementation of sliders, toggles, selects, color pickers, text
+ * inputs, buttons, menus, tabs, and accordion groups — consumed by
+ * `sketch()` (3D), `sketch2d()` (2D canvas), and `appShell()` (persistent
+ * apps). Values live in a {@link ParamStore}; the panel renders its
+ * definitions and keeps the DOM in sync with the store in both directions.
+ *
+ * Pure DOM, no framework dependency. Styling comes from {@link Theme}
+ * (white-on-dark chrome — see CLAUDE.md "GUI defaults").
+ *
+ * Lifecycle: call `render(items, ...)` whenever the CONTROL STRUCTURE
+ * changes (params added/removed). Value-only changes never need a re-render
+ * — the store subscription updates the live controls in place, which is what
+ * preserves slider focus during a drag.
+ */
+
+/** One control to render: which store key, and where it goes in the panel. */
+interface ControlItem {
+    key: string;
+    /** Accordion section (default "Parameters") */
+    group?: string;
+    /** Tab name — panel shows a tab bar when 2+ distinct tabs exist */
+    tab?: string;
+    /** Menu name — control renders inside a top menu dropdown instead of a section (toggles only) */
+    menu?: string;
+    /** Per-control accent override (slider track thumb color) */
+    accent?: string;
+}
+/**
+ * An action button. Buttons are looked up at CLICK time via `getButtons`,
+ * because immediate-mode owners (sketch) recreate the action closures on
+ * every re-run while the panel DOM persists — capturing `action` directly
+ * would call a stale closure.
+ */
+interface PanelButton {
+    label: string;
+    action: () => void;
+    group?: string;
+    tab?: string;
+    menu?: string;
+}
+/** A caller-owned element hosted in the panel (e.g. a LayerPanel tree). */
+interface CustomRow {
+    key: string;
+    el: HTMLElement;
+    group?: string;
+    tab?: string;
+    /** Bleed past the section's horizontal padding (full-width components) */
+    fullBleed?: boolean;
+}
+/** A tab whose content the owner renders itself (e.g. sketch's Info tab). */
+interface ExtraTab {
+    name: string;
+    render: (container: HTMLElement) => void;
+}
+interface ControlPanelConfig {
+    store: ParamStore;
+    theme?: Theme;
+    /** Current buttons — re-read at render AND click time (see PanelButton). */
+    getButtons?: () => PanelButton[];
+    /** Slider drag ended / discrete control committed a value. */
+    onCommit?: (key: string) => void;
+    /** A button or menu action ran (owners typically re-run the sketch). */
+    onAction?: () => void;
+}
+declare class ControlPanel {
+    /** Mount this element in your panel container. */
+    readonly el: HTMLElement;
+    /**
+     * Persistent footer container, re-attached below the sections on every
+     * render. Owners park their info/log nodes here and update them in place.
+     */
+    readonly footer: HTMLElement;
+    private store;
+    private theme;
+    private cfg;
+    private collapsedGroups;
+    private activeTab;
+    private activeMenu;
+    private items;
+    private customRows;
+    private extraTabs;
+    private updaters;
+    private unsubStore;
+    private docClick;
+    constructor(cfg: ControlPanelConfig);
+    dispose(): void;
+    /** Rebuild the panel DOM for a new control structure. */
+    render(items: ControlItem[], customRows?: CustomRow[], extraTabs?: ExtraTab[]): void;
+    /** Push a value into a live control without going through the store. */
+    applyValue(key: string, value: any): void;
+    private closeMenus;
+    private buildMenuBar;
+    private buildTabBar;
+    private buildSection;
+    private buildButtonRow;
+    private buildControl;
+}
+
+/**
  * Tekto Three.js Renderer
  *
  * Converts Scene objects → Three.js scene graph.
@@ -4013,6 +4154,11 @@ declare class ThreeRenderer {
      * Same option surface — caller doesn't have to care which one comes back.
      */
     private _makeMaterial;
+    /** Cached horizontal-stripe textures for print-layer shading, keyed by layer height (m). One texture
+     *  period = one printed bead: bright rounded crown, dark groove at the layer boundary. The pipe UVs
+     *  carry V in metres, so repeat.y = 1/layerH gives physically-true layer spacing. */
+    private _stripeTexCache;
+    private _stripeTexture;
     /**
      * Set the Studio-mode default PBR material applied to meshes that don't
      * carry their own metalness/roughness. Takes effect on the next material
@@ -4167,6 +4313,14 @@ declare class ThreeRenderer {
      * and restore (0,0,1) for side/elevation views.
      */
     setCameraUp(x: number, y: number, z: number): void;
+    /** The WebGL canvas element (for attaching input listeners / overlays). */
+    get canvasEl(): HTMLCanvasElement;
+    /** Set the viewport background color. */
+    setBackground(color: number | string): void;
+    /** Move the camera without changing its target. */
+    setCameraPosition(x: number, y: number, z: number): void;
+    /** Aim the camera (and orbit-controls target) at a point. */
+    lookAt(x: number, y: number, z: number): void;
     /**
      * Fit all visible scene objects inside the current view.
      * Preserves the camera direction; only adjusts distance and target.
@@ -4352,11 +4506,11 @@ interface ImportRegistration {
     handler: (file: File) => void | Promise<void>;
 }
 /** A reactive value — reads .value, triggers sketch re-run on change */
-interface Reactive$1<T> {
+interface Reactive<T> {
     readonly value: T;
 }
 /** Options for slider */
-interface SliderOpts$1 {
+interface SliderOpts {
     step?: number;
     label?: string;
     group?: string;
@@ -4365,7 +4519,7 @@ interface SliderOpts$1 {
     color?: string;
 }
 /** Options for select */
-interface SelectOpts$1 {
+interface SelectOpts {
     label?: string;
     group?: string;
     tab?: string;
@@ -4391,6 +4545,9 @@ interface MeshHandle {
     noExport(v?: boolean): MeshHandle;
     /** Assign a semantic layer / class name (used by exports, filtering, debug). */
     layer(name: string): MeshHandle;
+    /** Print-layer striping: repeat a layer-line stripe every `heightM` metres along the tube (pipe-UV
+     *  meshes only) — the stacked-bead look of 3D-printed metal. Pass undefined to clear. */
+    printLayers(heightM: number | undefined): MeshHandle;
     translate(x: number, y: number, z: number): MeshHandle;
     scale(s: number): MeshHandle;
     rotateX(rad: number): MeshHandle;
@@ -4433,6 +4590,16 @@ interface LineHandle {
     /** Enable/disable click-picking for this line (default true). */
     pickable(p?: boolean): LineHandle;
 }
+/** A handle to a filled 2D shape in the scene (polygon, circle) */
+interface ShapeHandle {
+    readonly id: string;
+    color(c: string): ShapeHandle;
+    opacity(o: number): ShapeHandle;
+    visible(v?: boolean): ShapeHandle;
+    label(l: string): ShapeHandle;
+    /** Assign a semantic layer / class name (used by exports, filtering, debug). */
+    layer(name: string): ShapeHandle;
+}
 /** Shape mode for beginShape/endShape */
 type ShapeMode = "triangles" | "lines" | "line_strip" | "quads";
 /** The Lab context passed to every sketch function */
@@ -4467,7 +4634,7 @@ interface HandleSetOpts<T> {
     size?: number;
 }
 interface Lab {
-    slider(label: string, min: number, max: number, defaultValue: number, opts?: SliderOpts$1): Reactive$1<number>;
+    slider(label: string, min: number, max: number, defaultValue: number, opts?: SliderOpts): Reactive<number>;
     /**
      * Programmatically set an existing slider's value — updates both the value the
      * sketch reads and the on-screen slider control. Identify the slider by its
@@ -4480,13 +4647,13 @@ interface Lab {
         group?: string;
         tab?: string;
         menu?: string;
-    }): Reactive$1<boolean>;
-    select<T extends string>(label: string, options: T[], defaultValue?: T, opts?: SelectOpts$1): Reactive$1<T>;
+    }): Reactive<boolean>;
+    select<T extends string>(label: string, options: readonly T[], defaultValue?: T, opts?: SelectOpts): Reactive<T>;
     colorPicker(label: string, defaultValue?: string, opts?: {
         group?: string;
         tab?: string;
         menu?: string;
-    }): Reactive$1<string>;
+    }): Reactive<string>;
     /**
      * Render a scrollable layer-tree panel — checkboxes, collapse/expand, and
      * optional per-node color pickers. Returns a reactive `LayerMap`
@@ -4498,13 +4665,21 @@ interface Lab {
     layerTree(label: string, nodes: LayerNode[], opts?: {
         group?: string;
         tab?: string;
-    }): Reactive$1<LayerMap>;
+    }): Reactive<LayerMap>;
     button(label: string, action: () => void, opts?: {
         group?: string;
         tab?: string;
         menu?: string;
     }): void;
     separator(): void;
+    /**
+     * Run `fn` on the FIRST sketch run only — skipped on all re-runs. Use for
+     * one-shot setup (loading a file, attaching custom listeners to
+     * `lab.viewport`) without hand-rolled guard flags. Calls are matched by
+     * declaration order, so keep `once` calls unconditional at the top level
+     * of the sketch body.
+     */
+    once(fn: () => void): void;
     /**
      * Register an "Export ▾" item for the host shell (testbench / app)
      * to surface in its top-bar Export menu. The handler returns a `Blob`
@@ -4560,8 +4735,8 @@ interface Lab {
      * tube radius).
      */
     polyline(points: Vec3[]): LineHandle;
-    polygon(vertices: Vec3[], style?: Partial<VisualStyle>): string;
-    circle(cx: number, cy: number, cz: number, radius: number): string;
+    polygon(vertices: Vec3[], style?: Partial<VisualStyle>): ShapeHandle;
+    circle(cx: number, cy: number, cz: number, radius: number): ShapeHandle;
     algo: typeof Algo;
     MeshGen: typeof MeshFactory;
     clear(): void;
@@ -4695,7 +4870,7 @@ interface Lab {
         size?: number;
         constrain?: (x: number, y: number, z: number) => [number, number, number];
         plane?: "ground" | "screen";
-    }): Reactive$1<Vec3>;
+    }): Reactive<Vec3>;
     /**
      * Data-bound set of draggable handles. Declare it every run with your model
      * items; each gets a handle keyed by `key`. The model is the source of truth —
@@ -4751,7 +4926,11 @@ declare class SketchInstance {
     private container;
     private scene;
     private renderer;
-    private params;
+    private store;
+    private panel;
+    private items;
+    private layerTrees;
+    private theme;
     private buttons;
     exports: Map<string, ExportRegistration>;
     imports: Map<string, ImportRegistration>;
@@ -4764,9 +4943,11 @@ declare class SketchInstance {
     private startTime;
     private lastTime;
     private disposed;
-    private collapsedGroups;
-    private activeTab;
-    private activeMenu;
+    private _running;
+    private _squelch;
+    private _hasTabs;
+    private _onceRan;
+    private _onceSeq;
     private rng;
     private _mouseX;
     private _mouseY;
@@ -4798,8 +4979,12 @@ declare class SketchInstance {
     private logEl;
     private separatorCount;
     private _prevParamFingerprint;
+    /** Log container inside the "Info" tab (tab mode only; set during render) */
     private _panelLogEl;
+    /** Info-text section in the panel footer */
     private _panelInfoEl;
+    /** Log section in the panel footer (non-tab mode) */
+    private _panelFooterLogEl;
     private _lastRerunTime;
     private _rerunTimer;
     constructor(fn: SketchFn, config: SketchConfig);
@@ -4816,25 +5001,29 @@ declare class SketchInstance {
         size?: number;
         constrain?: (x: number, y: number, z: number) => [number, number, number];
         plane?: "ground" | "screen";
-    }): Reactive$1<Vec3>;
+    }): Reactive<Vec3>;
     setHandleSelected(name: string | null): void;
     get selectedHandle(): string | null;
     get activeDragHandle(): string | null;
     /** Programmatically set a slider's value — updates the stored param AND its live DOM control. */
     setSlider(label: string, value: number, group?: string): void;
     private runSketch;
+    /** Feed the current control structure to the shared ControlPanel. */
+    private panelRender;
     private buildLab;
     private addMeshHandle;
     private addFlatMeshHandle;
     private addPointHandle;
     private addLineHandle;
     private addPolylineHandle;
-    private rebuildPanel;
-    private renderParam;
+    private addShapeHandle;
     private updateLog;
     private startLoop;
     /** Throttled sketch re-run — at most once per 50ms so the browser stays responsive during slider drag. */
     private scheduleRerun;
+    /** Immediate re-run on control commit (slider drag-end, toggle, select) —
+     *  cancels any pending throttled re-run so the final value applies now. */
+    private commitRun;
     /** Force re-run the sketch */
     rerun(): void;
     /** Change the scene render mode (solid / wireframe / hiddenline). */
@@ -4908,6 +5097,76 @@ declare class SketchInstance {
 }
 
 /**
+ * Tekto App Shell — Level 2.
+ *
+ * Reusable harness for apps with a persistent GUI sidebar + 3D viewer.
+ * Unlike the Sketch API, the GUI panel is built ONCE and updated in-place,
+ * so animation loops never break checkbox / toggle interaction. This is the
+ * blessed path for "a real app": declarative params (ParamStore), the shared
+ * ControlPanel sidebar, a Scene + ThreeRenderer, and a top bar with the
+ * testbench's lighting / render-mode / camera / sun controls built in.
+ *
+ * (Promoted into the library from the app-shell.ts previously copy-pasted
+ * between consumer apps — see CLAUDE.md "The shell pattern".)
+ *
+ * Usage:
+ *
+ *   import { appShell } from "tekto";
+ *
+ *   const app = appShell({
+ *     title: "My App",
+ *     container: document.getElementById("app")!,
+ *     params: {
+ *       radius: { type: "float", min: 0.1, max: 5, default: 1, label: "Radius" },
+ *       show:   { type: "bool", default: true, label: "Show mesh" },
+ *       reset:  { type: "button", label: "Reset", action: () => { ... } },
+ *     },
+ *     camera: [10, 8, 10],
+ *     target: [0, 2, 0],
+ *   });
+ *
+ *   app.params.get("radius");                     // read a value
+ *   app.params.onChange((key, value) => rebuild()); // react to changes
+ *   app.onAnimate((dt) => { ... });               // per-frame callback
+ *   app.status("Layer 5 / 20\nSim: 3.2s");        // overlay text (no rebuild)
+ *   app.scene.addMesh(mesh);                      // geometry via the Scene
+ */
+
+interface AppShellConfig<S extends ParamSchema = ParamSchema> {
+    title?: string;
+    container: HTMLElement;
+    params: S;
+    /** Group params into named sections. Keys = group names, values = param key arrays. */
+    groups?: Record<string, string[]>;
+    camera?: [number, number, number];
+    target?: [number, number, number];
+    background?: number;
+    /** Camera up-axis. Default "z" (tekto Z-up convention). Use "y" for the Y-up built-in primitives. */
+    up?: "y" | "z";
+    theme?: "dark" | "light";
+    /** Panel width in pixels (default: 260) */
+    panelWidth?: number;
+    /** Renderer config overrides */
+    renderer?: Partial<ThreeRendererConfig>;
+    /** Top bar with Lighting / Render-mode / Camera / Sun controls. Default: true. */
+    topBar?: boolean;
+}
+interface AppShellInstance<S extends ParamSchema = ParamSchema> {
+    params: ParamStore<S>;
+    scene: Scene;
+    renderer: ThreeRenderer;
+    /** The sidebar renderer — call panel.render(...) to change the control structure at runtime. */
+    panel: ControlPanel;
+    /** Register an animation callback (called every frame with dt in seconds) */
+    onAnimate(fn: (dt: number, time: number) => void): void;
+    /** Update the status overlay text (cheap — just sets textContent) */
+    status(text: string): void;
+    /** Dispose everything */
+    dispose(): void;
+}
+declare function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppShellInstance<S>;
+
+/**
  * Tekto Sketch2D API
  *
  * Lightweight 2D canvas sketch — same panel/controls as Sketch,
@@ -4936,6 +5195,10 @@ declare class SketchInstance {
  *   Like Sketch, the function re-runs when any parameter changes.
  *   The draw callback receives a 2D context and canvas dimensions.
  *   Use lab.animate() for continuous rendering.
+ *
+ *   Params live in a ParamStore and the panel is rendered by the shared
+ *   ControlPanel (src/gui/) — the same system the 3D sketch API and
+ *   appShell use.
  */
 
 interface Sketch2DConfig {
@@ -4949,16 +5212,6 @@ interface Sketch2DConfig {
     panelWidth?: number;
     /** Dark or light theme */
     theme?: "dark" | "light";
-}
-interface Reactive<T> {
-    readonly value: T;
-}
-interface SliderOpts {
-    step?: number;
-    group?: string;
-}
-interface SelectOpts {
-    group?: string;
 }
 type DrawFn = (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
 type AnimateFn = (time: number, dt: number) => void;
@@ -4989,6 +5242,13 @@ interface Lab2D {
     draw(fn: DrawFn): void;
     /** Enable continuous animation. Callback runs each frame. */
     animate(fn: AnimateFn): void;
+    /**
+     * Run `fn` on the FIRST sketch run only — skipped on re-runs. Use for
+     * one-shot setup (loading data, attaching listeners to lab.canvas)
+     * without guard flags. Calls are matched by declaration order, so keep
+     * `once` calls unconditional at the top level of the sketch body.
+     */
+    once(fn: () => void): void;
     /** Get the raw canvas element (for advanced use like multiple canvases) */
     readonly canvas: HTMLCanvasElement;
     /** Get the 2D rendering context */
@@ -5047,7 +5307,9 @@ declare class Sketch2DInstance {
     private ctx;
     private panelEl;
     private logEl;
-    private params;
+    private store;
+    private panel;
+    private items;
     private buttons;
     private logs;
     private drawFn;
@@ -5057,16 +5319,19 @@ declare class Sketch2DInstance {
     private pointerUpFns;
     private continuous;
     private _prevFingerprint;
+    private _baseLogCount;
+    private _onceRan;
+    private _onceSeq;
     private rng;
     private disposed;
     private startTime;
     private lastTime;
     private rerunTimer;
+    private _running;
     private _mouseX;
     private _mouseY;
     private _mousePressed;
     constructor(fn: Sketch2DFn, config: Sketch2DConfig);
-    private get isDark();
     private buildDOM;
     private resizeCanvas;
     private wireInput;
@@ -5074,11 +5339,10 @@ declare class Sketch2DInstance {
     private redraw;
     private scheduleRerun;
     private buildLab;
-    private rebuildPanel;
     private updateLog;
     private startLoop;
     /** Tear down the sketch */
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, IfcFile, type IfcParseOptions, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type PropertyMap, Ray, type Reactive$1 as Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts$1 as SelectOpts, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts$1 as SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, edgeOutwardVisibility, extractVisiblePolylines, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, noise, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d, writeDxf3D };
+export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, IfcFile, type IfcParseOptions, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, edgeOutwardVisibility, extractVisiblePolylines, getTheme, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, noise, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d, writeDxf3D };

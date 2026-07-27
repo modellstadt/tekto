@@ -39,6 +39,7 @@ __export(index_exports, {
   Capsule2D: () => Capsule2D,
   CltConstruction: () => CltConstruction,
   ConnectedMesh: () => ConnectedMesh,
+  ControlPanel: () => ControlPanel,
   CubicBezierCurve: () => CubicBezierCurve,
   Curvature: () => Curvature,
   CurveUtils: () => CurveUtils,
@@ -162,6 +163,7 @@ __export(index_exports, {
   WallOpening: () => WallOpening,
   WallSystem: () => WallSystem,
   WallType: () => WallType,
+  appShell: () => appShell,
   boundingWalls: () => boundingWalls,
   buildCutList: () => buildCutList,
   chooseJoistDirection: () => chooseJoistDirection,
@@ -174,6 +176,7 @@ __export(index_exports, {
   createRandom: () => createRandom,
   edgeOutwardVisibility: () => edgeOutwardVisibility,
   extractVisiblePolylines: () => extractVisiblePolylines,
+  getTheme: () => getTheme,
   hiddenLineIdBuffer: () => hiddenLineIdBuffer,
   holzrahmenbauLayers: () => holzrahmenbauLayers,
   joistDirectionFromBounds: () => joistDirectionFromBounds,
@@ -19565,6 +19568,32 @@ var ParamStore = class {
     const kl = this.keyListeners.get(key);
     if (kl) for (const l of kl) l(value);
   }
+  /**
+   * Dynamically add (or refresh) a parameter definition. Used by the sketch
+   * APIs, whose immediate-mode `lab.slider(...)` calls declare params during
+   * the sketch run. Initializes the value from `default` the first time;
+   * an existing value is preserved so re-defining across re-runs is cheap.
+   * Does NOT notify listeners (definition is structure, not a value change).
+   */
+  define(key, def) {
+    const existed = key in this.schema;
+    this.schema[key] = def;
+    if (!existed && def.type !== "button") {
+      this.values[key] = def.default;
+    }
+  }
+  /** Remove a parameter (and its value). Does not notify listeners. */
+  remove(key) {
+    delete this.schema[key];
+    delete this.values[key];
+    this.keyListeners.delete(key);
+  }
+  has(key) {
+    return key in this.schema;
+  }
+  keys() {
+    return Object.keys(this.schema);
+  }
   /** Get all current values */
   getAll() {
     return { ...this.values };
@@ -19614,6 +19643,566 @@ function createParams(schema) {
 function createLayout(folders) {
   return { folders };
 }
+
+// src/gui/theme.ts
+var DARK = {
+  isDark: true,
+  bg: "#07080e",
+  panelBg: "#0c0d16",
+  popupBg: "#0d0f1e",
+  border: "#16182a",
+  controlBorder: "#1e2140",
+  text: "#b8bdd4",
+  textDim: "#7a80a0",
+  textFaint: "#5a6080",
+  accent: "#ffffff",
+  hoverBg: "rgba(255,255,255,.06)",
+  fieldBg: "#07080e",
+  font: "'IBM Plex Mono',ui-monospace,monospace"
+};
+var LIGHT = {
+  isDark: false,
+  bg: "#f4f5f8",
+  panelBg: "#ffffff",
+  popupBg: "#f5f6fa",
+  border: "#e0e2ea",
+  controlBorder: "#d0d3de",
+  text: "#2a2d3a",
+  textDim: "#5a6080",
+  textFaint: "#8a8fa0",
+  accent: "#16182c",
+  hoverBg: "rgba(0,0,0,.05)",
+  fieldBg: "#f4f5f8",
+  font: "'IBM Plex Mono',ui-monospace,monospace"
+};
+function getTheme(mode = "dark") {
+  return mode === "light" ? LIGHT : DARK;
+}
+
+// src/gui/ControlPanel.ts
+var DEFAULT_GROUP = "Parameters";
+var SLIDER_STYLE_ID = "tekto-slider-style";
+function ensureSliderStyle(doc) {
+  if (doc.getElementById(SLIDER_STYLE_ID)) return;
+  const el = doc.createElement("style");
+  el.id = SLIDER_STYLE_ID;
+  el.textContent = `
+    .tekto-slider{-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;height:16px;outline:none;padding:0;}
+    .tekto-slider::-webkit-slider-runnable-track{height:4px;background:var(--tekto-track,#2a2d44);}
+    .tekto-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:7px;height:14px;margin-top:-5px;border-radius:0;background:var(--tekto-thumb,#ffffff);}
+    .tekto-slider::-moz-range-track{height:4px;background:var(--tekto-track,#2a2d44);}
+    .tekto-slider::-moz-range-thumb{width:7px;height:14px;border-radius:0;border:none;background:var(--tekto-thumb,#ffffff);}
+  `;
+  doc.head.appendChild(el);
+}
+var ControlPanel = class {
+  constructor(cfg) {
+    this.collapsedGroups = /* @__PURE__ */ new Set();
+    this.activeTab = "";
+    this.activeMenu = "";
+    // Rebuilt on each render — current structure + live-DOM value updaters
+    this.items = [];
+    this.customRows = [];
+    this.extraTabs = [];
+    this.updaters = /* @__PURE__ */ new Map();
+    this.cfg = cfg;
+    this.store = cfg.store;
+    this.theme = cfg.theme ?? getTheme();
+    this.el = document.createElement("div");
+    this.footer = document.createElement("div");
+    ensureSliderStyle(document);
+    this.unsubStore = this.store.onChange((key, value) => {
+      this.updaters.get(key)?.(value);
+    });
+    this.docClick = () => this.closeMenus();
+    document.addEventListener("click", this.docClick);
+  }
+  dispose() {
+    this.unsubStore();
+    document.removeEventListener("click", this.docClick);
+    this.el.innerHTML = "";
+  }
+  /** Rebuild the panel DOM for a new control structure. */
+  render(items, customRows = [], extraTabs = []) {
+    this.items = items;
+    this.customRows = customRows;
+    this.extraTabs = extraTabs;
+    this.updaters.clear();
+    this.el.innerHTML = "";
+    const t = this.theme;
+    const buttons = this.cfg.getButtons?.() ?? [];
+    const menuNames = [];
+    for (const it of items) if (it.menu && !menuNames.includes(it.menu)) menuNames.push(it.menu);
+    for (const b of buttons) if (b.menu && !menuNames.includes(b.menu)) menuNames.push(b.menu);
+    if (menuNames.length > 0) this.el.appendChild(this.buildMenuBar(menuNames, items, buttons));
+    const tabOrder = [];
+    for (const it of items) if (it.tab && !tabOrder.includes(it.tab)) tabOrder.push(it.tab);
+    for (const b of buttons) if (b.tab && !tabOrder.includes(b.tab)) tabOrder.push(b.tab);
+    for (const r of customRows) if (r.tab && !tabOrder.includes(r.tab)) tabOrder.push(r.tab);
+    for (const et of extraTabs) if (!tabOrder.includes(et.name)) tabOrder.push(et.name);
+    const hasTabs = tabOrder.length > 1;
+    if (hasTabs && (!this.activeTab || !tabOrder.includes(this.activeTab))) {
+      this.activeTab = tabOrder[0];
+    }
+    const pinnedItems = hasTabs ? items.filter((it) => !it.tab && !it.menu) : [];
+    const pinnedButtons = hasTabs ? buttons.filter((b) => !b.tab && !b.menu) : [];
+    if (pinnedItems.length || pinnedButtons.length) {
+      const strip = document.createElement("div");
+      strip.style.cssText = `padding:4px 8px 2px;border-bottom:1px solid ${t.border};`;
+      for (const it of pinnedItems) {
+        const row = this.buildControl(it);
+        if (row) strip.appendChild(row);
+      }
+      for (const b of pinnedButtons) strip.appendChild(this.buildButtonRow(b));
+      this.el.appendChild(strip);
+    }
+    if (hasTabs) this.el.appendChild(this.buildTabBar(tabOrder));
+    const activeExtra = hasTabs ? this.extraTabs.find((et) => et.name === this.activeTab) : void 0;
+    if (activeExtra) {
+      const host = document.createElement("div");
+      activeExtra.render(host);
+      this.el.appendChild(host);
+      this.el.appendChild(this.footer);
+      return;
+    }
+    const inTab = (tab, menu) => !menu && (hasTabs ? !!tab && tab === this.activeTab : true);
+    const groups = /* @__PURE__ */ new Map();
+    const groupOf = (name) => {
+      const g = name || DEFAULT_GROUP;
+      if (!groups.has(g)) groups.set(g, { items: [], buttons: [], rows: [] });
+      return groups.get(g);
+    };
+    for (const it of items) if (inTab(it.tab, it.menu)) groupOf(it.group).items.push(it);
+    for (const b of buttons) if (inTab(b.tab, b.menu)) groupOf(b.group).buttons.push(b);
+    for (const r of customRows) if (inTab(r.tab)) groupOf(r.group).rows.push(r);
+    for (const [name, content] of groups) {
+      this.el.appendChild(this.buildSection(name, content));
+    }
+    this.el.appendChild(this.footer);
+  }
+  /** Push a value into a live control without going through the store. */
+  applyValue(key, value) {
+    this.updaters.get(key)?.(value);
+  }
+  closeMenus() {
+    this.activeMenu = "";
+    this.el.querySelectorAll("[data-menu-dropdown]").forEach((d) => {
+      d.style.display = "none";
+    });
+    this.el.querySelectorAll("[data-menu-btn]").forEach((b) => {
+      b.style.color = this.theme.textFaint;
+    });
+  }
+  // ── Menu bar ──
+  buildMenuBar(menuNames, items, buttons) {
+    const t = this.theme;
+    const bar = document.createElement("div");
+    bar.style.cssText = `display:flex;border-bottom:1px solid ${t.border};flex-shrink:0;position:relative;`;
+    for (const menuName of menuNames) {
+      const btn = document.createElement("button");
+      btn.dataset.menuBtn = menuName;
+      btn.textContent = menuName + " \u25BE";
+      btn.style.cssText = `
+        padding:8px 10px;border:none;background:transparent;
+        color:${t.textFaint};font-family:inherit;font-size:9px;font-weight:500;
+        text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;transition:color .12s;
+      `;
+      btn.addEventListener("mouseenter", () => {
+        btn.style.color = t.accent;
+      });
+      btn.addEventListener("mouseleave", () => {
+        btn.style.color = this.activeMenu === menuName ? t.accent : t.textFaint;
+      });
+      const dropdown = document.createElement("div");
+      dropdown.dataset.menuDropdown = menuName;
+      dropdown.style.cssText = `
+        display:none;position:absolute;top:100%;left:0;z-index:100;
+        min-width:160px;background:${t.popupBg};
+        border:1px solid ${t.border};border-radius:4px;padding:4px 0;
+        box-shadow:0 4px 16px rgba(0,0,0,.4);
+      `;
+      const menuItems = items.filter((it) => it.menu === menuName);
+      const menuButtons = buttons.filter((b) => b.menu === menuName);
+      for (const it of menuItems) {
+        const def = this.store.getDef(it.key);
+        if (!def) continue;
+        if (def.type === "select") {
+          const opts = def.options ?? [];
+          const rows = [];
+          for (const opt of opts) {
+            const row2 = document.createElement("div");
+            row2.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;font-size:11px;color:${t.textDim};transition:background .1s;`;
+            const check2 = document.createElement("span");
+            check2.style.cssText = `width:12px;text-align:center;color:${t.accent};font-size:10px;`;
+            check2.textContent = this.store.get(it.key) === opt ? "\u2713" : " ";
+            const lbl2 = document.createElement("span");
+            lbl2.textContent = opt;
+            row2.append(check2, lbl2);
+            row2.addEventListener("mouseenter", () => {
+              row2.style.background = t.hoverBg;
+            });
+            row2.addEventListener("mouseleave", () => {
+              row2.style.background = "transparent";
+            });
+            row2.addEventListener("click", (e) => {
+              e.stopPropagation();
+              this.store.set(it.key, opt);
+              for (const r of rows) r.check.textContent = r.opt === opt ? "\u2713" : " ";
+              this.cfg.onCommit?.(it.key);
+            });
+            rows.push({ opt, check: check2 });
+            dropdown.appendChild(row2);
+          }
+          this.updaters.set(it.key, (v) => {
+            for (const r of rows) r.check.textContent = r.opt === v ? "\u2713" : " ";
+          });
+          continue;
+        }
+        if (def.type !== "bool") continue;
+        const row = document.createElement("div");
+        row.style.cssText = `
+          display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;
+          font-size:11px;color:${t.textDim};transition:background .1s;
+        `;
+        const check = document.createElement("span");
+        check.style.cssText = `width:12px;text-align:center;color:${t.accent};font-size:10px;`;
+        check.textContent = this.store.get(it.key) ? "\u2713" : " ";
+        const lbl = document.createElement("span");
+        lbl.textContent = def.label ?? it.key;
+        row.append(check, lbl);
+        row.addEventListener("mouseenter", () => {
+          row.style.background = t.hoverBg;
+        });
+        row.addEventListener("mouseleave", () => {
+          row.style.background = "transparent";
+        });
+        row.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.store.set(it.key, !this.store.get(it.key));
+          this.cfg.onCommit?.(it.key);
+        });
+        this.updaters.set(it.key, (v) => {
+          check.textContent = v ? "\u2713" : " ";
+        });
+        dropdown.appendChild(row);
+      }
+      if (menuItems.length > 0 && menuButtons.length > 0) {
+        const sep = document.createElement("div");
+        sep.style.cssText = `border-top:1px solid ${t.border};margin:4px 0;`;
+        dropdown.appendChild(sep);
+      }
+      for (const b of menuButtons) {
+        const row = document.createElement("div");
+        row.style.cssText = `padding:7px 12px;cursor:pointer;font-size:11px;color:${t.textDim};transition:background .1s;`;
+        row.textContent = b.label;
+        row.addEventListener("mouseenter", () => {
+          row.style.background = t.hoverBg;
+          row.style.color = t.accent;
+        });
+        row.addEventListener("mouseleave", () => {
+          row.style.background = "transparent";
+          row.style.color = t.textDim;
+        });
+        const btnLabel = b.label, btnMenu = b.menu, btnGroup = b.group;
+        row.addEventListener("click", () => {
+          this.closeMenus();
+          const current = (this.cfg.getButtons?.() ?? []).find((cb) => cb.label === btnLabel && cb.menu === btnMenu && cb.group === btnGroup);
+          current?.action();
+          this.cfg.onAction?.();
+        });
+        dropdown.appendChild(row);
+      }
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = this.activeMenu === menuName;
+        this.closeMenus();
+        if (!isOpen) {
+          this.activeMenu = menuName;
+          dropdown.style.display = "block";
+          btn.style.color = t.accent;
+        }
+      });
+      const holder = document.createElement("div");
+      holder.style.cssText = `position:relative;display:inline-block;`;
+      holder.appendChild(btn);
+      holder.appendChild(dropdown);
+      bar.appendChild(holder);
+    }
+    return bar;
+  }
+  // ── Tab bar ──
+  buildTabBar(tabOrder) {
+    const t = this.theme;
+    const bar = document.createElement("div");
+    bar.style.cssText = `display:flex;border-bottom:1px solid ${t.border};flex-shrink:0;`;
+    for (const tab of tabOrder) {
+      const btn = document.createElement("button");
+      btn.textContent = tab;
+      const isActive = tab === this.activeTab;
+      btn.style.cssText = `
+        flex:1;padding:9px 4px;border:none;
+        border-bottom:2px solid ${isActive ? t.accent : "transparent"};
+        background:transparent;color:${isActive ? t.accent : t.textFaint};
+        font-family:inherit;font-size:9px;font-weight:500;text-transform:uppercase;
+        letter-spacing:1.2px;cursor:pointer;transition:all .12s;
+      `;
+      btn.addEventListener("click", () => {
+        this.activeTab = tab;
+        this.render(this.items, this.customRows, this.extraTabs);
+      });
+      bar.appendChild(btn);
+    }
+    return bar;
+  }
+  // ── Sections ──
+  buildSection(name, content) {
+    const t = this.theme;
+    const section = document.createElement("div");
+    section.style.cssText = `border-bottom:1px solid ${t.border};`;
+    const collapsed = this.collapsedGroups.has(name);
+    const header = document.createElement("div");
+    header.style.cssText = `
+      padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:6px;
+      user-select:none;transition:background .1s;
+    `;
+    header.addEventListener("mouseenter", () => {
+      header.style.background = t.hoverBg;
+    });
+    header.addEventListener("mouseleave", () => {
+      header.style.background = "transparent";
+    });
+    const arrow = document.createElement("span");
+    arrow.style.cssText = `font-size:8px;color:${t.textFaint};transition:transform .15s;width:10px;`;
+    arrow.textContent = collapsed ? "\u25B6" : "\u25BC";
+    header.appendChild(arrow);
+    const title = document.createElement("span");
+    title.style.cssText = `font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:1.8px;color:${t.textFaint};`;
+    title.textContent = name;
+    header.appendChild(title);
+    section.appendChild(header);
+    const body = document.createElement("div");
+    body.style.cssText = `padding:0 14px 10px;${collapsed ? "display:none;" : ""}`;
+    for (const it of content.items) {
+      const row = this.buildControl(it);
+      if (row) body.appendChild(row);
+    }
+    for (const r of content.rows) {
+      if (r.fullBleed) {
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "margin:0 -14px;";
+        wrap.appendChild(r.el);
+        body.appendChild(wrap);
+      } else {
+        body.appendChild(r.el);
+      }
+    }
+    for (const b of content.buttons) {
+      body.appendChild(this.buildButtonRow(b));
+    }
+    section.appendChild(body);
+    header.addEventListener("click", () => {
+      const isCollapsed = this.collapsedGroups.has(name);
+      if (isCollapsed) this.collapsedGroups.delete(name);
+      else this.collapsedGroups.add(name);
+      body.style.display = isCollapsed ? "" : "none";
+      arrow.textContent = isCollapsed ? "\u25BC" : "\u25B6";
+    });
+    return section;
+  }
+  // ── Individual controls ──
+  buildButtonRow(b) {
+    const t = this.theme;
+    const row = document.createElement("div");
+    row.style.cssText = "margin-bottom:4px;";
+    const btn = document.createElement("button");
+    btn.textContent = b.label;
+    btn.style.cssText = `
+      width:100%;padding:7px 10px;border:1px solid ${t.border};border-radius:5px;
+      background:transparent;color:${t.textDim};font-family:inherit;font-size:10px;
+      cursor:pointer;transition:all .12s;
+    `;
+    btn.addEventListener("mouseenter", () => {
+      btn.style.background = t.hoverBg;
+      btn.style.borderColor = t.accent;
+      btn.style.color = t.accent;
+    });
+    btn.addEventListener("mouseleave", () => {
+      btn.style.background = "transparent";
+      btn.style.borderColor = t.border;
+      btn.style.color = t.textDim;
+    });
+    const label = b.label, group = b.group, menu = b.menu;
+    btn.addEventListener("click", () => {
+      const current = (this.cfg.getButtons?.() ?? []).find((cb) => cb.label === label && cb.group === group && cb.menu === menu) ?? b;
+      current.action();
+      this.cfg.onAction?.();
+    });
+    row.appendChild(btn);
+    return row;
+  }
+  buildControl(it) {
+    const def = this.store.getDef(it.key);
+    if (!def) return null;
+    const t = this.theme;
+    if (def.type === "button") {
+      return this.buildButtonRow({ label: def.label ?? it.key, action: def.action, group: it.group });
+    }
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:5px;min-height:26px;";
+    const label = document.createElement("span");
+    label.style.cssText = `width:80px;flex-shrink:0;font-size:11px;color:${t.textDim};text-transform:capitalize;`;
+    label.textContent = def.label ?? it.key;
+    row.appendChild(label);
+    switch (def.type) {
+      case "float":
+      case "int": {
+        const step = def.step ?? (def.type === "int" ? 1 : (def.max - def.min) / 100);
+        const input = document.createElement("input");
+        input.type = "range";
+        input.min = String(def.min);
+        input.max = String(def.max);
+        input.step = String(step);
+        input.value = String(this.store.get(it.key));
+        input.className = "tekto-slider";
+        input.style.cssText = `flex:1;--tekto-track:${t.controlBorder};--tekto-thumb:${it.accent || t.accent};`;
+        const valueSpan = document.createElement("span");
+        valueSpan.style.cssText = `width:42px;text-align:right;font-size:10px;color:${t.accent};`;
+        const isInt = def.type === "int" || step >= 1;
+        const rawDec = isInt ? 0 : Math.max(2, -Math.floor(Math.log10(step) - 1e-3));
+        const decimals = Math.min(Math.max(0, rawDec), 20);
+        const fmt = (v) => isInt ? String(Math.round(v)) : Number(v).toFixed(decimals);
+        valueSpan.textContent = fmt(this.store.get(it.key));
+        input.addEventListener("input", () => {
+          this.store.set(it.key, parseFloat(input.value));
+        });
+        input.addEventListener("change", () => this.cfg.onCommit?.(it.key));
+        this.updaters.set(it.key, (v) => {
+          input.value = String(v);
+          valueSpan.textContent = fmt(v);
+        });
+        row.append(input, valueSpan);
+        break;
+      }
+      case "bool": {
+        const wrap = document.createElement("label");
+        wrap.style.cssText = "position:relative;width:32px;height:18px;cursor:pointer;flex-shrink:0;";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = !!this.store.get(it.key);
+        input.style.cssText = "position:absolute;opacity:0;width:0;height:0;";
+        const track = document.createElement("span");
+        const knob = document.createElement("span");
+        const paint = (on) => {
+          track.style.cssText = `position:absolute;inset:0;border-radius:9px;transition:.2s;background:${on ? t.accent : t.controlBorder};`;
+          knob.style.cssText = `position:absolute;left:${on ? "16px" : "2px"};top:2px;width:14px;height:14px;border-radius:50%;background:${on ? t.panelBg : "#ffffff"};transition:.2s;`;
+        };
+        paint(input.checked);
+        track.appendChild(knob);
+        wrap.append(input, track);
+        input.addEventListener("change", () => {
+          paint(input.checked);
+          this.store.set(it.key, input.checked);
+          this.cfg.onCommit?.(it.key);
+        });
+        this.updaters.set(it.key, (v) => {
+          input.checked = !!v;
+          paint(!!v);
+        });
+        row.appendChild(wrap);
+        break;
+      }
+      case "select": {
+        const select = document.createElement("select");
+        select.style.cssText = `
+          flex:1;padding:4px 8px;background:${t.fieldBg};
+          border:1px solid ${t.controlBorder};border-radius:4px;color:inherit;
+          font-family:inherit;font-size:11px;outline:none;cursor:pointer;
+        `;
+        for (const opt of def.options) {
+          const el = document.createElement("option");
+          el.value = opt;
+          el.textContent = opt;
+          if (opt === this.store.get(it.key)) el.selected = true;
+          select.appendChild(el);
+        }
+        select.addEventListener("change", () => {
+          this.store.set(it.key, select.value);
+          this.cfg.onCommit?.(it.key);
+        });
+        this.updaters.set(it.key, (v) => {
+          select.value = v;
+        });
+        row.appendChild(select);
+        break;
+      }
+      case "color": {
+        const input = document.createElement("input");
+        input.type = "color";
+        input.value = this.store.get(it.key);
+        input.style.cssText = `width:32px;height:24px;border:1px solid ${t.controlBorder};border-radius:4px;padding:0;cursor:pointer;background:none;`;
+        const valueSpan = document.createElement("span");
+        valueSpan.style.cssText = `font-size:10px;color:${t.textDim};`;
+        valueSpan.textContent = this.store.get(it.key);
+        input.addEventListener("input", () => {
+          this.store.set(it.key, input.value);
+          this.cfg.onCommit?.(it.key);
+        });
+        this.updaters.set(it.key, (v) => {
+          input.value = v;
+          valueSpan.textContent = v;
+        });
+        row.append(input, valueSpan);
+        break;
+      }
+      case "string": {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = this.store.get(it.key) ?? "";
+        input.placeholder = def.placeholder ?? "";
+        input.style.cssText = `
+          flex:1;padding:4px 8px;background:${t.fieldBg};
+          border:1px solid ${t.controlBorder};border-radius:4px;color:inherit;
+          font-family:inherit;font-size:11px;outline:none;
+        `;
+        input.addEventListener("input", () => {
+          this.store.set(it.key, input.value);
+        });
+        input.addEventListener("change", () => this.cfg.onCommit?.(it.key));
+        this.updaters.set(it.key, (v) => {
+          if (input !== document.activeElement) input.value = v;
+        });
+        row.appendChild(input);
+        break;
+      }
+      case "vec3": {
+        const inputs = [];
+        for (let i = 0; i < 3; i++) {
+          const input = document.createElement("input");
+          input.type = "number";
+          if (def.step != null) input.step = String(def.step);
+          input.value = String((this.store.get(it.key) ?? def.default)[i]);
+          input.style.cssText = `
+            flex:1;width:0;padding:3px 4px;background:${t.fieldBg};
+            border:1px solid ${t.controlBorder};border-radius:4px;color:inherit;
+            font-family:inherit;font-size:10px;outline:none;
+          `;
+          input.addEventListener("change", () => {
+            const next = inputs.map((el) => Number(el.value));
+            this.store.set(it.key, next);
+            this.cfg.onCommit?.(it.key);
+          });
+          inputs.push(input);
+          row.appendChild(input);
+        }
+        this.updaters.set(it.key, (v) => {
+          for (let i = 0; i < 3; i++) inputs[i].value = String(v[i]);
+        });
+        break;
+      }
+    }
+    return row;
+  }
+};
 
 // src/render/ThreeRenderer.ts
 var THREE3 = __toESM(require("three"));
@@ -19692,6 +20281,10 @@ var ThreeRenderer = class {
     this.selectedDragHandle = null;
     this.dragPlane = new THREE3.Plane();
     this.dragSeenThisRun = /* @__PURE__ */ new Set();
+    /** Cached horizontal-stripe textures for print-layer shading, keyed by layer height (m). One texture
+     *  period = one printed bead: bright rounded crown, dark groove at the layer boundary. The pipe UVs
+     *  carry V in metres, so repeat.y = 1/layerH gives physically-true layer spacing. */
+    this._stripeTexCache = /* @__PURE__ */ new Map();
     this.onPointerDown = (e) => {
       const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
       if (handleName) {
@@ -19920,6 +20513,29 @@ var ThreeRenderer = class {
     }
     const { metalness: _m, roughness: _r, ...rest } = opts;
     return new THREE3.MeshPhongMaterial(rest);
+  }
+  _stripeTexture(layerH) {
+    let tex = this._stripeTexCache.get(layerH);
+    if (tex) return tex;
+    const H = 64;
+    const cv = document.createElement("canvas");
+    cv.width = 2;
+    cv.height = H;
+    const ctx = cv.getContext("2d");
+    for (let y = 0; y < H; y++) {
+      const t = y / H;
+      const crown = Math.sin(Math.PI * t);
+      const v = Math.round(150 + 105 * Math.pow(crown, 0.7));
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(0, y, 2, 1);
+    }
+    tex = new THREE3.CanvasTexture(cv);
+    tex.wrapS = THREE3.RepeatWrapping;
+    tex.wrapT = THREE3.RepeatWrapping;
+    tex.repeat.set(1, 1 / layerH);
+    tex.anisotropy = 4;
+    this._stripeTexCache.set(layerH, tex);
+    return tex;
   }
   /**
    * Set the Studio-mode default PBR material applied to meshes that don't
@@ -20327,6 +20943,17 @@ var ThreeRenderer = class {
     geo.setAttribute("position", new THREE3.BufferAttribute(data.positions, 3));
     geo.setAttribute("normal", new THREE3.BufferAttribute(data.normals, 3));
     geo.setIndex(new THREE3.BufferAttribute(data.indices, 1));
+    const pipeUV = gmesh.__pipeUV;
+    if (pipeUV && pipeUV.sides > 0) {
+      const n = data.positions.length / 3;
+      const uv = new Float32Array(n * 2);
+      for (let k = 0; k < n; k++) {
+        const ring = Math.min(Math.floor(k / pipeUV.sides), pipeUV.vAtRing.length - 1);
+        uv[k * 2] = k % pipeUV.sides / pipeUV.sides;
+        uv[k * 2 + 1] = pipeUV.vAtRing[ring] ?? 0;
+      }
+      geo.setAttribute("uv", new THREE3.BufferAttribute(uv, 2));
+    }
     return this.buildMeshGroup(geo, s);
   }
   /** Convert flat mesh data (with optional per-vertex colors) → Three.js group */
@@ -20411,6 +21038,13 @@ var ThreeRenderer = class {
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1
       });
+      if (s.printLayerH && s.printLayerH > 1e-5 && geo.getAttribute("uv")) {
+        const tex = this._stripeTexture(s.printLayerH);
+        solidMat.map = tex;
+        solidMat.bumpMap = tex;
+        solidMat.bumpScale = s.printLayerH * 0.35;
+        solidMat.needsUpdate = true;
+      }
       if (s.backfaceColor) {
         const bc = new THREE3.Color(s.backfaceColor);
         solidMat.onBeforeCompile = (shader) => {
@@ -20816,6 +21450,26 @@ var ThreeRenderer = class {
     this._orthoCam.up.set(x, y, z);
     if (this.controls) this.controls.update();
   }
+  /** The WebGL canvas element (for attaching input listeners / overlays). */
+  get canvasEl() {
+    return this.renderer.domElement;
+  }
+  /** Set the viewport background color. */
+  setBackground(color) {
+    this.threeScene.background = new THREE3.Color(color);
+  }
+  /** Move the camera without changing its target. */
+  setCameraPosition(x, y, z) {
+    this.camera.position.set(x, y, z);
+  }
+  /** Aim the camera (and orbit-controls target) at a point. */
+  lookAt(x, y, z) {
+    this.camera.lookAt(x, y, z);
+    if (this.controls) {
+      this.controls.target.set(x, y, z);
+      this.controls.update();
+    }
+  }
   /**
    * Fit all visible scene objects inside the current view.
    * Preserves the camera direction; only adjusts distance and target.
@@ -21197,7 +21851,7 @@ var LayerPanel = class {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = state.visible;
-    cb.style.cssText = `cursor:pointer;width:11px;height:11px;flex-shrink:0;accent-color:#38d9a9;margin:0;opacity:${ancestorVisible ? "1" : "0.35"};`;
+    cb.style.cssText = `cursor:pointer;width:11px;height:11px;flex-shrink:0;accent-color:${d ? "#ffffff" : "#16182c"};margin:0;opacity:${ancestorVisible ? "1" : "0.35"};`;
     cb.addEventListener("change", (e) => {
       e.stopPropagation();
       this._onChange({ [node.id]: { ...state, visible: cb.checked } });
@@ -21233,7 +21887,6 @@ var LayerPanel = class {
 };
 
 // src/sketch/Sketch.ts
-var THREE4 = __toESM(require("three"));
 function spaceToConstrain(space) {
   switch (space.kind) {
     case "free":
@@ -21282,8 +21935,11 @@ function sketch(fn, config) {
 }
 var SketchInstance = class {
   constructor(fn, config) {
-    // State
-    this.params = /* @__PURE__ */ new Map();
+    // Param model: values live in the shared ParamStore, panel placement in
+    // `items`, and the DOM is rendered by the shared ControlPanel (src/gui/).
+    this.store = new ParamStore({});
+    this.items = /* @__PURE__ */ new Map();
+    this.layerTrees = /* @__PURE__ */ new Map();
     this.buttons = [];
     // Top-bar export / import handlers registered by the sketch. Survive
     // sketch re-runs (re-registering replaces the handler closure).
@@ -21300,10 +21956,14 @@ var SketchInstance = class {
     this.startTime = performance.now();
     this.lastTime = performance.now();
     this.disposed = false;
-    // Accordion collapse state (persists across panel rebuilds)
-    this.collapsedGroups = /* @__PURE__ */ new Set();
-    this.activeTab = "";
-    this.activeMenu = "";
+    // Re-run suppression: `_running` while the sketch fn executes (param
+    // declarations must not schedule re-runs), `_squelch` during programmatic
+    // setSlider (updates the control but does not re-run — original semantics).
+    this._running = false;
+    this._squelch = false;
+    this._hasTabs = false;
+    this._onceRan = [];
+    this._onceSeq = 0;
     // Random state (persists across sketch re-runs)
     this.rng = createRandom();
     // Input state
@@ -21341,8 +22001,12 @@ var SketchInstance = class {
     this._retain = false;
     this.separatorCount = 0;
     this._prevParamFingerprint = "";
+    /** Log container inside the "Info" tab (tab mode only; set during render) */
     this._panelLogEl = null;
+    /** Info-text section in the panel footer */
     this._panelInfoEl = null;
+    /** Log section in the panel footer (non-tab mode) */
+    this._panelFooterLogEl = null;
     this._lastRerunTime = 0;
     this._rerunTimer = 0;
     this.fn = fn;
@@ -21367,7 +22031,7 @@ var SketchInstance = class {
     const storageKey = `tekto.panelWidth.${this.config.title ?? "default"}`;
     const stored = parseInt(localStorage.getItem(storageKey) ?? "", 10);
     const panelWidth = Number.isFinite(stored) && stored >= 200 && stored <= 800 ? stored : defaultWidth;
-    const isDark = this.config.theme !== "light";
+    const t = this.theme = getTheme(this.config.theme);
     const inShell = this.container instanceof HTMLElement && this.container.dataset.shell != null;
     const showHeader = this.config.showHeader ?? !inShell;
     const headerRow = showHeader ? "44px " : "";
@@ -21375,38 +22039,54 @@ var SketchInstance = class {
     root.style.cssText = `
       display:grid; grid-template-columns:${panelWidth}px 1fr; grid-template-rows:${headerRow}1fr;
       height:100%; width:100%; overflow:hidden; position:relative;
-      background:${isDark ? "#07080e" : "#f4f5f8"};
-      color:${isDark ? "#b8bdd4" : "#2a2d3a"};
-      font-family:'IBM Plex Mono',ui-monospace,monospace;
+      background:${t.bg};
+      color:${t.text};
+      font-family:${t.font};
     `;
     if (showHeader) {
       const header = document.createElement("div");
       header.style.cssText = `
         grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
-        background:${isDark ? "#0c0d16" : "#fff"};
-        border-bottom:1px solid ${isDark ? "#16182a" : "#e0e2ea"};
+        background:${t.panelBg};
+        border-bottom:1px solid ${t.border};
       `;
       header.innerHTML = `
-        <span style="font-weight:600;font-size:14px;color:#38d9a9">
+        <span style="font-weight:600;font-size:14px;color:${t.accent}">
           &#x2B21; ${this.config.title ?? "Tekto Sketch"}
         </span>
         <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-          background:rgba(56,217,169,.1);color:#38d9a9">LIVE</span>
+          background:${t.hoverBg};color:${t.accent}">LIVE</span>
       `;
       root.appendChild(header);
     }
     this.panelEl = document.createElement("div");
     this.panelEl.style.cssText = `
       overflow-y:auto; overflow-x:hidden; padding:0;
-      background:${isDark ? "#0c0d16" : "#fff"};
-      border-right:1px solid ${isDark ? "#16182a" : "#e0e2ea"};
-      position:relative;
+      background:${t.panelBg};
+      border-right:1px solid ${t.border};
+      position:relative; grid-column:1;
     `;
     root.appendChild(this.panelEl);
+    this.panel = new ControlPanel({
+      store: this.store,
+      theme: t,
+      getButtons: () => this.buttons,
+      onCommit: () => this.commitRun(),
+      onAction: () => this.runSketch()
+    });
+    this.panelEl.appendChild(this.panel.el);
+    this.store.onChange(() => {
+      if (!this._running && !this._squelch) this.scheduleRerun();
+    });
+    this._panelInfoEl = document.createElement("div");
+    this._panelInfoEl.style.cssText = `padding:12px 14px;border-bottom:1px solid ${t.border};font-size:11px;color:${t.textDim};line-height:1.7;white-space:pre-wrap;display:none;`;
+    this._panelFooterLogEl = document.createElement("div");
+    this._panelFooterLogEl.style.cssText = `padding:10px 14px;border-bottom:1px solid ${t.border};display:none;`;
+    this.panel.footer.append(this._panelInfoEl, this._panelFooterLogEl);
     const resizeHandle = document.createElement("div");
     resizeHandle.title = "Drag to resize panel \xB7 double-click to reset";
-    const handleIdle = isDark ? "rgba(56,217,169,.18)" : "rgba(56,217,169,.28)";
-    const handleHover = isDark ? "rgba(56,217,169,.45)" : "rgba(56,217,169,.55)";
+    const handleIdle = t.isDark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.14)";
+    const handleHover = t.isDark ? "rgba(255,255,255,.35)" : "rgba(0,0,0,.30)";
     resizeHandle.style.cssText = `
       position:absolute; top:${showHeader ? 44 : 0}px; bottom:0;
       left:${panelWidth - 3}px; width:6px;
@@ -21446,6 +22126,7 @@ var SketchInstance = class {
       resizeHandle.style.left = `${w - 3}px`;
       collapseBtn.style.left = `${w - 26}px`;
       localStorage.setItem(storageKey, String(w));
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     };
     const collapseKey = `tekto.panelCollapsed.${this.config.title ?? "default"}`;
     const btnCss = (left) => `
@@ -21453,8 +22134,8 @@ var SketchInstance = class {
       width:20px; height:24px; z-index:11; cursor:pointer; user-select:none;
       display:flex; align-items:center; justify-content:center;
       font:13px/1 ui-monospace,monospace;
-      border:1px solid ${isDark ? "#23263a" : "#d4d7e0"}; border-radius:4px;
-      background:${isDark ? "#0c0d16" : "#fff"}; color:#38d9a9;
+      border:1px solid ${t.controlBorder}; border-radius:4px;
+      background:${t.panelBg}; color:${t.accent};
     `;
     const collapseBtn = document.createElement("div");
     collapseBtn.title = "Collapse panel";
@@ -21464,23 +22145,24 @@ var SketchInstance = class {
     const expandBtn = document.createElement("div");
     expandBtn.title = "Show panel";
     expandBtn.textContent = "\u203A";
-    expandBtn.style.cssText = btnCss(6);
+    expandBtn.style.cssText = btnCss(4);
     expandBtn.style.display = "none";
     root.appendChild(expandBtn);
     const applyCollapsed = (c) => {
-      root.style.gridTemplateColumns = c ? "0px 1fr" : `${curWidth}px 1fr`;
+      root.style.gridTemplateColumns = c ? "28px 1fr" : `${curWidth}px 1fr`;
       this.panelEl.style.display = c ? "none" : "";
       resizeHandle.style.display = c ? "none" : "";
       collapseBtn.style.display = c ? "none" : "flex";
       collapseBtn.style.left = `${curWidth - 26}px`;
       expandBtn.style.display = c ? "flex" : "none";
       localStorage.setItem(collapseKey, c ? "1" : "0");
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     };
     collapseBtn.addEventListener("click", () => applyCollapsed(true));
     expandBtn.addEventListener("click", () => applyCollapsed(false));
     if (localStorage.getItem(collapseKey) === "1") applyCollapsed(true);
     const vpWrap = document.createElement("div");
-    vpWrap.style.cssText = "position:relative;overflow:hidden;";
+    vpWrap.style.cssText = "position:relative;overflow:hidden;grid-column:2;";
     this.viewportEl = document.createElement("div");
     this.viewportEl.style.cssText = "width:100%;height:100%;";
     vpWrap.appendChild(this.viewportEl);
@@ -21516,7 +22198,7 @@ var SketchInstance = class {
   }
   // ── Input Wiring ──
   wireInput() {
-    const canvas = this.renderer.renderer.domElement;
+    const canvas = this.renderer.canvasEl;
     canvas.addEventListener("mousemove", (e) => {
       const rect = canvas.getBoundingClientRect();
       this._pmouseX = this._mouseX;
@@ -21621,11 +22303,11 @@ var SketchInstance = class {
   }
   /** Programmatically set a slider's value — updates the stored param AND its live DOM control. */
   setSlider(label, value, group = "") {
-    const p = this.params.get(`slider:${group}:${label}`);
-    if (!p || p.type !== "slider") return;
-    const v = Math.min(p.config.max, Math.max(p.config.min, value));
-    p.value = v;
-    p._applyValue?.(v);
+    const key = `slider:${group}:${label}`;
+    if (!this.store.has(key)) return;
+    this._squelch = true;
+    this.store.set(key, value);
+    this._squelch = false;
   }
   // ── Run Sketch ──
   runSketch() {
@@ -21637,6 +22319,7 @@ var SketchInstance = class {
     this._continuous = false;
     this._retain = false;
     this.separatorCount = 0;
+    this._onceSeq = 0;
     this._onMouseClicked = null;
     this._onMouseDragged = null;
     this._onKeyPressed = null;
@@ -21647,136 +22330,158 @@ var SketchInstance = class {
     this.renderer.beginDragHandleSweep();
     const usedParams = /* @__PURE__ */ new Set();
     const lab = this.buildLab(usedParams);
+    this._running = true;
     try {
       this.fn(lab);
     } catch (e) {
       console.error("Tekto sketch error:", e);
       this.logs.push({ label: "ERROR", value: String(e) });
     }
+    this._running = false;
     this.renderer.endDragHandleSweep();
-    for (const key of this.params.keys()) {
-      if (!usedParams.has(key)) this.params.delete(key);
+    for (const key of this.store.keys()) {
+      if (!usedParams.has(key)) {
+        this.store.remove(key);
+        this.items.delete(key);
+      }
     }
-    const fingerprint = [...this.params.values()].map((p) => `${p.key}@${p.tab}`).sort().join("|");
+    for (const key of this.layerTrees.keys()) {
+      if (!usedParams.has(key)) this.layerTrees.delete(key);
+    }
+    const hasTabControls = [...this.items.values()].some((it) => it.tab) || this.buttons.some((b) => b.tab) || [...this.layerTrees.values()].some((lt) => lt.tab);
+    const hasInfoTab = hasTabControls && this.logs.length > 0;
+    const fingerprint = [
+      ...[...this.items.values()].map((it) => `${it.key}@${it.tab ?? ""}`).sort(),
+      ...this.buttons.map((b) => `btn:${b.menu ?? ""}:${b.group ?? ""}:${b.label}@${b.tab ?? ""}`),
+      ...[...this.layerTrees.keys()].sort(),
+      hasInfoTab ? "tab:Info" : ""
+    ].join("|");
     if (fingerprint !== this._prevParamFingerprint) {
       this._prevParamFingerprint = fingerprint;
-      this.rebuildPanel();
+      this.panelRender(hasInfoTab);
     }
     this.updateLog();
+  }
+  /** Feed the current control structure to the shared ControlPanel. */
+  panelRender(hasInfoTab) {
+    const t = this.theme;
+    this._panelLogEl = null;
+    const customRows = [...this.layerTrees.values()].map((lt) => ({
+      key: lt.key,
+      el: lt.panel.el,
+      group: lt.group,
+      tab: lt.tab || void 0,
+      fullBleed: true
+    }));
+    const extraTabs = hasInfoTab ? [{
+      name: "Info",
+      render: (container) => {
+        this._panelLogEl = container;
+        container.style.cssText = `padding:12px 14px;font-size:11px;color:${t.textDim};line-height:1.9;`;
+        this.updateLog();
+      }
+    }] : [];
+    this._hasTabs = (/* @__PURE__ */ new Set([
+      ...[...this.items.values()].map((it) => it.tab).filter(Boolean),
+      ...this.buttons.map((b) => b.tab).filter(Boolean),
+      ...hasInfoTab ? ["Info"] : []
+    ])).size > 1 || hasInfoTab;
+    this.panel.render([...this.items.values()], customRows, extraTabs);
   }
   buildLab(usedParams) {
     const self = this;
     const now = performance.now();
+    const declare = (key, def, item) => {
+      usedParams.add(key);
+      if (!this.store.has(key)) {
+        this.store.define(key, def);
+        this.items.set(key, item);
+      }
+      const store = this.store;
+      return { get value() {
+        return store.get(key);
+      } };
+    };
     const lab = {
       // ── GUI Controls ──
       slider(label, min, max, defaultValue, opts) {
         const key = `slider:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key,
-            type: "slider",
-            label,
-            group: opts?.group ?? "Parameters",
-            tab: opts?.tab ?? "",
-            menu: opts?.menu ?? "",
-            value: defaultValue,
-            config: { min, max, step: opts?.step ?? (max - min) / 100, color: opts?.color }
-          });
-        }
-        const p = self.params.get(key);
-        return { get value() {
-          return p.value;
-        } };
+        return declare(
+          key,
+          { type: "float", min, max, default: defaultValue, step: opts?.step ?? (max - min) / 100, label },
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu, accent: opts?.color }
+        );
       },
       setSlider(label, value, opts) {
         self.setSlider(label, value, opts?.group ?? "");
       },
       toggle(label, defaultValue = false, opts) {
         const key = `toggle:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key,
-            type: "toggle",
-            label,
-            group: opts?.group ?? "Parameters",
-            tab: opts?.tab ?? "",
-            menu: opts?.menu ?? "",
-            value: defaultValue,
-            config: {}
-          });
-        }
-        const p = self.params.get(key);
-        return { get value() {
-          return p.value;
-        } };
+        return declare(
+          key,
+          { type: "bool", default: defaultValue, label },
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu }
+        );
       },
       select(label, options, defaultValue, opts) {
         const key = `select:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key,
-            type: "select",
-            label,
-            group: opts?.group ?? "Parameters",
-            tab: opts?.tab ?? "",
-            menu: opts?.menu ?? "",
-            value: defaultValue ?? options[0],
-            config: { options }
-          });
-        }
-        const p = self.params.get(key);
-        return { get value() {
-          return p.value;
-        } };
+        return declare(
+          key,
+          { type: "select", options, default: defaultValue ?? options[0], label },
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu }
+        );
       },
       colorPicker(label, defaultValue = "#38d9a9", opts) {
         const key = `color:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key,
-            type: "color",
-            label,
-            group: opts?.group ?? "Display",
-            tab: opts?.tab ?? "",
-            menu: opts?.menu ?? "",
-            value: defaultValue,
-            config: {}
-          });
-        }
-        const p = self.params.get(key);
-        return { get value() {
-          return p.value;
-        } };
+        return declare(
+          key,
+          { type: "color", default: defaultValue, label },
+          { key, group: opts?.group ?? "Display", tab: opts?.tab, menu: opts?.menu }
+        );
       },
       layerTree(label, nodes, opts) {
         const key = `layertree:${opts?.group ?? ""}:${label}`;
         usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
+        let lt = self.layerTrees.get(key);
+        if (!lt) {
+          const state2 = {
             key,
-            type: "layertree",
-            label,
-            group: opts?.group ?? "Layers",
-            tab: opts?.tab ?? "",
-            menu: "",
             value: {},
-            config: { nodes }
+            nodes,
+            group: opts?.group ?? "Layers",
+            tab: opts?.tab ?? ""
+          };
+          state2.panel = new LayerPanel({
+            nodes,
+            value: {},
+            isDark: self.theme.isDark,
+            onChange: (updates) => {
+              state2.value = { ...state2.value, ...updates };
+              state2.panel.update(state2.nodes, state2.value);
+              self.runSketch();
+            }
           });
+          lt = state2;
+          self.layerTrees.set(key, state2);
         } else {
-          self.params.get(key).config.nodes = nodes;
+          lt.nodes = nodes;
+          lt.panel.update(nodes, lt.value);
         }
-        const p = self.params.get(key);
+        const state = lt;
         return { get value() {
-          return p.value;
+          return state.value;
         } };
       },
       // ── Actions ──
       button(label, action, opts) {
-        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab ?? "", menu: opts?.menu ?? "" });
+        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab, menu: opts?.menu });
+      },
+      once(fn) {
+        const i = self._onceSeq++;
+        if (!self._onceRan[i]) {
+          self._onceRan[i] = true;
+          fn();
+        }
       },
       separator() {
         self.separatorCount++;
@@ -21830,10 +22535,10 @@ var SketchInstance = class {
         return self.addPolylineHandle(points);
       },
       polygon(vertices, style) {
-        return self.scene.addPolygon(vertices, style).id;
+        return self.addShapeHandle(self.scene.addPolygon(vertices, style));
       },
       circle(cx, cy, cz, radius) {
-        return self.scene.addCircle(new Vec3(cx, cy, cz), radius).id;
+        return self.addShapeHandle(self.scene.addCircle(new Vec3(cx, cy, cz), radius));
       },
       // ── Algorithms ──
       algo: Algo,
@@ -21843,17 +22548,13 @@ var SketchInstance = class {
         self.scene.clear();
       },
       background(c) {
-        self.renderer.threeScene.background = new THREE4.Color(c);
+        self.renderer.setBackground(c);
       },
       camera(x, y, z) {
-        self.renderer.camera.position.set(x, y, z);
+        self.renderer.setCameraPosition(x, y, z);
       },
       lookAt(x, y, z) {
-        self.renderer.camera.lookAt(x, y, z);
-        if (self.renderer.controls) {
-          self.renderer.controls.target.set(x, y, z);
-          self.renderer.controls.update();
-        }
+        self.renderer.lookAt(x, y, z);
       },
       fitAll() {
         self.renderer.fitAll();
@@ -22182,6 +22883,10 @@ var SketchInstance = class {
         self.scene.setStyle(obj.id, { layer: name });
         return handle;
       },
+      printLayers(heightM) {
+        self.scene.setStyle(obj.id, { printLayerH: heightM });
+        return handle;
+      },
       translate(x, y, z) {
         for (const n of mesh.nodes()) {
           n.position = n.position.add(new Vec3(x, y, z));
@@ -22311,6 +23016,10 @@ var SketchInstance = class {
       },
       layer(name) {
         self.scene.setStyle(obj.id, { layer: name });
+        return handle;
+      },
+      printLayers(heightM) {
+        self.scene.setStyle(obj.id, { printLayerH: heightM });
         return handle;
       },
       translate() {
@@ -22465,404 +23174,34 @@ var SketchInstance = class {
     };
     return handle;
   }
-  // ── Panel Rendering ──
-  rebuildPanel() {
-    this._panelLogEl = null;
-    this._panelInfoEl = null;
-    const isDark = this.config.theme !== "light";
-    const border = isDark ? "#16182a" : "#e0e2ea";
-    const dimColor = isDark ? "#5a6080" : "#8a8fa0";
-    const textColor = isDark ? "#7a80a0" : "#4a4f60";
-    const accentColor = "#ffffff";
-    const hoverBg = "rgba(56,217,169,.08)";
-    this.panelEl.innerHTML = "";
-    const menuNames = [];
-    const menuParams = /* @__PURE__ */ new Map();
-    const menuButtons = /* @__PURE__ */ new Map();
-    for (const p of this.params.values()) {
-      if (!p.menu) continue;
-      if (!menuNames.includes(p.menu)) menuNames.push(p.menu);
-      if (!menuParams.has(p.menu)) menuParams.set(p.menu, []);
-      menuParams.get(p.menu).push(p);
-    }
-    for (const b of this.buttons) {
-      if (!b.menu) continue;
-      if (!menuNames.includes(b.menu)) menuNames.push(b.menu);
-      if (!menuButtons.has(b.menu)) menuButtons.set(b.menu, []);
-      menuButtons.get(b.menu).push(b);
-    }
-    const tabOrder = [];
-    for (const p of this.params.values()) {
-      if (p.tab && !tabOrder.includes(p.tab)) tabOrder.push(p.tab);
-    }
-    for (const b of this.buttons) {
-      if (b.tab && !tabOrder.includes(b.tab)) tabOrder.push(b.tab);
-    }
-    if (tabOrder.length > 0 && this.logs.length > 0 && !tabOrder.includes("Info")) {
-      tabOrder.push("Info");
-    }
-    const hasTabs = tabOrder.length > 1;
-    if (hasTabs && (!this.activeTab || !tabOrder.includes(this.activeTab))) {
-      this.activeTab = tabOrder[0];
-    }
-    if (menuNames.length > 0) {
-      const menuBar = document.createElement("div");
-      menuBar.style.cssText = `
-        display:flex;border-bottom:1px solid ${border};flex-shrink:0;position:relative;
-      `;
-      for (const menuName of menuNames) {
-        const menuBtn = document.createElement("button");
-        menuBtn.textContent = menuName + " \u25BE";
-        menuBtn.style.cssText = `
-          padding:8px 10px;border:none;background:transparent;
-          color:${dimColor};font-family:inherit;font-size:9px;font-weight:500;
-          text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;transition:color .12s;
-        `;
-        menuBtn.addEventListener("mouseenter", () => {
-          menuBtn.style.color = accentColor;
-        });
-        menuBtn.addEventListener("mouseleave", () => {
-          menuBtn.style.color = this.activeMenu === menuName ? accentColor : dimColor;
-        });
-        const dropdown = document.createElement("div");
-        dropdown.style.cssText = `
-          display:none;position:absolute;top:100%;left:0;z-index:100;
-          min-width:160px;background:${isDark ? "#0d0f1e" : "#f5f6fa"};
-          border:1px solid ${border};border-radius:4px;padding:4px 0;
-          box-shadow:0 4px 16px rgba(0,0,0,.4);
-        `;
-        const params = menuParams.get(menuName) ?? [];
-        const btns = menuButtons.get(menuName) ?? [];
-        for (const p of params) {
-          if (p.type === "toggle") {
-            const row = document.createElement("div");
-            row.style.cssText = `
-              display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;
-              font-size:11px;color:${textColor};transition:background .1s;
-            `;
-            const check = document.createElement("span");
-            check.textContent = p.value ? "\u2713" : " ";
-            check.style.cssText = `width:12px;text-align:center;color:${accentColor};font-size:10px;`;
-            const lbl = document.createElement("span");
-            lbl.textContent = p.label;
-            row.appendChild(check);
-            row.appendChild(lbl);
-            row.addEventListener("mouseenter", () => {
-              row.style.background = hoverBg;
-            });
-            row.addEventListener("mouseleave", () => {
-              row.style.background = "transparent";
-            });
-            row.addEventListener("click", (e) => {
-              e.stopPropagation();
-              p.value = !p.value;
-              check.textContent = p.value ? "\u2713" : " ";
-              this.runSketch();
-            });
-            dropdown.appendChild(row);
-          }
-        }
-        if (params.length > 0 && btns.length > 0) {
-          const sep = document.createElement("div");
-          sep.style.cssText = `border-top:1px solid ${border};margin:4px 0;`;
-          dropdown.appendChild(sep);
-        }
-        for (const b of btns) {
-          const row = document.createElement("div");
-          row.style.cssText = `
-            padding:7px 12px;cursor:pointer;font-size:11px;
-            color:${textColor};transition:background .1s;
-          `;
-          row.textContent = b.label;
-          row.addEventListener("mouseenter", () => {
-            row.style.background = hoverBg;
-            row.style.color = accentColor;
-          });
-          row.addEventListener("mouseleave", () => {
-            row.style.background = "transparent";
-            row.style.color = textColor;
-          });
-          const btnLabel = b.label, btnMenu = b.menu;
-          row.addEventListener("click", () => {
-            this.activeMenu = "";
-            dropdown.style.display = "none";
-            const current = this.buttons.find((cb) => cb.label === btnLabel && cb.menu === btnMenu);
-            current?.action();
-            this.runSketch();
-          });
-          dropdown.appendChild(row);
-        }
-        menuBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const isOpen = this.activeMenu === menuName;
-          menuBar.querySelectorAll(".menu-dropdown").forEach((d) => {
-            d.style.display = "none";
-          });
-          this.activeMenu = isOpen ? "" : menuName;
-          if (!isOpen) dropdown.style.display = "block";
-          menuBtn.style.color = isOpen ? dimColor : accentColor;
-        });
-        dropdown.classList.add("menu-dropdown");
-        menuBar.appendChild(menuBtn);
-        menuBar.appendChild(dropdown);
+  addShapeHandle(obj) {
+    const self = this;
+    const handle = {
+      get id() {
+        return obj.id;
+      },
+      color(c) {
+        self.scene.setStyle(obj.id, { color: c });
+        return handle;
+      },
+      opacity(o) {
+        self.scene.setStyle(obj.id, { opacity: o });
+        return handle;
+      },
+      visible(v = true) {
+        self.scene.setStyle(obj.id, { visible: v });
+        return handle;
+      },
+      label(l) {
+        self.scene.setStyle(obj.id, { label: l });
+        return handle;
+      },
+      layer(name) {
+        self.scene.setStyle(obj.id, { layer: name });
+        return handle;
       }
-      document.addEventListener("click", () => {
-        this.activeMenu = "";
-        menuBar.querySelectorAll(".menu-dropdown").forEach((d) => {
-          d.style.display = "none";
-        });
-      }, { once: false, capture: false });
-      this.panelEl.appendChild(menuBar);
-    }
-    if (hasTabs) {
-      const tabBar = document.createElement("div");
-      tabBar.style.cssText = `display:flex;border-bottom:1px solid ${border};flex-shrink:0;`;
-      for (const tab of tabOrder) {
-        const btn = document.createElement("button");
-        btn.textContent = tab;
-        const isActive = tab === this.activeTab;
-        btn.style.cssText = `
-          flex:1;padding:9px 4px;border:none;
-          border-bottom:2px solid ${isActive ? accentColor : "transparent"};
-          background:transparent;color:${isActive ? accentColor : dimColor};
-          font-family:inherit;font-size:9px;font-weight:500;text-transform:uppercase;
-          letter-spacing:1.2px;cursor:pointer;transition:all .12s;
-        `;
-        btn.addEventListener("click", () => {
-          this.activeTab = tab;
-          this.rebuildPanel();
-        });
-        tabBar.appendChild(btn);
-      }
-      this.panelEl.appendChild(tabBar);
-    }
-    if (hasTabs && this.activeTab === "Info") {
-      this._panelLogEl = document.createElement("div");
-      this._panelLogEl.style.cssText = `padding:12px 14px;font-size:11px;color:${textColor};line-height:1.9;`;
-      this.panelEl.appendChild(this._panelLogEl);
-      this.updateLog();
-      return;
-    }
-    const activeTabFilter = (tab, menu) => menu === "" && (!hasTabs || tab === this.activeTab || tab === "");
-    const groups = /* @__PURE__ */ new Map();
-    for (const p of this.params.values()) {
-      if (!activeTabFilter(p.tab, p.menu)) continue;
-      if (!groups.has(p.group)) groups.set(p.group, []);
-      groups.get(p.group).push(p);
-    }
-    const buttonGroups = /* @__PURE__ */ new Map();
-    for (const b of this.buttons) {
-      if (!activeTabFilter(b.tab, b.menu)) continue;
-      if (!buttonGroups.has(b.group)) buttonGroups.set(b.group, []);
-      buttonGroups.get(b.group).push(b);
-    }
-    const allGroupNames = /* @__PURE__ */ new Set([...groups.keys(), ...buttonGroups.keys()]);
-    for (const groupName of allGroupNames) {
-      const section = document.createElement("div");
-      section.style.cssText = `border-bottom:1px solid ${border};`;
-      const collapsed = this.collapsedGroups.has(groupName);
-      const header = document.createElement("div");
-      header.style.cssText = `
-        padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:6px;
-        user-select:none;transition:background .1s;
-      `;
-      header.addEventListener("mouseenter", () => {
-        header.style.background = "rgba(56,217,169,.04)";
-      });
-      header.addEventListener("mouseleave", () => {
-        header.style.background = "transparent";
-      });
-      const arrow = document.createElement("span");
-      arrow.style.cssText = `font-size:8px;color:${dimColor};transition:transform .15s;width:10px;`;
-      arrow.textContent = collapsed ? "\u25B6" : "\u25BC";
-      header.appendChild(arrow);
-      const title = document.createElement("span");
-      title.style.cssText = `font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:1.8px;color:${dimColor};`;
-      title.textContent = groupName;
-      header.appendChild(title);
-      section.appendChild(header);
-      const content = document.createElement("div");
-      content.style.cssText = `padding:0 14px 10px;${collapsed ? "display:none;" : ""}`;
-      const params = groups.get(groupName) ?? [];
-      for (const p of params) content.appendChild(this.renderParam(p, isDark));
-      const btns = buttonGroups.get(groupName) ?? [];
-      for (const b of btns) {
-        const row = document.createElement("div");
-        row.style.cssText = "margin-bottom:4px;";
-        const btn = document.createElement("button");
-        btn.textContent = b.label;
-        btn.style.cssText = `
-          width:100%;padding:7px 10px;border:1px solid ${border};border-radius:5px;
-          background:transparent;color:${textColor};font-family:inherit;font-size:10px;
-          cursor:pointer;transition:all .12s;
-        `;
-        btn.addEventListener("mouseenter", () => {
-          btn.style.background = hoverBg;
-          btn.style.borderColor = accentColor;
-          btn.style.color = accentColor;
-        });
-        btn.addEventListener("mouseleave", () => {
-          btn.style.background = "transparent";
-          btn.style.borderColor = border;
-          btn.style.color = textColor;
-        });
-        btn.addEventListener("click", () => {
-          b.action();
-          this.runSketch();
-        });
-        row.appendChild(btn);
-        content.appendChild(row);
-      }
-      section.appendChild(content);
-      header.addEventListener("click", () => {
-        if (this.collapsedGroups.has(groupName)) {
-          this.collapsedGroups.delete(groupName);
-          content.style.display = "";
-          arrow.textContent = "\u25BC";
-        } else {
-          this.collapsedGroups.add(groupName);
-          content.style.display = "none";
-          arrow.textContent = "\u25B6";
-        }
-      });
-      this.panelEl.appendChild(section);
-    }
-    {
-      const section = document.createElement("div");
-      section.style.cssText = `padding:12px 14px;border-bottom:1px solid ${border};font-size:11px;color:${textColor};line-height:1.7;white-space:pre-wrap;`;
-      section.textContent = this.infoText;
-      section.style.display = this.infoText ? "block" : "none";
-      this.panelEl.appendChild(section);
-      this._panelInfoEl = section;
-    }
-    if (!hasTabs) {
-      this._panelLogEl = document.createElement("div");
-      this._panelLogEl.style.cssText = `padding:10px 14px;border-bottom:1px solid ${border};display:none;`;
-      this.panelEl.appendChild(this._panelLogEl);
-    }
-  }
-  renderParam(p, isDark) {
-    if (p.type === "layertree") {
-      if (!p._layerPanel) {
-        p._layerPanel = new LayerPanel({
-          nodes: p.config.nodes,
-          value: p.value,
-          isDark,
-          onChange: (updates) => {
-            p.value = { ...p.value, ...updates };
-            this.runSketch();
-          }
-        });
-      } else {
-        p._layerPanel.update(p.config.nodes, p.value);
-      }
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "margin:0 -14px;";
-      wrap.appendChild(p._layerPanel.el);
-      return wrap;
-    }
-    const border = isDark ? "#1e2140" : "#d0d3de";
-    const dimColor = isDark ? "#7a80a0" : "#6a6f80";
-    const accentColor = "#ffffff";
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:5px;min-height:26px;";
-    const label = document.createElement("span");
-    label.style.cssText = `width:80px;flex-shrink:0;font-size:11px;color:${dimColor};text-transform:capitalize;`;
-    label.textContent = p.label;
-    row.appendChild(label);
-    switch (p.type) {
-      case "slider": {
-        const input = document.createElement("input");
-        input.type = "range";
-        input.min = String(p.config.min);
-        input.max = String(p.config.max);
-        input.step = String(p.config.step);
-        input.value = String(p.value);
-        input.style.cssText = `
-          flex:1;height:3px;-webkit-appearance:none;appearance:none;
-          background:${border};border-radius:2px;outline:none;cursor:pointer;
-          accent-color:${p.config.color || accentColor};
-        `;
-        const valueSpan = document.createElement("span");
-        valueSpan.style.cssText = `width:42px;text-align:right;font-size:10px;color:${accentColor};`;
-        const isInt = p.config.step >= 1;
-        const rawDec = isInt ? 0 : Math.max(2, -Math.floor(Math.log10(p.config.step) - 1e-3));
-        const decimals = Math.min(Math.max(0, rawDec), 20);
-        const fmt = (v) => isInt ? String(v) : v.toFixed(decimals);
-        valueSpan.textContent = fmt(p.value);
-        input.addEventListener("input", () => {
-          const v = parseFloat(input.value);
-          p.value = v;
-          valueSpan.textContent = fmt(v);
-          this.scheduleRerun();
-        });
-        input.addEventListener("change", () => {
-          if (this._rerunTimer) {
-            clearTimeout(this._rerunTimer);
-            this._rerunTimer = 0;
-          }
-          this.runSketch();
-        });
-        p._applyValue = (v) => {
-          input.value = String(v);
-          valueSpan.textContent = fmt(v);
-        };
-        row.appendChild(input);
-        row.appendChild(valueSpan);
-        break;
-      }
-      case "toggle": {
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.checked = p.value;
-        input.style.cssText = `accent-color:${accentColor};cursor:pointer;width:14px;height:14px;`;
-        input.addEventListener("change", () => {
-          p.value = input.checked;
-          this.runSketch();
-        });
-        row.appendChild(input);
-        break;
-      }
-      case "select": {
-        const select = document.createElement("select");
-        select.style.cssText = `
-          flex:1;padding:4px 8px;background:${isDark ? "#07080e" : "#f4f5f8"};
-          border:1px solid ${border};border-radius:4px;color:inherit;
-          font-family:inherit;font-size:11px;outline:none;cursor:pointer;
-        `;
-        for (const opt of p.config.options) {
-          const el = document.createElement("option");
-          el.value = opt;
-          el.textContent = opt;
-          if (opt === p.value) el.selected = true;
-          select.appendChild(el);
-        }
-        select.addEventListener("change", () => {
-          p.value = select.value;
-          this.runSketch();
-        });
-        row.appendChild(select);
-        break;
-      }
-      case "color": {
-        const input = document.createElement("input");
-        input.type = "color";
-        input.value = p.value;
-        input.style.cssText = `width:32px;height:24px;border:1px solid ${border};border-radius:4px;padding:0;cursor:pointer;background:none;`;
-        const valueSpan = document.createElement("span");
-        valueSpan.style.cssText = `font-size:10px;color:${dimColor};`;
-        valueSpan.textContent = p.value;
-        input.addEventListener("input", () => {
-          p.value = input.value;
-          valueSpan.textContent = input.value;
-          this.runSketch();
-        });
-        row.appendChild(input);
-        row.appendChild(valueSpan);
-        break;
-      }
-    }
-    return row;
+    };
+    return handle;
   }
   // ── Log Display ──
   updateLog() {
@@ -22876,13 +23215,13 @@ var SketchInstance = class {
       this._panelInfoEl.textContent = this.infoText;
       this._panelInfoEl.style.display = this.infoText ? "block" : "none";
     }
-    if (this._panelLogEl) {
-      if (this.logs.length > 0) {
-        this._panelLogEl.innerHTML = this.logs.map((l) => `<div style="font-size:10px;line-height:1.7;"><span style="color:#7a80a0">${l.label}</span>${l.value ? ` <span style="color:#fff">${l.value}</span>` : ""}</div>`).join("");
-        this._panelLogEl.style.display = "block";
-      } else {
-        this._panelLogEl.style.display = "none";
-      }
+    const logHtml = this.logs.map((l) => `<div style="font-size:10px;line-height:1.7;"><span style="color:${this.theme.textDim}">${l.label}</span>${l.value ? ` <span style="color:${this.theme.accent}">${l.value}</span>` : ""}</div>`).join("");
+    if (this._hasTabs) {
+      if (this._panelFooterLogEl) this._panelFooterLogEl.style.display = "none";
+      if (this._panelLogEl) this._panelLogEl.innerHTML = logHtml;
+    } else if (this._panelFooterLogEl) {
+      this._panelFooterLogEl.innerHTML = logHtml;
+      this._panelFooterLogEl.style.display = this.logs.length > 0 ? "block" : "none";
     }
   }
   // ── Render Loop ──
@@ -22915,6 +23254,16 @@ var SketchInstance = class {
       this._lastRerunTime = performance.now();
       this.runSketch();
     }, delay);
+  }
+  /** Immediate re-run on control commit (slider drag-end, toggle, select) —
+   *  cancels any pending throttled re-run so the final value applies now. */
+  commitRun() {
+    if (this._rerunTimer) {
+      clearTimeout(this._rerunTimer);
+      this._rerunTimer = 0;
+    }
+    this._lastRerunTime = performance.now();
+    this.runSketch();
   }
   /** Force re-run the sketch */
   rerun() {
@@ -23027,9 +23376,275 @@ var SketchInstance = class {
     if (this._boundKeyUp) window.removeEventListener("keyup", this._boundKeyUp);
     this._boundKeyDown = null;
     this._boundKeyUp = null;
+    this.panel.dispose();
     this.renderer.dispose();
   }
 };
+
+// src/sketch/AppShell.ts
+function appShell(config) {
+  const t = getTheme(config.theme);
+  const panelWidth = config.panelWidth ?? 260;
+  const root = document.createElement("div");
+  root.style.cssText = `
+    display:grid; grid-template-columns:${panelWidth}px 1fr;
+    grid-template-rows:36px 1fr;
+    width:100%; height:100%; font-family:${t.font};
+    font-size:12px; color:${t.text}; background:${t.panelBg};
+  `;
+  const header = document.createElement("div");
+  header.style.cssText = `
+    grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
+    background:${t.panelBg}; border-bottom:1px solid ${t.border};
+  `;
+  header.innerHTML = `
+    <span style="font-weight:600;font-size:14px;color:${t.accent}">
+      &#x2B21; ${config.title ?? "Tekto App"}
+    </span>
+    <span style="font-size:9px;padding:2px 6px;border-radius:3px;
+      background:${t.hoverBg};color:${t.accent}">LIVE</span>
+  `;
+  root.appendChild(header);
+  const panelEl = document.createElement("div");
+  panelEl.style.cssText = `
+    overflow-y:auto; overflow-x:hidden; padding:0;
+    background:${t.panelBg}; border-right:1px solid ${t.border};
+  `;
+  root.appendChild(panelEl);
+  const vpWrap = document.createElement("div");
+  vpWrap.style.cssText = "position:relative;overflow:hidden;";
+  const viewportEl = document.createElement("div");
+  viewportEl.style.cssText = "width:100%;height:100%;";
+  vpWrap.appendChild(viewportEl);
+  const statusEl = document.createElement("div");
+  statusEl.style.cssText = `
+    position:absolute; bottom:12px; left:12px;
+    padding:8px 12px; border-radius:6px;
+    background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
+    font-size:11px; line-height:1.7; color:${t.textDim};
+    pointer-events:none; max-width:340px;
+    border:1px solid rgba(22,24,42,.8);
+    white-space:pre; font-family:${t.font};
+    display:none;
+  `;
+  vpWrap.appendChild(statusEl);
+  root.appendChild(vpWrap);
+  config.container.appendChild(root);
+  const params = new ParamStore(config.params);
+  const panel = new ControlPanel({ store: params, theme: t });
+  const groups = config.groups ?? { Parameters: Object.keys(config.params) };
+  const items = [];
+  for (const [groupName, keys] of Object.entries(groups)) {
+    for (const key of keys) items.push({ key, group: groupName });
+  }
+  panel.render(items);
+  panelEl.appendChild(panel.el);
+  const scene = new Scene3();
+  const renderer = new ThreeRenderer(scene, viewportEl, {
+    backgroundColor: config.background ?? 658196,
+    cameraPosition: config.camera ?? [6, 8, 10],
+    cameraTarget: config.target ?? [0, 0, 0],
+    // Z-up by default — matches the tekto convention (XY = ground plane) and
+    // the architectural / BIM / voxel geometry these apps usually build. Pass
+    // `up: "y"` if you're showing the Y-up built-in primitives (box/cylinder/sphere).
+    up: config.up ?? "z",
+    ...config.renderer
+  });
+  if (config.topBar !== false) {
+    buildTopBar(header, scene, renderer, t);
+  }
+  let animateFn = null;
+  let lastTime = performance.now();
+  let startTime = lastTime;
+  let disposed = false;
+  function loop() {
+    if (disposed) return;
+    const now = performance.now();
+    const dt = Math.min((now - lastTime) / 1e3, 1 / 15);
+    lastTime = now;
+    if (animateFn) animateFn(dt, (now - startTime) / 1e3);
+    renderer.render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  return {
+    params,
+    scene,
+    renderer,
+    panel,
+    onAnimate(fn) {
+      animateFn = fn;
+    },
+    status(text) {
+      if (text) {
+        statusEl.textContent = text;
+        statusEl.style.display = "block";
+      } else {
+        statusEl.style.display = "none";
+      }
+    },
+    dispose() {
+      disposed = true;
+      panel.dispose();
+      renderer.dispose();
+      config.container.removeChild(root);
+    }
+  };
+}
+function buildTopBar(header, scene, renderer, t) {
+  const bar = document.createElement("div");
+  bar.style.cssText = "margin-left:auto; display:flex; align-items:center; gap:16px;";
+  header.appendChild(bar);
+  const tag = (label) => {
+    const el = document.createElement("span");
+    el.textContent = label;
+    el.style.cssText = `color:${t.textFaint}; text-transform:uppercase; letter-spacing:1px; font-size:9px;`;
+    return el;
+  };
+  function segmented(opts, initial, onSel) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = `display:flex; border:1px solid ${t.border}; border-radius:5px; overflow:hidden;`;
+    const btns = [];
+    const set = (val) => {
+      for (const [b, v] of btns) {
+        const on = v === val;
+        b.style.background = on ? t.accent : "transparent";
+        b.style.color = on ? t.panelBg : t.textDim;
+      }
+    };
+    for (const [label, val] of opts) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.style.cssText = "padding:3px 9px; border:0; background:transparent; font:inherit; font-size:11px; cursor:pointer;";
+      b.onclick = () => {
+        set(val);
+        onSel(val);
+      };
+      wrap.appendChild(b);
+      btns.push([b, val]);
+    }
+    set(initial);
+    return wrap;
+  }
+  const group = (label, control) => {
+    const g = document.createElement("div");
+    g.style.cssText = "display:flex; align-items:center; gap:6px;";
+    g.append(tag(label), control);
+    return g;
+  };
+  bar.appendChild(group("Light", segmented(
+    [["Flat", "flat"], ["Studio", "studio"]],
+    "flat",
+    (v) => scene.setLightingMode(v)
+  )));
+  bar.appendChild(group("Mode", segmented(
+    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"]],
+    "solid",
+    (v) => scene.setRenderMode(v)
+  )));
+  bar.appendChild(group("Cam", segmented(
+    [["Persp", "persp"], ["Iso", "iso"]],
+    "persp",
+    (v) => {
+      if (v === "iso") {
+        renderer.setProjection("perspective");
+        const c = renderer.controls;
+        if (c) {
+          const target = c.target;
+          const step = renderer.camera.position.distanceTo(target) / Math.sqrt(3);
+          renderer.setCameraPosition(target.x + step, target.y - step, target.z + step);
+          c.update();
+        }
+        renderer.setProjection("orthographic");
+      } else {
+        renderer.setProjection("perspective");
+      }
+    }
+  )));
+  bar.appendChild(buildSun(renderer, t));
+}
+function buildSun(renderer, t) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "position:relative;";
+  const btn = document.createElement("button");
+  btn.innerHTML = "&#x2600;&#xFE0E; Sun &#x25BE;";
+  btn.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
+  wrap.appendChild(btn);
+  const pop = document.createElement("div");
+  pop.style.cssText = `position:absolute; top:130%; right:0; z-index:50; display:none; flex-direction:column; gap:8px;
+    padding:12px; border:1px solid ${t.border}; border-radius:8px; background:${t.panelBg};
+    box-shadow:0 8px 24px rgba(0,0,0,.45); width:228px;`;
+  wrap.appendChild(pop);
+  btn.onclick = () => {
+    pop.style.display = pop.style.display === "none" ? "flex" : "none";
+  };
+  const state = { lat: 47.37, lon: 8.55, month: 6, day: 21, hour: 13 };
+  const readout = document.createElement("div");
+  readout.style.cssText = `font-size:10px; color:${t.textDim}; font-family:${t.font};`;
+  const apply = () => {
+    const date = new Date(Date.UTC(2025, state.month - 1, state.day, Math.floor(state.hour), Math.round(state.hour % 1 * 60)));
+    const sun = SunPosition.compute({ date, latitude: state.lat, longitude: state.lon });
+    renderer.setSunDirection(sun.direction);
+    const deg = (r) => Math.round(r * 180 / Math.PI);
+    readout.textContent = `alt ${deg(sun.altitude)}\xB0  az ${deg(sun.azimuth)}\xB0  ${sun.isDaytime ? "day" : "night"}`;
+  };
+  const num = (label, value, min, max, step, onCh) => {
+    const r = document.createElement("label");
+    r.style.cssText = `display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; color:${t.textDim};`;
+    const sp = document.createElement("span");
+    sp.textContent = label;
+    const i = document.createElement("input");
+    i.type = "number";
+    i.value = String(value);
+    i.min = String(min);
+    i.max = String(max);
+    i.step = String(step);
+    i.style.cssText = `width:84px; padding:2px 5px; background:${t.fieldBg}; border:1px solid ${t.border}; border-radius:4px; color:inherit; font:inherit; font-size:11px;`;
+    i.oninput = () => onCh(Number(i.value));
+    r.append(sp, i);
+    return r;
+  };
+  pop.append(
+    num("Latitude", state.lat, -90, 90, 0.1, (v) => {
+      state.lat = v;
+      apply();
+    }),
+    num("Longitude", state.lon, -180, 180, 0.1, (v) => {
+      state.lon = v;
+      apply();
+    }),
+    num("Month", state.month, 1, 12, 1, (v) => {
+      state.month = v;
+      apply();
+    }),
+    num("Day", state.day, 1, 31, 1, (v) => {
+      state.day = v;
+      apply();
+    })
+  );
+  const hourWrap = document.createElement("label");
+  hourWrap.style.cssText = `display:flex; flex-direction:column; gap:4px; font-size:11px; color:${t.textDim};`;
+  const hourLabel = document.createElement("span");
+  hourLabel.textContent = "Hour 13:00";
+  const hour = document.createElement("input");
+  hour.type = "range";
+  hour.min = "0";
+  hour.max = "24";
+  hour.step = "0.25";
+  hour.value = "13";
+  hour.className = "tekto-slider";
+  hour.style.cssText = `cursor:pointer;--tekto-track:${t.controlBorder};--tekto-thumb:${t.accent};`;
+  hour.oninput = () => {
+    state.hour = Number(hour.value);
+    const h = Math.floor(state.hour), m = Math.round(state.hour % 1 * 60);
+    hourLabel.textContent = `Hour ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    apply();
+  };
+  hourWrap.append(hourLabel, hour);
+  pop.append(hourWrap, readout);
+  apply();
+  return wrap;
+}
 
 // src/sketch/Sketch2D.ts
 function sketch2d(fn, config) {
@@ -23037,7 +23652,10 @@ function sketch2d(fn, config) {
 }
 var Sketch2DInstance = class {
   constructor(fn, config) {
-    this.params = /* @__PURE__ */ new Map();
+    // Param model: values in the ParamStore, placement in `items` — rendered
+    // by the shared ControlPanel.
+    this.store = new ParamStore({});
+    this.items = /* @__PURE__ */ new Map();
     this.buttons = [];
     this.logs = [];
     this.drawFn = null;
@@ -23047,11 +23665,15 @@ var Sketch2DInstance = class {
     this.pointerUpFns = [];
     this.continuous = false;
     this._prevFingerprint = "";
+    this._baseLogCount = 0;
+    this._onceRan = [];
+    this._onceSeq = 0;
     this.rng = createRandom();
     this.disposed = false;
     this.startTime = performance.now();
     this.lastTime = performance.now();
     this.rerunTimer = 0;
+    this._running = false;
     // Input state
     this._mouseX = 0;
     this._mouseY = 0;
@@ -23073,42 +23695,43 @@ var Sketch2DInstance = class {
     this.startLoop();
   }
   // ── DOM ──
-  get isDark() {
-    return this.config.theme !== "light";
-  }
   buildDOM() {
     const pw = this.config.panelWidth ?? 280;
-    const dk = this.isDark;
-    const bg = dk ? "#07080e" : "#f4f5f8";
-    const panelBg = dk ? "#0c0d16" : "#fff";
-    const border = dk ? "#16182a" : "#e0e2ea";
-    const textColor = dk ? "#b8bdd4" : "#2a2d3a";
+    const t = getTheme(this.config.theme);
     const root = document.createElement("div");
     root.style.cssText = `
       display:grid; grid-template-columns:${pw}px 1fr; grid-template-rows:44px 1fr;
       height:100%; width:100%; overflow:hidden; position:relative;
-      background:${bg}; color:${textColor};
-      font-family:'IBM Plex Mono',ui-monospace,monospace;
+      background:${t.bg}; color:${t.text};
+      font-family:${t.font};
     `;
     const header = document.createElement("div");
     header.style.cssText = `
       grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
-      background:${panelBg}; border-bottom:1px solid ${border};
+      background:${t.panelBg}; border-bottom:1px solid ${t.border};
     `;
     header.innerHTML = `
-      <span style="font-weight:600;font-size:14px;color:#ffffff">
+      <span style="font-weight:600;font-size:14px;color:${t.accent}">
         &#x2B21; ${this.config.title ?? "Tekto Sketch2D"}
       </span>
       <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-        background:rgba(255,255,255,.08);color:#ffffff">2D</span>
+        background:${t.hoverBg};color:${t.accent}">2D</span>
     `;
     root.appendChild(header);
     this.panelEl = document.createElement("div");
     this.panelEl.style.cssText = `
       grid-column:1; grid-row:2; overflow-y:auto; overflow-x:hidden; padding:0;
-      background:${panelBg}; border-right:1px solid ${border};
+      background:${t.panelBg}; border-right:1px solid ${t.border};
     `;
     root.appendChild(this.panelEl);
+    this.panel = new ControlPanel({
+      store: this.store,
+      theme: t,
+      getButtons: () => this.buttons,
+      onAction: () => this.scheduleRerun()
+    });
+    this.panelEl.appendChild(this.panel.el);
+    this.store.onChange(() => this.scheduleRerun());
     const collapseKey = "tekto.sketch2d.collapsed";
     let collapsed = false;
     try {
@@ -23118,7 +23741,7 @@ var Sketch2DInstance = class {
     const toggleBtn = document.createElement("button");
     toggleBtn.style.cssText = `
       margin-left:auto; cursor:pointer; width:28px; height:26px; border-radius:6px;
-      border:1px solid ${border}; background:transparent; color:${textColor};
+      border:1px solid ${t.border}; background:transparent; color:${t.text};
       font-size:15px; line-height:1; padding:0; flex:none;
     `;
     const applyCollapse = () => {
@@ -23141,7 +23764,7 @@ var Sketch2DInstance = class {
     vpWrap.style.cssText = "grid-column:2;grid-row:2;position:relative;overflow:hidden;";
     this.canvas.style.cssText = `
       width:100%; height:100%; display:block;
-      background:${this.config.background ?? (dk ? "#0a0a10" : "#ffffff")};
+      background:${this.config.background ?? (t.isDark ? "#0a0a10" : "#ffffff")};
     `;
     vpWrap.appendChild(this.canvas);
     this.logEl = document.createElement("div");
@@ -23149,7 +23772,7 @@ var Sketch2DInstance = class {
       position:absolute; bottom:12px; left:12px;
       padding:8px 12px; border-radius:6px;
       background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
-      font-size:11px; line-height:1.7; color:#7a80a0;
+      font-size:11px; line-height:1.7; color:${t.textDim};
       pointer-events:none; max-width:300px;
       border:1px solid rgba(22,24,42,.8); display:none;
     `;
@@ -23217,22 +23840,29 @@ var Sketch2DInstance = class {
     this.pointerDownFns = [];
     this.pointerMoveFns = [];
     this.pointerUpFns = [];
+    this._onceSeq = 0;
     const usedParams = /* @__PURE__ */ new Set();
     const lab = this.buildLab(usedParams);
+    this._running = true;
     try {
       this.fn(lab);
     } catch (e) {
       console.error("Sketch2D error:", e);
       this.logs.push({ label: "ERROR", value: String(e) });
     }
-    for (const key of this.params.keys()) {
-      if (!usedParams.has(key)) this.params.delete(key);
+    this._running = false;
+    for (const key of this.store.keys()) {
+      if (!usedParams.has(key)) {
+        this.store.remove(key);
+        this.items.delete(key);
+      }
     }
-    const fingerprint = [...this.params.values()].map((p) => p.key).sort().join("|");
+    const fingerprint = [...this.items.keys()].sort().join("|") + "\u2016" + this.buttons.map((b) => `${b.group}:${b.label}`).join("|");
     if (fingerprint !== this._prevFingerprint) {
       this._prevFingerprint = fingerprint;
-      this.rebuildPanel();
+      this.panel.render([...this.items.values()]);
     }
+    this._baseLogCount = this.logs.length;
     this.updateLog();
     this.redraw();
   }
@@ -23247,7 +23877,7 @@ var Sketch2DInstance = class {
     }
   }
   scheduleRerun() {
-    if (this.rerunTimer) return;
+    if (this._running || this.rerunTimer) return;
     this.rerunTimer = requestAnimationFrame(() => {
       this.rerunTimer = 0;
       this.runSketch();
@@ -23255,29 +23885,44 @@ var Sketch2DInstance = class {
   }
   buildLab(usedParams) {
     const self = this;
-    function makeParam(type, label, defaultVal, group, config) {
-      const key = `${type}:${group}:${label}`;
+    function makeParam(key, def, item) {
       usedParams.add(key);
-      if (!self.params.has(key)) {
-        self.params.set(key, { key, type, label, group, value: defaultVal, config });
+      if (!self.store.has(key)) {
+        self.store.define(key, def);
+        self.items.set(key, item);
       }
-      const p = self.params.get(key);
       return { get value() {
-        return p.value;
+        return self.store.get(key);
       } };
     }
     return {
       slider(label, min, max, def, opts) {
-        return makeParam("slider", label, def, opts?.group ?? "Parameters", { min, max, step: opts?.step ?? (max - min) / 100 });
+        const group = opts?.group ?? "Parameters";
+        const key = `slider:${opts?.group ?? ""}:${label}`;
+        return makeParam(
+          key,
+          { type: "float", min, max, default: def, step: opts?.step ?? (max - min) / 100, label },
+          { key, group }
+        );
       },
       toggle(label, def = false, opts) {
-        return makeParam("toggle", label, def, opts?.group ?? "Parameters", {});
+        const group = opts?.group ?? "Parameters";
+        const key = `toggle:${opts?.group ?? ""}:${label}`;
+        return makeParam(key, { type: "bool", default: def, label }, { key, group });
       },
       select(label, options, def, opts) {
-        return makeParam("select", label, def ?? options[0], opts?.group ?? "Parameters", { options });
+        const group = opts?.group ?? "Parameters";
+        const key = `select:${opts?.group ?? ""}:${label}`;
+        return makeParam(
+          key,
+          { type: "select", options, default: def ?? options[0], label },
+          { key, group }
+        );
       },
       colorPicker(label, def = "#38d9a9", opts) {
-        return makeParam("color", label, def, opts?.group ?? "Display", {});
+        const group = opts?.group ?? "Display";
+        const key = `color:${opts?.group ?? ""}:${label}`;
+        return makeParam(key, { type: "color", default: def, label }, { key, group });
       },
       button(label, action, opts) {
         self.buttons.push({ label, action, group: opts?.group ?? "Actions" });
@@ -23288,6 +23933,13 @@ var Sketch2DInstance = class {
       animate(fn) {
         self.animateFn = fn;
         self.continuous = true;
+      },
+      once(fn) {
+        const i = self._onceSeq++;
+        if (!self._onceRan[i]) {
+          self._onceRan[i] = true;
+          fn();
+        }
       },
       get canvas() {
         return self.canvas;
@@ -23355,130 +24007,6 @@ var Sketch2DInstance = class {
       }
     };
   }
-  // ── Panel Building ──
-  rebuildPanel() {
-    const dk = this.isDark;
-    const groups = /* @__PURE__ */ new Map();
-    for (const p of this.params.values()) {
-      if (!groups.has(p.group)) groups.set(p.group, []);
-      groups.get(p.group).push(p);
-    }
-    for (const b of this.buttons) {
-      if (!groups.has(b.group)) groups.set(b.group, []);
-    }
-    const html = [];
-    for (const [group, params] of groups) {
-      html.push(`<div style="border-bottom:1px solid ${dk ? "#16182a" : "#e0e2ea"};padding:10px 14px;">`);
-      html.push(`<div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:${dk ? "#4a5070" : "#8890a0"};margin-bottom:8px;">${group}</div>`);
-      for (const p of params) {
-        if (p.type === "slider") {
-          const { min, max, step } = p.config;
-          html.push(`
-            <div style="margin-bottom:6px;">
-              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-                <span style="color:${dk ? "#7a80a0" : "#5a6080"}">${p.label}</span>
-                <span style="color:#ffffff;font-weight:500" data-val="${p.key}">${typeof p.value === "number" ? Number.isInteger(step) && step >= 1 ? p.value : p.value.toFixed(2) : p.value}</span>
-              </div>
-              <input type="range" data-key="${p.key}" min="${min}" max="${max}" step="${step}" value="${p.value}"
-                style="width:100%;height:4px;accent-color:#ffffff;cursor:pointer;">
-            </div>
-          `);
-        } else if (p.type === "toggle") {
-          html.push(`
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
-              <span style="color:${dk ? "#7a80a0" : "#5a6080"}">${p.label}</span>
-              <label style="position:relative;width:32px;height:18px;cursor:pointer;">
-                <input type="checkbox" data-key="${p.key}" ${p.value ? "checked" : ""}
-                  style="position:absolute;opacity:0;width:0;height:0;">
-                <span style="position:absolute;inset:0;border-radius:9px;transition:.2s;
-                  background:${p.value ? "#ffffff" : dk ? "#1e2040" : "#d0d4e0"};">
-                  <span style="position:absolute;left:${p.value ? "16px" : "2px"};top:2px;width:14px;height:14px;
-                    border-radius:50%;background:${p.value ? "#16182c" : "white"};transition:.2s;"></span>
-                </span>
-              </label>
-            </div>
-          `);
-        } else if (p.type === "select") {
-          const opts = p.config.options.map(
-            (o) => `<option value="${o}" ${o === p.value ? "selected" : ""}>${o}</option>`
-          ).join("");
-          html.push(`
-            <div style="margin-bottom:6px;">
-              <div style="font-size:11px;color:${dk ? "#7a80a0" : "#5a6080"};margin-bottom:3px;">${p.label}</div>
-              <select data-key="${p.key}" style="width:100%;padding:4px 6px;border-radius:4px;font-size:11px;
-                font-family:inherit;background:${dk ? "#0f1020" : "#f0f2f8"};color:inherit;
-                border:1px solid ${dk ? "#1e2040" : "#d0d4e0"};cursor:pointer;">
-                ${opts}
-              </select>
-            </div>
-          `);
-        } else if (p.type === "color") {
-          html.push(`
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
-              <span style="color:${dk ? "#7a80a0" : "#5a6080"}">${p.label}</span>
-              <input type="color" data-key="${p.key}" value="${p.value}"
-                style="width:28px;height:22px;border:none;cursor:pointer;background:none;">
-            </div>
-          `);
-        }
-      }
-      for (const b of this.buttons.filter((b2) => b2.group === group)) {
-        html.push(`
-          <button data-btn="${b.label}" style="width:100%;padding:6px 10px;margin-bottom:4px;
-            font-family:inherit;font-size:11px;cursor:pointer;border-radius:4px;
-            background:${dk ? "#151730" : "#e8eaf0"};color:inherit;
-            border:1px solid ${dk ? "#1e2040" : "#d0d4e0"};">
-            ${b.label}
-          </button>
-        `);
-      }
-      html.push("</div>");
-    }
-    this.panelEl.innerHTML = html.join("");
-    this.panelEl.querySelectorAll("input[type=range]").forEach((el) => {
-      const input = el;
-      const key = input.dataset.key;
-      input.addEventListener("input", () => {
-        const p = this.params.get(key);
-        p.value = parseFloat(input.value);
-        const valEl = this.panelEl.querySelector(`[data-val="${key}"]`);
-        if (valEl) {
-          const step = p.config.step;
-          valEl.textContent = Number.isInteger(step) && step >= 1 ? String(p.value) : p.value.toFixed(2);
-        }
-        this.scheduleRerun();
-      });
-    });
-    this.panelEl.querySelectorAll("input[type=checkbox]").forEach((el) => {
-      const input = el;
-      input.addEventListener("change", () => {
-        this.params.get(input.dataset.key).value = input.checked;
-        this.rebuildPanel();
-        this.scheduleRerun();
-      });
-    });
-    this.panelEl.querySelectorAll("select").forEach((el) => {
-      const sel = el;
-      sel.addEventListener("change", () => {
-        this.params.get(sel.dataset.key).value = sel.value;
-        this.scheduleRerun();
-      });
-    });
-    this.panelEl.querySelectorAll("input[type=color]").forEach((el) => {
-      const input = el;
-      input.addEventListener("input", () => {
-        this.params.get(input.dataset.key).value = input.value;
-        this.scheduleRerun();
-      });
-    });
-    this.panelEl.querySelectorAll("button[data-btn]").forEach((el) => {
-      const btn = el;
-      btn.addEventListener("click", () => {
-        const b = this.buttons.find((b2) => b2.label === btn.dataset.btn);
-        if (b) b.action();
-      });
-    });
-  }
   updateLog() {
     if (this.logs.length === 0) {
       this.logEl.style.display = "none";
@@ -23497,6 +24025,7 @@ var Sketch2DInstance = class {
         const now = performance.now();
         const dt = (now - this.lastTime) / 1e3;
         this.lastTime = now;
+        this.logs.length = this._baseLogCount;
         this.animateFn((now - this.startTime) / 1e3, Math.min(dt, 1 / 15));
         this.redraw();
         this.updateLog();
@@ -23508,6 +24037,7 @@ var Sketch2DInstance = class {
   /** Tear down the sketch */
   dispose() {
     this.disposed = true;
+    this.panel.dispose();
     this.container.innerHTML = "";
   }
 };
@@ -23522,6 +24052,7 @@ var Sketch2DInstance = class {
   Capsule2D,
   CltConstruction,
   ConnectedMesh,
+  ControlPanel,
   CubicBezierCurve,
   Curvature,
   CurveUtils,
@@ -23645,6 +24176,7 @@ var Sketch2DInstance = class {
   WallOpening,
   WallSystem,
   WallType,
+  appShell,
   boundingWalls,
   buildCutList,
   chooseJoistDirection,
@@ -23657,6 +24189,7 @@ var Sketch2DInstance = class {
   createRandom,
   edgeOutwardVisibility,
   extractVisiblePolylines,
+  getTheme,
   hiddenLineIdBuffer,
   holzrahmenbauLayers,
   joistDirectionFromBounds,
