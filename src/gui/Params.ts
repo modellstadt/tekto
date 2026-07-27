@@ -46,7 +46,7 @@ export interface BoolParam {
 
 export interface SelectParam {
   type: "select";
-  options: string[];
+  options: readonly string[];
   default: string;
   label?: string;
 }
@@ -132,6 +132,36 @@ export class ParamStore<S extends ParamSchema = ParamSchema> {
     for (const l of this.listeners) l(key as string, value, this.values);
     const kl = this.keyListeners.get(key as string);
     if (kl) for (const l of kl) l(value);
+  }
+
+  /**
+   * Dynamically add (or refresh) a parameter definition. Used by the sketch
+   * APIs, whose immediate-mode `lab.slider(...)` calls declare params during
+   * the sketch run. Initializes the value from `default` the first time;
+   * an existing value is preserved so re-defining across re-runs is cheap.
+   * Does NOT notify listeners (definition is structure, not a value change).
+   */
+  define(key: string, def: ParamDef): void {
+    const existed = key in this.schema;
+    (this.schema as ParamSchema)[key] = def;
+    if (!existed && def.type !== "button") {
+      this.values[key] = (def as any).default;
+    }
+  }
+
+  /** Remove a parameter (and its value). Does not notify listeners. */
+  remove(key: string): void {
+    delete (this.schema as ParamSchema)[key];
+    delete this.values[key];
+    this.keyListeners.delete(key);
+  }
+
+  has(key: string): boolean {
+    return key in this.schema;
+  }
+
+  keys(): string[] {
+    return Object.keys(this.schema);
   }
 
   /** Get all current values */

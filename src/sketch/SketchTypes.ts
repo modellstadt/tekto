@@ -118,6 +118,9 @@ export interface MeshHandle {
   noExport(v?: boolean): MeshHandle;
   /** Assign a semantic layer / class name (used by exports, filtering, debug). */
   layer(name: string): MeshHandle;
+  /** Print-layer striping: repeat a layer-line stripe every `heightM` metres along the tube (pipe-UV
+   *  meshes only) — the stacked-bead look of 3D-printed metal. Pass undefined to clear. */
+  printLayers(heightM: number | undefined): MeshHandle;
 
   // Transform
   translate(x: number, y: number, z: number): MeshHandle;
@@ -169,6 +172,17 @@ export interface LineHandle {
   pickable(p?: boolean): LineHandle;
 }
 
+/** A handle to a filled 2D shape in the scene (polygon, circle) */
+export interface ShapeHandle {
+  readonly id: string;
+  color(c: string): ShapeHandle;
+  opacity(o: number): ShapeHandle;
+  visible(v?: boolean): ShapeHandle;
+  label(l: string): ShapeHandle;
+  /** Assign a semantic layer / class name (used by exports, filtering, debug). */
+  layer(name: string): ShapeHandle;
+}
+
 /** Shape mode for beginShape/endShape */
 export type ShapeMode = "triangles" | "lines" | "line_strip" | "quads";
 
@@ -206,7 +220,7 @@ export interface Lab {
    */
   setSlider(label: string, value: number, opts?: { group?: string }): void;
   toggle(label: string, defaultValue?: boolean, opts?: { group?: string; tab?: string; menu?: string }): Reactive<boolean>;
-  select<T extends string>(label: string, options: T[], defaultValue?: T, opts?: SelectOpts): Reactive<T>;
+  select<T extends string>(label: string, options: readonly T[], defaultValue?: T, opts?: SelectOpts): Reactive<T>;
   colorPicker(label: string, defaultValue?: string, opts?: { group?: string; tab?: string; menu?: string }): Reactive<string>;
   /**
    * Render a scrollable layer-tree panel — checkboxes, collapse/expand, and
@@ -221,6 +235,15 @@ export interface Lab {
   // ── Actions ──
   button(label: string, action: () => void, opts?: { group?: string; tab?: string; menu?: string }): void;
   separator(): void;
+
+  /**
+   * Run `fn` on the FIRST sketch run only — skipped on all re-runs. Use for
+   * one-shot setup (loading a file, attaching custom listeners to
+   * `lab.viewport`) without hand-rolled guard flags. Calls are matched by
+   * declaration order, so keep `once` calls unconditional at the top level
+   * of the sketch body.
+   */
+  once(fn: () => void): void;
 
   /**
    * Register an "Export ▾" item for the host shell (testbench / app)
@@ -272,8 +295,8 @@ export interface Lab {
    * tube radius).
    */
   polyline(points: Vec3[]): LineHandle;
-  polygon(vertices: Vec3[], style?: Partial<VisualStyle>): string;
-  circle(cx: number, cy: number, cz: number, radius: number): string;
+  polygon(vertices: Vec3[], style?: Partial<VisualStyle>): ShapeHandle;
+  circle(cx: number, cy: number, cz: number, radius: number): ShapeHandle;
 
   // ── Algorithms ──
   algo: typeof Algo;

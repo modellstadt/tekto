@@ -35,13 +35,15 @@
  *   The framework diffs what changed and updates the 3D scene minimally.
  */
 
-import * as THREE from "three";
 import { Vec2, Vec3, MathUtils } from "../core/math/vectors";
 import { ConnectedMesh as Mesh } from "../core/geometry/mesh/ConnectedMesh";
 import { MeshFactory as MeshGen } from "../core/geometry/mesh/MeshFactory";
 import { Algo } from "../core/algo/algorithms";
 import { Scene, VisualStyle, FlatMeshData, RenderMode } from "../scene/Scene";
-import { LayerPanel, LayerMap } from "../gui/LayerPanel";
+import { LayerPanel, LayerMap, LayerNode } from "../gui/LayerPanel";
+import { ParamStore } from "../gui/Params";
+import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../gui/ControlPanel";
+import { getTheme, Theme } from "../gui/theme";
 import { ThreeRenderer } from "../render/ThreeRenderer";
 import { noise } from "../core/math/noise";
 import { createRandom, SeededRandom } from "../core/math/random";
@@ -51,13 +53,13 @@ import { createRandom, SeededRandom } from "../core/math/random";
 export type {
   Lab, SketchConfig, Reactive,
   SliderOpts, SelectOpts, ShapeMode,
-  MeshHandle, PointHandle, LineHandle,
+  MeshHandle, PointHandle, LineHandle, ShapeHandle,
   ExportRegistration, ImportRegistration,
   LayerNode, LayerState, LayerMap,
 } from "./SketchTypes";
 import type {
   Lab, SketchConfig, ExportRegistration, ImportRegistration,
-  MeshHandle, PointHandle, LineHandle, ShapeMode,
+  MeshHandle, PointHandle, LineHandle, ShapeHandle, ShapeMode,
   Reactive, DragSpace, HandleSetOpts,
 } from "./SketchTypes";
 
@@ -106,19 +108,16 @@ function spaceToConstrain(space: DragSpace): ((x: number, y: number, z: number) 
   }
 }
 
-interface ParamState {
+/** Persistent per-sketch layer-tree state — lives outside the ParamStore
+ *  because its value is a structured LayerMap edited by a LayerPanel, not a
+ *  scalar control. */
+interface LayerTreeState {
   key: string;
-  type: "slider" | "toggle" | "select" | "color" | "layertree";
-  label: string;
+  value: LayerMap;
+  nodes: LayerNode[];
+  panel: LayerPanel;
   group: string;
   tab: string;
-  menu: string;
-  value: any;
-  config: any;
-  /** Persistent LayerPanel instance (layertree only) — survives panel rebuilds */
-  _layerPanel?: LayerPanel;
-  /** Push a new value into this param's live DOM control (slider only) — set during render */
-  _applyValue?: (v: number) => void;
 }
 
 interface LogEntry {
@@ -137,9 +136,14 @@ export class SketchInstance {
   private scene: Scene;
   private renderer!: ThreeRenderer;
 
-  // State
-  private params: Map<string, ParamState> = new Map();
-  private buttons: { label: string; action: () => void; group: string; tab: string; menu: string }[] = [];
+  // Param model: values live in the shared ParamStore, panel placement in
+  // `items`, and the DOM is rendered by the shared ControlPanel (src/gui/).
+  private store: ParamStore = new ParamStore({});
+  private panel!: ControlPanel;
+  private items = new Map<string, ControlItem>();
+  private layerTrees = new Map<string, LayerTreeState>();
+  private theme!: Theme;
+  private buttons: PanelButton[] = [];
   // Top-bar export / import handlers registered by the sketch. Survive
   // sketch re-runs (re-registering replaces the handler closure).
   exports = new Map<string, ExportRegistration>();
@@ -156,10 +160,14 @@ export class SketchInstance {
   private lastTime = performance.now();
   private disposed = false;
 
-  // Accordion collapse state (persists across panel rebuilds)
-  private collapsedGroups = new Set<string>();
-  private activeTab = "";
-  private activeMenu = "";
+  // Re-run suppression: `_running` while the sketch fn executes (param
+  // declarations must not schedule re-runs), `_squelch` during programmatic
+  // setSlider (updates the control but does not re-run — original semantics).
+  private _running = false;
+  private _squelch = false;
+  private _hasTabs = false;
+  private _onceRan: boolean[] = [];
+  private _onceSeq = 0;
 
   // Random state (persists across sketch re-runs)
   private rng: SeededRandom = createRandom();
@@ -210,8 +218,12 @@ export class SketchInstance {
   private logEl!: HTMLElement;
   private separatorCount = 0;
   private _prevParamFingerprint = "";
+  /** Log container inside the "Info" tab (tab mode only; set during render) */
   private _panelLogEl: HTMLElement | null = null;
+  /** Info-text section in the panel footer */
   private _panelInfoEl: HTMLElement | null = null;
+  /** Log section in the panel footer (non-tab mode) */
+  private _panelFooterLogEl: HTMLElement | null = null;
   private _lastRerunTime = 0;
   private _rerunTimer = 0;
 
@@ -243,7 +255,7 @@ export class SketchInstance {
     const storageKey = `tekto.panelWidth.${this.config.title ?? "default"}`;
     const stored = parseInt(localStorage.getItem(storageKey) ?? "", 10);
     const panelWidth = Number.isFinite(stored) && stored >= 200 && stored <= 800 ? stored : defaultWidth;
-    const isDark = this.config.theme !== "light";
+    const t = this.theme = getTheme(this.config.theme);
     // Default the internal header off when the container is tagged by a
     // shell (`<div data-shell="testbench">…</div>`) — the shell's top bar
     // already shows the page title, so the sketch's own 44 px title bar
@@ -258,26 +270,26 @@ export class SketchInstance {
     root.style.cssText = `
       display:grid; grid-template-columns:${panelWidth}px 1fr; grid-template-rows:${headerRow}1fr;
       height:100%; width:100%; overflow:hidden; position:relative;
-      background:${isDark ? "#07080e" : "#f4f5f8"};
-      color:${isDark ? "#b8bdd4" : "#2a2d3a"};
-      font-family:'IBM Plex Mono',ui-monospace,monospace;
+      background:${t.bg};
+      color:${t.text};
+      font-family:${t.font};
     `;
 
     // Header (the sketch's own title bar; suppressed when host shell
-    // already shows a top bar).
+    // already shows a top bar). White chrome — see CLAUDE.md "GUI defaults".
     if (showHeader) {
       const header = document.createElement("div");
       header.style.cssText = `
         grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
-        background:${isDark ? "#0c0d16" : "#fff"};
-        border-bottom:1px solid ${isDark ? "#16182a" : "#e0e2ea"};
+        background:${t.panelBg};
+        border-bottom:1px solid ${t.border};
       `;
       header.innerHTML = `
-        <span style="font-weight:600;font-size:14px;color:#38d9a9">
+        <span style="font-weight:600;font-size:14px;color:${t.accent}">
           &#x2B21; ${this.config.title ?? "Tekto Sketch"}
         </span>
         <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-          background:rgba(56,217,169,.1);color:#38d9a9">LIVE</span>
+          background:${t.hoverBg};color:${t.accent}">LIVE</span>
       `;
       root.appendChild(header);
     }
@@ -286,17 +298,37 @@ export class SketchInstance {
     this.panelEl = document.createElement("div");
     this.panelEl.style.cssText = `
       overflow-y:auto; overflow-x:hidden; padding:0;
-      background:${isDark ? "#0c0d16" : "#fff"};
-      border-right:1px solid ${isDark ? "#16182a" : "#e0e2ea"};
+      background:${t.panelBg};
+      border-right:1px solid ${t.border};
       position:relative;
     `;
     root.appendChild(this.panelEl);
 
+    // Shared control renderer — values live in this.store; panelRender()
+    // feeds it the current control structure after each sketch run.
+    this.panel = new ControlPanel({
+      store: this.store,
+      theme: t,
+      getButtons: () => this.buttons,
+      onCommit: () => this.commitRun(),
+      onAction: () => this.runSketch(),
+    });
+    this.panelEl.appendChild(this.panel.el);
+    this.store.onChange(() => {
+      if (!this._running && !this._squelch) this.scheduleRerun();
+    });
+    // Footer: info text + logs (non-tab mode), updated in place by updateLog()
+    this._panelInfoEl = document.createElement("div");
+    this._panelInfoEl.style.cssText = `padding:12px 14px;border-bottom:1px solid ${t.border};font-size:11px;color:${t.textDim};line-height:1.7;white-space:pre-wrap;display:none;`;
+    this._panelFooterLogEl = document.createElement("div");
+    this._panelFooterLogEl.style.cssText = `padding:10px 14px;border-bottom:1px solid ${t.border};display:none;`;
+    this.panel.footer.append(this._panelInfoEl, this._panelFooterLogEl);
+
     // Resize handle (vertical bar on the panel's right edge).
     const resizeHandle = document.createElement("div");
     resizeHandle.title = "Drag to resize panel · double-click to reset";
-    const handleIdle   = isDark ? "rgba(56,217,169,.18)" : "rgba(56,217,169,.28)";
-    const handleHover  = isDark ? "rgba(56,217,169,.45)" : "rgba(56,217,169,.55)";
+    const handleIdle   = t.isDark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.14)";
+    const handleHover  = t.isDark ? "rgba(255,255,255,.35)" : "rgba(0,0,0,.30)";
     resizeHandle.style.cssText = `
       position:absolute; top:${showHeader ? 44 : 0}px; bottom:0;
       left:${panelWidth - 3}px; width:6px;
@@ -342,8 +374,8 @@ export class SketchInstance {
       width:20px; height:24px; z-index:11; cursor:pointer; user-select:none;
       display:flex; align-items:center; justify-content:center;
       font:13px/1 ui-monospace,monospace;
-      border:1px solid ${isDark ? "#23263a" : "#d4d7e0"}; border-radius:4px;
-      background:${isDark ? "#0c0d16" : "#fff"}; color:#38d9a9;
+      border:1px solid ${t.controlBorder}; border-radius:4px;
+      background:${t.panelBg}; color:${t.accent};
     `;
     const collapseBtn = document.createElement("div");
     collapseBtn.title = "Collapse panel";
@@ -417,7 +449,7 @@ export class SketchInstance {
   // ── Input Wiring ──
 
   private wireInput() {
-    const canvas = this.renderer.renderer.domElement;
+    const canvas = this.renderer.canvasEl;
 
     canvas.addEventListener("mousemove", (e) => {
       const rect = canvas.getBoundingClientRect();
@@ -542,11 +574,14 @@ export class SketchInstance {
 
   /** Programmatically set a slider's value — updates the stored param AND its live DOM control. */
   setSlider(label: string, value: number, group = ""): void {
-    const p = this.params.get(`slider:${group}:${label}`);
-    if (!p || p.type !== "slider") return;
-    const v = Math.min(p.config.max, Math.max(p.config.min, value));
-    p.value = v;
-    p._applyValue?.(v);
+    const key = `slider:${group}:${label}`;
+    if (!this.store.has(key)) return;
+    // The store clamps to min/max; the ControlPanel's store subscription
+    // pushes the value into the live DOM control. Squelched so a
+    // programmatic set doesn't schedule a re-run (original semantics).
+    this._squelch = true;
+    this.store.set(key, value);
+    this._squelch = false;
   }
 
   // ── Run Sketch ──
@@ -561,6 +596,7 @@ export class SketchInstance {
     this._continuous = false;
     this._retain = false;
     this.separatorCount = 0;
+    this._onceSeq = 0;
 
     // Clear per-run callbacks
     this._onMouseClicked = null;
@@ -581,53 +617,113 @@ export class SketchInstance {
     // Build the Lab context
     const lab = this.buildLab(usedParams);
 
-    // Execute
+    // Execute. Param declarations during the run must not schedule re-runs.
+    this._running = true;
     try {
       this.fn(lab);
     } catch (e) {
       console.error("Tekto sketch error:", e);
       this.logs.push({ label: "ERROR", value: String(e) });
     }
+    this._running = false;
 
     // Sweep out any drag handles that weren't re-declared this run.
     this.renderer.endDragHandleSweep();
 
-    // Remove unused params
-    for (const key of this.params.keys()) {
-      if (!usedParams.has(key)) this.params.delete(key);
+    // Remove unused params + layer trees
+    for (const key of this.store.keys()) {
+      if (!usedParams.has(key)) {
+        this.store.remove(key);
+        this.items.delete(key);
+      }
+    }
+    for (const key of this.layerTrees.keys()) {
+      if (!usedParams.has(key)) this.layerTrees.delete(key);
     }
 
-    // Only rebuild panel DOM when the param set structure changes
-    // (params added/removed), not on value-only changes.
+    // Only rebuild panel DOM when the control structure changes
+    // (params/buttons added/removed), not on value-only changes.
     // This prevents destroying slider focus during drag.
-    const fingerprint = [...this.params.values()].map(p => `${p.key}@${p.tab}`).sort().join("|");
+    const hasTabControls =
+      [...this.items.values()].some(it => it.tab) ||
+      this.buttons.some(b => b.tab) ||
+      [...this.layerTrees.values()].some(lt => lt.tab);
+    const hasInfoTab = hasTabControls && this.logs.length > 0;
+    const fingerprint = [
+      ...[...this.items.values()].map(it => `${it.key}@${it.tab ?? ""}`).sort(),
+      ...this.buttons.map(b => `btn:${b.menu ?? ""}:${b.group ?? ""}:${b.label}@${b.tab ?? ""}`),
+      ...[...this.layerTrees.keys()].sort(),
+      hasInfoTab ? "tab:Info" : "",
+    ].join("|");
     if (fingerprint !== this._prevParamFingerprint) {
       this._prevParamFingerprint = fingerprint;
-      this.rebuildPanel();
+      this.panelRender(hasInfoTab);
     }
     this.updateLog();
+  }
+
+  /** Feed the current control structure to the shared ControlPanel. */
+  private panelRender(hasInfoTab: boolean) {
+    const t = this.theme;
+    this._panelLogEl = null; // re-created by the Info tab renderer below
+
+    const customRows: CustomRow[] = [...this.layerTrees.values()].map(lt => ({
+      key: lt.key,
+      el: lt.panel.el,
+      group: lt.group,
+      tab: lt.tab || undefined,
+      fullBleed: true,
+    }));
+
+    const extraTabs: ExtraTab[] = hasInfoTab
+      ? [{
+          name: "Info",
+          render: (container) => {
+            this._panelLogEl = container;
+            container.style.cssText = `padding:12px 14px;font-size:11px;color:${t.textDim};line-height:1.9;`;
+            this.updateLog();
+          },
+        }]
+      : [];
+
+    this._hasTabs =
+      new Set([
+        ...[...this.items.values()].map(it => it.tab).filter(Boolean),
+        ...this.buttons.map(b => b.tab).filter(Boolean),
+        ...(hasInfoTab ? ["Info"] : []),
+      ]).size > 1 || hasInfoTab;
+
+    this.panel.render([...this.items.values()], customRows, extraTabs);
   }
 
   private buildLab(usedParams: Set<string>): Lab {
     const self = this;
     const now = performance.now();
 
+    // Immediate-mode param declaration: define in the store on first sight,
+    // remember panel placement, return a live view onto the store value.
+    const declare = <T>(
+      key: string,
+      def: import("../gui/Params").ParamDef,
+      item: ControlItem,
+    ): Reactive<T> => {
+      usedParams.add(key);
+      if (!this.store.has(key)) {
+        this.store.define(key, def);
+        this.items.set(key, item);
+      }
+      const store = this.store;
+      return { get value() { return store.get(key); } };
+    };
+
     const lab: Lab = {
       // ── GUI Controls ──
 
       slider(label, min, max, defaultValue, opts) {
         const key = `slider:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key, type: "slider", label,
-            group: opts?.group ?? "Parameters", tab: opts?.tab ?? "", menu: opts?.menu ?? "",
-            value: defaultValue,
-            config: { min, max, step: opts?.step ?? (max - min) / 100, color: opts?.color },
-          });
-        }
-        const p = self.params.get(key)!;
-        return { get value() { return p.value; } };
+        return declare(key,
+          { type: "float", min, max, default: defaultValue, step: opts?.step ?? (max - min) / 100, label },
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu, accent: opts?.color });
       },
 
       setSlider(label, value, opts) {
@@ -636,71 +732,70 @@ export class SketchInstance {
 
       toggle(label, defaultValue = false, opts) {
         const key = `toggle:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key, type: "toggle", label,
-            group: opts?.group ?? "Parameters", tab: opts?.tab ?? "", menu: opts?.menu ?? "",
-            value: defaultValue,
-            config: {},
-          });
-        }
-        const p = self.params.get(key)!;
-        return { get value() { return p.value; } };
+        return declare(key,
+          { type: "bool", default: defaultValue, label },
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu });
       },
 
       select(label, options, defaultValue, opts) {
         const key = `select:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key, type: "select", label,
-            group: opts?.group ?? "Parameters", tab: opts?.tab ?? "", menu: opts?.menu ?? "",
-            value: defaultValue ?? options[0],
-            config: { options },
-          });
-        }
-        const p = self.params.get(key)!;
-        return { get value() { return p.value; } };
+        return declare(key,
+          { type: "select", options, default: defaultValue ?? options[0], label },
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu });
       },
 
       colorPicker(label, defaultValue = "#38d9a9", opts) {
         const key = `color:${opts?.group ?? ""}:${label}`;
-        usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key, type: "color", label,
-            group: opts?.group ?? "Display", tab: opts?.tab ?? "", menu: opts?.menu ?? "",
-            value: defaultValue,
-            config: {},
-          });
-        }
-        const p = self.params.get(key)!;
-        return { get value() { return p.value; } };
+        return declare(key,
+          { type: "color", default: defaultValue, label },
+          { key, group: opts?.group ?? "Display", tab: opts?.tab, menu: opts?.menu });
       },
 
       layerTree(label, nodes, opts) {
         const key = `layertree:${opts?.group ?? ""}:${label}`;
         usedParams.add(key);
-        if (!self.params.has(key)) {
-          self.params.set(key, {
-            key, type: "layertree", label,
-            group: opts?.group ?? "Layers", tab: opts?.tab ?? "", menu: "",
+        let lt = self.layerTrees.get(key);
+        if (!lt) {
+          const state = {
+            key,
             value: {} as LayerMap,
-            config: { nodes },
+            nodes,
+            group: opts?.group ?? "Layers",
+            tab: opts?.tab ?? "",
+          } as LayerTreeState;
+          state.panel = new LayerPanel({
+            nodes,
+            value: {},
+            isDark: self.theme.isDark,
+            onChange: (updates) => {
+              state.value = { ...state.value, ...updates };
+              state.panel.update(state.nodes, state.value);
+              self.runSketch();
+            },
           });
+          lt = state;
+          self.layerTrees.set(key, state);
         } else {
-          // Update nodes in case they changed (e.g. async mesh load)
-          self.params.get(key)!.config.nodes = nodes;
+          // Nodes may change between runs (e.g. async mesh load)
+          lt.nodes = nodes;
+          lt.panel.update(nodes, lt.value);
         }
-        const p = self.params.get(key)!;
-        return { get value() { return p.value as LayerMap; } };
+        const state = lt;
+        return { get value() { return state.value; } };
       },
 
       // ── Actions ──
 
       button(label, action, opts) {
-        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab ?? "", menu: opts?.menu ?? "" });
+        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab, menu: opts?.menu });
+      },
+
+      once(fn) {
+        const i = self._onceSeq++;
+        if (!self._onceRan[i]) {
+          self._onceRan[i] = true;
+          fn();
+        }
       },
 
       separator() {
@@ -772,11 +867,11 @@ export class SketchInstance {
       },
 
       polygon(vertices, style) {
-        return self.scene.addPolygon(vertices, style).id;
+        return self.addShapeHandle(self.scene.addPolygon(vertices, style));
       },
 
       circle(cx, cy, cz, radius) {
-        return self.scene.addCircle(new Vec3(cx, cy, cz), radius).id;
+        return self.addShapeHandle(self.scene.addCircle(new Vec3(cx, cy, cz), radius));
       },
 
       // ── Algorithms ──
@@ -785,15 +880,9 @@ export class SketchInstance {
 
       // ── Scene Control ──
       clear() { self.scene.clear(); },
-      background(c: number) { self.renderer.threeScene.background = new THREE.Color(c); },
-      camera(x, y, z) { self.renderer.camera.position.set(x, y, z); },
-      lookAt(x, y, z) {
-        self.renderer.camera.lookAt(x, y, z);
-        if (self.renderer.controls) {
-          self.renderer.controls.target.set(x, y, z);
-          self.renderer.controls.update();
-        }
-      },
+      background(c: number) { self.renderer.setBackground(c); },
+      camera(x, y, z) { self.renderer.setCameraPosition(x, y, z); },
+      lookAt(x, y, z) { self.renderer.lookAt(x, y, z); },
       fitAll() { self.renderer.fitAll(); },
       setProjection(type) { self.renderer.setProjection(type); },
       cameraUp(x, y, z) { self.renderer.setCameraUp(x, y, z); },
@@ -1033,6 +1122,7 @@ export class SketchInstance {
       groupColor(_name, _color) { return handle; },
       noExport(v = true) { self.scene.setStyle(obj.id, { noExport: v }); return handle; },
       layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
+      printLayers(heightM) { self.scene.setStyle(obj.id, { printLayerH: heightM }); return handle; },
 
       translate(x, y, z) {
         for (const n of mesh.nodes()) {
@@ -1131,6 +1221,7 @@ export class SketchInstance {
       },
       noExport(v = true) { self.scene.setStyle(obj.id, { noExport: v }); return handle; },
       layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
+      printLayers(heightM) { self.scene.setStyle(obj.id, { printLayerH: heightM }); return handle; },
       translate() { return handle; },
       scale() { return handle; },
       rotateX() { return handle; },
@@ -1199,431 +1290,17 @@ export class SketchInstance {
     return handle;
   }
 
-  // ── Panel Rendering ──
-
-  private rebuildPanel() {
-    this._panelLogEl = null; // will be re-created below
-    this._panelInfoEl = null;
-    const isDark = this.config.theme !== "light";
-    const border = isDark ? "#16182a" : "#e0e2ea";
-    const dimColor = isDark ? "#5a6080" : "#8a8fa0";
-    const textColor = isDark ? "#7a80a0" : "#4a4f60";
-    const accentColor = "#ffffff";
-    const hoverBg = "rgba(56,217,169,.08)";
-
-    this.panelEl.innerHTML = "";
-
-    // ── Collect menus (params and buttons that have menu set) ──
-    const menuNames: string[] = [];
-    const menuParams = new Map<string, ParamState[]>();
-    const menuButtons = new Map<string, typeof this.buttons>();
-    for (const p of this.params.values()) {
-      if (!p.menu) continue;
-      if (!menuNames.includes(p.menu)) menuNames.push(p.menu);
-      if (!menuParams.has(p.menu)) menuParams.set(p.menu, []);
-      menuParams.get(p.menu)!.push(p);
-    }
-    for (const b of this.buttons) {
-      if (!b.menu) continue;
-      if (!menuNames.includes(b.menu)) menuNames.push(b.menu);
-      if (!menuButtons.has(b.menu)) menuButtons.set(b.menu, []);
-      menuButtons.get(b.menu)!.push(b);
-    }
-
-    // ── Collect tabs ──
-    const tabOrder: string[] = [];
-    for (const p of this.params.values()) {
-      if (p.tab && !tabOrder.includes(p.tab)) tabOrder.push(p.tab);
-    }
-    for (const b of this.buttons) {
-      if (b.tab && !tabOrder.includes(b.tab)) tabOrder.push(b.tab);
-    }
-    // Auto-add Info tab when tabs exist and logs are non-empty
-    if (tabOrder.length > 0 && this.logs.length > 0 && !tabOrder.includes("Info")) {
-      tabOrder.push("Info");
-    }
-    const hasTabs = tabOrder.length > 1;
-    if (hasTabs && (!this.activeTab || !tabOrder.includes(this.activeTab))) {
-      this.activeTab = tabOrder[0];
-    }
-
-    // ── Menu bar ──
-    if (menuNames.length > 0) {
-      const menuBar = document.createElement("div");
-      menuBar.style.cssText = `
-        display:flex;border-bottom:1px solid ${border};flex-shrink:0;position:relative;
-      `;
-
-      for (const menuName of menuNames) {
-        const menuBtn = document.createElement("button");
-        menuBtn.textContent = menuName + " \u25BE";
-        menuBtn.style.cssText = `
-          padding:8px 10px;border:none;background:transparent;
-          color:${dimColor};font-family:inherit;font-size:9px;font-weight:500;
-          text-transform:uppercase;letter-spacing:1.2px;cursor:pointer;transition:color .12s;
-        `;
-        menuBtn.addEventListener("mouseenter", () => { menuBtn.style.color = accentColor; });
-        menuBtn.addEventListener("mouseleave", () => { menuBtn.style.color = this.activeMenu === menuName ? accentColor : dimColor; });
-
-        // Dropdown panel
-        const dropdown = document.createElement("div");
-        dropdown.style.cssText = `
-          display:none;position:absolute;top:100%;left:0;z-index:100;
-          min-width:160px;background:${isDark ? "#0d0f1e" : "#f5f6fa"};
-          border:1px solid ${border};border-radius:4px;padding:4px 0;
-          box-shadow:0 4px 16px rgba(0,0,0,.4);
-        `;
-
-        // Populate dropdown items
-        const params = menuParams.get(menuName) ?? [];
-        const btns   = menuButtons.get(menuName) ?? [];
-
-        for (const p of params) {
-          if (p.type === "toggle") {
-            const row = document.createElement("div");
-            row.style.cssText = `
-              display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;
-              font-size:11px;color:${textColor};transition:background .1s;
-            `;
-            const check = document.createElement("span");
-            check.textContent = p.value ? "\u2713" : " ";
-            check.style.cssText = `width:12px;text-align:center;color:${accentColor};font-size:10px;`;
-            const lbl = document.createElement("span");
-            lbl.textContent = p.label;
-            row.appendChild(check); row.appendChild(lbl);
-            row.addEventListener("mouseenter", () => { row.style.background = hoverBg; });
-            row.addEventListener("mouseleave", () => { row.style.background = "transparent"; });
-            row.addEventListener("click", (e) => {
-              e.stopPropagation();
-              p.value = !p.value;
-              check.textContent = p.value ? "\u2713" : " ";
-              this.runSketch();
-            });
-            dropdown.appendChild(row);
-          }
-        }
-        // Separator between params and buttons if both exist
-        if (params.length > 0 && btns.length > 0) {
-          const sep = document.createElement("div");
-          sep.style.cssText = `border-top:1px solid ${border};margin:4px 0;`;
-          dropdown.appendChild(sep);
-        }
-        for (const b of btns) {
-          const row = document.createElement("div");
-          row.style.cssText = `
-            padding:7px 12px;cursor:pointer;font-size:11px;
-            color:${textColor};transition:background .1s;
-          `;
-          row.textContent = b.label;
-          row.addEventListener("mouseenter", () => { row.style.background = hoverBg; row.style.color = accentColor; });
-          row.addEventListener("mouseleave", () => { row.style.background = "transparent"; row.style.color = textColor; });
-          // Capture label+menu so the handler looks up the CURRENT action from
-          // this.buttons at click time. The panel DOM is not rebuilt on every sketch
-          // re-run (fingerprint optimisation), so closing over `b.action` directly
-          // would capture a stale closure after a layer toggle or param change.
-          const btnLabel = b.label, btnMenu = b.menu;
-          row.addEventListener("click", () => {
-            this.activeMenu = "";
-            dropdown.style.display = "none";
-            const current = this.buttons.find(cb => cb.label === btnLabel && cb.menu === btnMenu);
-            current?.action();
-            this.runSketch();
-          });
-          dropdown.appendChild(row);
-        }
-
-        menuBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const isOpen = this.activeMenu === menuName;
-          // Close all dropdowns first
-          menuBar.querySelectorAll<HTMLElement>(".menu-dropdown").forEach(d => { d.style.display = "none"; });
-          this.activeMenu = isOpen ? "" : menuName;
-          if (!isOpen) dropdown.style.display = "block";
-          menuBtn.style.color = isOpen ? dimColor : accentColor;
-        });
-
-        dropdown.classList.add("menu-dropdown");
-        menuBar.appendChild(menuBtn);
-        menuBar.appendChild(dropdown);
-      }
-
-      // Click outside closes menus
-      document.addEventListener("click", () => {
-        this.activeMenu = "";
-        menuBar.querySelectorAll<HTMLElement>(".menu-dropdown").forEach(d => { d.style.display = "none"; });
-      }, { once: false, capture: false });
-
-      this.panelEl.appendChild(menuBar);
-    }
-
-    // ── Tab bar ──
-    if (hasTabs) {
-      const tabBar = document.createElement("div");
-      tabBar.style.cssText = `display:flex;border-bottom:1px solid ${border};flex-shrink:0;`;
-      for (const tab of tabOrder) {
-        const btn = document.createElement("button");
-        btn.textContent = tab;
-        const isActive = tab === this.activeTab;
-        btn.style.cssText = `
-          flex:1;padding:9px 4px;border:none;
-          border-bottom:2px solid ${isActive ? accentColor : "transparent"};
-          background:transparent;color:${isActive ? accentColor : dimColor};
-          font-family:inherit;font-size:9px;font-weight:500;text-transform:uppercase;
-          letter-spacing:1.2px;cursor:pointer;transition:all .12s;
-        `;
-        btn.addEventListener("click", () => {
-          this.activeTab = tab;
-          this.rebuildPanel();
-        });
-        tabBar.appendChild(btn);
-      }
-      this.panelEl.appendChild(tabBar);
-    }
-
-    // ── Info tab content (logs) — persistent container ──
-    if (hasTabs && this.activeTab === "Info") {
-      this._panelLogEl = document.createElement("div");
-      this._panelLogEl.style.cssText = `padding:12px 14px;font-size:11px;color:${textColor};line-height:1.9;`;
-      this.panelEl.appendChild(this._panelLogEl);
-      this.updateLog();
-      return; // Info tab has no accordion groups
-    }
-
-    // ── Filter params/buttons to active tab ──
-    const activeTabFilter = (tab: string, menu: string) => menu === "" && (!hasTabs || tab === this.activeTab || tab === "");
-
-    const groups = new Map<string, ParamState[]>();
-    for (const p of this.params.values()) {
-      if (!activeTabFilter(p.tab, p.menu)) continue;
-      if (!groups.has(p.group)) groups.set(p.group, []);
-      groups.get(p.group)!.push(p);
-    }
-    const buttonGroups = new Map<string, typeof this.buttons>();
-    for (const b of this.buttons) {
-      if (!activeTabFilter(b.tab, b.menu)) continue;
-      if (!buttonGroups.has(b.group)) buttonGroups.set(b.group, []);
-      buttonGroups.get(b.group)!.push(b);
-    }
-
-    const allGroupNames = new Set([...groups.keys(), ...buttonGroups.keys()]);
-
-    for (const groupName of allGroupNames) {
-      const section = document.createElement("div");
-      section.style.cssText = `border-bottom:1px solid ${border};`;
-      const collapsed = this.collapsedGroups.has(groupName);
-
-      const header = document.createElement("div");
-      header.style.cssText = `
-        padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:6px;
-        user-select:none;transition:background .1s;
-      `;
-      header.addEventListener("mouseenter", () => { header.style.background = "rgba(56,217,169,.04)"; });
-      header.addEventListener("mouseleave", () => { header.style.background = "transparent"; });
-
-      const arrow = document.createElement("span");
-      arrow.style.cssText = `font-size:8px;color:${dimColor};transition:transform .15s;width:10px;`;
-      arrow.textContent = collapsed ? "\u25B6" : "\u25BC";
-      header.appendChild(arrow);
-
-      const title = document.createElement("span");
-      title.style.cssText = `font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:1.8px;color:${dimColor};`;
-      title.textContent = groupName;
-      header.appendChild(title);
-
-      section.appendChild(header);
-
-      const content = document.createElement("div");
-      content.style.cssText = `padding:0 14px 10px;${collapsed ? "display:none;" : ""}`;
-
-      const params = groups.get(groupName) ?? [];
-      for (const p of params) content.appendChild(this.renderParam(p, isDark));
-
-      const btns = buttonGroups.get(groupName) ?? [];
-      for (const b of btns) {
-        const row = document.createElement("div");
-        row.style.cssText = "margin-bottom:4px;";
-        const btn = document.createElement("button");
-        btn.textContent = b.label;
-        btn.style.cssText = `
-          width:100%;padding:7px 10px;border:1px solid ${border};border-radius:5px;
-          background:transparent;color:${textColor};font-family:inherit;font-size:10px;
-          cursor:pointer;transition:all .12s;
-        `;
-        btn.addEventListener("mouseenter", () => { btn.style.background = hoverBg; btn.style.borderColor = accentColor; btn.style.color = accentColor; });
-        btn.addEventListener("mouseleave", () => { btn.style.background = "transparent"; btn.style.borderColor = border; btn.style.color = textColor; });
-        btn.addEventListener("click", () => { b.action(); this.runSketch(); });
-        row.appendChild(btn);
-        content.appendChild(row);
-      }
-
-      section.appendChild(content);
-
-      header.addEventListener("click", () => {
-        if (this.collapsedGroups.has(groupName)) {
-          this.collapsedGroups.delete(groupName);
-          content.style.display = "";
-          arrow.textContent = "\u25BC";
-        } else {
-          this.collapsedGroups.add(groupName);
-          content.style.display = "none";
-          arrow.textContent = "\u25B6";
-        }
-      });
-
-      this.panelEl.appendChild(section);
-    }
-
-    // Info section (plain text, shown when not in tabs mode).
-    // Always create the node so updateLog() can refresh it in place on
-    // value-only re-runs (which skip rebuildPanel).
-    {
-      const section = document.createElement("div");
-      section.style.cssText = `padding:12px 14px;border-bottom:1px solid ${border};font-size:11px;color:${textColor};line-height:1.7;white-space:pre-wrap;`;
-      section.textContent = this.infoText;
-      section.style.display = this.infoText ? "block" : "none";
-      this.panelEl.appendChild(section);
-      this._panelInfoEl = section;
-    }
-
-    // Logs at bottom — persistent container, updated in-place by updateLog()
-    if (!hasTabs) {
-      this._panelLogEl = document.createElement("div");
-      this._panelLogEl.style.cssText = `padding:10px 14px;border-bottom:1px solid ${border};display:none;`;
-      this.panelEl.appendChild(this._panelLogEl);
-    }
-  }
-
-  private renderParam(p: ParamState, isDark: boolean): HTMLElement {
-    // LayerTree — full-width component, no standard label row
-    if (p.type === "layertree") {
-      if (!p._layerPanel) {
-        p._layerPanel = new LayerPanel({
-          nodes: p.config.nodes,
-          value: p.value,
-          isDark,
-          onChange: (updates) => {
-            p.value = { ...p.value, ...updates };
-            this.runSketch();
-          },
-        });
-      } else {
-        p._layerPanel.update(p.config.nodes, p.value);
-      }
-      // Re-attach the persistent element (was detached by innerHTML="")
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "margin:0 -14px;"; // bleed past group content padding
-      wrap.appendChild(p._layerPanel.el);
-      return wrap;
-    }
-
-    const border = isDark ? "#1e2140" : "#d0d3de";
-    const dimColor = isDark ? "#7a80a0" : "#6a6f80";
-    const accentColor = "#ffffff";
-
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:5px;min-height:26px;";
-
-    const label = document.createElement("span");
-    label.style.cssText = `width:80px;flex-shrink:0;font-size:11px;color:${dimColor};text-transform:capitalize;`;
-    label.textContent = p.label;
-    row.appendChild(label);
-
-    switch (p.type) {
-      case "slider": {
-        const input = document.createElement("input");
-        input.type = "range";
-        input.min = String(p.config.min);
-        input.max = String(p.config.max);
-        input.step = String(p.config.step);
-        input.value = String(p.value);
-        input.style.cssText = `
-          flex:1;height:3px;-webkit-appearance:none;appearance:none;
-          background:${border};border-radius:2px;outline:none;cursor:pointer;
-          accent-color:${p.config.color || accentColor};
-        `;
-
-        const valueSpan = document.createElement("span");
-        valueSpan.style.cssText = `width:42px;text-align:right;font-size:10px;color:${accentColor};`;
-        const isInt = p.config.step >= 1;
-        const rawDec = isInt ? 0 : Math.max(2, -Math.floor(Math.log10(p.config.step) - 0.001));
-        const decimals = Math.min(Math.max(0, rawDec), 20);
-        const fmt = (v: number) => isInt ? String(v) : v.toFixed(decimals);
-        valueSpan.textContent = fmt(p.value);
-
-        input.addEventListener("input", () => {
-          const v = parseFloat(input.value);
-          p.value = v;
-          valueSpan.textContent = fmt(v);
-          this.scheduleRerun();
-        });
-        input.addEventListener("change", () => {
-          // Ensure final value is applied immediately when drag ends
-          if (this._rerunTimer) { clearTimeout(this._rerunTimer); this._rerunTimer = 0; }
-          this.runSketch();
-        });
-        // Let setSlider() push a value into this live control programmatically.
-        p._applyValue = (v: number) => { input.value = String(v); valueSpan.textContent = fmt(v); };
-
-        row.appendChild(input);
-        row.appendChild(valueSpan);
-        break;
-      }
-
-      case "toggle": {
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.checked = p.value;
-        input.style.cssText = `accent-color:${accentColor};cursor:pointer;width:14px;height:14px;`;
-        input.addEventListener("change", () => {
-          p.value = input.checked;
-          this.runSketch();
-        });
-        row.appendChild(input);
-        break;
-      }
-
-      case "select": {
-        const select = document.createElement("select");
-        select.style.cssText = `
-          flex:1;padding:4px 8px;background:${isDark ? "#07080e" : "#f4f5f8"};
-          border:1px solid ${border};border-radius:4px;color:inherit;
-          font-family:inherit;font-size:11px;outline:none;cursor:pointer;
-        `;
-        for (const opt of p.config.options) {
-          const el = document.createElement("option");
-          el.value = opt;
-          el.textContent = opt;
-          if (opt === p.value) el.selected = true;
-          select.appendChild(el);
-        }
-        select.addEventListener("change", () => {
-          p.value = select.value;
-          this.runSketch();
-        });
-        row.appendChild(select);
-        break;
-      }
-
-      case "color": {
-        const input = document.createElement("input");
-        input.type = "color";
-        input.value = p.value;
-        input.style.cssText = `width:32px;height:24px;border:1px solid ${border};border-radius:4px;padding:0;cursor:pointer;background:none;`;
-        const valueSpan = document.createElement("span");
-        valueSpan.style.cssText = `font-size:10px;color:${dimColor};`;
-        valueSpan.textContent = p.value;
-        input.addEventListener("input", () => {
-          p.value = input.value;
-          valueSpan.textContent = input.value;
-          this.runSketch();
-        });
-        row.appendChild(input);
-        row.appendChild(valueSpan);
-        break;
-      }
-    }
-
-    return row;
+  private addShapeHandle(obj: import("../scene/Scene").SceneObject): ShapeHandle {
+    const self = this;
+    const handle: ShapeHandle = {
+      get id() { return obj.id; },
+      color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
+      opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
+      visible(v = true) { self.scene.setStyle(obj.id, { visible: v }); return handle; },
+      label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
+      layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
+    };
+    return handle;
   }
 
   // ── Log Display ──
@@ -1645,16 +1322,17 @@ export class SketchInstance {
       this._panelInfoEl.style.display = this.infoText ? "block" : "none";
     }
 
-    // Update the panel log section (in-place, no rebuild)
-    if (this._panelLogEl) {
-      if (this.logs.length > 0) {
-        this._panelLogEl.innerHTML = this.logs
-          .map(l => `<div style="font-size:10px;line-height:1.7;"><span style="color:#7a80a0">${l.label}</span>${l.value ? ` <span style="color:#fff">${l.value}</span>` : ""}</div>`)
-          .join("");
-        this._panelLogEl.style.display = "block";
-      } else {
-        this._panelLogEl.style.display = "none";
-      }
+    // Update the panel log section in-place: the Info tab container when
+    // tabs are active, the footer section otherwise.
+    const logHtml = this.logs
+      .map(l => `<div style="font-size:10px;line-height:1.7;"><span style="color:${this.theme.textDim}">${l.label}</span>${l.value ? ` <span style="color:${this.theme.accent}">${l.value}</span>` : ""}</div>`)
+      .join("");
+    if (this._hasTabs) {
+      if (this._panelFooterLogEl) this._panelFooterLogEl.style.display = "none";
+      if (this._panelLogEl) this._panelLogEl.innerHTML = logHtml;
+    } else if (this._panelFooterLogEl) {
+      this._panelFooterLogEl.innerHTML = logHtml;
+      this._panelFooterLogEl.style.display = this.logs.length > 0 ? "block" : "none";
     }
   }
 
@@ -1697,6 +1375,14 @@ export class SketchInstance {
       this._lastRerunTime = performance.now();
       this.runSketch();
     }, delay);
+  }
+
+  /** Immediate re-run on control commit (slider drag-end, toggle, select) —
+   *  cancels any pending throttled re-run so the final value applies now. */
+  private commitRun() {
+    if (this._rerunTimer) { clearTimeout(this._rerunTimer); this._rerunTimer = 0; }
+    this._lastRerunTime = performance.now();
+    this.runSketch();
   }
 
   /** Force re-run the sketch */
@@ -1821,6 +1507,7 @@ export class SketchInstance {
     if (this._boundKeyUp) window.removeEventListener("keyup", this._boundKeyUp);
     this._boundKeyDown = null;
     this._boundKeyUp = null;
+    this.panel.dispose();
     this.renderer.dispose();
   }
 }

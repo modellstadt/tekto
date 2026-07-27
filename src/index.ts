@@ -168,13 +168,23 @@ export type {
   SceneEvent, SceneEventListener, SceneJSON,
 } from "./scene/Scene";
 
-// Params
+// Params — the ONE parameter model. sketch(), sketch2d(), appShell(), and
+// the React ParamPanel all store their values in a ParamStore.
 export { ParamStore, createParams, createLayout } from "./gui/Params";
 export type {
   ParamDef, ParamSchema, FloatParam, IntParam, BoolParam,
   SelectParam, ColorParam, StringParam, Vec3Param, ButtonParam,
   ParamFolder, ParamLayout,
 } from "./gui/Params";
+
+// GUI: shared theme + control renderer (used by sketch / sketch2d / appShell;
+// also usable standalone for custom panels).
+export { getTheme } from "./gui/theme";
+export type { Theme } from "./gui/theme";
+export { ControlPanel } from "./gui/ControlPanel";
+export type {
+  ControlItem, PanelButton, CustomRow, ExtraTab, ControlPanelConfig,
+} from "./gui/ControlPanel";
 
 // Renderers
 export { ThreeRenderer } from "./render/ThreeRenderer";
@@ -190,10 +200,14 @@ export type { LayerNode, LayerState, LayerMap } from "./gui/LayerPanel";
 export { sketch, SketchInstance } from "./sketch/Sketch";
 export type {
   Lab, SketchConfig, Reactive,
-  MeshHandle, PointHandle, LineHandle,
+  MeshHandle, PointHandle, LineHandle, ShapeHandle,
   SliderOpts, SelectOpts, ShapeMode,
   ExportRegistration, ImportRegistration,
 } from "./sketch/Sketch";
+
+// App Shell (Level 2 — persistent-panel apps without React)
+export { appShell } from "./sketch/AppShell";
+export type { AppShellConfig, AppShellInstance } from "./sketch/AppShell";
 
 // Sketch2D API (Level 1 — 2D canvas variant, no Three.js)
 export { sketch2d, Sketch2DInstance } from "./sketch/Sketch2D";

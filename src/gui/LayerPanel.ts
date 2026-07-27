@@ -162,7 +162,7 @@ export class LayerPanel {
     cb.type = "checkbox";
     cb.checked = state.visible;
     // Dim the checkbox when parent is masking this node
-    cb.style.cssText = `cursor:pointer;width:11px;height:11px;flex-shrink:0;accent-color:#38d9a9;margin:0;opacity:${ancestorVisible ? "1" : "0.35"};`;
+    cb.style.cssText = `cursor:pointer;width:11px;height:11px;flex-shrink:0;accent-color:${d ? "#ffffff" : "#16182c"};margin:0;opacity:${ancestorVisible ? "1" : "0.35"};`;
     cb.addEventListener("change", e => {
       e.stopPropagation();
       // Only update this node's own state — children are NOT touched (non-destructive mask)

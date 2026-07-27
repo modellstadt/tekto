@@ -68,6 +68,9 @@ export interface VisualStyle {
   /** Font-size multiplier for the label sprite (1 = default, 0.5 = half). */
   labelScale?: number;
   tubeRadius?: number;
+  /** Print-layer striping (metres): tube meshes with pipe UVs get a repeating layer-line texture along
+   *  their length, one stripe per this height — the stacked-bead look of 3D-printed metal. */
+  printLayerH?: number;
   /** PBR metalness (studio lighting only): 0 = dielectric, 1 = metal. Default 0. */
   metalness?: number;
   /** PBR roughness (studio lighting only): 0 = mirror, 1 = diffuse. Default 0.65. */

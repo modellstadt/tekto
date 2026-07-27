@@ -337,6 +337,33 @@ export class ThreeRenderer {
     return new THREE.MeshPhongMaterial(rest);
   }
 
+  /** Cached horizontal-stripe textures for print-layer shading, keyed by layer height (m). One texture
+   *  period = one printed bead: bright rounded crown, dark groove at the layer boundary. The pipe UVs
+   *  carry V in metres, so repeat.y = 1/layerH gives physically-true layer spacing. */
+  private _stripeTexCache = new Map<number, THREE.Texture>();
+  private _stripeTexture(layerH: number): THREE.Texture {
+    let tex = this._stripeTexCache.get(layerH);
+    if (tex) return tex;
+    const H = 64;
+    const cv = document.createElement("canvas");
+    cv.width = 2; cv.height = H;
+    const ctx = cv.getContext("2d")!;
+    for (let y = 0; y < H; y++) {
+      const t = y / H;                                        // 0..1 across one bead
+      const crown = Math.sin(Math.PI * t);                    // rounded bead profile
+      const v = Math.round(150 + 105 * Math.pow(crown, 0.7)); // 150 (groove) … 255 (crown)
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(0, y, 2, 1);
+    }
+    tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 1 / layerH);
+    tex.anisotropy = 4;
+    this._stripeTexCache.set(layerH, tex);
+    return tex;
+  }
+
   /**
    * Set the Studio-mode default PBR material applied to meshes that don't
    * carry their own metalness/roughness. Takes effect on the next material
@@ -779,6 +806,22 @@ export class ThreeRenderer {
     geo.setAttribute("normal", new THREE.BufferAttribute(data.normals, 3));
     geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
 
+    // Pipe UVs (tube meshes tag themselves with __pipeUV = { sides, vAtRing }): vertices are
+    // ring-major (toIndexedTriangles preserves node insertion order), so vertex k sits on ring
+    // floor(k/sides). U = fraction around the section, V = centreline length in METRES — print-layer
+    // striping (style.printLayerH) repeats a texture along V at true physical scale.
+    const pipeUV = (gmesh as unknown as { __pipeUV?: { sides: number; vAtRing: number[] } }).__pipeUV;
+    if (pipeUV && pipeUV.sides > 0) {
+      const n = data.positions.length / 3;
+      const uv = new Float32Array(n * 2);
+      for (let k = 0; k < n; k++) {
+        const ring = Math.min(Math.floor(k / pipeUV.sides), pipeUV.vAtRing.length - 1);
+        uv[k * 2] = (k % pipeUV.sides) / pipeUV.sides;
+        uv[k * 2 + 1] = pipeUV.vAtRing[ring] ?? 0;
+      }
+      geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    }
+
     return this.buildMeshGroup(geo, s);
   }
 
@@ -878,6 +921,16 @@ export class ThreeRenderer {
         polygonOffsetFactor: 1,
         polygonOffsetUnits: 1,
       });
+      // Print-layer striping: with printLayerH set (metres) and pipe UVs present (V = metres along the
+      // tube), modulate colour + bump with a horizontal stripe texture repeating once per layer height —
+      // the stacked-bead look of wire-arc printed metal, at true physical scale.
+      if (s.printLayerH && s.printLayerH > 1e-5 && geo.getAttribute("uv")) {
+        const tex = this._stripeTexture(s.printLayerH);
+        solidMat.map = tex;
+        solidMat.bumpMap = tex;
+        solidMat.bumpScale = s.printLayerH * 0.35;   // groove depth scales with the bead size
+        solidMat.needsUpdate = true;
+      }
 
       // Backface debug: tint back-facing triangles a different color
       if (s.backfaceColor) {
@@ -1406,6 +1459,30 @@ export class ThreeRenderer {
     this.camera.up.set(x, y, z);
     this._orthoCam.up.set(x, y, z);
     if (this.controls) this.controls.update();
+  }
+
+  /** The WebGL canvas element (for attaching input listeners / overlays). */
+  get canvasEl(): HTMLCanvasElement {
+    return this.renderer.domElement;
+  }
+
+  /** Set the viewport background color. */
+  setBackground(color: number | string) {
+    this.threeScene.background = new THREE.Color(color as any);
+  }
+
+  /** Move the camera without changing its target. */
+  setCameraPosition(x: number, y: number, z: number) {
+    this.camera.position.set(x, y, z);
+  }
+
+  /** Aim the camera (and orbit-controls target) at a point. */
+  lookAt(x: number, y: number, z: number) {
+    this.camera.lookAt(x, y, z);
+    if (this.controls) {
+      this.controls.target.set(x, y, z);
+      this.controls.update();
+    }
   }
 
   /**

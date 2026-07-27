@@ -27,11 +27,20 @@
  *   Like Sketch, the function re-runs when any parameter changes.
  *   The draw callback receives a 2D context and canvas dimensions.
  *   Use lab.animate() for continuous rendering.
+ *
+ *   Params live in a ParamStore and the panel is rendered by the shared
+ *   ControlPanel (src/gui/) — the same system the 3D sketch API and
+ *   appShell use.
  */
 
 import { Vec2, MathUtils } from "../core/math/vectors";
 import { noise } from "../core/math/noise";
 import { createRandom, SeededRandom } from "../core/math/random";
+import { ParamStore, ParamDef } from "../gui/Params";
+import { ControlPanel, ControlItem, PanelButton } from "../gui/ControlPanel";
+import { getTheme } from "../gui/theme";
+import type { Reactive, SliderOpts, SelectOpts } from "./SketchTypes";
+export type { Reactive, SliderOpts, SelectOpts } from "./SketchTypes";
 
 // ═══════════════════════════════════════════════
 // Public Types
@@ -48,19 +57,6 @@ export interface Sketch2DConfig {
   panelWidth?: number;
   /** Dark or light theme */
   theme?: "dark" | "light";
-}
-
-export interface Reactive<T> {
-  readonly value: T;
-}
-
-export interface SliderOpts {
-  step?: number;
-  group?: string;
-}
-
-export interface SelectOpts {
-  group?: string;
 }
 
 export type DrawFn = (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
@@ -90,6 +86,13 @@ export interface Lab2D {
   draw(fn: DrawFn): void;
   /** Enable continuous animation. Callback runs each frame. */
   animate(fn: AnimateFn): void;
+  /**
+   * Run `fn` on the FIRST sketch run only — skipped on re-runs. Use for
+   * one-shot setup (loading data, attaching listeners to lab.canvas)
+   * without guard flags. Calls are matched by declaration order, so keep
+   * `once` calls unconditional at the top level of the sketch body.
+   */
+  once(fn: () => void): void;
 
   /** Get the raw canvas element (for advanced use like multiple canvases) */
   readonly canvas: HTMLCanvasElement;
@@ -153,15 +156,6 @@ export type Sketch2DFn = (lab: Lab2D) => void;
 // Internal state
 // ═══════════════════════════════════════════════
 
-interface ParamState {
-  key: string;
-  type: "slider" | "toggle" | "select" | "color";
-  label: string;
-  group: string;
-  value: any;
-  config: any;
-}
-
 interface LogEntry {
   label: string;
   value: string;
@@ -184,8 +178,12 @@ export class Sketch2DInstance {
   private panelEl!: HTMLElement;
   private logEl!: HTMLElement;
 
-  private params: Map<string, ParamState> = new Map();
-  private buttons: { label: string; action: () => void; group: string }[] = [];
+  // Param model: values in the ParamStore, placement in `items` — rendered
+  // by the shared ControlPanel.
+  private store: ParamStore = new ParamStore({});
+  private panel!: ControlPanel;
+  private items = new Map<string, ControlItem>();
+  private buttons: PanelButton[] = [];
   private logs: LogEntry[] = [];
   private drawFn: DrawFn | null = null;
   private animateFn: AnimateFn | null = null;
@@ -194,12 +192,16 @@ export class Sketch2DInstance {
   private pointerUpFns: PointerFn[] = [];
   private continuous = false;
   private _prevFingerprint = "";
+  private _baseLogCount = 0;
+  private _onceRan: boolean[] = [];
+  private _onceSeq = 0;
 
   private rng: SeededRandom = createRandom();
   private disposed = false;
   private startTime = performance.now();
   private lastTime = performance.now();
   private rerunTimer = 0;
+  private _running = false;
 
   // Input state
   private _mouseX = 0;
@@ -228,36 +230,30 @@ export class Sketch2DInstance {
 
   // ── DOM ──
 
-  private get isDark() { return this.config.theme !== "light"; }
-
   private buildDOM() {
     const pw = this.config.panelWidth ?? 280;
-    const dk = this.isDark;
-    const bg = dk ? "#07080e" : "#f4f5f8";
-    const panelBg = dk ? "#0c0d16" : "#fff";
-    const border = dk ? "#16182a" : "#e0e2ea";
-    const textColor = dk ? "#b8bdd4" : "#2a2d3a";
+    const t = getTheme(this.config.theme);
 
     const root = document.createElement("div");
     root.style.cssText = `
       display:grid; grid-template-columns:${pw}px 1fr; grid-template-rows:44px 1fr;
       height:100%; width:100%; overflow:hidden; position:relative;
-      background:${bg}; color:${textColor};
-      font-family:'IBM Plex Mono',ui-monospace,monospace;
+      background:${t.bg}; color:${t.text};
+      font-family:${t.font};
     `;
 
     // Header
     const header = document.createElement("div");
     header.style.cssText = `
       grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
-      background:${panelBg}; border-bottom:1px solid ${border};
+      background:${t.panelBg}; border-bottom:1px solid ${t.border};
     `;
     header.innerHTML = `
-      <span style="font-weight:600;font-size:14px;color:#ffffff">
+      <span style="font-weight:600;font-size:14px;color:${t.accent}">
         &#x2B21; ${this.config.title ?? "Tekto Sketch2D"}
       </span>
       <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-        background:rgba(255,255,255,.08);color:#ffffff">2D</span>
+        background:${t.hoverBg};color:${t.accent}">2D</span>
     `;
     root.appendChild(header);
 
@@ -265,9 +261,18 @@ export class Sketch2DInstance {
     this.panelEl = document.createElement("div");
     this.panelEl.style.cssText = `
       grid-column:1; grid-row:2; overflow-y:auto; overflow-x:hidden; padding:0;
-      background:${panelBg}; border-right:1px solid ${border};
+      background:${t.panelBg}; border-right:1px solid ${t.border};
     `;
     root.appendChild(this.panelEl);
+
+    this.panel = new ControlPanel({
+      store: this.store,
+      theme: t,
+      getButtons: () => this.buttons,
+      onAction: () => this.scheduleRerun(),
+    });
+    this.panelEl.appendChild(this.panel.el);
+    this.store.onChange(() => this.scheduleRerun());
 
     // Collapsible sidebar — a toggle in the header hides the panel and hands the width
     // to the canvas; the choice is persisted across reloads.
@@ -277,7 +282,7 @@ export class Sketch2DInstance {
     const toggleBtn = document.createElement("button");
     toggleBtn.style.cssText = `
       margin-left:auto; cursor:pointer; width:28px; height:26px; border-radius:6px;
-      border:1px solid ${border}; background:transparent; color:${textColor};
+      border:1px solid ${t.border}; background:transparent; color:${t.text};
       font-size:15px; line-height:1; padding:0; flex:none;
     `;
     const applyCollapse = () => {
@@ -300,7 +305,7 @@ export class Sketch2DInstance {
 
     this.canvas.style.cssText = `
       width:100%; height:100%; display:block;
-      background:${this.config.background ?? (dk ? "#0a0a10" : "#ffffff")};
+      background:${this.config.background ?? (t.isDark ? "#0a0a10" : "#ffffff")};
     `;
     vpWrap.appendChild(this.canvas);
 
@@ -309,7 +314,7 @@ export class Sketch2DInstance {
       position:absolute; bottom:12px; left:12px;
       padding:8px 12px; border-radius:6px;
       background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
-      font-size:11px; line-height:1.7; color:#7a80a0;
+      font-size:11px; line-height:1.7; color:${t.textDim};
       pointer-events:none; max-width:300px;
       border:1px solid rgba(22,24,42,.8); display:none;
     `;
@@ -383,26 +388,38 @@ export class Sketch2DInstance {
     this.pointerDownFns = [];
     this.pointerMoveFns = [];
     this.pointerUpFns = [];
+    this._onceSeq = 0;
 
     const usedParams = new Set<string>();
     const lab = this.buildLab(usedParams);
 
+    // Param writes during the run (store.define / defaults) must not
+    // re-trigger scheduleRerun via the onChange subscription.
+    this._running = true;
     try { this.fn(lab); } catch (e) {
       console.error("Sketch2D error:", e);
       this.logs.push({ label: "ERROR", value: String(e) });
     }
+    this._running = false;
 
-    for (const key of this.params.keys()) {
-      if (!usedParams.has(key)) this.params.delete(key);
+    for (const key of this.store.keys()) {
+      if (!usedParams.has(key)) {
+        this.store.remove(key);
+        this.items.delete(key);
+      }
     }
 
     // Only rebuild panel DOM when param structure changes (not on value changes).
     // This preserves slider focus during drag.
-    const fingerprint = [...this.params.values()].map(p => p.key).sort().join("|");
+    const fingerprint = [...this.items.keys()].sort().join("|")
+      + "‖" + this.buttons.map(b => `${b.group}:${b.label}`).join("|");
     if (fingerprint !== this._prevFingerprint) {
       this._prevFingerprint = fingerprint;
-      this.rebuildPanel();
+      this.panel.render([...this.items.values()]);
     }
+    // Logs pushed by the sketch BODY are the persistent baseline; logs pushed
+    // inside draw()/animate() are per-frame and reset each frame (see loop).
+    this._baseLogCount = this.logs.length;
     this.updateLog();
     this.redraw();
   }
@@ -419,7 +436,7 @@ export class Sketch2DInstance {
   }
 
   private scheduleRerun() {
-    if (this.rerunTimer) return;
+    if (this._running || this.rerunTimer) return;
     this.rerunTimer = requestAnimationFrame(() => {
       this.rerunTimer = 0;
       this.runSketch();
@@ -429,28 +446,39 @@ export class Sketch2DInstance {
   private buildLab(usedParams: Set<string>): Lab2D {
     const self = this;
 
-    function makeParam<T>(type: ParamState["type"], label: string, defaultVal: T, group: string, config: any): Reactive<T> {
-      const key = `${type}:${group}:${label}`;
+    function makeParam<T>(key: string, def: ParamDef, item: ControlItem): Reactive<T> {
       usedParams.add(key);
-      if (!self.params.has(key)) {
-        self.params.set(key, { key, type, label, group, value: defaultVal, config });
+      if (!self.store.has(key)) {
+        self.store.define(key, def);
+        self.items.set(key, item);
       }
-      const p = self.params.get(key)!;
-      return { get value() { return p.value; } };
+      return { get value() { return self.store.get(key); } };
     }
 
     return {
       slider(label, min, max, def, opts) {
-        return makeParam("slider", label, def, opts?.group ?? "Parameters", { min, max, step: opts?.step ?? (max - min) / 100 });
+        const group = opts?.group ?? "Parameters";
+        const key = `slider:${opts?.group ?? ""}:${label}`;
+        return makeParam(key,
+          { type: "float", min, max, default: def, step: opts?.step ?? (max - min) / 100, label },
+          { key, group });
       },
       toggle(label, def = false, opts) {
-        return makeParam("toggle", label, def, opts?.group ?? "Parameters", {});
+        const group = opts?.group ?? "Parameters";
+        const key = `toggle:${opts?.group ?? ""}:${label}`;
+        return makeParam(key, { type: "bool", default: def, label }, { key, group });
       },
       select(label, options, def, opts) {
-        return makeParam("select", label, def ?? options[0], opts?.group ?? "Parameters", { options });
+        const group = opts?.group ?? "Parameters";
+        const key = `select:${opts?.group ?? ""}:${label}`;
+        return makeParam(key,
+          { type: "select", options, default: def ?? options[0], label },
+          { key, group });
       },
       colorPicker(label, def = "#38d9a9", opts) {
-        return makeParam("color", label, def, opts?.group ?? "Display", {});
+        const group = opts?.group ?? "Display";
+        const key = `color:${opts?.group ?? ""}:${label}`;
+        return makeParam(key, { type: "color", default: def, label }, { key, group });
       },
       button(label, action, opts) {
         self.buttons.push({ label, action, group: opts?.group ?? "Actions" });
@@ -458,6 +486,13 @@ export class Sketch2DInstance {
 
       draw(fn) { self.drawFn = fn; },
       animate(fn) { self.animateFn = fn; self.continuous = true; },
+      once(fn) {
+        const i = self._onceSeq++;
+        if (!self._onceRan[i]) {
+          self._onceRan[i] = true;
+          fn();
+        }
+      },
 
       get canvas() { return self.canvas; },
       get ctx() { return self.ctx; },
@@ -505,151 +540,6 @@ export class Sketch2DInstance {
     };
   }
 
-  // ── Panel Building ──
-
-  private rebuildPanel() {
-    const dk = this.isDark;
-    const groups = new Map<string, ParamState[]>();
-
-    for (const p of this.params.values()) {
-      if (!groups.has(p.group)) groups.set(p.group, []);
-      groups.get(p.group)!.push(p);
-    }
-
-    // Include button groups
-    for (const b of this.buttons) {
-      if (!groups.has(b.group)) groups.set(b.group, []);
-    }
-
-    const html: string[] = [];
-
-    for (const [group, params] of groups) {
-      html.push(`<div style="border-bottom:1px solid ${dk ? '#16182a' : '#e0e2ea'};padding:10px 14px;">`);
-      html.push(`<div style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:${dk ? '#4a5070' : '#8890a0'};margin-bottom:8px;">${group}</div>`);
-
-      for (const p of params) {
-        if (p.type === "slider") {
-          const { min, max, step } = p.config;
-          html.push(`
-            <div style="margin-bottom:6px;">
-              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-                <span style="color:${dk ? '#7a80a0' : '#5a6080'}">${p.label}</span>
-                <span style="color:#ffffff;font-weight:500" data-val="${p.key}">${typeof p.value === 'number' ? (Number.isInteger(step) && step >= 1 ? p.value : p.value.toFixed(2)) : p.value}</span>
-              </div>
-              <input type="range" data-key="${p.key}" min="${min}" max="${max}" step="${step}" value="${p.value}"
-                style="width:100%;height:4px;accent-color:#ffffff;cursor:pointer;">
-            </div>
-          `);
-        } else if (p.type === "toggle") {
-          html.push(`
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
-              <span style="color:${dk ? '#7a80a0' : '#5a6080'}">${p.label}</span>
-              <label style="position:relative;width:32px;height:18px;cursor:pointer;">
-                <input type="checkbox" data-key="${p.key}" ${p.value ? 'checked' : ''}
-                  style="position:absolute;opacity:0;width:0;height:0;">
-                <span style="position:absolute;inset:0;border-radius:9px;transition:.2s;
-                  background:${p.value ? '#ffffff' : (dk ? '#1e2040' : '#d0d4e0')};">
-                  <span style="position:absolute;left:${p.value ? '16px' : '2px'};top:2px;width:14px;height:14px;
-                    border-radius:50%;background:${p.value ? '#16182c' : 'white'};transition:.2s;"></span>
-                </span>
-              </label>
-            </div>
-          `);
-        } else if (p.type === "select") {
-          const opts = (p.config.options as string[]).map(o =>
-            `<option value="${o}" ${o === p.value ? 'selected' : ''}>${o}</option>`
-          ).join('');
-          html.push(`
-            <div style="margin-bottom:6px;">
-              <div style="font-size:11px;color:${dk ? '#7a80a0' : '#5a6080'};margin-bottom:3px;">${p.label}</div>
-              <select data-key="${p.key}" style="width:100%;padding:4px 6px;border-radius:4px;font-size:11px;
-                font-family:inherit;background:${dk ? '#0f1020' : '#f0f2f8'};color:inherit;
-                border:1px solid ${dk ? '#1e2040' : '#d0d4e0'};cursor:pointer;">
-                ${opts}
-              </select>
-            </div>
-          `);
-        } else if (p.type === "color") {
-          html.push(`
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
-              <span style="color:${dk ? '#7a80a0' : '#5a6080'}">${p.label}</span>
-              <input type="color" data-key="${p.key}" value="${p.value}"
-                style="width:28px;height:22px;border:none;cursor:pointer;background:none;">
-            </div>
-          `);
-        }
-      }
-
-      // Buttons for this group
-      for (const b of this.buttons.filter(b => b.group === group)) {
-        html.push(`
-          <button data-btn="${b.label}" style="width:100%;padding:6px 10px;margin-bottom:4px;
-            font-family:inherit;font-size:11px;cursor:pointer;border-radius:4px;
-            background:${dk ? '#151730' : '#e8eaf0'};color:inherit;
-            border:1px solid ${dk ? '#1e2040' : '#d0d4e0'};">
-            ${b.label}
-          </button>
-        `);
-      }
-
-      html.push('</div>');
-    }
-
-    this.panelEl.innerHTML = html.join('');
-
-    // Wire events
-    this.panelEl.querySelectorAll('input[type=range]').forEach((el) => {
-      const input = el as HTMLInputElement;
-      const key = input.dataset.key!;
-      input.addEventListener("input", () => {
-        const p = this.params.get(key)!;
-        p.value = parseFloat(input.value);
-        const valEl = this.panelEl.querySelector(`[data-val="${key}"]`);
-        if (valEl) {
-          const step = p.config.step;
-          valEl.textContent = Number.isInteger(step) && step >= 1
-            ? String(p.value) : p.value.toFixed(2);
-        }
-        this.scheduleRerun();
-      });
-    });
-
-    this.panelEl.querySelectorAll('input[type=checkbox]').forEach((el) => {
-      const input = el as HTMLInputElement;
-      input.addEventListener("change", () => {
-        this.params.get(input.dataset.key!)!.value = input.checked;
-        // the knob visual is baked into the panel HTML from the value at build
-        // time — without a rebuild the switch never moves and looks dead
-        this.rebuildPanel();
-        this.scheduleRerun();
-      });
-    });
-
-    this.panelEl.querySelectorAll('select').forEach((el) => {
-      const sel = el as HTMLSelectElement;
-      sel.addEventListener("change", () => {
-        this.params.get(sel.dataset.key!)!.value = sel.value;
-        this.scheduleRerun();
-      });
-    });
-
-    this.panelEl.querySelectorAll('input[type=color]').forEach((el) => {
-      const input = el as HTMLInputElement;
-      input.addEventListener("input", () => {
-        this.params.get(input.dataset.key!)!.value = input.value;
-        this.scheduleRerun();
-      });
-    });
-
-    this.panelEl.querySelectorAll('button[data-btn]').forEach((el) => {
-      const btn = el as HTMLButtonElement;
-      btn.addEventListener("click", () => {
-        const b = this.buttons.find(b => b.label === btn.dataset.btn);
-        if (b) b.action();
-      });
-    });
-  }
-
   private updateLog() {
     if (this.logs.length === 0) {
       this.logEl.style.display = "none";
@@ -672,6 +562,9 @@ export class Sketch2DInstance {
         const now = performance.now();
         const dt = (now - this.lastTime) / 1000;
         this.lastTime = now;
+        // Drop last frame's draw()/animate() logs so per-frame lab.log calls
+        // replace instead of accumulate (body-level logs stay).
+        this.logs.length = this._baseLogCount;
         this.animateFn((now - this.startTime) / 1000, Math.min(dt, 1 / 15));
         this.redraw();
         this.updateLog();
@@ -684,6 +577,7 @@ export class Sketch2DInstance {
   /** Tear down the sketch */
   dispose() {
     this.disposed = true;
+    this.panel.dispose();
     this.container.innerHTML = "";
   }
 }
