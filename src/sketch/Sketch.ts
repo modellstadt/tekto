@@ -300,7 +300,7 @@ export class SketchInstance {
       overflow-y:auto; overflow-x:hidden; padding:0;
       background:${t.panelBg};
       border-right:1px solid ${t.border};
-      position:relative;
+      position:relative; grid-column:1;
     `;
     root.appendChild(this.panelEl);
 
@@ -407,9 +407,11 @@ export class SketchInstance {
     expandBtn.addEventListener("click", () => applyCollapsed(false));
     if (localStorage.getItem(collapseKey) === "1") applyCollapsed(true);
 
-    // Viewport container (holds 3D canvas + log overlay)
+    // Viewport container (holds 3D canvas + log overlay). Grid column pinned explicitly: when the
+    // panel collapses via display:none it leaves the grid flow, and without the pin the viewport
+    // auto-places into column 1 (the slim rail) leaving column 2 black.
     const vpWrap = document.createElement("div");
-    vpWrap.style.cssText = "position:relative;overflow:hidden;";
+    vpWrap.style.cssText = "position:relative;overflow:hidden;grid-column:2;";
 
     this.viewportEl = document.createElement("div");
     this.viewportEl.style.cssText = "width:100%;height:100%;";
