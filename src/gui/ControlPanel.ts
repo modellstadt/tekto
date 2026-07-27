@@ -172,6 +172,17 @@ export class ControlPanel {
     if (hasTabs && (!this.activeTab || !tabOrder.includes(this.activeTab))) {
       this.activeTab = tabOrder[0];
     }
+    // ── Pinned strip: when tabs exist, controls with neither tab nor menu are GLOBAL (e.g. a view-mode
+    //    selector) — render them once, always visible, ABOVE the tab bar instead of inside every tab. ──
+    const pinnedItems = hasTabs ? items.filter(it => !it.tab && !it.menu) : [];
+    const pinnedButtons = hasTabs ? buttons.filter(b => !b.tab && !b.menu) : [];
+    if (pinnedItems.length || pinnedButtons.length) {
+      const strip = document.createElement("div");
+      strip.style.cssText = `padding:4px 8px 2px;border-bottom:1px solid ${t.border};`;
+      for (const it of pinnedItems) { const row = this.buildControl(it); if (row) strip.appendChild(row); }
+      for (const b of pinnedButtons) strip.appendChild(this.buildButtonRow(b));
+      this.el.appendChild(strip);
+    }
     if (hasTabs) this.el.appendChild(this.buildTabBar(tabOrder));
 
     // Extra tab active → owner renders the content, skip sections
@@ -184,9 +195,10 @@ export class ControlPanel {
       return;
     }
 
-    // ── Sections (accordion groups), filtered to the active tab ──
+    // ── Sections (accordion groups), filtered to the active tab. With tabs present, tab-less controls
+    //    are in the pinned strip above — exclude them here. ──
     const inTab = (tab?: string, menu?: string) =>
-      !menu && (!hasTabs || !tab || tab === this.activeTab);
+      !menu && (hasTabs ? (!!tab && tab === this.activeTab) : true);
 
     const groups = new Map<string, { items: ControlItem[]; buttons: PanelButton[]; rows: CustomRow[] }>();
     const groupOf = (name?: string) => {
