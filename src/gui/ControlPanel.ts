@@ -261,7 +261,35 @@ export class ControlPanel {
 
       for (const it of menuItems) {
         const def = this.store.getDef(it.key) as ParamDef | undefined;
-        if (!def || def.type !== "bool") continue; // menus host checkable toggles only
+        if (!def) continue;
+        // Selects render as a radio-style option list: one row per option, ✓ on the active one.
+        if (def.type === "select") {
+          const opts = def.options ?? [];
+          const rows: { opt: string; check: HTMLSpanElement }[] = [];
+          for (const opt of opts) {
+            const row = document.createElement("div");
+            row.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;font-size:11px;color:${t.textDim};transition:background .1s;`;
+            const check = document.createElement("span");
+            check.style.cssText = `width:12px;text-align:center;color:${t.accent};font-size:10px;`;
+            check.textContent = this.store.get(it.key) === opt ? "✓" : " ";
+            const lbl = document.createElement("span");
+            lbl.textContent = opt;
+            row.append(check, lbl);
+            row.addEventListener("mouseenter", () => { row.style.background = t.hoverBg; });
+            row.addEventListener("mouseleave", () => { row.style.background = "transparent"; });
+            row.addEventListener("click", (e) => {
+              e.stopPropagation();
+              this.store.set(it.key, opt);
+              for (const r of rows) r.check.textContent = r.opt === opt ? "✓" : " ";
+              this.cfg.onCommit?.(it.key);
+            });
+            rows.push({ opt, check });
+            dropdown.appendChild(row);
+          }
+          this.updaters.set(it.key, (v) => { for (const r of rows) r.check.textContent = r.opt === v ? "✓" : " "; });
+          continue;
+        }
+        if (def.type !== "bool") continue; // other kinds don't fit a menu
         const row = document.createElement("div");
         row.style.cssText = `
           display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;
