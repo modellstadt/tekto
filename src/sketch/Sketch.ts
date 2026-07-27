@@ -365,6 +365,7 @@ export class SketchInstance {
       resizeHandle.style.left = `${w - 3}px`;
       collapseBtn.style.left = `${w - 26}px`;
       localStorage.setItem(storageKey, String(w));
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     };
 
     // Collapse / expand the panel to reclaim the full canvas width.
@@ -385,18 +386,22 @@ export class SketchInstance {
     const expandBtn = document.createElement("div");
     expandBtn.title = "Show panel";
     expandBtn.textContent = "›";      // ›
-    expandBtn.style.cssText = btnCss(6);
+    expandBtn.style.cssText = btnCss(4);   // sits on the collapsed 28px rail
     expandBtn.style.display = "none";
     root.appendChild(expandBtn);
 
     const applyCollapsed = (c: boolean) => {
-      root.style.gridTemplateColumns = c ? "0px 1fr" : `${curWidth}px 1fr`;
+      // Collapsed = a slim RAIL (not 0px): the expand chevron stays visible in a stable spot and the
+      // canvas reclaims the rest. An explicit resize nudge follows the reflow — the renderer's
+      // ResizeObserver usually catches it, but a forced event makes the canvas resize deterministic.
+      root.style.gridTemplateColumns = c ? "28px 1fr" : `${curWidth}px 1fr`;
       this.panelEl.style.display = c ? "none" : "";
       resizeHandle.style.display = c ? "none" : "";
       collapseBtn.style.display = c ? "none" : "flex";
       collapseBtn.style.left = `${curWidth - 26}px`;
       expandBtn.style.display = c ? "flex" : "none";
       localStorage.setItem(collapseKey, c ? "1" : "0");
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     };
     collapseBtn.addEventListener("click", () => applyCollapsed(true));
     expandBtn.addEventListener("click", () => applyCollapsed(false));

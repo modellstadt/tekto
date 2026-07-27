@@ -346,8 +346,12 @@ export class ControlPanel {
         }
       });
 
-      bar.appendChild(btn);
-      bar.appendChild(dropdown);
+      // Anchor each dropdown to ITS button (not the bar) so it opens right below the menu name.
+      const holder = document.createElement("div");
+      holder.style.cssText = `position:relative;display:inline-block;`;
+      holder.appendChild(btn);
+      holder.appendChild(dropdown);
+      bar.appendChild(holder);
     }
     return bar;
   }
