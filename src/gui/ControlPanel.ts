@@ -73,6 +73,8 @@ export interface ControlPanelConfig {
   onCommit?: (key: string) => void;
   /** A button or menu action ran (owners typically re-run the sketch). */
   onAction?: () => void;
+  /** The user switched to another tab (panel re-renders itself first). */
+  onTabChange?: (tab: string) => void;
 }
 
 const DEFAULT_GROUP = "Parameters";
@@ -358,6 +360,9 @@ export class ControlPanel {
 
   // ── Tab bar ──
 
+  /** The currently active tab name ("" when the panel has no tabs). */
+  getActiveTab(): string { return this.activeTab; }
+
   private buildTabBar(tabOrder: string[]): HTMLElement {
     const t = this.theme;
     const bar = document.createElement("div");
@@ -376,6 +381,7 @@ export class ControlPanel {
       btn.addEventListener("click", () => {
         this.activeTab = tab;
         this.render(this.items, this.customRows, this.extraTabs);
+        this.cfg.onTabChange?.(tab);
       });
       bar.appendChild(btn);
     }

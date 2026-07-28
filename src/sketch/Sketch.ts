@@ -118,6 +118,8 @@ interface LayerTreeState {
   panel: LayerPanel;
   group: string;
   tab: string;
+  /** Display-only layer tree: changes run the display pass instead of a re-run. */
+  display: boolean;
 }
 
 interface LogEntry {
@@ -227,10 +229,31 @@ export class SketchInstance {
   private _lastRerunTime = 0;
   private _rerunTimer = 0;
 
+  // Display-only params: keys declared with `display: true` route their
+  // changes to the display pass (lab.onDisplay) instead of a full re-run.
+  private _displayKeys = new Set<string>();
+  private _onDisplayFns: Array<() => void> = [];
+  // Tab-switch callback (per run) — lets a sketch update tab-dependent info
+  // text without re-running (the panel re-renders itself on tab clicks).
+  private _onTabChange: ((tab: string) => void) | null = null;
+  // View-layer tagging (per run): object ids created inside begin/endViewLayer
+  // scopes, keyed by layer name. Reset every run — ids don't survive clear().
+  private _viewLayerStack: string[] = [];
+  private _viewLayerObjects = new Map<string, string[]>();
+
   constructor(fn: SketchFn, config: SketchConfig) {
     this.fn = fn;
     this.config = config;
     this.scene = new Scene();
+
+    // View-layer capture: while a begin/endViewLayer scope is open, every
+    // object added to the scene is recorded under the innermost layer name.
+    this.scene.on((e) => {
+      if (e.type === "object:add" && this._viewLayerStack.length > 0) {
+        const name = this._viewLayerStack[this._viewLayerStack.length - 1];
+        this._viewLayerObjects.get(name)!.push(e.id);
+      }
+    });
 
     // Resolve container
     if (typeof config.container === "string") {
@@ -310,12 +333,18 @@ export class SketchInstance {
       store: this.store,
       theme: t,
       getButtons: () => this.buttons,
-      onCommit: () => this.commitRun(),
+      onCommit: (key) => {
+        if (this.isDisplayChange(key)) this.runDisplayPass();
+        else this.commitRun();
+      },
       onAction: () => this.runSketch(),
+      onTabChange: (tab) => { this._onTabChange?.(tab); },
     });
     this.panelEl.appendChild(this.panel.el);
-    this.store.onChange(() => {
-      if (!this._running && !this._squelch) this.scheduleRerun();
+    this.store.onChange((key) => {
+      if (this._running || this._squelch) return;
+      if (this.isDisplayChange(key)) this.runDisplayPass();
+      else this.scheduleRerun();
     });
     // Footer: info text + logs (non-tab mode), updated in place by updateLog()
     this._panelInfoEl = document.createElement("div");
@@ -594,6 +623,7 @@ export class SketchInstance {
   // ── Run Sketch ──
 
   private runSketch() {
+    const __runT0 = performance.now();
     // Clear scene but preserve params
     this.scene.clear();
     this.buttons = [];
@@ -612,6 +642,13 @@ export class SketchInstance {
     this._onKeyReleased = null;
     this._onPick = null;
     this._onHandlePick = null;
+
+    // Display pass + view layers + tab callback are per-run (closures capture run state)
+    this._onTabChange = null;
+    this._onDisplayFns = [];
+    this._displayKeys.clear();
+    this._viewLayerStack = [];
+    this._viewLayerObjects.clear();
 
     // Reset drag-handle declaration order; mark all currently-known handles
     // as "unseen" so any that aren't re-declared this run get removed.
@@ -667,6 +704,7 @@ export class SketchInstance {
       this.panelRender(hasInfoTab);
     }
     this.updateLog();
+    console.debug(`tekto: sketch run ${(performance.now() - __runT0).toFixed(1)}ms (${this.scene.count()} objects)`);
   }
 
   /** Feed the current control structure to the shared ControlPanel. */
@@ -713,8 +751,10 @@ export class SketchInstance {
       key: string,
       def: import("../gui/Params").ParamDef,
       item: ControlItem,
+      display?: boolean,
     ): Reactive<T> => {
       usedParams.add(key);
+      if (display) this._displayKeys.add(key);
       if (!this.store.has(key)) {
         this.store.define(key, def);
         this.items.set(key, item);
@@ -730,7 +770,8 @@ export class SketchInstance {
         const key = `slider:${opts?.group ?? ""}:${label}`;
         return declare(key,
           { type: "float", min, max, default: defaultValue, step: opts?.step ?? (max - min) / 100, label },
-          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu, accent: opts?.color });
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu, accent: opts?.color },
+          opts?.display);
       },
 
       setSlider(label, value, opts) {
@@ -741,21 +782,24 @@ export class SketchInstance {
         const key = `toggle:${opts?.group ?? ""}:${label}`;
         return declare(key,
           { type: "bool", default: defaultValue, label },
-          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu });
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu },
+          opts?.display);
       },
 
       select(label, options, defaultValue, opts) {
         const key = `select:${opts?.group ?? ""}:${label}`;
         return declare(key,
           { type: "select", options, default: defaultValue ?? options[0], label },
-          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu });
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu },
+          opts?.display);
       },
 
       colorPicker(label, defaultValue = "#38d9a9", opts) {
         const key = `color:${opts?.group ?? ""}:${label}`;
         return declare(key,
           { type: "color", default: defaultValue, label },
-          { key, group: opts?.group ?? "Display", tab: opts?.tab, menu: opts?.menu });
+          { key, group: opts?.group ?? "Display", tab: opts?.tab, menu: opts?.menu },
+          opts?.display);
       },
 
       layerTree(label, nodes, opts) {
@@ -769,6 +813,7 @@ export class SketchInstance {
             nodes,
             group: opts?.group ?? "Layers",
             tab: opts?.tab ?? "",
+            display: !!opts?.display,
           } as LayerTreeState;
           state.panel = new LayerPanel({
             nodes,
@@ -777,7 +822,8 @@ export class SketchInstance {
             onChange: (updates) => {
               state.value = { ...state.value, ...updates };
               state.panel.update(state.nodes, state.value);
-              self.runSketch();
+              if (state.display && self._onDisplayFns.length > 0) self.runDisplayPass();
+              else self.runSketch();
             },
           });
           lt = state;
@@ -785,6 +831,7 @@ export class SketchInstance {
         } else {
           // Nodes may change between runs (e.g. async mesh load)
           lt.nodes = nodes;
+          lt.display = !!opts?.display;
           lt.panel.update(nodes, lt.value);
         }
         const state = lt;
@@ -900,6 +947,9 @@ export class SketchInstance {
       },
       info(text) {
         self.infoText = text;
+        // Outside a run (e.g. from an onTabChange / onDisplay callback) the
+        // end-of-run updateLog() won't come — refresh the panel DOM now.
+        if (!self._running) self.updateLog();
       },
 
       setFog(color, density = 0) { self.renderer.setFog(color, density); },
@@ -983,6 +1033,38 @@ export class SketchInstance {
       get viewport() { return self.viewportEl; },
       worldToScreen(x, y, z) { return self.renderer.worldToScreen(new Vec3(x, y, z)); },
       invalidate() { self.runSketch(); },
+
+      // ── Display pass + view layers ──
+
+      onDisplay(fn) { self._onDisplayFns.push(fn); },
+
+      get activeTab() { return self.panel.getActiveTab(); },
+
+      onTabChange(fn) { self._onTabChange = fn; },
+
+      beginViewLayer(name) {
+        self._viewLayerStack.push(name);
+        if (!self._viewLayerObjects.has(name)) self._viewLayerObjects.set(name, []);
+      },
+
+      endViewLayer() { self._viewLayerStack.pop(); },
+
+      viewLayer(name, fn) {
+        lab.beginViewLayer(name);
+        try { fn(); } finally { lab.endViewLayer(); }
+      },
+
+      hasViewLayer(name) { return self._viewLayerObjects.has(name); },
+
+      styleViewLayer(name, style) {
+        const ids = self._viewLayerObjects.get(name);
+        if (!ids) return 0;
+        let touched = 0;
+        for (const id of ids) {
+          if (self.scene.has(id)) { self.scene.setStyle(id, style); touched++; }
+        }
+        return touched;
+      },
 
       // ── Picking + transform gizmo ──
       enablePicking(enabled = true) { self.enablePicking(enabled); },
@@ -1373,6 +1455,22 @@ export class SketchInstance {
   }
 
   // ── Public Methods ──
+
+  /** A change to `key` is display-only when the param was declared with
+   *  `display: true` AND the sketch registered a display pass; otherwise
+   *  fall back to the normal full re-run (safe default). */
+  private isDisplayChange(key: string): boolean {
+    return this._displayKeys.has(key) && this._onDisplayFns.length > 0;
+  }
+
+  /** Run the display pass (restyle-only, no geometry rebuild). */
+  private runDisplayPass() {
+    const t0 = performance.now();
+    for (const fn of this._onDisplayFns) {
+      try { fn(); } catch (e) { console.error("Tekto display pass error:", e); }
+    }
+    console.debug(`tekto: display pass ${(performance.now() - t0).toFixed(1)}ms`);
+  }
 
   /** Throttled sketch re-run — at most once per 50ms so the browser stays responsive during slider drag. */
   private scheduleRerun() {

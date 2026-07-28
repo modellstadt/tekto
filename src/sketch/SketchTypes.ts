@@ -84,6 +84,8 @@ export interface SliderOpts {
   tab?: string;
   menu?: string;
   color?: string;
+  /** Display-only param: changes run the `lab.onDisplay` pass instead of a full re-run. */
+  display?: boolean;
 }
 
 /** Options for select */
@@ -92,6 +94,8 @@ export interface SelectOpts {
   group?: string;
   tab?: string;
   menu?: string;
+  /** Display-only param: changes run the `lab.onDisplay` pass instead of a full re-run. */
+  display?: boolean;
 }
 
 // ─── Scene-object handles ────────────────────────────────────────────
@@ -219,9 +223,9 @@ export interface Lab {
    * `label` and (if it was created with one) its `group`. No-op if not found.
    */
   setSlider(label: string, value: number, opts?: { group?: string }): void;
-  toggle(label: string, defaultValue?: boolean, opts?: { group?: string; tab?: string; menu?: string }): Reactive<boolean>;
+  toggle(label: string, defaultValue?: boolean, opts?: { group?: string; tab?: string; menu?: string; display?: boolean }): Reactive<boolean>;
   select<T extends string>(label: string, options: readonly T[], defaultValue?: T, opts?: SelectOpts): Reactive<T>;
-  colorPicker(label: string, defaultValue?: string, opts?: { group?: string; tab?: string; menu?: string }): Reactive<string>;
+  colorPicker(label: string, defaultValue?: string, opts?: { group?: string; tab?: string; menu?: string; display?: boolean }): Reactive<string>;
   /**
    * Render a scrollable layer-tree panel — checkboxes, collapse/expand, and
    * optional per-node color pickers. Returns a reactive `LayerMap`
@@ -230,7 +234,7 @@ export interface Lab {
    * The panel instance is persistent: collapsed state and scroll position
    * survive sketch re-runs. Nodes can change between runs (e.g. async loads).
    */
-  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string }): Reactive<LayerMap>;
+  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean }): Reactive<LayerMap>;
 
   // ── Actions ──
   button(label: string, action: () => void, opts?: { group?: string; tab?: string; menu?: string }): void;
@@ -411,6 +415,51 @@ export interface Lab {
    * overlay) that the library doesn't already track.
    */
   invalidate(): void;
+
+  // ── Display pass (display-only params) ──
+  /**
+   * Register the display pass: called when a param declared with
+   * `display: true` changes, INSTEAD of re-running the sketch. The callback
+   * should only restyle existing scene objects (visibility, color, opacity,
+   * projection, …) — typically via `styleViewLayer` — never create or
+   * destroy geometry. Call `lab.invalidate()` from inside it when a change
+   * cannot be satisfied by restyling (e.g. a layer turned on that was never
+   * built) to fall back to a full re-run.
+   *
+   * Registered per run like other callbacks, so the closure captures the
+   * current run's build-param values. If no display pass is registered,
+   * display-param changes fall back to a normal re-run.
+   */
+  onDisplay(fn: () => void): void;
+
+  /** The panel's currently active tab name ("" when the panel has no tabs). */
+  readonly activeTab: string;
+
+  /**
+   * Register a callback for tab switches (per run, like other callbacks).
+   * Tab clicks re-render only the panel — the sketch does NOT re-run — so use
+   * this to refresh tab-dependent side content (e.g. `lab.info(...)`, which
+   * applies immediately when called from here) without paying for a rebuild.
+   */
+  onTabChange(fn: (tab: string) => void): void;
+
+  /**
+   * Tag every scene object created until the matching `endViewLayer()` with
+   * view-layer `name` (nestable — the innermost layer wins). View layers are
+   * per-run bookkeeping for the display pass; they are independent of the
+   * `.layer()` export/semantic layer on handles.
+   */
+  beginViewLayer(name: string): void;
+  endViewLayer(): void;
+  /** Scoped form of begin/endViewLayer. */
+  viewLayer(name: string, fn: () => void): void;
+  /** Whether `name` was declared (via begin/viewLayer) during the last run —
+   *  even if it created no objects. Lets the display pass detect layers the
+   *  build skipped entirely (→ `lab.invalidate()`). */
+  hasViewLayer(name: string): boolean;
+  /** Apply a style patch to every object created under view-layer `name`.
+   *  Returns the number of objects touched (0 when unknown/empty). */
+  styleViewLayer(name: string, style: Partial<VisualStyle>): number;
 
   // ── Picking + transform gizmo ──
   /**

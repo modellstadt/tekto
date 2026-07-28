@@ -219,12 +219,28 @@ export class ThreeRenderer {
       case "object:remove":
         this.removeFromThree(event.id);
         break;
-      case "object:update":
-      case "object:style":
+      case "object:style": {
+        // Fast path: a pure-visibility patch toggles the existing Three
+        // object in place — no geometry/material rebuild. This keeps
+        // display passes (layer show/hide over many objects) cheap.
+        const keys = Object.keys(event.style);
+        const t = this.objectMap.get(event.id);
+        const srcObj = this.gScene.get(event.id);
+        if (t && srcObj && keys.length === 1 && keys[0] === "visible") {
+          t.userData.styleVisible = srcObj.style.visible;
+          t.visible = srcObj.style.visible && !(this.hideHelpers && this._isHelper(srcObj.type));
+          break;
+        }
+        this.removeFromThree(event.id);
+        if (srcObj) this.addToThree(srcObj);
+        break;
+      }
+      case "object:update": {
         this.removeFromThree(event.id);
         const obj = this.gScene.get(event.id);
         if (obj) this.addToThree(obj);
         break;
+      }
       case "scene:clear":
         this.clearThree();
         break;

@@ -1,5 +1,5 @@
-import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, P as ParamStore, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode, e as ParamSchema } from './Params-BOo9_1p_.js';
-export { B as BoolParam, f as ButtonParam, g as ColorParam, h as FlatMeshJSON, i as FloatParam, I as IntParam, j as MeshEdge, k as MeshFace, l as MeshJSON, m as MeshNode, O as ObjFile, n as ObjMeshData, o as ParamDef, p as ParamFolder, q as ParamLayout, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-BOo9_1p_.js';
+import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, P as ParamStore, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode, e as ParamSchema } from './Params-XUrkP8an.js';
+export { B as BoolParam, f as ButtonParam, g as ColorParam, h as FlatMeshJSON, i as FloatParam, I as IntParam, j as MeshEdge, k as MeshFace, l as MeshJSON, m as MeshNode, O as ObjFile, n as ObjMeshData, o as ParamDef, p as ParamFolder, q as ParamLayout, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-XUrkP8an.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
@@ -4026,6 +4026,8 @@ interface ControlPanelConfig {
     onCommit?: (key: string) => void;
     /** A button or menu action ran (owners typically re-run the sketch). */
     onAction?: () => void;
+    /** The user switched to another tab (panel re-renders itself first). */
+    onTabChange?: (tab: string) => void;
 }
 declare class ControlPanel {
     /** Mount this element in your panel container. */
@@ -4055,6 +4057,8 @@ declare class ControlPanel {
     applyValue(key: string, value: any): void;
     private closeMenus;
     private buildMenuBar;
+    /** The currently active tab name ("" when the panel has no tabs). */
+    getActiveTab(): string;
     private buildTabBar;
     private buildSection;
     private buildButtonRow;
@@ -4522,6 +4526,8 @@ interface SliderOpts {
     tab?: string;
     menu?: string;
     color?: string;
+    /** Display-only param: changes run the `lab.onDisplay` pass instead of a full re-run. */
+    display?: boolean;
 }
 /** Options for select */
 interface SelectOpts {
@@ -4529,6 +4535,8 @@ interface SelectOpts {
     group?: string;
     tab?: string;
     menu?: string;
+    /** Display-only param: changes run the `lab.onDisplay` pass instead of a full re-run. */
+    display?: boolean;
 }
 /** A handle to a mesh in the scene — fluent chainable API */
 interface MeshHandle {
@@ -4652,12 +4660,14 @@ interface Lab {
         group?: string;
         tab?: string;
         menu?: string;
+        display?: boolean;
     }): Reactive<boolean>;
     select<T extends string>(label: string, options: readonly T[], defaultValue?: T, opts?: SelectOpts): Reactive<T>;
     colorPicker(label: string, defaultValue?: string, opts?: {
         group?: string;
         tab?: string;
         menu?: string;
+        display?: boolean;
     }): Reactive<string>;
     /**
      * Render a scrollable layer-tree panel — checkboxes, collapse/expand, and
@@ -4670,6 +4680,7 @@ interface Lab {
     layerTree(label: string, nodes: LayerNode[], opts?: {
         group?: string;
         tab?: string;
+        display?: boolean;
     }): Reactive<LayerMap>;
     button(label: string, action: () => void, opts?: {
         group?: string;
@@ -4837,6 +4848,46 @@ interface Lab {
      */
     invalidate(): void;
     /**
+     * Register the display pass: called when a param declared with
+     * `display: true` changes, INSTEAD of re-running the sketch. The callback
+     * should only restyle existing scene objects (visibility, color, opacity,
+     * projection, …) — typically via `styleViewLayer` — never create or
+     * destroy geometry. Call `lab.invalidate()` from inside it when a change
+     * cannot be satisfied by restyling (e.g. a layer turned on that was never
+     * built) to fall back to a full re-run.
+     *
+     * Registered per run like other callbacks, so the closure captures the
+     * current run's build-param values. If no display pass is registered,
+     * display-param changes fall back to a normal re-run.
+     */
+    onDisplay(fn: () => void): void;
+    /** The panel's currently active tab name ("" when the panel has no tabs). */
+    readonly activeTab: string;
+    /**
+     * Register a callback for tab switches (per run, like other callbacks).
+     * Tab clicks re-render only the panel — the sketch does NOT re-run — so use
+     * this to refresh tab-dependent side content (e.g. `lab.info(...)`, which
+     * applies immediately when called from here) without paying for a rebuild.
+     */
+    onTabChange(fn: (tab: string) => void): void;
+    /**
+     * Tag every scene object created until the matching `endViewLayer()` with
+     * view-layer `name` (nestable — the innermost layer wins). View layers are
+     * per-run bookkeeping for the display pass; they are independent of the
+     * `.layer()` export/semantic layer on handles.
+     */
+    beginViewLayer(name: string): void;
+    endViewLayer(): void;
+    /** Scoped form of begin/endViewLayer. */
+    viewLayer(name: string, fn: () => void): void;
+    /** Whether `name` was declared (via begin/viewLayer) during the last run —
+     *  even if it created no objects. Lets the display pass detect layers the
+     *  build skipped entirely (→ `lab.invalidate()`). */
+    hasViewLayer(name: string): boolean;
+    /** Apply a style patch to every object created under view-layer `name`.
+     *  Returns the number of objects touched (0 when unknown/empty). */
+    styleViewLayer(name: string, style: Partial<VisualStyle>): number;
+    /**
      * Enable or disable click-to-pick on the viewport. When enabled, clicking
      * a pickable object selects it (and attaches the transform gizmo if a mode
      * other than "none" is active). Default: disabled.
@@ -4996,6 +5047,11 @@ declare class SketchInstance {
     private _panelFooterLogEl;
     private _lastRerunTime;
     private _rerunTimer;
+    private _displayKeys;
+    private _onDisplayFns;
+    private _onTabChange;
+    private _viewLayerStack;
+    private _viewLayerObjects;
     constructor(fn: SketchFn, config: SketchConfig);
     private buildDOM;
     private initRenderer;
@@ -5028,6 +5084,12 @@ declare class SketchInstance {
     private addShapeHandle;
     private updateLog;
     private startLoop;
+    /** A change to `key` is display-only when the param was declared with
+     *  `display: true` AND the sketch registered a display pass; otherwise
+     *  fall back to the normal full re-run (safe default). */
+    private isDisplayChange;
+    /** Run the display pass (restyle-only, no geometry rebuild). */
+    private runDisplayPass;
     /** Throttled sketch re-run — at most once per 50ms so the browser stays responsive during slider drag. */
     private scheduleRerun;
     /** Immediate re-run on control commit (slider drag-end, toggle, select) —
@@ -5138,6 +5200,9 @@ declare class SketchInstance {
  *
  *   app.params.get("radius");                     // read a value
  *   app.params.onChange((key, value) => rebuild()); // react to changes
+ *   app.onBuild(() => regenerate());              // build params → rebuild geometry
+ *   app.onDisplay(() => restyle());               // `display: true` params → restyle only
+ *   app.rebuild();                                // initial build (build + display pass)
  *   app.onAnimate((dt) => { ... });               // per-frame callback
  *   app.status("Layer 5 / 20\nSim: 3.2s");        // overlay text (no rebuild)
  *   app.scene.addMesh(mesh);                      // geometry via the Scene
@@ -5170,6 +5235,21 @@ interface AppShellInstance<S extends ParamSchema = ParamSchema> {
     panel: ControlPanel;
     /** Register an animation callback (called every frame with dt in seconds) */
     onAnimate(fn: (dt: number, time: number) => void): void;
+    /**
+     * Register the build pass: runs (then the display pass) whenever a param
+     * WITHOUT `display: true` changes. Regenerate geometry here. Registering
+     * does not run it — call `rebuild()` once after setup for the initial build.
+     */
+    onBuild(fn: () => void): void;
+    /**
+     * Register the display pass: runs when a param WITH `display: true`
+     * changes, and after every build pass. Only restyle existing scene
+     * objects here (visibility, colors, materials) — never create geometry,
+     * so display-param changes stay cheap.
+     */
+    onDisplay(fn: () => void): void;
+    /** Run the build pass then the display pass (e.g. for the initial build). */
+    rebuild(): void;
     /** Update the status overlay text (cheap — just sets textContent) */
     status(text: string): void;
     /** Dispose everything */

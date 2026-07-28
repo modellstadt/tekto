@@ -29,6 +29,9 @@
  *
  *   app.params.get("radius");                     // read a value
  *   app.params.onChange((key, value) => rebuild()); // react to changes
+ *   app.onBuild(() => regenerate());              // build params → rebuild geometry
+ *   app.onDisplay(() => restyle());               // `display: true` params → restyle only
+ *   app.rebuild();                                // initial build (build + display pass)
  *   app.onAnimate((dt) => { ... });               // per-frame callback
  *   app.status("Layer 5 / 20\nSim: 3.2s");        // overlay text (no rebuild)
  *   app.scene.addMesh(mesh);                      // geometry via the Scene
@@ -74,6 +77,24 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
 
   /** Register an animation callback (called every frame with dt in seconds) */
   onAnimate(fn: (dt: number, time: number) => void): void;
+
+  /**
+   * Register the build pass: runs (then the display pass) whenever a param
+   * WITHOUT `display: true` changes. Regenerate geometry here. Registering
+   * does not run it — call `rebuild()` once after setup for the initial build.
+   */
+  onBuild(fn: () => void): void;
+
+  /**
+   * Register the display pass: runs when a param WITH `display: true`
+   * changes, and after every build pass. Only restyle existing scene
+   * objects here (visibility, colors, materials) — never create geometry,
+   * so display-param changes stay cheap.
+   */
+  onDisplay(fn: () => void): void;
+
+  /** Run the build pass then the display pass (e.g. for the initial build). */
+  rebuild(): void;
 
   /** Update the status overlay text (cheap — just sets textContent) */
   status(text: string): void;
@@ -178,6 +199,23 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     buildTopBar(header, scene, renderer, t);
   }
 
+  // ── Build / display passes ──
+  // Two-tier invalidation: params flagged `display: true` only re-run the
+  // display pass (restyle); everything else re-runs build then display.
+
+  let buildFn: (() => void) | null = null;
+  let displayFn: (() => void) | null = null;
+
+  params.onChange((key) => {
+    const def = params.getDef(key as any) as { display?: boolean } | undefined;
+    if (def?.display) {
+      displayFn?.();
+    } else {
+      buildFn?.();
+      displayFn?.();
+    }
+  });
+
   // ── Animation loop ──
 
   let animateFn: ((dt: number, time: number) => void) | null = null;
@@ -205,6 +243,10 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     panel,
 
     onAnimate(fn) { animateFn = fn; },
+
+    onBuild(fn) { buildFn = fn; },
+    onDisplay(fn) { displayFn = fn; },
+    rebuild() { buildFn?.(); displayFn?.(); },
 
     status(text: string) {
       if (text) {

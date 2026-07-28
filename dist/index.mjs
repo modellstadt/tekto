@@ -17923,6 +17923,10 @@ var ControlPanel = class {
     return bar;
   }
   // ── Tab bar ──
+  /** The currently active tab name ("" when the panel has no tabs). */
+  getActiveTab() {
+    return this.activeTab;
+  }
   buildTabBar(tabOrder) {
     const t = this.theme;
     const bar = document.createElement("div");
@@ -17941,6 +17945,7 @@ var ControlPanel = class {
       btn.addEventListener("click", () => {
         this.activeTab = tab;
         this.render(this.items, this.customRows, this.extraTabs);
+        this.cfg.onTabChange?.(tab);
       });
       bar.appendChild(btn);
     }
@@ -18399,19 +18404,32 @@ var ThreeRenderer = class {
   handleEvent(event) {
     switch (event.type) {
       case "object:add": {
-        const obj2 = this.gScene.get(event.id);
-        if (obj2) this.addToThree(obj2);
+        const obj = this.gScene.get(event.id);
+        if (obj) this.addToThree(obj);
         break;
       }
       case "object:remove":
         this.removeFromThree(event.id);
         break;
-      case "object:update":
-      case "object:style":
+      case "object:style": {
+        const keys = Object.keys(event.style);
+        const t = this.objectMap.get(event.id);
+        const srcObj = this.gScene.get(event.id);
+        if (t && srcObj && keys.length === 1 && keys[0] === "visible") {
+          t.userData.styleVisible = srcObj.style.visible;
+          t.visible = srcObj.style.visible && !(this.hideHelpers && this._isHelper(srcObj.type));
+          break;
+        }
+        this.removeFromThree(event.id);
+        if (srcObj) this.addToThree(srcObj);
+        break;
+      }
+      case "object:update": {
         this.removeFromThree(event.id);
         const obj = this.gScene.get(event.id);
         if (obj) this.addToThree(obj);
         break;
+      }
       case "scene:clear":
         this.clearThree();
         break;
@@ -20010,9 +20028,26 @@ var SketchInstance = class {
     this._panelFooterLogEl = null;
     this._lastRerunTime = 0;
     this._rerunTimer = 0;
+    // Display-only params: keys declared with `display: true` route their
+    // changes to the display pass (lab.onDisplay) instead of a full re-run.
+    this._displayKeys = /* @__PURE__ */ new Set();
+    this._onDisplayFns = [];
+    // Tab-switch callback (per run) — lets a sketch update tab-dependent info
+    // text without re-running (the panel re-renders itself on tab clicks).
+    this._onTabChange = null;
+    // View-layer tagging (per run): object ids created inside begin/endViewLayer
+    // scopes, keyed by layer name. Reset every run — ids don't survive clear().
+    this._viewLayerStack = [];
+    this._viewLayerObjects = /* @__PURE__ */ new Map();
     this.fn = fn;
     this.config = config;
     this.scene = new Scene();
+    this.scene.on((e) => {
+      if (e.type === "object:add" && this._viewLayerStack.length > 0) {
+        const name = this._viewLayerStack[this._viewLayerStack.length - 1];
+        this._viewLayerObjects.get(name).push(e.id);
+      }
+    });
     if (typeof config.container === "string") {
       this.container = document.querySelector(config.container);
     } else if (config.container) {
@@ -20072,12 +20107,20 @@ var SketchInstance = class {
       store: this.store,
       theme: t,
       getButtons: () => this.buttons,
-      onCommit: () => this.commitRun(),
-      onAction: () => this.runSketch()
+      onCommit: (key) => {
+        if (this.isDisplayChange(key)) this.runDisplayPass();
+        else this.commitRun();
+      },
+      onAction: () => this.runSketch(),
+      onTabChange: (tab) => {
+        this._onTabChange?.(tab);
+      }
     });
     this.panelEl.appendChild(this.panel.el);
-    this.store.onChange(() => {
-      if (!this._running && !this._squelch) this.scheduleRerun();
+    this.store.onChange((key) => {
+      if (this._running || this._squelch) return;
+      if (this.isDisplayChange(key)) this.runDisplayPass();
+      else this.scheduleRerun();
     });
     this._panelInfoEl = document.createElement("div");
     this._panelInfoEl.style.cssText = `padding:12px 14px;border-bottom:1px solid ${t.border};font-size:11px;color:${t.textDim};line-height:1.7;white-space:pre-wrap;display:none;`;
@@ -20312,6 +20355,7 @@ var SketchInstance = class {
   }
   // ── Run Sketch ──
   runSketch() {
+    const __runT0 = performance.now();
     this.scene.clear();
     this.buttons = [];
     this.logs = [];
@@ -20327,6 +20371,11 @@ var SketchInstance = class {
     this._onKeyReleased = null;
     this._onPick = null;
     this._onHandlePick = null;
+    this._onTabChange = null;
+    this._onDisplayFns = [];
+    this._displayKeys.clear();
+    this._viewLayerStack = [];
+    this._viewLayerObjects.clear();
     this._dragHandleSeq = 0;
     this.renderer.beginDragHandleSweep();
     const usedParams = /* @__PURE__ */ new Set();
@@ -20362,6 +20411,7 @@ var SketchInstance = class {
       this.panelRender(hasInfoTab);
     }
     this.updateLog();
+    console.debug(`tekto: sketch run ${(performance.now() - __runT0).toFixed(1)}ms (${this.scene.count()} objects)`);
   }
   /** Feed the current control structure to the shared ControlPanel. */
   panelRender(hasInfoTab) {
@@ -20392,8 +20442,9 @@ var SketchInstance = class {
   buildLab(usedParams) {
     const self = this;
     const now = performance.now();
-    const declare = (key, def, item) => {
+    const declare = (key, def, item, display) => {
       usedParams.add(key);
+      if (display) this._displayKeys.add(key);
       if (!this.store.has(key)) {
         this.store.define(key, def);
         this.items.set(key, item);
@@ -20410,7 +20461,8 @@ var SketchInstance = class {
         return declare(
           key,
           { type: "float", min, max, default: defaultValue, step: opts?.step ?? (max - min) / 100, label },
-          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu, accent: opts?.color }
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu, accent: opts?.color },
+          opts?.display
         );
       },
       setSlider(label, value, opts) {
@@ -20421,7 +20473,8 @@ var SketchInstance = class {
         return declare(
           key,
           { type: "bool", default: defaultValue, label },
-          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu }
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu },
+          opts?.display
         );
       },
       select(label, options, defaultValue, opts) {
@@ -20429,7 +20482,8 @@ var SketchInstance = class {
         return declare(
           key,
           { type: "select", options, default: defaultValue ?? options[0], label },
-          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu }
+          { key, group: opts?.group ?? "Parameters", tab: opts?.tab, menu: opts?.menu },
+          opts?.display
         );
       },
       colorPicker(label, defaultValue = "#38d9a9", opts) {
@@ -20437,7 +20491,8 @@ var SketchInstance = class {
         return declare(
           key,
           { type: "color", default: defaultValue, label },
-          { key, group: opts?.group ?? "Display", tab: opts?.tab, menu: opts?.menu }
+          { key, group: opts?.group ?? "Display", tab: opts?.tab, menu: opts?.menu },
+          opts?.display
         );
       },
       layerTree(label, nodes, opts) {
@@ -20450,7 +20505,8 @@ var SketchInstance = class {
             value: {},
             nodes,
             group: opts?.group ?? "Layers",
-            tab: opts?.tab ?? ""
+            tab: opts?.tab ?? "",
+            display: !!opts?.display
           };
           state2.panel = new LayerPanel({
             nodes,
@@ -20459,13 +20515,15 @@ var SketchInstance = class {
             onChange: (updates) => {
               state2.value = { ...state2.value, ...updates };
               state2.panel.update(state2.nodes, state2.value);
-              self.runSketch();
+              if (state2.display && self._onDisplayFns.length > 0) self.runDisplayPass();
+              else self.runSketch();
             }
           });
           lt = state2;
           self.layerTrees.set(key, state2);
         } else {
           lt.nodes = nodes;
+          lt.display = !!opts?.display;
           lt.panel.update(nodes, lt.value);
         }
         const state = lt;
@@ -20572,6 +20630,7 @@ var SketchInstance = class {
       },
       info(text) {
         self.infoText = text;
+        if (!self._running) self.updateLog();
       },
       setFog(color, density = 0) {
         self.renderer.setFog(color, density);
@@ -20680,6 +20739,46 @@ var SketchInstance = class {
       },
       invalidate() {
         self.runSketch();
+      },
+      // ── Display pass + view layers ──
+      onDisplay(fn) {
+        self._onDisplayFns.push(fn);
+      },
+      get activeTab() {
+        return self.panel.getActiveTab();
+      },
+      onTabChange(fn) {
+        self._onTabChange = fn;
+      },
+      beginViewLayer(name) {
+        self._viewLayerStack.push(name);
+        if (!self._viewLayerObjects.has(name)) self._viewLayerObjects.set(name, []);
+      },
+      endViewLayer() {
+        self._viewLayerStack.pop();
+      },
+      viewLayer(name, fn) {
+        lab.beginViewLayer(name);
+        try {
+          fn();
+        } finally {
+          lab.endViewLayer();
+        }
+      },
+      hasViewLayer(name) {
+        return self._viewLayerObjects.has(name);
+      },
+      styleViewLayer(name, style) {
+        const ids = self._viewLayerObjects.get(name);
+        if (!ids) return 0;
+        let touched = 0;
+        for (const id of ids) {
+          if (self.scene.has(id)) {
+            self.scene.setStyle(id, style);
+            touched++;
+          }
+        }
+        return touched;
       },
       // ── Picking + transform gizmo ──
       enablePicking(enabled = true) {
@@ -21251,6 +21350,24 @@ var SketchInstance = class {
     loop();
   }
   // ── Public Methods ──
+  /** A change to `key` is display-only when the param was declared with
+   *  `display: true` AND the sketch registered a display pass; otherwise
+   *  fall back to the normal full re-run (safe default). */
+  isDisplayChange(key) {
+    return this._displayKeys.has(key) && this._onDisplayFns.length > 0;
+  }
+  /** Run the display pass (restyle-only, no geometry rebuild). */
+  runDisplayPass() {
+    const t0 = performance.now();
+    for (const fn of this._onDisplayFns) {
+      try {
+        fn();
+      } catch (e) {
+        console.error("Tekto display pass error:", e);
+      }
+    }
+    console.debug(`tekto: display pass ${(performance.now() - t0).toFixed(1)}ms`);
+  }
   /** Throttled sketch re-run — at most once per 50ms so the browser stays responsive during slider drag. */
   scheduleRerun() {
     if (this._rerunTimer) return;
@@ -21466,6 +21583,17 @@ function appShell(config) {
   if (config.topBar !== false) {
     buildTopBar(header, scene, renderer, t);
   }
+  let buildFn = null;
+  let displayFn = null;
+  params.onChange((key) => {
+    const def = params.getDef(key);
+    if (def?.display) {
+      displayFn?.();
+    } else {
+      buildFn?.();
+      displayFn?.();
+    }
+  });
   let animateFn = null;
   let lastTime = performance.now();
   let startTime = lastTime;
@@ -21487,6 +21615,16 @@ function appShell(config) {
     panel,
     onAnimate(fn) {
       animateFn = fn;
+    },
+    onBuild(fn) {
+      buildFn = fn;
+    },
+    onDisplay(fn) {
+      displayFn = fn;
+    },
+    rebuild() {
+      buildFn?.();
+      displayFn?.();
     },
     status(text) {
       if (text) {

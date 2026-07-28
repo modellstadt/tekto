@@ -79,7 +79,7 @@ export interface ButtonParam {
   action: () => void;
 }
 
-export type ParamDef =
+export type ParamDef = (
   | FloatParam
   | IntParam
   | BoolParam
@@ -87,7 +87,12 @@ export type ParamDef =
   | ColorParam
   | StringParam
   | Vec3Param
-  | ButtonParam;
+  | ButtonParam
+) & {
+  /** Display-only param: `appShell` routes its changes to `onDisplay`
+   *  (restyle existing objects) instead of `onBuild` (regenerate geometry). */
+  display?: boolean;
+};
 
 export type ParamSchema = Record<string, ParamDef>;
 
