@@ -391,10 +391,36 @@ export class ThreeRenderer {
     color: string | null = null,
     flatShading = false,
   ): void {
+    const metalChanged = this.studioMetalness !== metalness || this.studioRoughness !== roughness;
     this.studioMetalness = metalness;
     this.studioRoughness = roughness;
     this.studioColor = color;
     this.studioFlatShading = flatShading;
+    // Retroactively patch metalness/roughness on the existing Studio
+    // materials of meshes that don't carry their OWN values — this mirrors
+    // the `opts.metalness ?? studioMetalness` creation rule, so metal sliders
+    // can be display-only (no sketch re-run). Color is NOT patched: the
+    // color override is creation-ORDER dependent (e.g. neutral context drawn
+    // first, then the override enabled for the stair solids).
+    if (metalChanged && this.currentLighting === "studio") {
+      for (const obj of this.gScene.all()) {
+        if (obj.type !== "mesh") continue;
+        const s = obj.style as { metalness?: number; roughness?: number };
+        if (s.metalness !== undefined && s.roughness !== undefined) continue;
+        const t = this.objectMap.get(obj.id);
+        if (!t) continue;
+        t.traverse((c) => {
+          if (!(c instanceof THREE.Mesh)) return;
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          for (const m of mats) {
+            if (m instanceof THREE.MeshStandardMaterial) {
+              if (s.metalness === undefined) m.metalness = metalness;
+              if (s.roughness === undefined) m.roughness = roughness;
+            }
+          }
+        });
+      }
+    }
   }
 
   // Line/point "helper" object types (vs solid meshes/polygons/planes).

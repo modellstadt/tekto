@@ -18553,10 +18553,30 @@ var ThreeRenderer = class {
    * build (e.g. the next sketch re-run). metalness/roughness in 0..1.
    */
   setStudioMaterial(metalness, roughness, color = null, flatShading = false) {
+    const metalChanged = this.studioMetalness !== metalness || this.studioRoughness !== roughness;
     this.studioMetalness = metalness;
     this.studioRoughness = roughness;
     this.studioColor = color;
     this.studioFlatShading = flatShading;
+    if (metalChanged && this.currentLighting === "studio") {
+      for (const obj of this.gScene.all()) {
+        if (obj.type !== "mesh") continue;
+        const s = obj.style;
+        if (s.metalness !== void 0 && s.roughness !== void 0) continue;
+        const t = this.objectMap.get(obj.id);
+        if (!t) continue;
+        t.traverse((c) => {
+          if (!(c instanceof THREE3.Mesh)) return;
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          for (const m of mats) {
+            if (m instanceof THREE3.MeshStandardMaterial) {
+              if (s.metalness === void 0) m.metalness = metalness;
+              if (s.roughness === void 0) m.roughness = roughness;
+            }
+          }
+        });
+      }
+    }
   }
   // Line/point "helper" object types (vs solid meshes/polygons/planes).
   _isHelper(type) {
