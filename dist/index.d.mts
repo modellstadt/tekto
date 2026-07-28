@@ -4194,6 +4194,11 @@ declare class ThreeRenderer {
      * @param direction Unit vector pointing toward the light source.
      * @param distance  How far back to place the light (m). Default 50.
      */
+    /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
+     *  useful range at building scale. */
+    setFog(color: string, density?: number): void;
+    /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
+    setExposure(v: number): void;
     setSunDirection(direction: Vec3, distance?: number): void;
     /**
      * Reconfigure renderer + lights + scene shadow flags for the given mode.
@@ -4764,6 +4769,10 @@ interface Lab {
      *   if (sun.isDaytime) lab.setSunDirection(sun.direction);
      */
     setSunDirection(direction: Vec3, distance?: number): void;
+    /** Exponential distance fog tinted `color`; density 0 clears it (~0.005–0.03 at building scale). */
+    setFog(color: string, density?: number): void;
+    /** Tone-mapping exposure (1 = neutral). */
+    setExposure(v: number): void;
     vec2(x: number, y: number): Vec2;
     vec3(x: number, y: number, z: number): Vec3;
     readonly PI: number;
@@ -5046,6 +5055,8 @@ declare class SketchInstance {
      */
     setEnvironmentSource(equirect: THREE.Texture | null): void;
     /** Show the environment source (e.g. the HDR) as the visible sky backdrop. */
+    setFog(color: string, density?: number): void;
+    setExposure(v: number): void;
     setEnvironmentBackground(visible: boolean): void;
     /** Rotate the environment + background (Euler radians); aligns a Y-up HDRI to Z-up. */
     setEnvironmentRotation(x: number, y: number, z: number): void;

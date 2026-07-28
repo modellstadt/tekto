@@ -18602,6 +18602,15 @@ var ThreeRenderer = class {
    * @param direction Unit vector pointing toward the light source.
    * @param distance  How far back to place the light (m). Default 50.
    */
+  /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
+   *  useful range at building scale. */
+  setFog(color, density = 0) {
+    this.threeScene.fog = density > 1e-6 ? new THREE3.FogExp2(new THREE3.Color(color), density) : null;
+  }
+  /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
+  setExposure(v) {
+    this.renderer.toneMappingExposure = v;
+  }
   setSunDirection(direction, distance = 50) {
     const x = direction.x;
     const y = this.isZUp ? direction.y : direction.z;
@@ -20564,6 +20573,12 @@ var SketchInstance = class {
       info(text) {
         self.infoText = text;
       },
+      setFog(color, density = 0) {
+        self.renderer.setFog(color, density);
+      },
+      setExposure(v) {
+        self.renderer.setExposure(v);
+      },
       setSunDirection(direction, distance) {
         self.renderer.setSunDirection(direction, distance);
       },
@@ -21289,6 +21304,12 @@ var SketchInstance = class {
     this.renderer.setEnvironmentSource(equirect);
   }
   /** Show the environment source (e.g. the HDR) as the visible sky backdrop. */
+  setFog(color, density = 0) {
+    this.renderer.setFog(color, density);
+  }
+  setExposure(v) {
+    this.renderer.setExposure(v);
+  }
   setEnvironmentBackground(visible) {
     this.renderer.setEnvironmentBackground(visible);
   }

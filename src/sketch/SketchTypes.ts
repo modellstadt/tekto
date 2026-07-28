@@ -331,6 +331,10 @@ export interface Lab {
    *   if (sun.isDaytime) lab.setSunDirection(sun.direction);
    */
   setSunDirection(direction: Vec3, distance?: number): void;
+  /** Exponential distance fog tinted `color`; density 0 clears it (~0.005–0.03 at building scale). */
+  setFog(color: string, density?: number): void;
+  /** Tone-mapping exposure (1 = neutral). */
+  setExposure(v: number): void;
 
   // ── Math constructors ──
   vec2(x: number, y: number): Vec2;

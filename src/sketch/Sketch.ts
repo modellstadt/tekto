@@ -902,6 +902,8 @@ export class SketchInstance {
         self.infoText = text;
       },
 
+      setFog(color, density = 0) { self.renderer.setFog(color, density); },
+      setExposure(v) { self.renderer.setExposure(v); },
       setSunDirection(direction, distance) {
         self.renderer.setSunDirection(direction, distance);
       },
@@ -1429,6 +1431,10 @@ export class SketchInstance {
   }
 
   /** Show the environment source (e.g. the HDR) as the visible sky backdrop. */
+  setFog(color: string, density = 0) { this.renderer.setFog(color, density); }
+
+  setExposure(v: number) { this.renderer.setExposure(v); }
+
   setEnvironmentBackground(visible: boolean) {
     this.renderer.setEnvironmentBackground(visible);
   }
