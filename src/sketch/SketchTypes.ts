@@ -237,7 +237,9 @@ export interface Lab {
   layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean }): Reactive<LayerMap>;
 
   // ── Actions ──
-  button(label: string, action: () => void, opts?: { group?: string; tab?: string; menu?: string }): void;
+  /** `display: true` marks a display-only action (camera preset, restyle):
+   *  the sketch is NOT re-run after it — the click costs only the action itself. */
+  button(label: string, action: () => void, opts?: { group?: string; tab?: string; menu?: string; display?: boolean }): void;
   separator(): void;
 
   /**

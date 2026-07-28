@@ -46,6 +46,9 @@ export interface PanelButton {
   group?: string;
   tab?: string;
   menu?: string;
+  /** Display-only action (camera moves, restyling): skip the owner's
+   *  post-action hook (which typically re-runs the sketch). */
+  display?: boolean;
 }
 
 /** A caller-owned element hosted in the panel (e.g. a LayerPanel tree). */
@@ -332,7 +335,7 @@ export class ControlPanel {
           const current = (this.cfg.getButtons?.() ?? [])
             .find(cb => cb.label === btnLabel && cb.menu === btnMenu && cb.group === btnGroup);
           current?.action();
-          this.cfg.onAction?.();
+          if (!current?.display) this.cfg.onAction?.();
         });
         dropdown.appendChild(row);
       }
@@ -472,7 +475,7 @@ export class ControlPanel {
         .find(cb => cb.label === label && cb.group === group && cb.menu === menu)
         ?? b; // static owners (appShell) pass stable closures
       current.action();
-      this.cfg.onAction?.();
+      if (!current.display) this.cfg.onAction?.();
     });
     row.appendChild(btn);
     return row;

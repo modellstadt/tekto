@@ -4002,6 +4002,9 @@ interface PanelButton {
     group?: string;
     tab?: string;
     menu?: string;
+    /** Display-only action (camera moves, restyling): skip the owner's
+     *  post-action hook (which typically re-runs the sketch). */
+    display?: boolean;
 }
 /** A caller-owned element hosted in the panel (e.g. a LayerPanel tree). */
 interface CustomRow {
@@ -4682,10 +4685,13 @@ interface Lab {
         tab?: string;
         display?: boolean;
     }): Reactive<LayerMap>;
+    /** `display: true` marks a display-only action (camera preset, restyle):
+     *  the sketch is NOT re-run after it — the click costs only the action itself. */
     button(label: string, action: () => void, opts?: {
         group?: string;
         tab?: string;
         menu?: string;
+        display?: boolean;
     }): void;
     separator(): void;
     /**

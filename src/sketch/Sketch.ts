@@ -841,7 +841,7 @@ export class SketchInstance {
       // ── Actions ──
 
       button(label, action, opts) {
-        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab, menu: opts?.menu });
+        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab, menu: opts?.menu, display: opts?.display });
       },
 
       once(fn) {

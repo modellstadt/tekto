@@ -17900,7 +17900,7 @@ var ControlPanel = class {
           this.closeMenus();
           const current = (this.cfg.getButtons?.() ?? []).find((cb) => cb.label === btnLabel && cb.menu === btnMenu && cb.group === btnGroup);
           current?.action();
-          this.cfg.onAction?.();
+          if (!current?.display) this.cfg.onAction?.();
         });
         dropdown.appendChild(row);
       }
@@ -18032,7 +18032,7 @@ var ControlPanel = class {
     btn.addEventListener("click", () => {
       const current = (this.cfg.getButtons?.() ?? []).find((cb) => cb.label === label && cb.group === group && cb.menu === menu) ?? b;
       current.action();
-      this.cfg.onAction?.();
+      if (!current.display) this.cfg.onAction?.();
     });
     row.appendChild(btn);
     return row;
@@ -20533,7 +20533,7 @@ var SketchInstance = class {
       },
       // ── Actions ──
       button(label, action, opts) {
-        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab, menu: opts?.menu });
+        self.buttons.push({ label, action, group: opts?.group ?? "Actions", tab: opts?.tab, menu: opts?.menu, display: opts?.display });
       },
       once(fn) {
         const i = self._onceSeq++;
