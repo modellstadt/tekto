@@ -788,7 +788,17 @@ declare const MeshFactory: {
      * Accepts uniform radius (number) or per-point varying radii (number[]).
      */
     pipe(path: Vec3[], radius: number | number[], sides?: number): ConnectedMesh;
-    subdivide(mesh: ConnectedMesh): ConnectedMesh;
+    /**
+     * Catmull-Clark subdivision. With `opts.creaseAngleDeg`, edges whose
+     * adjacent faces meet at a dihedral angle sharper than the threshold are
+     * treated as CREASES (sharp-edge rules: edge point = midpoint; a vertex on
+     * exactly two crease edges moves by the 1D B-spline rule (a + 6v + b)/8;
+     * three or more crease edges pin the vertex). Boundary edges always count
+     * as creases in that mode. Without opts the classic behavior is unchanged.
+     */
+    subdivide(mesh: ConnectedMesh, opts?: {
+        creaseAngleDeg?: number;
+    }): ConnectedMesh;
     triangulate(mesh: ConnectedMesh): ConnectedMesh;
 };
 
@@ -4569,7 +4579,10 @@ interface MeshHandle {
     rotateX(rad: number): MeshHandle;
     rotateY(rad: number): MeshHandle;
     rotateZ(rad: number): MeshHandle;
-    subdivide(iterations?: number): MeshHandle;
+    /** Catmull-Clark subdivide; `creaseAngleDeg` keeps sharp dihedrals (and boundaries) crisp. */
+    subdivide(iterations?: number, opts?: {
+        creaseAngleDeg?: number;
+    }): MeshHandle;
     smooth(iterations?: number, factor?: number): MeshHandle;
     volume(): number;
     surfaceArea(): number;

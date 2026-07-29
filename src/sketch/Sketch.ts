@@ -1266,9 +1266,9 @@ export class SketchInstance {
         return handle;
       },
 
-      subdivide(iterations = 1) {
+      subdivide(iterations = 1, opts?: { creaseAngleDeg?: number }) {
         let m = mesh;
-        for (let i = 0; i < iterations; i++) m = MeshGen.subdivide(m);
+        for (let i = 0; i < iterations; i++) m = MeshGen.subdivide(m, opts);
         self.scene.remove(obj.id);
         return self.addMeshHandle(m, obj.style);
       },

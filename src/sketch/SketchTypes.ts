@@ -134,7 +134,8 @@ export interface MeshHandle {
   rotateZ(rad: number): MeshHandle;
 
   // Modify (returns new handle with modified mesh)
-  subdivide(iterations?: number): MeshHandle;
+  /** Catmull-Clark subdivide; `creaseAngleDeg` keeps sharp dihedrals (and boundaries) crisp. */
+  subdivide(iterations?: number, opts?: { creaseAngleDeg?: number }): MeshHandle;
   smooth(iterations?: number, factor?: number): MeshHandle;
 
   // Query

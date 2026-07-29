@@ -2694,11 +2694,46 @@ var MeshFactory = {
     return mesh;
   },
   // ── Mesh Modifiers ──
-  subdivide(mesh) {
+  /**
+   * Catmull-Clark subdivision. With `opts.creaseAngleDeg`, edges whose
+   * adjacent faces meet at a dihedral angle sharper than the threshold are
+   * treated as CREASES (sharp-edge rules: edge point = midpoint; a vertex on
+   * exactly two crease edges moves by the 1D B-spline rule (a + 6v + b)/8;
+   * three or more crease edges pin the vertex). Boundary edges always count
+   * as creases in that mode. Without opts the classic behavior is unchanged.
+   */
+  subdivide(mesh, opts) {
     const result = new ConnectedMesh();
     const facePoints = /* @__PURE__ */ new Map();
     const edgePoints = /* @__PURE__ */ new Map();
     const nodeMap = /* @__PURE__ */ new Map();
+    const useCreases = opts?.creaseAngleDeg !== void 0;
+    const creased = /* @__PURE__ */ new Set();
+    if (useCreases) {
+      const cosThresh = Math.cos(opts.creaseAngleDeg * Math.PI / 180);
+      const faceNormal = /* @__PURE__ */ new Map();
+      for (const face of mesh.faces()) {
+        const ps = face.nodes.map((nid) => mesh.node(nid).position);
+        let nx = 0, ny = 0, nz = 0;
+        for (let i = 0; i < ps.length; i++) {
+          const a = ps[i], b = ps[(i + 1) % ps.length];
+          nx += (a.y - b.y) * (a.z + b.z);
+          ny += (a.z - b.z) * (a.x + b.x);
+          nz += (a.x - b.x) * (a.y + b.y);
+        }
+        const len = Math.hypot(nx, ny, nz) || 1;
+        faceNormal.set(face.id, new Vec3(nx / len, ny / len, nz / len));
+      }
+      for (const edge of mesh.edges()) {
+        if (edge.faces.length !== 2) {
+          creased.add(edge.id);
+          continue;
+        }
+        const n0 = faceNormal.get(edge.faces[0]);
+        const n1 = faceNormal.get(edge.faces[1]);
+        if (n0.x * n1.x + n0.y * n1.y + n0.z * n1.z < cosThresh) creased.add(edge.id);
+      }
+    }
     for (const face of mesh.faces()) {
       const positions = face.nodes.map((nid) => mesh.node(nid).position);
       const centroid = positions.reduce((sum, p) => sum.add(p), Vec3.zero()).div(positions.length);
@@ -2708,7 +2743,7 @@ var MeshFactory = {
       const p0 = mesh.node(edge.nodes[0]).position;
       const p1 = mesh.node(edge.nodes[1]).position;
       const mid = p0.lerp(p1, 0.5);
-      if (edge.faces.length === 2) {
+      if (edge.faces.length === 2 && !creased.has(edge.id)) {
         const fc0 = mesh.face(edge.faces[0]).nodes.map((n) => mesh.node(n).position);
         const fc1 = mesh.face(edge.faces[1]).nodes.map((n) => mesh.node(n).position);
         const c0 = fc0.reduce((s, p) => s.add(p), Vec3.zero()).div(fc0.length);
@@ -2724,6 +2759,23 @@ var MeshFactory = {
       if (n === 0) {
         nodeMap.set(node.id, result.addNode(node.position));
         continue;
+      }
+      if (useCreases) {
+        const inc = node.edges.filter((eid) => creased.has(eid));
+        if (inc.length >= 3) {
+          nodeMap.set(node.id, result.addNode(node.position));
+          continue;
+        }
+        if (inc.length === 2) {
+          const far = (eid) => {
+            const e = mesh.edge(eid);
+            const other = e.nodes[0] === node.id ? e.nodes[1] : e.nodes[0];
+            return mesh.node(other).position;
+          };
+          const cp = far(inc[0]).add(node.position.mul(6)).add(far(inc[1])).div(8);
+          nodeMap.set(node.id, result.addNode(cp));
+          continue;
+        }
       }
       const F = node.faces.map((fid) => {
         const fp = facePoints.get(fid);
@@ -21059,9 +21111,9 @@ var SketchInstance = class {
         self.scene.update(obj.id, { mesh });
         return handle;
       },
-      subdivide(iterations = 1) {
+      subdivide(iterations = 1, opts) {
         let m = mesh;
-        for (let i = 0; i < iterations; i++) m = MeshFactory.subdivide(m);
+        for (let i = 0; i < iterations; i++) m = MeshFactory.subdivide(m, opts);
         self.scene.remove(obj.id);
         return self.addMeshHandle(m, obj.style);
       },
