@@ -2707,10 +2707,10 @@ var MeshFactory = {
     const facePoints = /* @__PURE__ */ new Map();
     const edgePoints = /* @__PURE__ */ new Map();
     const nodeMap = /* @__PURE__ */ new Map();
-    const useCreases = opts?.creaseAngleDeg !== void 0;
+    const useCreases = opts?.creaseAngleDeg !== void 0 || opts?.creaseEdge !== void 0;
     const creased = /* @__PURE__ */ new Set();
     if (useCreases) {
-      const cosThresh = Math.cos(opts.creaseAngleDeg * Math.PI / 180);
+      const cosThresh = Math.cos((opts?.creaseAngleDeg ?? 180) * Math.PI / 180);
       const faceNormal = /* @__PURE__ */ new Map();
       for (const face of mesh.faces()) {
         const ps = face.nodes.map((nid) => mesh.node(nid).position);
@@ -2726,6 +2726,10 @@ var MeshFactory = {
       }
       for (const edge of mesh.edges()) {
         if (edge.faces.length !== 2) {
+          creased.add(edge.id);
+          continue;
+        }
+        if (opts?.creaseEdge?.(mesh.node(edge.nodes[0]).position, mesh.node(edge.nodes[1]).position)) {
           creased.add(edge.id);
           continue;
         }
@@ -2757,6 +2761,10 @@ var MeshFactory = {
     for (const node of mesh.nodes()) {
       const n = node.faces.length;
       if (n === 0) {
+        nodeMap.set(node.id, result.addNode(node.position));
+        continue;
+      }
+      if (opts?.pinVertex?.(node.position)) {
         nodeMap.set(node.id, result.addNode(node.position));
         continue;
       }

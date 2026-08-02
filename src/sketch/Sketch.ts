@@ -1266,7 +1266,7 @@ export class SketchInstance {
         return handle;
       },
 
-      subdivide(iterations = 1, opts?: { creaseAngleDeg?: number }) {
+      subdivide(iterations = 1, opts?: { creaseAngleDeg?: number; creaseEdge?: (a: Vec3, b: Vec3) => boolean; pinVertex?: (p: Vec3) => boolean }) {
         let m = mesh;
         for (let i = 0; i < iterations; i++) m = MeshGen.subdivide(m, opts);
         self.scene.remove(obj.id);

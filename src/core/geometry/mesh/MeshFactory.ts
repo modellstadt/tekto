@@ -281,17 +281,25 @@ export const MeshFactory = {
    * three or more crease edges pin the vertex). Boundary edges always count
    * as creases in that mode. Without opts the classic behavior is unchanged.
    */
-  subdivide(mesh: ConnectedMesh, opts?: { creaseAngleDeg?: number }): ConnectedMesh {
+  subdivide(mesh: ConnectedMesh, opts?: {
+    creaseAngleDeg?: number;
+    /** Extra crease test by edge endpoint positions — flagged edges follow the
+     *  sharp rules regardless of the dihedral angle. */
+    creaseEdge?: (a: Vec3, b: Vec3) => boolean;
+    /** Vertices matching this predicate keep their EXACT position (pinned) —
+     *  e.g. column feet that must stay on the ground through every level. */
+    pinVertex?: (p: Vec3) => boolean;
+  }): ConnectedMesh {
     const result = new ConnectedMesh();
     const facePoints = new Map<number, number>();
     const edgePoints = new Map<number, number>();
     const nodeMap = new Map<number, number>();
 
     // ── Crease detection (opt-in) ──
-    const useCreases = opts?.creaseAngleDeg !== undefined;
+    const useCreases = opts?.creaseAngleDeg !== undefined || opts?.creaseEdge !== undefined;
     const creased = new Set<number>();
     if (useCreases) {
-      const cosThresh = Math.cos((opts!.creaseAngleDeg! * Math.PI) / 180);
+      const cosThresh = Math.cos(((opts?.creaseAngleDeg ?? 180) * Math.PI) / 180);
       const faceNormal = new Map<number, Vec3>();
       for (const face of mesh.faces()) {
         const ps = face.nodes.map(nid => mesh.node(nid)!.position);
@@ -307,6 +315,10 @@ export const MeshFactory = {
       }
       for (const edge of mesh.edges()) {
         if (edge.faces.length !== 2) { creased.add(edge.id); continue; }
+        if (opts?.creaseEdge?.(mesh.node(edge.nodes[0])!.position, mesh.node(edge.nodes[1])!.position)) {
+          creased.add(edge.id);
+          continue;
+        }
         const n0 = faceNormal.get(edge.faces[0])!;
         const n1 = faceNormal.get(edge.faces[1])!;
         if (n0.x * n1.x + n0.y * n1.y + n0.z * n1.z < cosThresh) creased.add(edge.id);
@@ -339,6 +351,11 @@ export const MeshFactory = {
     for (const node of mesh.nodes()) {
       const n = node.faces.length;
       if (n === 0) {
+        nodeMap.set(node.id, result.addNode(node.position));
+        continue;
+      }
+
+      if (opts?.pinVertex?.(node.position)) {   // explicitly pinned — never moves
         nodeMap.set(node.id, result.addNode(node.position));
         continue;
       }

@@ -798,6 +798,12 @@ declare const MeshFactory: {
      */
     subdivide(mesh: ConnectedMesh, opts?: {
         creaseAngleDeg?: number;
+        /** Extra crease test by edge endpoint positions — flagged edges follow the
+         *  sharp rules regardless of the dihedral angle. */
+        creaseEdge?: (a: Vec3, b: Vec3) => boolean;
+        /** Vertices matching this predicate keep their EXACT position (pinned) —
+         *  e.g. column feet that must stay on the ground through every level. */
+        pinVertex?: (p: Vec3) => boolean;
     }): ConnectedMesh;
     triangulate(mesh: ConnectedMesh): ConnectedMesh;
 };
@@ -4582,6 +4588,8 @@ interface MeshHandle {
     /** Catmull-Clark subdivide; `creaseAngleDeg` keeps sharp dihedrals (and boundaries) crisp. */
     subdivide(iterations?: number, opts?: {
         creaseAngleDeg?: number;
+        creaseEdge?: (a: Vec3, b: Vec3) => boolean;
+        pinVertex?: (p: Vec3) => boolean;
     }): MeshHandle;
     smooth(iterations?: number, factor?: number): MeshHandle;
     volume(): number;

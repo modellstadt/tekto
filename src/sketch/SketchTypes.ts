@@ -135,7 +135,7 @@ export interface MeshHandle {
 
   // Modify (returns new handle with modified mesh)
   /** Catmull-Clark subdivide; `creaseAngleDeg` keeps sharp dihedrals (and boundaries) crisp. */
-  subdivide(iterations?: number, opts?: { creaseAngleDeg?: number }): MeshHandle;
+  subdivide(iterations?: number, opts?: { creaseAngleDeg?: number; creaseEdge?: (a: Vec3, b: Vec3) => boolean; pinVertex?: (p: Vec3) => boolean }): MeshHandle;
   smooth(iterations?: number, factor?: number): MeshHandle;
 
   // Query
