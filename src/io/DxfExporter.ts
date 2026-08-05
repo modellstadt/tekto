@@ -1300,8 +1300,15 @@ function _resolveLayers(defs: DxfLayerDef[], used: Iterable<string>): { names: s
 }
 
 /** Emit HEADER + TABLES(LTYPE, LAYER) + empty BLOCKS — the R12 prologue AutoCAD expects. */
-function _writeR12Prologue(lines: string[], names: string[], colorOf: Map<string, number>): void {
-  lines.push('0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009', '0', 'ENDSEC');
+function _writeR12Prologue(lines: string[], names: string[], colorOf: Map<string, number>, scale = 1000): void {
+  // Declare the drawing unit so CAD doesn't guess: model space is metres, so
+  // scale 1 exports metres ($INSUNITS 6); any other scale is treated as the
+  // classic mm output ($INSUNITS 4). $MEASUREMENT 1 = metric.
+  lines.push('0', 'SECTION', '2', 'HEADER',
+    '9', '$ACADVER', '1', 'AC1009',
+    '9', '$INSUNITS', '70', scale === 1 ? '6' : '4',
+    '9', '$MEASUREMENT', '70', '1',
+    '0', 'ENDSEC');
   lines.push('0', 'SECTION', '2', 'TABLES');
   lines.push('0', 'TABLE', '2', 'LTYPE', '70', '1');
   lines.push('0', 'LTYPE', '2', 'CONTINUOUS', '70', '0', '3', 'Solid line', '72', '65', '73', '0', '40', '0');
@@ -1319,7 +1326,7 @@ function _writeDxf(segs: ISeg[], layers: DxfLayerDef[], scale: number, prec: num
   const used = new Set<string>();
   for (const s of segs) used.add(s.layer);
   const { names, colorOf } = _resolveLayers(layers, used);
-  _writeR12Prologue(lines, names, colorOf);
+  _writeR12Prologue(lines, names, colorOf, scale);
 
   lines.push('0', 'SECTION', '2', 'ENTITIES');
   for (const s of segs) {
@@ -1362,7 +1369,7 @@ export function writeDxf3D(content: Dxf3DContent): string {
   for (const c of circles)   if (okR(c.radius))        used.add(c.layer);
   for (const pt of points)                             used.add(pt.layer);
   const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
-  _writeR12Prologue(lines, names, colorOf);
+  _writeR12Prologue(lines, names, colorOf, 1);   // this writer emits raw model coordinates (metres)
 
   const emitCircle = (layer: string, c: Vec3, r: number) =>
     lines.push('0', 'CIRCLE', '8', _sanLayer(layer), '10', _real(c.x), '20', _real(c.y), '30', _real(c.z), '40', _real(r));
