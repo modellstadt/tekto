@@ -15413,8 +15413,27 @@ function _resolveLayers(defs, used) {
   }
   return { names, colorOf };
 }
-function _writeR12Prologue(lines, names, colorOf) {
-  lines.push("0", "SECTION", "2", "HEADER", "9", "$ACADVER", "1", "AC1009", "0", "ENDSEC");
+function _writeR12Prologue(lines, names, colorOf, scale = 1e3) {
+  lines.push(
+    "0",
+    "SECTION",
+    "2",
+    "HEADER",
+    "9",
+    "$ACADVER",
+    "1",
+    "AC1009",
+    "9",
+    "$INSUNITS",
+    "70",
+    scale === 1 ? "6" : "4",
+    "9",
+    "$MEASUREMENT",
+    "70",
+    "1",
+    "0",
+    "ENDSEC"
+  );
   lines.push("0", "SECTION", "2", "TABLES");
   lines.push("0", "TABLE", "2", "LTYPE", "70", "1");
   lines.push("0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0");
@@ -15430,7 +15449,7 @@ function _writeDxf(segs, layers, scale, prec) {
   const used = /* @__PURE__ */ new Set();
   for (const s of segs) used.add(s.layer);
   const { names, colorOf } = _resolveLayers(layers, used);
-  _writeR12Prologue(lines, names, colorOf);
+  _writeR12Prologue(lines, names, colorOf, scale);
   lines.push("0", "SECTION", "2", "ENTITIES");
   for (const s of segs) {
     lines.push(
@@ -15470,7 +15489,7 @@ function writeDxf3D(content) {
   for (const c of circles) if (okR(c.radius)) used.add(c.layer);
   for (const pt of points) used.add(pt.layer);
   const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
-  _writeR12Prologue(lines, names, colorOf);
+  _writeR12Prologue(lines, names, colorOf, 1);
   const emitCircle = (layer, c, r) => lines.push("0", "CIRCLE", "8", _sanLayer(layer), "10", _real(c.x), "20", _real(c.y), "30", _real(c.z), "40", _real(r));
   lines.push("0", "SECTION", "2", "ENTITIES");
   for (const poly of polylines) {
