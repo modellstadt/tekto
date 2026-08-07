@@ -34,6 +34,9 @@ export interface IdBufferOptions {
    * layer regardless of visibility classification.
    */
   preserveLayers?: string[];
+  /** Emit occluded runs under this layer name even when debugLayers is off
+   *  (classic dashed "hidden" lines alongside semantic visible layers). */
+  occludedLayer?: string;
 }
 
 interface IEdgeLite {
@@ -93,6 +96,7 @@ export function hiddenLineIdBuffer(
   const resolution = options?.resolution ?? 2048;
   const debugLayers = options?.debugLayers ?? false;
   const preserveSet = new Set(options?.preserveLayers ?? []);
+  const occludedLayer = options?.occludedLayer;
 
   // ── View basis (matches DxfExporter._basis) ──
   const upDir = view.upDir ?? new Vec3(0, 0, 1);
@@ -242,6 +246,8 @@ export function hiddenLineIdBuffer(
       if (!hasFrontFace) {
         if (debugLayers) {
           result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: 'occluded' });
+        } else if (occludedLayer) {
+          result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: occludedLayer });
         }
         continue;
       }
@@ -265,8 +271,8 @@ export function hiddenLineIdBuffer(
       } else if (isVis) {
         const lyr = debugLayers ? (isSilhouette ? 'silhouette' : 'visible') : edge.layer;
         result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: lyr });
-      } else if (debugLayers) {
-        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: 'occluded' });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: debugLayers ? 'occluded' : occludedLayer! });
       }
       continue;
     }
@@ -331,8 +337,8 @@ export function hiddenLineIdBuffer(
       } else if (visible) {
         const lyr = debugLayers ? (isSilhouette ? 'silhouette' : 'visible') : edge.layer;
         result.push({ u0, v0, u1, v1, layer: lyr });
-      } else if (debugLayers) {
-        result.push({ u0, v0, u1, v1, layer: 'occluded' });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0, v0, u1, v1, layer: debugLayers ? 'occluded' : occludedLayer! });
       }
     }
   }

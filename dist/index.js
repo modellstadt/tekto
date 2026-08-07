@@ -14180,6 +14180,7 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
   const resolution = options?.resolution ?? 2048;
   const debugLayers = options?.debugLayers ?? false;
   const preserveSet = new Set(options?.preserveLayers ?? []);
+  const occludedLayer = options?.occludedLayer;
   const upDir = view.upDir ?? new Vec3(0, 0, 1);
   let fx = view.viewDir.x, fy = view.viewDir.y, fz = view.viewDir.z;
   const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1;
@@ -14310,8 +14311,8 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
       } else if (visible) {
         const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
         result.push({ u0, v0, u1, v1, layer: lyr });
-      } else if (debugLayers) {
-        result.push({ u0, v0, u1, v1, layer: "occluded" });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0, v0, u1, v1, layer: debugLayers ? "occluded" : occludedLayer });
       }
     };
     var isVisibleAt = isVisibleAt2, _emitRun = _emitRun2;
@@ -14325,6 +14326,8 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
       if (!hasFrontFace) {
         if (debugLayers) {
           result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: "occluded" });
+        } else if (occludedLayer) {
+          result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: occludedLayer });
         }
         continue;
       }
@@ -14343,8 +14346,8 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
       } else if (isVis) {
         const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
         result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: lyr });
-      } else if (debugLayers) {
-        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: "occluded" });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: debugLayers ? "occluded" : occludedLayer });
       }
       continue;
     }
