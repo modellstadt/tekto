@@ -21151,10 +21151,10 @@ var ThreeRenderer = class {
       group.add(new THREE3.Mesh(geo, occlusionMat));
       const edgeAngle = s.edgeAngle ?? 30;
       const wireGeo = new THREE3.EdgesGeometry(geo, edgeAngle);
-      const wireMat = new THREE3.LineBasicMaterial({ color: s.edgeColor ?? 11579568, toneMapped: false });
+      const wireMat = new THREE3.LineBasicMaterial({ color: s.edgeColor ?? 3092271, toneMapped: false });
       group.add(new THREE3.LineSegments(wireGeo, wireMat));
       const rimMat = new THREE3.MeshBasicMaterial({
-        color: s.edgeColor ?? 11579568,
+        color: s.edgeColor ?? 3092271,
         side: THREE3.BackSide,
         toneMapped: false
       });

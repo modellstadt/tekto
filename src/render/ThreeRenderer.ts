@@ -956,7 +956,7 @@ export class ThreeRenderer {
       // seams (quad diagonals, flat-wall tiling) drop out — a clean line drawing.
       const edgeAngle = s.edgeAngle ?? 30; // degrees
       const wireGeo = new THREE.EdgesGeometry(geo, edgeAngle);
-      const wireMat = new THREE.LineBasicMaterial({ color: s.edgeColor ?? 0xb0b0b0, toneMapped: false });
+      const wireMat = new THREE.LineBasicMaterial({ color: s.edgeColor ?? 0x2f2f2f, toneMapped: false });
       group.add(new THREE.LineSegments(wireGeo, wireMat));
 
       // Pass 3: view-dependent SILHOUETTES for smooth geometry (pipes, posts,
@@ -966,7 +966,7 @@ export class ThreeRenderer {
       // everywhere except along the contour rim, leaving a thin outline that
       // tracks the view — each tube reads as its two silhouette lines.
       const rimMat = new THREE.MeshBasicMaterial({
-        color: s.edgeColor ?? 0xb0b0b0,
+        color: s.edgeColor ?? 0x2f2f2f,
         side: THREE.BackSide,
         toneMapped: false,
       });
