@@ -21153,6 +21153,12 @@ var ThreeRenderer = class {
       const wireGeo = new THREE3.EdgesGeometry(geo, edgeAngle);
       const wireMat = new THREE3.LineBasicMaterial({ color: s.edgeColor ?? 11579568, toneMapped: false });
       group.add(new THREE3.LineSegments(wireGeo, wireMat));
+      const rimMat = new THREE3.MeshBasicMaterial({
+        color: s.edgeColor ?? 11579568,
+        side: THREE3.BackSide,
+        toneMapped: false
+      });
+      group.add(new THREE3.Mesh(geo, rimMat));
     } else {
       const solidMat = this._makeMaterial({
         color: hasVertexColors ? 16777215 : s.color,
@@ -21586,6 +21592,7 @@ var ThreeRenderer = class {
   /** Set the viewport background color. */
   setBackground(color) {
     this.threeScene.background = new THREE3.Color(color);
+    this.config.backgroundColor = color;
   }
   /** Move the camera without changing its target. */
   setCameraPosition(x, y, z) {

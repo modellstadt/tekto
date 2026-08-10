@@ -959,6 +959,19 @@ export class ThreeRenderer {
       const wireMat = new THREE.LineBasicMaterial({ color: s.edgeColor ?? 0xb0b0b0, toneMapped: false });
       group.add(new THREE.LineSegments(wireGeo, wireMat));
 
+      // Pass 3: view-dependent SILHOUETTES for smooth geometry (pipes, posts,
+      // subdivision surfaces) — those have no dihedral above the threshold, so
+      // passes 1+2 leave them invisible. Render the same mesh as BACK faces in
+      // edge colour with no depth offset: the front occluder (offset +1) wins
+      // everywhere except along the contour rim, leaving a thin outline that
+      // tracks the view — each tube reads as its two silhouette lines.
+      const rimMat = new THREE.MeshBasicMaterial({
+        color: s.edgeColor ?? 0xb0b0b0,
+        side: THREE.BackSide,
+        toneMapped: false,
+      });
+      group.add(new THREE.Mesh(geo, rimMat));
+
     } else {
       // Solid mode (default) — polygonOffset pushes mesh depth back so
       // coplanar lines (lab.line) render cleanly on top without z-fighting.
@@ -1522,6 +1535,9 @@ export class ThreeRenderer {
   /** Set the viewport background color. */
   setBackground(color: number | string) {
     this.threeScene.background = new THREE.Color(color as any);
+    // Hidden-line occlusion faces are tinted from config.backgroundColor at
+    // mesh build time — keep it in sync so they always match the live bg.
+    this.config.backgroundColor = color as unknown as number;
   }
 
   /** Move the camera without changing its target. */
