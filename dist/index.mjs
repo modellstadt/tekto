@@ -12508,6 +12508,7 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
   const resolution = options?.resolution ?? 2048;
   const debugLayers = options?.debugLayers ?? false;
   const preserveSet = new Set(options?.preserveLayers ?? []);
+  const occludedLayer = options?.occludedLayer;
   const upDir = view.upDir ?? new Vec3(0, 0, 1);
   let fx = view.viewDir.x, fy = view.viewDir.y, fz = view.viewDir.z;
   const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1;
@@ -12638,8 +12639,8 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
       } else if (visible) {
         const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
         result.push({ u0, v0, u1, v1, layer: lyr });
-      } else if (debugLayers) {
-        result.push({ u0, v0, u1, v1, layer: "occluded" });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0, v0, u1, v1, layer: debugLayers ? "occluded" : occludedLayer });
       }
     };
     var isVisibleAt = isVisibleAt2, _emitRun = _emitRun2;
@@ -12653,6 +12654,8 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
       if (!hasFrontFace) {
         if (debugLayers) {
           result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: "occluded" });
+        } else if (occludedLayer) {
+          result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: occludedLayer });
         }
         continue;
       }
@@ -12671,8 +12674,8 @@ function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, option
       } else if (isVis) {
         const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
         result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: lyr });
-      } else if (debugLayers) {
-        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: "occluded" });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: debugLayers ? "occluded" : occludedLayer });
       }
       continue;
     }
@@ -13741,8 +13744,27 @@ function _resolveLayers(defs, used) {
   }
   return { names, colorOf };
 }
-function _writeR12Prologue(lines, names, colorOf) {
-  lines.push("0", "SECTION", "2", "HEADER", "9", "$ACADVER", "1", "AC1009", "0", "ENDSEC");
+function _writeR12Prologue(lines, names, colorOf, scale = 1e3) {
+  lines.push(
+    "0",
+    "SECTION",
+    "2",
+    "HEADER",
+    "9",
+    "$ACADVER",
+    "1",
+    "AC1009",
+    "9",
+    "$INSUNITS",
+    "70",
+    scale === 1 ? "6" : "4",
+    "9",
+    "$MEASUREMENT",
+    "70",
+    "1",
+    "0",
+    "ENDSEC"
+  );
   lines.push("0", "SECTION", "2", "TABLES");
   lines.push("0", "TABLE", "2", "LTYPE", "70", "1");
   lines.push("0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0");
@@ -13758,7 +13780,7 @@ function _writeDxf(segs, layers, scale, prec) {
   const used = /* @__PURE__ */ new Set();
   for (const s of segs) used.add(s.layer);
   const { names, colorOf } = _resolveLayers(layers, used);
-  _writeR12Prologue(lines, names, colorOf);
+  _writeR12Prologue(lines, names, colorOf, scale);
   lines.push("0", "SECTION", "2", "ENTITIES");
   for (const s of segs) {
     lines.push(
@@ -13798,7 +13820,7 @@ function writeDxf3D(content) {
   for (const c of circles) if (okR(c.radius)) used.add(c.layer);
   for (const pt of points) used.add(pt.layer);
   const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
-  _writeR12Prologue(lines, names, colorOf);
+  _writeR12Prologue(lines, names, colorOf, 1);
   const emitCircle = (layer, c, r) => lines.push("0", "CIRCLE", "8", _sanLayer(layer), "10", _real(c.x), "20", _real(c.y), "30", _real(c.z), "40", _real(r));
   lines.push("0", "SECTION", "2", "ENTITIES");
   for (const poly of polylines) {
@@ -14187,6 +14209,171 @@ var IfcFile = {
       normals: new Float32Array(normals),
       indices: new Uint32Array(indices)
     };
+  }
+};
+
+// src/io/IfcModel.ts
+function titleCase(name) {
+  if (!name) return name;
+  const lower = name.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+function readValue(v) {
+  if (v === null || v === void 0) return void 0;
+  if (typeof v !== "object") return v;
+  if ("value" in v) return v.value;
+  return void 0;
+}
+function flattenSet(set) {
+  const out = {};
+  const entries = set?.HasProperties ?? set?.Quantities ?? [];
+  for (const p of entries) {
+    const name = readValue(p?.Name);
+    if (typeof name !== "string") continue;
+    const value = readValue(p?.NominalValue) ?? readValue(p?.LengthValue) ?? readValue(p?.AreaValue) ?? readValue(p?.VolumeValue) ?? readValue(p?.CountValue) ?? readValue(p?.WeightValue) ?? readValue(p?.TimeValue);
+    if (value !== void 0) out[name] = value;
+  }
+  return out;
+}
+var IfcModel = {
+  /**
+   * Parse an IFC file into its elements, each with geometry and properties.
+   */
+  async parse(buffer, options = {}) {
+    const wasmPath = options.wasmPath ?? "/";
+    const recenter = options.recenter ?? true;
+    const wantProps = options.properties ?? true;
+    const wantTree = options.tree ?? true;
+    const log = options.onProgress ?? (() => {
+    });
+    const { IfcAPI } = await import("web-ifc");
+    const api = new IfcAPI();
+    api.SetWasmPath(wasmPath);
+    await api.Init();
+    const modelID = api.OpenModel(new Uint8Array(buffer));
+    if (modelID < 0) throw new Error("IfcModel.parse: failed to open IFC model");
+    const raw = [];
+    const t0 = performance.now();
+    api.StreamAllMeshes(modelID, (flatMesh) => {
+      const positions = [];
+      const normals = [];
+      const indices = [];
+      const geoms = flatMesh.geometries;
+      for (let i = 0; i < geoms.size(); i++) {
+        const placed = geoms.get(i);
+        const geom = api.GetGeometry(modelID, placed.geometryExpressID);
+        const verts = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+        const idxs = api.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
+        const m = placed.flatTransformation;
+        const base = positions.length / 3;
+        for (let v = 0; v < verts.length; v += 6) {
+          const x = verts[v], y = verts[v + 1], z = verts[v + 2];
+          const nx = verts[v + 3], ny = verts[v + 4], nz = verts[v + 5];
+          positions.push(
+            m[0] * x + m[4] * y + m[8] * z + m[12],
+            m[1] * x + m[5] * y + m[9] * z + m[13],
+            m[2] * x + m[6] * y + m[10] * z + m[14]
+          );
+          normals.push(
+            m[0] * nx + m[4] * ny + m[8] * nz,
+            m[1] * nx + m[5] * ny + m[9] * nz,
+            m[2] * nx + m[6] * ny + m[10] * nz
+          );
+        }
+        for (let k = 0; k < idxs.length; k++) indices.push(idxs[k] + base);
+        geom.delete();
+      }
+      if (positions.length) raw.push({ expressID: flatMesh.expressID, positions, normals, indices });
+    });
+    log(`streamed ${raw.length} elements in ${(performance.now() - t0).toFixed(0)}ms`);
+    let cx = 0, cy = 0, cz = 0;
+    if (recenter && raw.length) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const e of raw) {
+        for (let i = 0; i < e.positions.length; i += 3) {
+          const x = e.positions[i], y = e.positions[i + 1], z = e.positions[i + 2];
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          if (z < minZ) minZ = z;
+          if (z > maxZ) maxZ = z;
+        }
+      }
+      cx = (minX + maxX) / 2;
+      cy = (minY + maxY) / 2;
+      cz = (minZ + maxZ) / 2;
+    }
+    const elements = [];
+    for (const e of raw) {
+      let ifcClass = "IfcProduct";
+      let name;
+      let globalId;
+      try {
+        const typeCode = api.GetLineType(modelID, e.expressID);
+        ifcClass = titleCase(api.GetNameFromTypeCode(typeCode)) || ifcClass;
+        if (ifcClass.toLowerCase().startsWith("ifc")) {
+          ifcClass = "Ifc" + ifcClass.slice(3, 4).toUpperCase() + ifcClass.slice(4);
+        }
+        const line = api.GetLine(modelID, e.expressID);
+        name = readValue(line?.Name);
+        globalId = readValue(line?.GlobalId);
+      } catch {
+      }
+      const properties = {};
+      const psets = {};
+      if (wantProps) {
+        try {
+          const sets = await api.properties.getPropertySets(modelID, e.expressID, true, true);
+          for (const set of sets ?? []) {
+            const setName = readValue(set?.Name) || `set_${set?.expressID}`;
+            const flat = flattenSet(set);
+            if (Object.keys(flat).length) {
+              psets[setName] = flat;
+              Object.assign(properties, flat);
+            }
+          }
+        } catch {
+        }
+      }
+      if (recenter) {
+        for (let i = 0; i < e.positions.length; i += 3) {
+          e.positions[i] -= cx;
+          e.positions[i + 1] -= cy;
+          e.positions[i + 2] -= cz;
+        }
+      }
+      elements.push({
+        expressID: e.expressID,
+        ifcClass,
+        name,
+        globalId,
+        mesh: {
+          positions: new Float32Array(e.positions),
+          normals: new Float32Array(e.normals),
+          indices: new Uint32Array(e.indices)
+        },
+        properties,
+        psets
+      });
+    }
+    let tree;
+    if (wantTree) {
+      try {
+        const walk = (n) => ({
+          expressID: n.expressID,
+          ifcClass: titleCase(n.type ?? ""),
+          name: readValue(n.Name),
+          children: (n.children ?? []).map(walk)
+        });
+        tree = walk(await api.properties.getSpatialStructure(modelID, true));
+      } catch {
+      }
+    }
+    api.CloseModel(modelID);
+    log(`parsed ${elements.length} elements`);
+    return { elements, tree, center: [cx, cy, cz] };
   }
 };
 
@@ -19121,8 +19308,14 @@ var ThreeRenderer = class {
       group.add(new THREE3.Mesh(geo, occlusionMat));
       const edgeAngle = s.edgeAngle ?? 30;
       const wireGeo = new THREE3.EdgesGeometry(geo, edgeAngle);
-      const wireMat = new THREE3.LineBasicMaterial({ color: s.edgeColor ?? 11579568, toneMapped: false });
+      const wireMat = new THREE3.LineBasicMaterial({ color: s.edgeColor ?? 3092271, toneMapped: false });
       group.add(new THREE3.LineSegments(wireGeo, wireMat));
+      const rimMat = new THREE3.MeshBasicMaterial({
+        color: s.edgeColor ?? 3092271,
+        side: THREE3.BackSide,
+        toneMapped: false
+      });
+      group.add(new THREE3.Mesh(geo, rimMat));
     } else {
       const solidMat = this._makeMaterial({
         color: hasVertexColors ? 16777215 : s.color,
@@ -19556,6 +19749,7 @@ var ThreeRenderer = class {
   /** Set the viewport background color. */
   setBackground(color) {
     this.threeScene.background = new THREE3.Color(color);
+    this.config.backgroundColor = color;
   }
   /** Move the camera without changing its target. */
   setCameraPosition(x, y, z) {
@@ -22301,6 +22495,7 @@ export {
   HolzrahmenBau,
   HolzrahmenBauJointStyle,
   IfcFile,
+  IfcModel,
   IfcWriter,
   Intersections,
   JoistedSlab,

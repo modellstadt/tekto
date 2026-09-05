@@ -112,6 +112,8 @@ export type {
 export type { IdBufferOptions } from "./io/IdBufferHiddenLine";
 export { IfcFile } from "./io/IfcFile";
 export type { IfcParseOptions } from "./io/IfcFile";
+export { IfcModel } from "./io/IfcModel";
+export type { IfcParseElementsOptions, IfcElementData, IfcModelData, IfcSpatialNode } from "./io/IfcModel";
 export { IfcWriter } from "./io/IfcWriter";
 export type { IfcWriterOptions, AddWallSystemOptions } from "./io/IfcWriter";
 

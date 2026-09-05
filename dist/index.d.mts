@@ -2135,6 +2135,9 @@ interface IdBufferOptions {
      * layer regardless of visibility classification.
      */
     preserveLayers?: string[];
+    /** Emit occluded runs under this layer name even when debugLayers is off
+     *  (classic dashed "hidden" lines alongside semantic visible layers). */
+    occludedLayer?: string;
 }
 interface IEdgeLite {
     ax: number;
@@ -2471,6 +2474,71 @@ declare const IfcFile: {
      * All elements are merged; no per-element groups are produced.
      */
     parse(buffer: ArrayBuffer, options?: IfcParseOptions): Promise<MeshData>;
+};
+
+/**
+ * Tekto IFC import, per element.
+ *
+ * `IfcFile.parse` fuses a model into one mesh, which is right for context
+ * geometry and wrong for anything the user clicks: selection, a model tree and
+ * property inspection all need the elements kept apart. `IfcModel.parse` keeps
+ * them, each with its own mesh, its IFC class, its property sets and its
+ * quantities, so an app can pick an element and ask questions about it.
+ *
+ * Same `web-ifc` dependency and the same setup as IfcFile: install it in the
+ * app and serve `web-ifc.wasm`.
+ *
+ *   const buf   = await fetch('/model.ifc').then(r => r.arrayBuffer());
+ *   const model = await IfcModel.parse(buf, { wasmPath: '/' });
+ *   model.elements[0].ifcClass      // "IfcSlab"
+ *   model.elements[0].properties    // { Width: 0.22, Span: 9.0, ... }
+ *
+ * Properties are flattened from every property set and quantity set into one
+ * bag, because that is what a consumer usually wants, and the original sets are
+ * kept alongside in `psets` for when the distinction matters.
+ */
+
+interface IfcParseElementsOptions {
+    /** Directory (with trailing slash) where web-ifc.wasm is served. Default: '/'. */
+    wasmPath?: string;
+    /** Recentre every element by the model bounding-box centre. Default: true. */
+    recenter?: boolean;
+    /** Read property and quantity sets. Costs a round trip per element on large
+     *  models, so it can be turned off for a geometry-only pass. Default: true. */
+    properties?: boolean;
+    /** Read the spatial structure (site / storey / space). Default: true. */
+    tree?: boolean;
+    onProgress?: (msg: string) => void;
+}
+interface IfcElementData {
+    expressID: number;
+    /** "IfcSlab", "IfcWall", ... in IFC's own casing where web-ifc reports it. */
+    ifcClass: string;
+    name?: string;
+    globalId?: string;
+    mesh: MeshData;
+    /** Every property and quantity, flattened. Later sets win on a name clash. */
+    properties: Record<string, string | number | boolean>;
+    /** The same values kept by their set name, when the origin matters. */
+    psets: Record<string, Record<string, string | number | boolean>>;
+}
+interface IfcSpatialNode {
+    expressID: number;
+    ifcClass: string;
+    name?: string;
+    children: IfcSpatialNode[];
+}
+interface IfcModelData {
+    elements: IfcElementData[];
+    tree?: IfcSpatialNode;
+    /** Offset subtracted from every vertex when `recenter` is on. */
+    center: [number, number, number];
+}
+declare const IfcModel: {
+    /**
+     * Parse an IFC file into its elements, each with geometry and properties.
+     */
+    parse(buffer: ArrayBuffer, options?: IfcParseElementsOptions): Promise<IfcModelData>;
 };
 
 /**
@@ -5463,4 +5531,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, IfcFile, type IfcParseOptions, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, edgeOutwardVisibility, extractVisiblePolylines, getTheme, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, noise, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d, writeDxf3D };
+export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, edgeOutwardVisibility, extractVisiblePolylines, getTheme, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, noise, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d, writeDxf3D };
