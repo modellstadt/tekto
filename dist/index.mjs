@@ -14325,7 +14325,12 @@ var IfcModel = {
       const psets = {};
       if (wantProps) {
         try {
-          const sets = await api.properties.getPropertySets(modelID, e.expressID, true, true);
+          let sets = [];
+          try {
+            sets = await api.properties.getPropertySets(modelID, e.expressID, true, true);
+          } catch {
+            sets = await api.properties.getPropertySets(modelID, e.expressID, true, false);
+          }
           for (const set of sets ?? []) {
             const setName = readValue(set?.Name) || `set_${set?.expressID}`;
             const flat = flattenSet(set);
@@ -14334,7 +14339,8 @@ var IfcModel = {
               Object.assign(properties, flat);
             }
           }
-        } catch {
+        } catch (err) {
+          log(`properties unavailable for #${e.expressID}: ${err.message}`);
         }
       }
       if (recenter) {

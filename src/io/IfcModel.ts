@@ -190,7 +190,16 @@ export const IfcModel = {
       const psets: Record<string, Record<string, string | number | boolean>> = {};
       if (wantProps) {
         try {
-          const sets = await api.properties.getPropertySets(modelID, e.expressID, true, true);
+          // includeTypeProperties throws inside web-ifc for elements whose type
+          // relation it cannot resolve ("Cannot read properties of undefined
+          // (reading 'IsTypedBy')"), and one throw used to cost the element its
+          // entire property bag. Ask for them, fall back to the element's own.
+          let sets: any[] = [];
+          try {
+            sets = await api.properties.getPropertySets(modelID, e.expressID, true, true);
+          } catch {
+            sets = await api.properties.getPropertySets(modelID, e.expressID, true, false);
+          }
           for (const set of sets ?? []) {
             const setName = (readValue(set?.Name) as string) || `set_${set?.expressID}`;
             const flat = flattenSet(set);
@@ -199,7 +208,11 @@ export const IfcModel = {
               Object.assign(properties, flat);
             }
           }
-        } catch { /* properties are optional; geometry and class are not */ }
+        } catch (err) {
+          // still report it: silence here is what made every element look
+          // property-less in the first place
+          log(`properties unavailable for #${e.expressID}: ${(err as Error).message}`);
+        }
       }
 
       if (recenter) {
