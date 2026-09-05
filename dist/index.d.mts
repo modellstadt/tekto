@@ -2533,6 +2533,16 @@ interface IfcModelData {
     tree?: IfcSpatialNode;
     /** Offset subtracted from every vertex when `recenter` is on. */
     center: [number, number, number];
+    /**
+     * Metres per project length unit, read from the file's own unit assignment.
+     * A quantity or a coordinate multiplied by this is in metres.
+     *
+     * Not cosmetic: an ArchiCAD export states a slab thickness as 0.2 and a
+     * Revit export states the same thickness as 150, because one project is in
+     * metres and the other in millimetres. Anything comparing a model against
+     * external data has to normalise, and cannot do it by guessing magnitudes.
+     */
+    lengthScale: number;
 }
 declare const IfcModel: {
     /**

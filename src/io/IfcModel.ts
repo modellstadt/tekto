@@ -21,6 +21,10 @@
  */
 import type { MeshData } from "../core/geometry/mesh/Mesh";
 
+/** IFCPROJECT's type code. Hard-coded rather than imported so `web-ifc` stays
+ *  a runtime-only dependency of this module. */
+const WEBIFC_IFCPROJECT = 103090709;
+
 export interface IfcParseElementsOptions {
   /** Directory (with trailing slash) where web-ifc.wasm is served. Default: '/'. */
   wasmPath?: string;
@@ -59,6 +63,16 @@ export interface IfcModelData {
   tree?: IfcSpatialNode;
   /** Offset subtracted from every vertex when `recenter` is on. */
   center: [number, number, number];
+  /**
+   * Metres per project length unit, read from the file's own unit assignment.
+   * A quantity or a coordinate multiplied by this is in metres.
+   *
+   * Not cosmetic: an ArchiCAD export states a slab thickness as 0.2 and a
+   * Revit export states the same thickness as 150, because one project is in
+   * metres and the other in millimetres. Anything comparing a model against
+   * external data has to normalise, and cannot do it by guessing magnitudes.
+   */
+  lengthScale: number;
 }
 
 /** IFC spells the same quantity many ways; this only normalises the casing. */
@@ -236,6 +250,30 @@ export const IfcModel = {
       });
     }
 
+    // ── units, from IfcProject's unit assignment ────────────────────────
+    let lengthScale = 1;
+    try {
+      const projects = api.GetLineIDsWithType(modelID, WEBIFC_IFCPROJECT);
+      if (projects.size()) {
+        const project = api.GetLine(modelID, projects.get(0), true);
+        const units = project?.UnitsInContext?.Units ?? [];
+        for (const u of units) {
+          if (u?.UnitType?.value !== "LENGTHUNIT") continue;
+          if (u?.Name?.value === "METRE") {
+            const prefix = u?.Prefix?.value;
+            lengthScale = prefix === "MILLI" ? 0.001 : prefix === "CENTI" ? 0.01
+              : prefix === "DECI" ? 0.1 : prefix === "KILO" ? 1000 : 1;
+          } else if (u?.ConversionFactor) {
+            // inches and feet arrive as a factor over an SI unit
+            const f = readValue(u.ConversionFactor?.ValueComponent);
+            if (typeof f === "number") lengthScale = f;
+          }
+          break;
+        }
+      }
+    } catch { /* a file without a readable unit assignment is treated as metres */ }
+    log(`length unit: ${lengthScale} m per unit`);
+
     let tree: IfcSpatialNode | undefined;
     if (wantTree) {
       try {
@@ -251,6 +289,6 @@ export const IfcModel = {
 
     api.CloseModel(modelID);
     log(`parsed ${elements.length} elements`);
-    return { elements, tree, center: [cx, cy, cz] };
+    return { elements, tree, center: [cx, cy, cz], lengthScale };
   },
 };

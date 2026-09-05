@@ -14213,6 +14213,7 @@ var IfcFile = {
 };
 
 // src/io/IfcModel.ts
+var WEBIFC_IFCPROJECT = 103090709;
 function titleCase(name) {
   if (!name) return name;
   const lower = name.toLowerCase();
@@ -14364,6 +14365,27 @@ var IfcModel = {
         psets
       });
     }
+    let lengthScale = 1;
+    try {
+      const projects = api.GetLineIDsWithType(modelID, WEBIFC_IFCPROJECT);
+      if (projects.size()) {
+        const project = api.GetLine(modelID, projects.get(0), true);
+        const units = project?.UnitsInContext?.Units ?? [];
+        for (const u of units) {
+          if (u?.UnitType?.value !== "LENGTHUNIT") continue;
+          if (u?.Name?.value === "METRE") {
+            const prefix = u?.Prefix?.value;
+            lengthScale = prefix === "MILLI" ? 1e-3 : prefix === "CENTI" ? 0.01 : prefix === "DECI" ? 0.1 : prefix === "KILO" ? 1e3 : 1;
+          } else if (u?.ConversionFactor) {
+            const f2 = readValue(u.ConversionFactor?.ValueComponent);
+            if (typeof f2 === "number") lengthScale = f2;
+          }
+          break;
+        }
+      }
+    } catch {
+    }
+    log(`length unit: ${lengthScale} m per unit`);
     let tree;
     if (wantTree) {
       try {
@@ -14379,7 +14401,7 @@ var IfcModel = {
     }
     api.CloseModel(modelID);
     log(`parsed ${elements.length} elements`);
-    return { elements, tree, center: [cx, cy, cz] };
+    return { elements, tree, center: [cx, cy, cz], lengthScale };
   }
 };
 
