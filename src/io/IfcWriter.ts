@@ -541,13 +541,11 @@ export class IfcWriter {
   private ensureSlabType(type: SlabType): number {
     const existing = this.slabTypeRefs.get(type);
     if (existing !== undefined) return existing;
+    const psets = this.typePropertySets("Pset_SlabCommon", type.properties);
     const typeRef = this.addEntity(
-      `IFCSLABTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,$,$,$,$,.NOTDEFINED.)`,
+      `IFCSLABTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,${psets},$,$,$,.NOTDEFINED.)`,
     );
     this.slabTypeRefs.set(type, typeRef);
-    if (type.properties && Object.keys(type.properties).length > 0) {
-      this.writePset(typeRef, "Pset_SlabCommon", type.properties);
-    }
     return typeRef;
   }
 
@@ -625,13 +623,11 @@ export class IfcWriter {
     const existing = this.stairTypeRefs.get(type);
     if (existing !== undefined) return existing;
     // IfcStairType(...,ElementType,PredefinedType)
+    const psets = this.typePropertySets("Pset_StairCommon", type.properties);
     const typeRef = this.addEntity(
-      `IFCSTAIRTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,$,$,$,$,${ifcStairShape(type.shape)})`,
+      `IFCSTAIRTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,${psets},$,$,$,${ifcStairShape(type.shape)})`,
     );
     this.stairTypeRefs.set(type, typeRef);
-    if (type.properties && Object.keys(type.properties).length > 0) {
-      this.writePset(typeRef, "Pset_StairCommon", type.properties);
-    }
     return typeRef;
   }
 
@@ -738,23 +734,21 @@ export class IfcWriter {
     const existing = this.openingTypeRefs.get(type);
     if (existing !== undefined) return existing;
 
+    const psets = this.typePropertySets(
+      type.kind === "door" ? "Pset_DoorCommon" : "Pset_WindowCommon", type.properties);
     let typeRef: number;
     if (type.kind === "door") {
       // IfcDoorType(...,ElementType,PredefinedType,OperationType,ParameterTakesPrecedence,UserDefinedOperationType)
       typeRef = this.addEntity(
-        `IFCDOORTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,$,$,$,$,.DOOR.,${ifcDoorOperation(type.operation)},$,$)`,
+        `IFCDOORTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,${psets},$,$,$,.DOOR.,${ifcDoorOperation(type.operation)},$,$)`,
       );
     } else {
       // IfcWindowType(...,ElementType,PredefinedType,PartitioningType,ParameterTakesPrecedence,UserDefinedPartitioningType)
       typeRef = this.addEntity(
-        `IFCWINDOWTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,$,$,$,$,.WINDOW.,${ifcWindowPartitioning(type.partitioning)},$,$)`,
+        `IFCWINDOWTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,${psets},$,$,$,.WINDOW.,${ifcWindowPartitioning(type.partitioning)},$,$)`,
       );
     }
     this.openingTypeRefs.set(type, typeRef);
-
-    if (type.properties && Object.keys(type.properties).length > 0) {
-      this.writePset(typeRef, type.kind === "door" ? "Pset_DoorCommon" : "Pset_WindowCommon", type.properties);
-    }
     if (type.material) {
       const matRef = this.ensureMaterial(type.material);
       this.addEntity(
@@ -967,15 +961,12 @@ export class IfcWriter {
     const existing = this.wallTypeRefs.get(type);
     if (existing !== undefined) return existing;
 
+    // written before the type, because the type names it
+    const psets = this.typePropertySets("Pset_WallCommon", type.properties);
     const typeRef = this.addEntity(
-      `IFCWALLTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,$,$,$,$,.NOTDEFINED.)`,
+      `IFCWALLTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,${psets},$,$,$,.NOTDEFINED.)`,
     );
     this.wallTypeRefs.set(type, typeRef);
-
-    // Pset on the type carrying the WallType.properties.
-    if (type.properties && Object.keys(type.properties).length > 0) {
-      this.writePset(typeRef, "Pset_WallCommon", type.properties);
-    }
     // Materials + layer set tied to the type.
     if (includeMaterials && type.layers && type.layers.length > 0) {
       const layerSetRef = this.writeMaterialLayerSet(type.layers, type.name);
@@ -1052,18 +1043,45 @@ export class IfcWriter {
 
   // ── Property sets ───────────────────────────────────────────────
 
-  private writePset(elementRef: number, name: string, props: PropertyMap): void {
+  /** The set on its own, with no relationship: what a type holds directly. */
+  private writePsetEntity(name: string, props: PropertyMap): number | null {
     const propRefs: number[] = [];
     for (const [key, value] of Object.entries(props)) {
       propRefs.push(this.writeSingleValue(key, value));
     }
-    if (propRefs.length === 0) return;
-    const psetRef = this.addEntity(
+    if (propRefs.length === 0) return null;
+    return this.addEntity(
       `IFCPROPERTYSET(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(name)},$,(${propRefs.map(r => `#${r}`).join(",")}))`,
     );
+  }
+
+  /** The set plus the relationship that attaches it to an occurrence. */
+  private writePset(elementRef: number, name: string, props: PropertyMap): void {
+    const psetRef = this.writePsetEntity(name, props);
+    if (psetRef === null) return;
     this.addEntity(
       `IFCRELDEFINESBYPROPERTIES(${ifcGuid()},#${this.ownerHistoryRef},$,$,(#${elementRef}),#${psetRef})`,
     );
+  }
+
+  /**
+   * A type's property sets, for its `HasPropertySets` attribute.
+   *
+   * They belong there and not on an `IfcRelDefinesByProperties`, which is how
+   * an occurrence gets its own. The attribute used to be written null, and a
+   * reader asking for type properties then gets nothing at all: web-ifc raises
+   * "HasPropertySets is not iterable" and gives up on the element. It was
+   * invisible from here only because the type's properties are also copied
+   * onto the occurrence's set, so a round trip through this writer looked
+   * complete while anything reading the type saw an empty type.
+   *
+   * The set has to exist before the type entity that names it, so this is
+   * called first and its result inlined.
+   */
+  private typePropertySets(name: string, props: PropertyMap | undefined): string {
+    if (!props || Object.keys(props).length === 0) return "$";
+    const ref = this.writePsetEntity(name, props);
+    return ref === null ? "$" : `(#${ref})`;
   }
 
   private writeSingleValue(name: string, value: unknown): number {

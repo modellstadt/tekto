@@ -3703,7 +3703,25 @@ declare class IfcWriter {
     private ensureMaterial;
     private writeMaterialLayerSet;
     private writeMaterialLayerSetUsage;
+    /** The set on its own, with no relationship: what a type holds directly. */
+    private writePsetEntity;
+    /** The set plus the relationship that attaches it to an occurrence. */
     private writePset;
+    /**
+     * A type's property sets, for its `HasPropertySets` attribute.
+     *
+     * They belong there and not on an `IfcRelDefinesByProperties`, which is how
+     * an occurrence gets its own. The attribute used to be written null, and a
+     * reader asking for type properties then gets nothing at all: web-ifc raises
+     * "HasPropertySets is not iterable" and gives up on the element. It was
+     * invisible from here only because the type's properties are also copied
+     * onto the occurrence's set, so a round trip through this writer looked
+     * complete while anything reading the type saw an empty type.
+     *
+     * The set has to exist before the type entity that names it, so this is
+     * called first and its result inlined.
+     */
+    private typePropertySets;
     private writeSingleValue;
     /** Validate / default the storey ref for an add* call. */
     private resolveStorey;

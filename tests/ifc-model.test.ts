@@ -16,20 +16,24 @@ import { IfcModel } from "../src/io/IfcModel";
  * of it and lost everything only the occurrence states, quantities included.
  * It never threw on such a file, so the loss was silent.
  *
- * The fixture is written by IfcWriter and then given the one thing the writer
- * does not emit: property sets hung on the type itself. Without that,
- * IfcTypeObject.HasPropertySets is null, web-ifc raises "HasPropertySets is
- * not iterable", the reader's fallback fires, and the file cannot reproduce
- * the bug at all. Both edits assert that they applied, because a fixture that
- * silently stops constructing the case is a test that silently stops testing.
+ * The fixture is written by IfcWriter rather than checked in, which only works
+ * because the writer now puts the type's sets in `IfcTypeObject.HasPropertySets`
+ * where a reader can find them. While that attribute was null, web-ifc raised
+ * "HasPropertySets is not iterable", the reader's fallback fired, and a file
+ * from this writer could not reproduce the bug at all.
  */
 
 /**
  * A one-wall model whose type states its own Pset_WallCommon, disagreeing with
  * the wall's and carrying one member the wall does not.
  */
-function oneWallWithTypeProperties(): ArrayBuffer {
-  const type = new WallType({ name: "SIP 202", construction: SolidConstruction });
+function oneWall(): ArrayBuffer {
+  const type = new WallType({
+    name: "SIP 202",
+    construction: SolidConstruction,
+    // the type's defaults: one the wall contradicts, one only the type has
+    properties: { IsExternal: false, Reference: "SIP-202" },
+  });
   const wall = new Wall({
     centerline: [new Vec2(0, 0), new Vec2(4, 0)],
     thickness: 0.202,
@@ -41,35 +45,11 @@ function oneWallWithTypeProperties(): ArrayBuffer {
   });
   const writer = new IfcWriter({ projectName: "pset precedence" });
   writer.addWall(wall);
-  let text = writer.save();
-
-  let highest = 0;
-  for (const m of text.matchAll(/^#(\d+)=/gm)) highest = Math.max(highest, Number(m[1]));
-  const next = () => ++highest;
-
-  // the type's own defaults: one contradicting the wall, one only it has
-  const isExternal = next(), reference = next(), pset = next();
-  const lines = [
-    `#${isExternal}=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.F.),$);`,
-    `#${reference}=IFCPROPERTYSINGLEVALUE('Reference',$,IFCLABEL('SIP-202'),$);`,
-    `#${pset}=IFCPROPERTYSET('1TypePsetForTheTest00',$,'Pset_WallCommon',$,`
-      + `(#${isExternal},#${reference}));`,
-  ].join("\n");
-  const withPset = text.replace("ENDSEC;", `${lines}\nENDSEC;`);
-  if (withPset === text) throw new Error("fixture: could not append the type property set");
-  text = withPset;
-
-  // hang it on the type. HasPropertySets is IfcTypeObject's sixth attribute,
-  // which IfcWriter leaves null, and web-ifc will not read a type without it.
-  const wired = text.replace(/(IFCWALLTYPE\((?:[^,)]*,){5})\$/, `$1(#${pset})`);
-  if (wired === text) throw new Error("fixture: could not wire the pset onto IFCWALLTYPE");
-
-  return new TextEncoder().encode(wired).buffer as ArrayBuffer;
+  return writer.saveBytes().buffer as ArrayBuffer;
 }
 
 async function readWall() {
-  const model = await IfcModel.parse(oneWallWithTypeProperties(),
-    { wasmPath: "", tree: false, recenter: false });
+  const model = await IfcModel.parse(oneWall(), { wasmPath: "", tree: false, recenter: false });
   const wall = model.elements.find((e) => /Wall/i.test(e.ifcClass));
   expect(wall, "the written wall came back with no geometry").toBeTruthy();
   return wall!;
@@ -95,5 +75,17 @@ describe("IfcModel.parse property sets", () => {
     const common = (await readWall()).psets.Pset_WallCommon;
     expect(common, "Pset_WallCommon is on both the type and the wall").toBeTruthy();
     expect(Object.keys(common).sort()).toEqual(["IsExternal", "LoadBearing", "Reference"]);
+  });
+});
+
+describe("IfcWriter type property sets", () => {
+  it("puts them where a reader looks, in HasPropertySets", async () => {
+    const text = new TextDecoder().decode(oneWall());
+    const line = text.split("\n").find((l) => l.includes("IFCWALLTYPE"));
+    expect(line, "no IfcWallType was written").toBeTruthy();
+    // GlobalId, OwnerHistory, Name, Description, ApplicableOccurrence, then
+    // HasPropertySets: a null there is a type nothing can read
+    const attrs = line!.slice(line!.indexOf("(") + 1).split(",");
+    expect(attrs[5], `HasPropertySets is null in ${line}`).toMatch(/^\(#\d+\)$/);
   });
 });
