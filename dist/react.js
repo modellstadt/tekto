@@ -1586,7 +1586,7 @@ function AccordionColumn({
   const drag = (0, import_react.useCallback)((id, dy) => {
     setState((v) => ({
       ...v,
-      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) + dy))
+      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) - dy))
     }));
   }, []);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -1603,6 +1603,7 @@ function AccordionColumn({
       children: sections.map((s) => {
         const open = (state[s.id] ?? 0) > 0;
         return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.default.Fragment, { children: [
+          open && !s.fill && s.defaultHeight !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AccordionHandle, { className: classes.handle, onDrag: (dy) => drag(s.id, dy) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "button",
             {
@@ -1660,8 +1661,7 @@ function AccordionColumn({
               style: s.fill ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : s.defaultHeight === void 0 ? { flexShrink: 0 } : { flexShrink: 0, height: state[s.id], overflow: "auto" },
               children: s.children
             }
-          ),
-          open && !s.fill && s.defaultHeight !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AccordionHandle, { className: classes.handle, onDrag: (dy) => drag(s.id, dy) })
+          )
         ] }, s.id);
       })
     }

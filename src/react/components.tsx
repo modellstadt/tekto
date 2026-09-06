@@ -577,10 +577,10 @@ export function AccordionColumn({
   }, []);
 
   const drag = useCallback((id: string, dy: number) => {
-    // the handle sits under the body, so dragging it down grows the body
+    // the handle is the section's top edge, so dragging it up grows the body
     setState((v) => ({
       ...v,
-      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) + dy)),
+      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) - dy)),
     }));
   }, []);
 
@@ -593,6 +593,14 @@ export function AccordionColumn({
         const open = (state[s.id] ?? 0) > 0;
         return (
           <React.Fragment key={s.id}>
+            {/* On the rule above the header, which is the boundary a reader
+                means: the section that gives way is the flexible one, and it
+                is above. Grabbing a section's top edge and pulling up is the
+                split-bar gesture. Under the body it read as dragging one line
+                while everything above it moved. */}
+            {open && !s.fill && s.defaultHeight !== undefined && (
+              <AccordionHandle className={classes.handle} onDrag={(dy) => drag(s.id, dy)} />
+            )}
             <button type="button" onClick={() => toggle(s)} title={s.hint}
               className={classes.header}
               style={{
@@ -631,12 +639,6 @@ export function AccordionColumn({
                 {s.children}
               </div>
             )}
-            {/* on the rule under the body rather than beside it: the boundary
-                a reader would grab is the line they can already see, and a
-                second grey strip next to it says the same thing twice */}
-            {open && !s.fill && s.defaultHeight !== undefined && (
-              <AccordionHandle className={classes.handle} onDrag={(dy) => drag(s.id, dy)} />
-            )}
           </React.Fragment>
         );
       })}
@@ -645,12 +647,12 @@ export function AccordionColumn({
 }
 
 /**
- * The grab strip on a section's lower boundary.
+ * The grab strip on a section's upper boundary.
  *
- * It takes no height: negative margins pull it back over the rule the body
- * already draws, so what a reader grabs is that line and the layout does not
- * shift by the width of an affordance. Transparent by default, because the
- * line is the affordance.
+ * It takes no height: negative margins pull it back over the rule already
+ * drawn there, so what a reader grabs is that line and the layout does not
+ * shift by the width of an affordance. Transparent, because the line is the
+ * affordance and a grey strip beside it would say the same thing twice.
  */
 function AccordionHandle({ onDrag, className }: {
   onDrag: (dy: number) => void; className?: string;
