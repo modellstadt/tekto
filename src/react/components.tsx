@@ -634,11 +634,18 @@ export function AccordionColumn({
             )}
             <button type="button" onClick={() => toggle(s)} title={s.hint}
               className={classes.header}
+              // Layout only. The button reset (border, background, padding,
+              // font) is applied inline ONLY when the host has passed no class
+              // of its own, because an inline style beats a class: with it
+              // always on, a header class asking for a rule under itself got a
+              // zero-width border, and a hover background never appeared. A
+              // host that styles the header owns its appearance.
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                gap: 8, width: "100%", flexShrink: 0, textAlign: "left",
-                font: "inherit", background: "none", border: 0, cursor: "pointer",
-                ...(classes.header ? {} : { padding: "6px 12px" }),
+                gap: 8, width: "100%", flexShrink: 0, textAlign: "left", cursor: "pointer",
+                ...(classes.header
+                  ? {}
+                  : { font: "inherit", background: "none", border: 0, padding: "6px 12px" }),
               }}>
               <span className={classes.title}>{s.title}</span>
               <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>

@@ -1640,11 +1640,8 @@ function AccordionColumn({
                 width: "100%",
                 flexShrink: 0,
                 textAlign: "left",
-                font: "inherit",
-                background: "none",
-                border: 0,
                 cursor: "pointer",
-                ...classes.header ? {} : { padding: "6px 12px" }
+                ...classes.header ? {} : { font: "inherit", background: "none", border: 0, padding: "6px 12px" }
               },
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: classes.title, children: s.title }),
