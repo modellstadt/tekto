@@ -485,7 +485,6 @@ function AccordionColumn({
                       strokeLinejoin: "round",
                       style: {
                         flexShrink: 0,
-                        opacity: 0.55,
                         transform: open ? "rotate(180deg)" : "none",
                         transition: "transform 0.15s"
                       },

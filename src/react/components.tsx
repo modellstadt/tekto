@@ -613,8 +613,10 @@ export function AccordionColumn({
                 <svg className={classes.marker} width="11" height="11" viewBox="0 0 12 12"
                   aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"
                   strokeLinecap="round" strokeLinejoin="round"
+                  // no opacity of its own: the marker is part of the heading
+                  // and reads at the heading's weight, which is the host's call
                   style={{
-                    flexShrink: 0, opacity: 0.55,
+                    flexShrink: 0,
                     transform: open ? "rotate(180deg)" : "none",
                     transition: "transform 0.15s",
                   }}>
