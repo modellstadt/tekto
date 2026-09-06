@@ -16005,23 +16005,25 @@ var IfcModel = {
       const properties = {};
       const psets = {};
       if (wantProps) {
-        try {
-          let sets = [];
+        const both = [];
+        for (const includeType of [true, false]) {
           try {
-            sets = await api.properties.getPropertySets(modelID, e.expressID, true, true);
-          } catch {
-            sets = await api.properties.getPropertySets(modelID, e.expressID, true, false);
+            both.push(await api.properties.getPropertySets(
+              modelID,
+              e.expressID,
+              true,
+              includeType
+            ) ?? []);
+          } catch (err) {
+            log(`${includeType ? "type" : "instance"} properties unavailable for #${e.expressID}: ${err.message}`);
           }
-          for (const set of sets ?? []) {
-            const setName = readValue(set?.Name) || `set_${set?.expressID}`;
-            const flat = flattenSet(set);
-            if (Object.keys(flat).length) {
-              psets[setName] = flat;
-              Object.assign(properties, flat);
-            }
-          }
-        } catch (err) {
-          log(`properties unavailable for #${e.expressID}: ${err.message}`);
+        }
+        for (const set of both.flat()) {
+          const setName = readValue(set?.Name) || `set_${set?.expressID}`;
+          const flat = flattenSet(set);
+          if (!Object.keys(flat).length) continue;
+          psets[setName] = { ...psets[setName], ...flat };
+          Object.assign(properties, flat);
         }
       }
       if (recenter) {

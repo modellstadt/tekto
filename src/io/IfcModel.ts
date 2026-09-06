@@ -203,29 +203,54 @@ export const IfcModel = {
       const properties: Record<string, string | number | boolean> = {};
       const psets: Record<string, Record<string, string | number | boolean>> = {};
       if (wantProps) {
-        try {
-          // includeTypeProperties throws inside web-ifc for elements whose type
-          // relation it cannot resolve ("Cannot read properties of undefined
-          // (reading 'IsTypedBy')"), and one throw used to cost the element its
-          // entire property bag. Ask for them, fall back to the element's own.
-          let sets: any[] = [];
+        /**
+         * Both reads, type first, and the instance wins.
+         *
+         * web-ifc's last argument, includeTypeProperties, is substitutive and
+         * not additive: it returns the TYPE object's property sets INSTEAD of
+         * the element's. Quantities live only on the instance, so asking for
+         * type properties dropped every Qto_*BaseQuantities set, and instance
+         * sets came back truncated to whatever the type happened to carry. On
+         * Autodesk's Revit sample that is 0 of 446 elements with a Height,
+         * Length or Width against 271 without the flag; on AC20-FZK-Haus the
+         * type read returns nothing at all for 68 of 83 elements, where the
+         * instance read returns something for every one.
+         *
+         * It was silent because it does not throw. The old fallback only ran
+         * when web-ifc raised, and here the flagged call succeeds and simply
+         * returns less.
+         *
+         * Type first because that is what IFC means by a type: a default the
+         * occurrence may override. On the same sample the two disagree on 237
+         * elements, and the disagreement is not cosmetic (Pset_WallCommon
+         * IsExternal reads false on the type and true on the wall).
+         *
+         * Each call gets its own try. One of them still throws for elements
+         * whose type relation web-ifc cannot resolve ("Cannot read properties
+         * of undefined (reading 'IsTypedBy')"), and that must not cost the
+         * element the half that did work.
+         */
+        const both: any[][] = [];
+        for (const includeType of [true, false]) {
           try {
-            sets = await api.properties.getPropertySets(modelID, e.expressID, true, true);
-          } catch {
-            sets = await api.properties.getPropertySets(modelID, e.expressID, true, false);
+            both.push(await api.properties.getPropertySets(
+              modelID, e.expressID, true, includeType) ?? []);
+          } catch (err) {
+            // still report it: silence here is what made every element look
+            // property-less in the first place
+            log(`${includeType ? "type" : "instance"} properties unavailable `
+              + `for #${e.expressID}: ${(err as Error).message}`);
           }
-          for (const set of sets ?? []) {
-            const setName = (readValue(set?.Name) as string) || `set_${set?.expressID}`;
-            const flat = flattenSet(set);
-            if (Object.keys(flat).length) {
-              psets[setName] = flat;
-              Object.assign(properties, flat);
-            }
-          }
-        } catch (err) {
-          // still report it: silence here is what made every element look
-          // property-less in the first place
-          log(`properties unavailable for #${e.expressID}: ${(err as Error).message}`);
+        }
+        for (const set of both.flat()) {
+          const setName = (readValue(set?.Name) as string) || `set_${set?.expressID}`;
+          const flat = flattenSet(set);
+          if (!Object.keys(flat).length) continue;
+          // merged rather than replaced: Pset_WallCommon exists on both sides
+          // with different members, so assigning the instance's copy over the
+          // type's would hide a default the type is the only source of
+          psets[setName] = { ...psets[setName], ...flat };
+          Object.assign(properties, flat);
         }
       }
 
