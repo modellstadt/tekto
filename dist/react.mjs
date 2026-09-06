@@ -386,7 +386,140 @@ var buttonStyle = {
   fontFamily: "monospace",
   transition: "all 0.15s"
 };
+var ACCORDION_MIN = 40;
+var ACCORDION_MAX = 900;
+function AccordionColumn({
+  sections,
+  storageKey,
+  className,
+  style,
+  classes = {}
+}) {
+  const initial = useMemo(() => {
+    const out = {};
+    for (const s of sections) {
+      const open = s.defaultOpen ?? !!s.fill;
+      out[s.id] = open ? s.fill ? 1 : s.defaultHeight ?? 220 : 0;
+    }
+    return out;
+  }, [sections]);
+  const [state, setState] = useState(() => {
+    if (!storageKey) return initial;
+    try {
+      return { ...initial, ...JSON.parse(localStorage.getItem(storageKey) || "{}") };
+    } catch {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {
+    }
+  }, [state, storageKey]);
+  const toggle = useCallback((s) => {
+    setState((v) => ({
+      ...v,
+      [s.id]: v[s.id] > 0 ? 0 : s.fill ? 1 : s.defaultHeight ?? 220
+    }));
+  }, []);
+  const drag = useCallback((id, dy) => {
+    setState((v) => ({
+      ...v,
+      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) - dy))
+    }));
+  }, []);
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      className,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        overflowY: "auto",
+        ...style
+      },
+      children: sections.map((s) => {
+        const open = (state[s.id] ?? 0) > 0;
+        return /* @__PURE__ */ jsxs(React.Fragment, { children: [
+          open && !s.fill && /* @__PURE__ */ jsx(AccordionHandle, { className: classes.handle, onDrag: (dy) => drag(s.id, dy) }),
+          /* @__PURE__ */ jsxs(
+            "button",
+            {
+              type: "button",
+              onClick: () => toggle(s),
+              title: s.hint,
+              className: classes.header,
+              style: {
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 8,
+                width: "100%",
+                flexShrink: 0,
+                textAlign: "left",
+                font: "inherit",
+                background: "none",
+                border: 0,
+                cursor: "pointer",
+                ...classes.header ? {} : { padding: "6px 12px" }
+              },
+              children: [
+                /* @__PURE__ */ jsxs("span", { className: classes.title, children: [
+                  /* @__PURE__ */ jsx("span", { "aria-hidden": "true", style: { opacity: 0.5, marginRight: 6 }, children: open ? "\u25BE" : "\u25B8" }),
+                  s.title
+                ] }),
+                s.meta !== void 0 && /* @__PURE__ */ jsx("span", { className: classes.meta, children: s.meta })
+              ]
+            }
+          ),
+          open && /* @__PURE__ */ jsx(
+            "div",
+            {
+              className: classes.body,
+              style: s.fill ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : { flexShrink: 0, height: state[s.id], overflow: "auto" },
+              children: s.children
+            }
+          )
+        ] }, s.id);
+      })
+    }
+  );
+}
+function AccordionHandle({ onDrag, className }) {
+  return /* @__PURE__ */ jsx(
+    "div",
+    {
+      className,
+      onPointerDown: (e) => {
+        e.preventDefault();
+        e.target.setPointerCapture(e.pointerId);
+        let last = e.clientY;
+        const move = (m) => {
+          onDrag(m.clientY - last);
+          last = m.clientY;
+        };
+        const up = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      },
+      style: {
+        flexShrink: 0,
+        height: 5,
+        cursor: "row-resize",
+        touchAction: "none",
+        ...className ? {} : { background: "rgba(127,127,127,0.15)" }
+      }
+    }
+  );
+}
 export {
+  AccordionColumn,
   InspectorPanel,
   ParamPanel,
   TektoApp,

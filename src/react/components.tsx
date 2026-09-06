@@ -468,3 +468,183 @@ const buttonStyle: CSSProperties = {
   fontFamily: "monospace",
   transition: "all 0.15s",
 };
+
+// ═══════════════════════════════════════════════
+// Accordion column
+// ═══════════════════════════════════════════════
+
+/**
+ * One section of an AccordionColumn.
+ *
+ * `meta` is the part that earns a closed section its place on screen: a count,
+ * a total, a setting. A header that says only "Cut list" is worth nothing shut;
+ * one that says "Cut list, 94 pieces" answers the question most readers had.
+ */
+export interface AccordionSection {
+  id: string;
+  title: string;
+  /** Shown at the right of the header, whether the section is open or closed. */
+  meta?: ReactNode;
+  /**
+   * The one section that takes whatever height is left and scrolls inside it.
+   * Everything else is sized by its own body, or by a drag. At most one.
+   */
+  fill?: boolean;
+  /** Open before the reader has an opinion. Defaults to true for `fill`. */
+  defaultOpen?: boolean;
+  /**
+   * Body height in pixels when opened. For the `fill` section this is read as
+   * a floor instead: open every other section and the one that gives way must
+   * still be worth looking at, so past that point the column scrolls rather
+   * than squeezing the tree down to two rows.
+   */
+  defaultHeight?: number;
+  /** Hover text on the header. */
+  hint?: string;
+  children: ReactNode;
+}
+
+export interface AccordionColumnProps {
+  sections: AccordionSection[];
+  /** localStorage key for what is open and how tall. Omit to keep it per mount. */
+  storageKey?: string;
+  className?: string;
+  /** The host decides how wide the column is, and where it sits. */
+  style?: CSSProperties;
+  /**
+   * Class names for the parts, so the column takes the host's look rather than
+   * bringing its own. The built-in styles are structural only: what is left if
+   * you pass nothing is a plain, legible column, not a themed one.
+   */
+  classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle", string>>;
+}
+
+const ACCORDION_MIN = 40;
+const ACCORDION_MAX = 900;
+
+/**
+ * A column of collapsible sections, one of which may take the leftover height.
+ *
+ * The pattern every inspector ends up with: a tree that should have all the
+ * room going, and beneath it a few references (a cut list, a property bag, a
+ * project setting) that are worth a line each until you want them. Doing it
+ * ad hoc gives every section a slightly different header, a different way to
+ * collapse, and a different answer to what happens when two are open at once.
+ *
+ * What it handles: the leftover-height section scrolls rather than pushing the
+ * others off; an open section can be dragged taller, and the handle only exists
+ * while there is something to drag; closed sections keep their headers, so the
+ * column always reads as a table of contents; and the whole arrangement
+ * persists, because a reader who opened something meant it.
+ */
+export function AccordionColumn({
+  sections, storageKey, className, style, classes = {},
+}: AccordionColumnProps) {
+  const initial = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const s of sections) {
+      const open = s.defaultOpen ?? !!s.fill;
+      out[s.id] = open ? (s.fill ? 1 : s.defaultHeight ?? 220) : 0;
+    }
+    return out;
+  }, [sections]);
+
+  const [state, setState] = useState<Record<string, number>>(() => {
+    if (!storageKey) return initial;
+    try {
+      // merged over the defaults, so a section added later still appears
+      return { ...initial, ...JSON.parse(localStorage.getItem(storageKey) || "{}") };
+    } catch {
+      return initial;                       // private window, or a bad value
+    }
+  });
+
+  useEffect(() => {
+    if (!storageKey) return;
+    try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* private */ }
+  }, [state, storageKey]);
+
+  const toggle = useCallback((s: AccordionSection) => {
+    setState((v) => ({
+      ...v,
+      [s.id]: v[s.id] > 0 ? 0 : (s.fill ? 1 : s.defaultHeight ?? 220),
+    }));
+  }, []);
+
+  const drag = useCallback((id: string, dy: number) => {
+    // the handle sits above the body, so dragging it up grows the body down
+    setState((v) => ({
+      ...v,
+      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) - dy)),
+    }));
+  }, []);
+
+  return (
+    <div className={className}
+      style={{
+        display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto", ...style,
+      }}>
+      {sections.map((s) => {
+        const open = (state[s.id] ?? 0) > 0;
+        return (
+          <React.Fragment key={s.id}>
+            {open && !s.fill && (
+              <AccordionHandle className={classes.handle} onDrag={(dy) => drag(s.id, dy)} />
+            )}
+            <button type="button" onClick={() => toggle(s)} title={s.hint}
+              className={classes.header}
+              style={{
+                display: "flex", alignItems: "baseline", justifyContent: "space-between",
+                gap: 8, width: "100%", flexShrink: 0, textAlign: "left",
+                font: "inherit", background: "none", border: 0, cursor: "pointer",
+                ...(classes.header ? {} : { padding: "6px 12px" }),
+              }}>
+              <span className={classes.title}>
+                <span aria-hidden="true" style={{ opacity: 0.5, marginRight: 6 }}>
+                  {open ? "\u25be" : "\u25b8"}
+                </span>
+                {s.title}
+              </span>
+              {s.meta !== undefined && <span className={classes.meta}>{s.meta}</span>}
+            </button>
+            {open && (
+              <div className={classes.body}
+                style={s.fill
+                  ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" }
+                  : { flexShrink: 0, height: state[s.id], overflow: "auto" }}>
+                {s.children}
+              </div>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The grab strip between a section and the one above it. */
+function AccordionHandle({ onDrag, className }: {
+  onDrag: (dy: number) => void; className?: string;
+}) {
+  return (
+    <div
+      className={className}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        let last = e.clientY;
+        const move = (m: PointerEvent) => { onDrag(m.clientY - last); last = m.clientY; };
+        const up = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      }}
+      style={{
+        flexShrink: 0, height: 5, cursor: "row-resize", touchAction: "none",
+        ...(className ? {} : { background: "rgba(127,127,127,0.15)" }),
+      }}
+    />
+  );
+}
