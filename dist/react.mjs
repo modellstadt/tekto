@@ -8,6 +8,7 @@ import React, {
   useState,
   useCallback,
   useMemo,
+  useRef,
   createContext,
   useContext
 } from "react";
@@ -387,7 +388,7 @@ var buttonStyle = {
   transition: "all 0.15s"
 };
 var ACCORDION_MIN = 40;
-var ACCORDION_MAX = 900;
+var FLEXING = 1;
 function AccordionColumn({
   sections,
   storageKey,
@@ -398,8 +399,8 @@ function AccordionColumn({
   const initial = useMemo(() => {
     const out = {};
     for (const s of sections) {
-      const open = s.defaultOpen ?? !!s.fill;
-      out[s.id] = open ? s.fill ? 1 : s.defaultHeight ?? 1 : 0;
+      const open2 = s.defaultOpen ?? !!s.fill;
+      out[s.id] = open2 ? s.fill ? FLEXING : s.defaultHeight ?? FLEXING : 0;
     }
     return out;
   }, [sections]);
@@ -421,15 +422,23 @@ function AccordionColumn({
   const toggle = useCallback((s) => {
     setState((v) => ({
       ...v,
-      [s.id]: v[s.id] > 0 ? 0 : s.fill ? 1 : s.defaultHeight ?? 1
+      [s.id]: v[s.id] > 0 ? 0 : s.fill ? FLEXING : s.defaultHeight ?? FLEXING
     }));
   }, []);
-  const drag = useCallback((id, dy) => {
+  const bodies = useRef({});
+  const sash = useCallback((aboveId, belowId, dy, start) => {
+    const move = Math.max(
+      ACCORDION_MIN - start.above,
+      Math.min(dy, start.below - ACCORDION_MIN)
+    );
     setState((v) => ({
       ...v,
-      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) - dy))
+      [aboveId]: start.above + move,
+      [belowId]: start.below - move
     }));
   }, []);
+  const open = sections.filter((s) => (state[s.id] ?? 0) > 0);
+  const resizable = (s) => !!s.fill || s.defaultHeight !== void 0;
   return /* @__PURE__ */ jsx(
     "div",
     {
@@ -442,9 +451,22 @@ function AccordionColumn({
         ...style
       },
       children: sections.map((s) => {
-        const open = (state[s.id] ?? 0) > 0;
+        const isOpen = (state[s.id] ?? 0) > 0;
+        const at = open.indexOf(s);
+        const above = isOpen && at > 0 ? open[at - 1] : void 0;
+        const flexing = !!s.fill && state[s.id] === FLEXING;
         return /* @__PURE__ */ jsxs(React.Fragment, { children: [
-          open && !s.fill && s.defaultHeight !== void 0 && /* @__PURE__ */ jsx(AccordionHandle, { className: classes.handle, onDrag: (dy) => drag(s.id, dy) }),
+          above && resizable(above) && resizable(s) && /* @__PURE__ */ jsx(
+            AccordionHandle,
+            {
+              className: classes.handle,
+              onStart: () => ({
+                above: bodies.current[above.id]?.clientHeight ?? 0,
+                below: bodies.current[s.id]?.clientHeight ?? 0
+              }),
+              onDrag: (dy, start) => sash(above.id, s.id, dy, start)
+            }
+          ),
           /* @__PURE__ */ jsxs(
             "button",
             {
@@ -454,7 +476,7 @@ function AccordionColumn({
               className: classes.header,
               style: {
                 display: "flex",
-                alignItems: "baseline",
+                alignItems: "center",
                 justifyContent: "space-between",
                 gap: 8,
                 width: "100%",
@@ -485,7 +507,7 @@ function AccordionColumn({
                       strokeLinejoin: "round",
                       style: {
                         flexShrink: 0,
-                        transform: open ? "rotate(180deg)" : "none",
+                        transform: isOpen ? "rotate(180deg)" : "none",
                         transition: "transform 0.15s"
                       },
                       children: /* @__PURE__ */ jsx("path", { d: "M2.5 4.5 6 8l3.5-3.5" })
@@ -495,11 +517,14 @@ function AccordionColumn({
               ]
             }
           ),
-          open && /* @__PURE__ */ jsx(
+          isOpen && /* @__PURE__ */ jsx(
             "div",
             {
               className: classes.body,
-              style: s.fill ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : s.defaultHeight === void 0 ? { flexShrink: 0 } : { flexShrink: 0, height: state[s.id], overflow: "auto" },
+              ref: (el) => {
+                bodies.current[s.id] = el;
+              },
+              style: flexing ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : resizable(s) ? { flexShrink: 0, height: state[s.id], overflow: "auto" } : { flexShrink: 0 },
               children: s.children
             }
           )
@@ -508,19 +533,16 @@ function AccordionColumn({
     }
   );
 }
-function AccordionHandle({ onDrag, className }) {
+function AccordionHandle({ onStart, onDrag, className }) {
   return /* @__PURE__ */ jsx(
     "div",
     {
       className,
       onPointerDown: (e) => {
         e.preventDefault();
-        e.target.setPointerCapture(e.pointerId);
-        let last = e.clientY;
-        const move = (m) => {
-          onDrag(m.clientY - last);
-          last = m.clientY;
-        };
+        const from = e.clientY;
+        const start = onStart();
+        const move = (m) => onDrag(m.clientY - from, start);
         const up = () => {
           window.removeEventListener("pointermove", move);
           window.removeEventListener("pointerup", up);

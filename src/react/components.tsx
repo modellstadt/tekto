@@ -5,7 +5,7 @@
  */
 
 import React, {
-  useEffect, useState, useCallback, useMemo,
+  useEffect, useState, useCallback, useMemo, useRef,
   createContext, useContext, type ReactNode, type CSSProperties,
 } from "react";
 
@@ -486,21 +486,17 @@ export interface AccordionSection {
   /** Shown at the right of the header, whether the section is open or closed. */
   meta?: ReactNode;
   /**
-   * The one section that takes whatever height is left and scrolls inside it.
-   * Everything else is sized by its own body, or by a drag. At most one.
+   * The section that takes whatever height is left, until a drag gives it one
+   * of its own. At most one.
    */
   fill?: boolean;
   /** Open before the reader has an opinion. Defaults to true for `fill`. */
   defaultOpen?: boolean;
   /**
-   * Body height in pixels when opened, which also makes the section draggable.
+   * Body height in pixels when opened, which also makes the section resizable.
    * Leave it out and the body is as tall as its content, which is what prose
    * of unpredictable length wants: a supplier's note is three lines or thirty,
    * and pinning either to 220 pixels is wrong for the other.
-   *
-   * For the `fill` section it is read as a floor instead: open every other
-   * section and the one that gives way must still be worth looking at, so past
-   * that point the column scrolls rather than squeezing the tree to two rows.
    */
   defaultHeight?: number;
   /** Hover text on the header. */
@@ -523,23 +519,33 @@ export interface AccordionColumnProps {
   classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle" | "marker", string>>;
 }
 
+/** Smallest a body may be dragged to. Below this a section is worth closing. */
 const ACCORDION_MIN = 40;
-const ACCORDION_MAX = 900;
+
+/** Marks a section that is open and still taking the leftover height, as
+ *  opposed to one whose stored number is a real pixel height. */
+const FLEXING = 1;
 
 /**
  * A column of collapsible sections, one of which may take the leftover height.
  *
  * The pattern every inspector ends up with: a tree that should have all the
  * room going, and beneath it a few references (a cut list, a property bag, a
- * project setting) that are worth a line each until you want them. Doing it
- * ad hoc gives every section a slightly different header, a different way to
+ * project setting) that are worth a line each until you want them. Doing it ad
+ * hoc gives every section a slightly different header, a different way to
  * collapse, and a different answer to what happens when two are open at once.
  *
- * What it handles: the leftover-height section scrolls rather than pushing the
- * others off; an open section can be dragged taller, and the handle only exists
- * while there is something to drag; closed sections keep their headers, so the
- * column always reads as a table of contents; and the whole arrangement
- * persists, because a reader who opened something meant it.
+ * **A boundary is a sash between its two neighbours**, which is the convention
+ * and the only reading under which the rule follows the pointer. What the
+ * section above gains, the section below gives up: the top of the one and the
+ * bottom of the other stay put, and the line moves by exactly the distance
+ * dragged. Resizing a single section instead looks right only while some other
+ * section has slack to absorb the difference, and at its limit the line stops
+ * dead while a different edge moves.
+ *
+ * The flexible section takes the leftover until a sash gives it a height of its
+ * own; from then on it is a section like the others, which is what makes a
+ * boundary stay where it was put.
  */
 export function AccordionColumn({
   sections, storageKey, className, style, classes = {},
@@ -548,8 +554,7 @@ export function AccordionColumn({
     const out: Record<string, number> = {};
     for (const s of sections) {
       const open = s.defaultOpen ?? !!s.fill;
-      // 1 stands for "open, sized by something other than a stored number"
-      out[s.id] = open ? (s.fill ? 1 : s.defaultHeight ?? 1) : 0;
+      out[s.id] = open ? (s.fill ? FLEXING : s.defaultHeight ?? FLEXING) : 0;
     }
     return out;
   }, [sections]);
@@ -572,17 +577,40 @@ export function AccordionColumn({
   const toggle = useCallback((s: AccordionSection) => {
     setState((v) => ({
       ...v,
-      [s.id]: v[s.id] > 0 ? 0 : (s.fill ? 1 : s.defaultHeight ?? 1),
+      [s.id]: v[s.id] > 0 ? 0 : (s.fill ? FLEXING : s.defaultHeight ?? FLEXING),
     }));
   }, []);
 
-  const drag = useCallback((id: string, dy: number) => {
-    // the handle is the section's top edge, so dragging it up grows the body
+  /** Every open body, so a sash can start from the height actually on screen. */
+  const bodies = useRef<Record<string, HTMLDivElement | null>>({});
+
+  /**
+   * Move one boundary, and nothing else.
+   *
+   * Both starting heights are read from the DOM at the start of the gesture
+   * rather than from state, because the flexible section has no stored height
+   * until it is dragged, and because a body sized by its content has none
+   * either. Neither side may go under the minimum, which is what stops the
+   * gesture at the ends rather than letting it push a section off the column.
+   */
+  const sash = useCallback((
+    aboveId: string, belowId: string, dy: number, start: { above: number; below: number },
+  ) => {
+    const move = Math.max(
+      ACCORDION_MIN - start.above,
+      Math.min(dy, start.below - ACCORDION_MIN),
+    );
     setState((v) => ({
       ...v,
-      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) - dy)),
+      [aboveId]: start.above + move,
+      [belowId]: start.below - move,
     }));
   }, []);
+
+  /** The sections on screen, so a boundary knows which two it lies between. */
+  const open = sections.filter((s) => (state[s.id] ?? 0) > 0);
+  /** A body sized by a number can be dragged; one sized by its content cannot. */
+  const resizable = (s: AccordionSection) => !!s.fill || s.defaultHeight !== undefined;
 
   return (
     <div className={className}
@@ -590,21 +618,24 @@ export function AccordionColumn({
         display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto", ...style,
       }}>
       {sections.map((s) => {
-        const open = (state[s.id] ?? 0) > 0;
+        const isOpen = (state[s.id] ?? 0) > 0;
+        const at = open.indexOf(s);
+        const above = isOpen && at > 0 ? open[at - 1] : undefined;
+        const flexing = !!s.fill && state[s.id] === FLEXING;
         return (
           <React.Fragment key={s.id}>
-            {/* On the rule above the header, which is the boundary a reader
-                means: the section that gives way is the flexible one, and it
-                is above. Grabbing a section's top edge and pulling up is the
-                split-bar gesture. Under the body it read as dragging one line
-                while everything above it moved. */}
-            {open && !s.fill && s.defaultHeight !== undefined && (
-              <AccordionHandle className={classes.handle} onDrag={(dy) => drag(s.id, dy)} />
+            {above && resizable(above) && resizable(s) && (
+              <AccordionHandle className={classes.handle}
+                onStart={() => ({
+                  above: bodies.current[above.id]?.clientHeight ?? 0,
+                  below: bodies.current[s.id]?.clientHeight ?? 0,
+                })}
+                onDrag={(dy, start) => sash(above.id, s.id, dy, start)} />
             )}
             <button type="button" onClick={() => toggle(s)} title={s.hint}
               className={classes.header}
               style={{
-                display: "flex", alignItems: "baseline", justifyContent: "space-between",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
                 gap: 8, width: "100%", flexShrink: 0, textAlign: "left",
                 font: "inherit", background: "none", border: 0, cursor: "pointer",
                 ...(classes.header ? {} : { padding: "6px 12px" }),
@@ -618,24 +649,28 @@ export function AccordionColumn({
                 <svg className={classes.marker} width="11" height="11" viewBox="0 0 12 12"
                   aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"
                   strokeLinecap="round" strokeLinejoin="round"
-                  // no opacity of its own: the marker is part of the heading
-                  // and reads at the heading's weight, which is the host's call
+                  // no opacity of its own: the marker is part of the heading and
+                  // reads at the heading's weight, which is the host's call
                   style={{
                     flexShrink: 0,
-                    transform: open ? "rotate(180deg)" : "none",
+                    transform: isOpen ? "rotate(180deg)" : "none",
                     transition: "transform 0.15s",
                   }}>
                   <path d="M2.5 4.5 6 8l3.5-3.5" />
                 </svg>
               </span>
             </button>
-            {open && (
+            {isOpen && (
               <div className={classes.body}
-                style={s.fill
+                ref={(el) => { bodies.current[s.id] = el; }}
+                style={flexing
+                  // while it is still taking the leftover, a floor keeps it
+                  // worth looking at: opening everything else should not squeeze
+                  // the tree down to two rows before anyone has dragged anything
                   ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" }
-                  : s.defaultHeight === undefined
-                    ? { flexShrink: 0 }
-                    : { flexShrink: 0, height: state[s.id], overflow: "auto" }}>
+                  : resizable(s)
+                    ? { flexShrink: 0, height: state[s.id], overflow: "auto" }
+                    : { flexShrink: 0 }}>
                 {s.children}
               </div>
             )}
@@ -647,24 +682,26 @@ export function AccordionColumn({
 }
 
 /**
- * The grab strip on a section's upper boundary.
+ * The grab strip on a boundary between two sections.
  *
  * It takes no height: negative margins pull it back over the rule already
  * drawn there, so what a reader grabs is that line and the layout does not
  * shift by the width of an affordance. Transparent, because the line is the
  * affordance and a grey strip beside it would say the same thing twice.
  */
-function AccordionHandle({ onDrag, className }: {
-  onDrag: (dy: number) => void; className?: string;
+function AccordionHandle({ onStart, onDrag, className }: {
+  onStart: () => { above: number; below: number };
+  onDrag: (dy: number, start: { above: number; below: number }) => void;
+  className?: string;
 }) {
   return (
     <div
       className={className}
       onPointerDown={(e) => {
         e.preventDefault();
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        let last = e.clientY;
-        const move = (m: PointerEvent) => { onDrag(m.clientY - last); last = m.clientY; };
+        const from = e.clientY;
+        const start = onStart();
+        const move = (m: PointerEvent) => onDrag(m.clientY - from, start);
         const up = () => {
           window.removeEventListener("pointermove", move);
           window.removeEventListener("pointerup", up);

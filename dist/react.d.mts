@@ -69,21 +69,17 @@ interface AccordionSection {
     /** Shown at the right of the header, whether the section is open or closed. */
     meta?: ReactNode;
     /**
-     * The one section that takes whatever height is left and scrolls inside it.
-     * Everything else is sized by its own body, or by a drag. At most one.
+     * The section that takes whatever height is left, until a drag gives it one
+     * of its own. At most one.
      */
     fill?: boolean;
     /** Open before the reader has an opinion. Defaults to true for `fill`. */
     defaultOpen?: boolean;
     /**
-     * Body height in pixels when opened, which also makes the section draggable.
+     * Body height in pixels when opened, which also makes the section resizable.
      * Leave it out and the body is as tall as its content, which is what prose
      * of unpredictable length wants: a supplier's note is three lines or thirty,
      * and pinning either to 220 pixels is wrong for the other.
-     *
-     * For the `fill` section it is read as a floor instead: open every other
-     * section and the one that gives way must still be worth looking at, so past
-     * that point the column scrolls rather than squeezing the tree to two rows.
      */
     defaultHeight?: number;
     /** Hover text on the header. */
@@ -109,15 +105,21 @@ interface AccordionColumnProps {
  *
  * The pattern every inspector ends up with: a tree that should have all the
  * room going, and beneath it a few references (a cut list, a property bag, a
- * project setting) that are worth a line each until you want them. Doing it
- * ad hoc gives every section a slightly different header, a different way to
+ * project setting) that are worth a line each until you want them. Doing it ad
+ * hoc gives every section a slightly different header, a different way to
  * collapse, and a different answer to what happens when two are open at once.
  *
- * What it handles: the leftover-height section scrolls rather than pushing the
- * others off; an open section can be dragged taller, and the handle only exists
- * while there is something to drag; closed sections keep their headers, so the
- * column always reads as a table of contents; and the whole arrangement
- * persists, because a reader who opened something meant it.
+ * **A boundary is a sash between its two neighbours**, which is the convention
+ * and the only reading under which the rule follows the pointer. What the
+ * section above gains, the section below gives up: the top of the one and the
+ * bottom of the other stay put, and the line moves by exactly the distance
+ * dragged. Resizing a single section instead looks right only while some other
+ * section has slack to absorb the difference, and at its limit the line stops
+ * dead while a different edge moves.
+ *
+ * The flexible section takes the leftover until a sash gives it a height of its
+ * own; from then on it is a section like the others, which is what makes a
+ * boundary stay where it was put.
  */
 declare function AccordionColumn({ sections, storageKey, className, style, classes, }: AccordionColumnProps): React.JSX.Element;
 
