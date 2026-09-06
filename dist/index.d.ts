@@ -4491,6 +4491,242 @@ declare class SVGRenderer {
 }
 
 /**
+ * A viewport for looking at a building.
+ *
+ * ThreeRenderer draws a `Scene` of `SceneObject`s and is the right thing when
+ * the library owns the model. This is the other case: an app that has already
+ * built its own meshes (from IFC, from a cut list, from a supplier's geometry)
+ * and wants somewhere honest to put them. It takes `THREE.Mesh`es and gives
+ * back the four things every such app has otherwise rewritten:
+ *
+ *  - **view modes** that answer different questions. Shaded says what a thing
+ *    is made of; ghost says where a part sits inside the whole; hidden line is
+ *    the drawing convention, and with an orthographic camera it is a plan or an
+ *    elevation rather than a picture.
+ *  - **creases built progressively.** EdgesGeometry runs per mesh on the main
+ *    thread, so a project-scale model either stalls the tab or (worse, and this
+ *    is what actually happened) silently gets no outlines at all and hidden
+ *    line comes out as a white silhouette. Above a threshold they are built
+ *    when a mode asks, a few hundred meshes per frame, reporting as they go.
+ *  - **a real sun.** `SunPosition` is a Michalsky solar position accurate to
+ *    about a hundredth of a degree; what was missing was the part between it
+ *    and a light: frame the shadow camera to the content, put a catcher under
+ *    the lowest point, and say out loud what was assumed.
+ *  - **teardown that releases the WebGL context.** `renderer.dispose()` does
+ *    not, and a browser allows only a handful of contexts. A couple of
+ *    viewports times every hot reload exhausts them, after which new canvases
+ *    come back black and nothing says why.
+ *
+ * What it deliberately does not know: what your meshes mean. Colour by IFC
+ * class, by framing role, by whether a decision has been made against it, all
+ * of that is the app's, supplied through `appearanceOf`.
+ */
+
+/**
+ * How the content is drawn. Not decoration: each answers a different question.
+ *  shaded      what is it made of
+ *  ghost       where does this part sit in the whole, everything else stepped
+ *              back so the selection reads through the fabric
+ *  hidden-line the drawing convention: white surfaces, dark creases, occluded
+ *              lines hidden by the surfaces in front of them
+ */
+type ViewMode = "shaded" | "ghost" | "hidden-line";
+/** Perspective for looking at a building, orthographic for drawing one. */
+type Projection = "perspective" | "orthographic";
+/** The six faces of the bounding box, plus the corner view. */
+type StandardView = "iso" | "top" | "bottom" | "front" | "back" | "left" | "right";
+/** How one mesh is painted. Colours are hex integers, as three.js takes them. */
+interface Appearance {
+    colour: number;
+    opacity: number;
+    depthWrite: boolean;
+    polygonOffset: boolean;
+}
+interface ViewportOptions {
+    background?: number;
+    /**
+     * Up axis of the meshes handed over. Tekto and IFC are both Z-up, but
+     * web-ifc returns geometry already turned to three.js Y-up, so an app can
+     * have both in play. Getting this wrong lays a storey-height wall on the floor.
+     */
+    up?: "y" | "z";
+    /** The corner the camera starts in. */
+    view?: StandardView;
+    /** A click that hit nothing reports null. A drag orbits and reports nothing. */
+    onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
+    /**
+     * The app's last word on how one mesh looks, asked before the mode decides.
+     * Return null to let the mode paint it. This is where a selection colour, or
+     * "this part is spoken for", belongs: the viewport has no opinion on either.
+     */
+    appearanceOf?: (mesh: THREE.Mesh, mode: ViewMode) => Partial<Appearance> | null;
+}
+interface ContentOptions {
+    /** Overrides the viewport's own setting for this content only. */
+    up?: "y" | "z";
+    /**
+     * Which meshes get a crease outline: all of them, none, or a predicate. A
+     * translucent sheet usually wants none, because an outline around something
+     * you can see through reads as a box drawn over the thing that matters.
+     */
+    outline?: boolean | ((mesh: THREE.Mesh) => boolean);
+    /** Crease angle in degrees. 30 keeps a curved surface from turning into wireframe. */
+    creaseAngle?: number;
+}
+/** Crease colour and weight for a mode. Hidden line draws them at full strength
+ *  because in that mode the lines are the drawing. */
+declare function edgeStyle(mode: ViewMode): {
+    colour: number;
+    opacity: number;
+};
+/** How a mode paints a surface whose own colour is `base`. */
+declare function surfaceAppearance(mode: ViewMode, base: number): Appearance;
+/**
+ * Sun and sky intensity for a mode.
+ *
+ * Ghost is transparent throughout and a shadow cast by something you can see
+ * through reads as dirt on the drawing, so it never casts. With the sun doing
+ * the work the sky has to step back, or the shadows wash out.
+ */
+declare function lightBalance(mode: ViewMode, shadows: boolean): {
+    shadowed: boolean;
+    sun: number;
+    sky: number;
+    groundOpacity: number;
+};
+/**
+ * Where the camera sits for a named view, as three.js spherical angles: phi
+ * from +Y, theta around Y from +Z towards +X.
+ *
+ * Top and bottom are held a thousandth of a radian off the pole, because a
+ * camera looking exactly along its own up vector has no defined orientation
+ * and the view rolls to an arbitrary angle.
+ */
+declare function standardOrbit(view: StandardView): {
+    phi: number;
+    theta: number;
+};
+/**
+ * How far back to sit so a sphere of `boundingRadius` fits, on the tighter of
+ * the two field-of-view axes. A portrait panel clips a wide building on the
+ * horizontal, which is exactly the case a vertical-only fit gets wrong.
+ */
+declare function fitRadius(boundingRadius: number, fovDeg: number, aspect: number, margin?: number): number;
+/**
+ * The orthographic frustum that frames what a perspective camera would see at
+ * the same distance, so switching projection changes the drawing convention
+ * and not the subject.
+ */
+declare function orthoFrustum(distance: number, fovDeg: number, aspect: number): {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+};
+declare class Viewport {
+    private host;
+    private opts;
+    readonly scene: THREE.Scene;
+    private renderer;
+    private perspective;
+    private orthographic;
+    private projectionMode;
+    private root;
+    private meshGroup;
+    private outlines;
+    private frame;
+    private mode;
+    private outlinesBuilt;
+    private buildingOutlines;
+    private content;
+    private sun;
+    private sky;
+    /** Catches the cast shadow and is otherwise invisible: ShadowMaterial draws
+     *  nothing where nothing falls on it, so no ground slab appears. */
+    private ground;
+    private shadows;
+    /** Where the light comes from, in three.js Y-up. Replaced by a real solar
+     *  position through setSun; this is the fallback for a sun below the horizon,
+     *  and for a viewport nobody has told a date. */
+    private sunDir;
+    private sunNote;
+    private target;
+    private spherical;
+    constructor(host: HTMLElement, opts?: ViewportOptions);
+    /** The camera currently in use. Follows setProjection. */
+    get camera(): THREE.Camera;
+    private setUp;
+    private bind;
+    private pick;
+    /**
+     * Show these meshes, replacing whatever was there.
+     *
+     * The meshes are the app's: build them however the app colours things, and
+     * put the unpainted colour on `mesh.userData.baseColour` so shaded mode can
+     * return to it.
+     */
+    setContent(meshes: THREE.Mesh[], opts?: ContentOptions): void;
+    /** Which meshes the content options ask for an outline around. */
+    private wantsOutlines;
+    clear(): void;
+    /** Convenience for the common case: a mesh from raw buffers, which is what
+     *  every Tekto generator and every IFC reader hands over. */
+    static meshFrom(buffers: {
+        positions: Float32Array;
+        normals?: Float32Array;
+        indices: Uint32Array | Uint16Array;
+    }, material: THREE.Material): THREE.Mesh;
+    get viewMode(): ViewMode;
+    /**
+     * The mode a reader chose. Unlike the internal apply, this will go and build
+     * the outlines the mode needs if large content was loaded without them.
+     */
+    setViewMode(mode: ViewMode, onProgress?: (message: string | null) => void): void;
+    get projection(): Projection;
+    /** Perspective or orthographic. Orthographic with hidden line and a face view
+     *  is a plan or an elevation; that pairing is the point of having both. */
+    setProjection(projection: Projection): void;
+    /** Point the camera at a named face, keeping the distance. */
+    setView(view: StandardView): void;
+    /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
+    repaint(): void;
+    /** Apply the current mode to one mesh. The app's hook has the first word. */
+    private paint;
+    private applyMode;
+    /**
+     * Creases for the content, a chunk per frame.
+     *
+     * One LineSegments per chunk rather than per mesh: a few thousand line
+     * objects is a few thousand draw calls, and merging costs nothing here
+     * because the outlines are styled as one anyway.
+     */
+    private buildOutlines;
+    get shadowsOn(): boolean;
+    /** Sun shadows on or off. Off by default: they are a presentation choice, and
+     *  in hidden line they are a departure from the drawing convention. */
+    setShadows(on: boolean): void;
+    get sunDescription(): string;
+    /**
+     * Put a real sun in the sky, for a place and an instant.
+     *
+     * Two honest limits, both reported through `sunDescription`: the content's
+     * +Y (or +Z, for Z-up content) is assumed to be north, because a viewport
+     * cannot know a project's true north; and a sun below the horizon falls back
+     * to a generic light rather than showing a black building.
+     */
+    setSun(date: Date, latitude: number, longitude: number, place?: string): void;
+    /** Sun and ground, framed to whatever is in the scene. Cheap, and only run
+     *  when the contents or the light change. */
+    private frameSun;
+    /** Frame the contents: centre on the bounding box and pull back far enough
+     *  that it fits the tighter of the two field-of-view axes. */
+    fit(margin?: number): void;
+    private resize;
+    private tick;
+    dispose(): void;
+}
+
+/**
  * LayerPanel — reusable tree-based layer/visibility panel.
  *
  * Pure DOM, no framework dependency. Embeds in the Sketch API via
@@ -5541,4 +5777,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, edgeOutwardVisibility, extractVisiblePolylines, getTheme, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, noise, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d, writeDxf3D };
+export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lightBalance, lineClipPolygon, noise, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };

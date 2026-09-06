@@ -157,6 +157,7 @@ __export(index_exports, {
   Vec3: () => Vec3,
   Vec4: () => Vec4,
   VecMath: () => VecMath,
+  Viewport: () => Viewport,
   VoxelGrid: () => VoxelGrid,
   VoxelGrid2D: () => VoxelGrid2D,
   Wall: () => Wall,
@@ -176,15 +177,19 @@ __export(index_exports, {
   createParams: () => createParams,
   createRandom: () => createRandom,
   edgeOutwardVisibility: () => edgeOutwardVisibility,
+  edgeStyle: () => edgeStyle,
   extractVisiblePolylines: () => extractVisiblePolylines,
+  fitRadius: () => fitRadius,
   getTheme: () => getTheme,
   hiddenLineIdBuffer: () => hiddenLineIdBuffer,
   holzrahmenbauLayers: () => holzrahmenbauLayers,
   joistDirectionFromBounds: () => joistDirectionFromBounds,
   joistDirectionFromPCA: () => joistDirectionFromPCA,
   joistDirectionFromSupports: () => joistDirectionFromSupports,
+  lightBalance: () => lightBalance,
   lineClipPolygon: () => lineClipPolygon,
   noise: () => noise,
+  orthoFrustum: () => orthoFrustum,
   perpVisibility: () => perpVisibility,
   perpVisibilityOfPolys: () => perpVisibilityOfPolys,
   polygonFromVertices: () => polygonFromVertices,
@@ -198,6 +203,8 @@ __export(index_exports, {
   setClipSnap: () => setClipSnap,
   sketch: () => sketch,
   sketch2d: () => sketch2d,
+  standardOrbit: () => standardOrbit,
+  surfaceAppearance: () => surfaceAppearance,
   writeDxf3D: () => writeDxf3D
 });
 module.exports = __toCommonJS(index_exports);
@@ -22093,6 +22100,469 @@ var SVGRenderer = class {
   }
 };
 
+// src/render/Viewport.ts
+var THREE4 = __toESM(require("three"));
+var OUTLINE_LIMIT = 1500;
+var OUTLINE_CHUNK = 250;
+var FALLBACK_SURFACE = 14278115;
+function edgeStyle(mode) {
+  if (mode === "hidden-line") return { colour: 1779507, opacity: 1 };
+  return { colour: 5923950, opacity: mode === "ghost" ? 0.25 : 0.55 };
+}
+function surfaceAppearance(mode, base) {
+  if (mode === "ghost") {
+    return { colour: 12568786, opacity: 0.14, depthWrite: false, polygonOffset: false };
+  }
+  if (mode === "hidden-line") {
+    return { colour: 16777215, opacity: 1, depthWrite: true, polygonOffset: true };
+  }
+  return { colour: base, opacity: 1, depthWrite: true, polygonOffset: false };
+}
+function lightBalance(mode, shadows) {
+  const shadowed = shadows && mode !== "ghost";
+  return {
+    shadowed,
+    sun: shadowed ? 2.6 : 1.4,
+    sky: shadowed ? 1.1 : 2.2,
+    // ShadowMaterial darkens whatever is behind it, so on a white hidden-line
+    // page the shadow has to be lighter than it is over a shaded model
+    groundOpacity: mode === "hidden-line" ? 0.16 : 0.24
+  };
+}
+function standardOrbit(view) {
+  const H = Math.PI / 2;
+  switch (view) {
+    case "top":
+      return { phi: 1e-3, theta: 0 };
+    case "bottom":
+      return { phi: Math.PI - 1e-3, theta: 0 };
+    case "front":
+      return { phi: H, theta: 0 };
+    case "back":
+      return { phi: H, theta: Math.PI };
+    case "right":
+      return { phi: H, theta: H };
+    case "left":
+      return { phi: H, theta: -H };
+    default:
+      return { phi: Math.PI / 3, theta: Math.PI / 4 };
+  }
+}
+function fitRadius(boundingRadius, fovDeg, aspect, margin = 1.25) {
+  const vFov = fovDeg * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(aspect, 0.01));
+  const dist = Math.max(boundingRadius, 1e-6) / Math.sin(Math.min(vFov, hFov) / 2);
+  return Math.max(1, dist * margin);
+}
+function orthoFrustum(distance, fovDeg, aspect) {
+  const h = 2 * distance * Math.tan(fovDeg * Math.PI / 180 / 2);
+  const w = h * aspect;
+  return { left: -w / 2, right: w / 2, top: h / 2, bottom: -h / 2 };
+}
+var Viewport = class {
+  constructor(host, opts = {}) {
+    this.host = host;
+    this.opts = opts;
+    this.scene = new THREE4.Scene();
+    this.projectionMode = "perspective";
+    this.root = new THREE4.Group();
+    this.meshGroup = new THREE4.Group();
+    this.outlines = new THREE4.Group();
+    this.frame = 0;
+    this.mode = "shaded";
+    this.outlinesBuilt = false;
+    this.buildingOutlines = false;
+    this.content = {};
+    this.shadows = false;
+    /** Where the light comes from, in three.js Y-up. Replaced by a real solar
+     *  position through setSun; this is the fallback for a sun below the horizon,
+     *  and for a viewport nobody has told a date. */
+    this.sunDir = new THREE4.Vector3(1, 1.6, 1.1).normalize();
+    this.sunNote = "generic light, no date";
+    // simple orbit: enough for looking at a building, and no extra dependency
+    this.target = new THREE4.Vector3();
+    this.tick = () => {
+      this.frame = requestAnimationFrame(this.tick);
+      const camera = this.camera;
+      camera.position.setFromSpherical(this.spherical).add(this.target);
+      camera.lookAt(this.target);
+      if (this.projectionMode === "orthographic") {
+        const aspect = (this.host.clientWidth || 1) / (this.host.clientHeight || 1);
+        const f2 = orthoFrustum(this.spherical.radius, this.perspective.fov, aspect);
+        if (f2.top !== this.orthographic.top) {
+          this.orthographic.left = f2.left;
+          this.orthographic.right = f2.right;
+          this.orthographic.top = f2.top;
+          this.orthographic.bottom = f2.bottom;
+          this.orthographic.updateProjectionMatrix();
+        }
+      }
+      this.renderer.render(this.scene, camera);
+    };
+    const home = standardOrbit(opts.view ?? "iso");
+    this.spherical = new THREE4.Spherical(30, home.phi, home.theta);
+    this.scene.background = new THREE4.Color(opts.background ?? 16119802);
+    this.perspective = new THREE4.PerspectiveCamera(45, 1, 0.05, 5e3);
+    this.orthographic = new THREE4.OrthographicCamera(-1, 1, 1, -1, 0.01, 5e3);
+    this.renderer = new THREE4.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
+    const dom = this.renderer.domElement;
+    dom.style.display = "block";
+    dom.style.width = "100%";
+    dom.style.height = "100%";
+    host.appendChild(dom);
+    this.sky = new THREE4.HemisphereLight(16777215, 8952234, 2.2);
+    this.sun = new THREE4.DirectionalLight(16777215, 1.4);
+    this.sun.position.set(1, 2, 1.5);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -5e-4;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE4.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.ground = new THREE4.Mesh(
+      new THREE4.PlaneGeometry(1, 1),
+      new THREE4.ShadowMaterial({ opacity: 0.22 })
+    );
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.receiveShadow = true;
+    this.ground.visible = false;
+    this.setUp(opts.up ?? "y");
+    this.root.add(this.meshGroup, this.outlines);
+    this.scene.add(this.sky, this.sun, this.sun.target, this.ground, this.root);
+    this.bind();
+    this.resize();
+    this.tick();
+  }
+  /** The camera currently in use. Follows setProjection. */
+  get camera() {
+    return this.projectionMode === "orthographic" ? this.orthographic : this.perspective;
+  }
+  setUp(up) {
+    this.root.rotation.set(up === "z" ? -Math.PI / 2 : 0, 0, 0);
+  }
+  bind() {
+    const el = this.renderer.domElement;
+    let dragging = false, moved = false, lx = 0, ly = 0;
+    el.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      moved = false;
+      lx = e.clientX;
+      ly = e.clientY;
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lx, dy = e.clientY - ly;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      this.spherical.theta -= dx * 5e-3;
+      this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi - dy * 5e-3));
+      lx = e.clientX;
+      ly = e.clientY;
+    });
+    el.addEventListener("pointerup", (e) => {
+      dragging = false;
+      if (!moved) this.pick(e);
+    });
+    el.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      this.spherical.radius = Math.max(
+        0.05,
+        Math.min(4e3, this.spherical.radius * (1 + Math.sign(e.deltaY) * 0.12))
+      );
+    }, { passive: false });
+    new ResizeObserver(() => this.resize()).observe(this.host);
+  }
+  pick(e) {
+    if (!this.opts.onPick) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE4.Vector2(
+      (e.clientX - rect.left) / rect.width * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    const ray = new THREE4.Raycaster();
+    ray.setFromCamera(ndc, this.camera);
+    const hit = ray.intersectObjects(this.meshGroup.children, false)[0];
+    this.opts.onPick(hit?.object ?? null, e);
+  }
+  // -- content --------------------------------------------------------------
+  /**
+   * Show these meshes, replacing whatever was there.
+   *
+   * The meshes are the app's: build them however the app colours things, and
+   * put the unpainted colour on `mesh.userData.baseColour` so shaded mode can
+   * return to it.
+   */
+  setContent(meshes, opts = {}) {
+    this.clear();
+    this.content = opts;
+    if (opts.up) this.setUp(opts.up);
+    for (const mesh of meshes) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.meshGroup.add(mesh);
+    }
+    this.applyMode(this.mode);
+    if (this.wantsOutlines().length <= OUTLINE_LIMIT) this.buildOutlines();
+    this.root.updateMatrixWorld(true);
+    this.fit();
+    this.frameSun();
+  }
+  /** Which meshes the content options ask for an outline around. */
+  wantsOutlines() {
+    const rule = this.content.outline ?? true;
+    if (rule === false) return [];
+    const all = this.meshGroup.children;
+    return rule === true ? all : all.filter(rule);
+  }
+  clear() {
+    for (const child of this.meshGroup.children) {
+      child.geometry.dispose();
+      const m = child.material;
+      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
+    }
+    for (const line of this.outlines.children) {
+      line.geometry.dispose();
+      line.material.dispose();
+    }
+    this.meshGroup.clear();
+    this.outlines.clear();
+    this.outlinesBuilt = false;
+    this.buildingOutlines = false;
+  }
+  /** Convenience for the common case: a mesh from raw buffers, which is what
+   *  every Tekto generator and every IFC reader hands over. */
+  static meshFrom(buffers, material) {
+    const g = new THREE4.BufferGeometry();
+    g.setAttribute("position", new THREE4.BufferAttribute(buffers.positions, 3));
+    if (buffers.normals?.length) {
+      g.setAttribute("normal", new THREE4.BufferAttribute(buffers.normals, 3));
+    }
+    g.setIndex(new THREE4.BufferAttribute(buffers.indices, 1));
+    if (!buffers.normals?.length) g.computeVertexNormals();
+    return new THREE4.Mesh(g, material);
+  }
+  // -- how it is drawn ------------------------------------------------------
+  get viewMode() {
+    return this.mode;
+  }
+  /**
+   * The mode a reader chose. Unlike the internal apply, this will go and build
+   * the outlines the mode needs if large content was loaded without them.
+   */
+  setViewMode(mode, onProgress) {
+    this.applyMode(mode);
+    if (!this.outlinesBuilt && this.meshGroup.children.length) this.buildOutlines(onProgress);
+  }
+  get projection() {
+    return this.projectionMode;
+  }
+  /** Perspective or orthographic. Orthographic with hidden line and a face view
+   *  is a plan or an elevation; that pairing is the point of having both. */
+  setProjection(projection) {
+    this.projectionMode = projection;
+    this.resize();
+  }
+  /** Point the camera at a named face, keeping the distance. */
+  setView(view) {
+    const { phi, theta } = standardOrbit(view);
+    this.spherical.phi = phi;
+    this.spherical.theta = theta;
+  }
+  /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
+  repaint() {
+    for (const child of this.meshGroup.children) this.paint(child);
+  }
+  /** Apply the current mode to one mesh. The app's hook has the first word. */
+  paint(mesh) {
+    const material = mesh.material;
+    const base = mesh.userData.baseColour ?? FALLBACK_SURFACE;
+    const look = {
+      ...surfaceAppearance(this.mode, base),
+      ...this.opts.appearanceOf?.(mesh, this.mode) ?? {}
+    };
+    material.color.setHex(look.colour);
+    if (material.emissive) {
+      material.emissive.setHex(this.mode === "hidden-line" ? look.colour : 0);
+    }
+    material.opacity = look.opacity;
+    material.transparent = look.opacity < 1;
+    material.depthWrite = look.depthWrite;
+    material.polygonOffset = look.polygonOffset;
+    if (look.polygonOffset) {
+      material.polygonOffsetFactor = 1;
+      material.polygonOffsetUnits = 1;
+    }
+    material.needsUpdate = true;
+  }
+  applyMode(mode) {
+    this.mode = mode;
+    const balance = lightBalance(mode, this.shadows);
+    this.sun.castShadow = balance.shadowed;
+    this.ground.visible = balance.shadowed;
+    this.sun.intensity = balance.sun;
+    this.sky.intensity = balance.sky;
+    this.ground.material.opacity = balance.groundOpacity;
+    this.renderer.shadowMap.needsUpdate = true;
+    this.repaint();
+    const style = edgeStyle(mode);
+    for (const line of this.outlines.children) {
+      const lm = line.material;
+      lm.color.setHex(style.colour);
+      lm.opacity = style.opacity;
+      lm.transparent = style.opacity < 1;
+      lm.needsUpdate = true;
+    }
+  }
+  /**
+   * Creases for the content, a chunk per frame.
+   *
+   * One LineSegments per chunk rather than per mesh: a few thousand line
+   * objects is a few thousand draw calls, and merging costs nothing here
+   * because the outlines are styled as one anyway.
+   */
+  buildOutlines(onProgress) {
+    if (this.buildingOutlines) return;
+    const meshes = this.wantsOutlines();
+    if (!meshes.length) {
+      this.outlinesBuilt = true;
+      return;
+    }
+    this.buildingOutlines = true;
+    const angle = this.content.creaseAngle ?? 30;
+    const style = edgeStyle(this.mode);
+    let i = 0;
+    const step = () => {
+      const positions = [];
+      const end = Math.min(i + OUTLINE_CHUNK, meshes.length);
+      for (; i < end; i++) {
+        const edges = new THREE4.EdgesGeometry(meshes[i].geometry, angle);
+        const p = edges.getAttribute("position").array;
+        const m = meshes[i].matrix;
+        const v = new THREE4.Vector3();
+        for (let k = 0; k < p.length; k += 3) {
+          v.set(p[k], p[k + 1], p[k + 2]).applyMatrix4(m);
+          positions.push(v.x, v.y, v.z);
+        }
+        edges.dispose();
+      }
+      if (positions.length) {
+        const g = new THREE4.BufferGeometry();
+        g.setAttribute("position", new THREE4.Float32BufferAttribute(positions, 3));
+        this.outlines.add(new THREE4.LineSegments(g, new THREE4.LineBasicMaterial({
+          color: style.colour,
+          opacity: style.opacity,
+          transparent: style.opacity < 1
+        })));
+      }
+      if (i < meshes.length) {
+        onProgress?.(`Drawing edges: ${i} of ${meshes.length} ...`);
+        requestAnimationFrame(step);
+      } else {
+        this.outlinesBuilt = true;
+        this.buildingOutlines = false;
+        this.applyMode(this.mode);
+        onProgress?.(null);
+      }
+    };
+    requestAnimationFrame(step);
+  }
+  // -- the sun --------------------------------------------------------------
+  get shadowsOn() {
+    return this.shadows;
+  }
+  /** Sun shadows on or off. Off by default: they are a presentation choice, and
+   *  in hidden line they are a departure from the drawing convention. */
+  setShadows(on) {
+    this.shadows = on;
+    this.frameSun();
+    this.applyMode(this.mode);
+  }
+  get sunDescription() {
+    return this.sunNote;
+  }
+  /**
+   * Put a real sun in the sky, for a place and an instant.
+   *
+   * Two honest limits, both reported through `sunDescription`: the content's
+   * +Y (or +Z, for Z-up content) is assumed to be north, because a viewport
+   * cannot know a project's true north; and a sun below the horizon falls back
+   * to a generic light rather than showing a black building.
+   */
+  setSun(date, latitude, longitude, place = "") {
+    const sun = SunPosition.compute({ date, latitude, longitude });
+    const when = date.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+    if (!sun.isDaytime) {
+      this.sunDir.set(1, 1.6, 1.1).normalize();
+      this.sunNote = `sun is below the horizon at ${when}, showing a generic light`;
+    } else {
+      this.sunDir.set(sun.direction.x, sun.direction.z, -sun.direction.y).normalize();
+      const alt = Math.round(sun.altitude * 180 / Math.PI);
+      const azi = Math.round(sun.azimuth * 180 / Math.PI);
+      this.sunNote = `${place || `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`}, ${when}: altitude ${alt} degrees, azimuth ${azi} from north. The model's north is taken as its own up-plane +Y.`;
+    }
+    this.frameSun();
+  }
+  /** Sun and ground, framed to whatever is in the scene. Cheap, and only run
+   *  when the contents or the light change. */
+  frameSun() {
+    this.root.updateMatrixWorld(true);
+    const box = new THREE4.Box3().setFromObject(this.meshGroup);
+    if (box.isEmpty()) return;
+    const sphere = box.getBoundingSphere(new THREE4.Sphere());
+    const r = Math.max(sphere.radius, 0.5);
+    this.sun.position.copy(sphere.center).addScaledVector(this.sunDir, r * 3);
+    this.sun.target.position.copy(sphere.center);
+    this.sun.target.updateMatrixWorld();
+    this.sun.shadow.normalBias = r * 2e-3;
+    const cam = this.sun.shadow.camera;
+    cam.left = -r * 1.2;
+    cam.right = r * 1.2;
+    cam.top = r * 1.2;
+    cam.bottom = -r * 1.2;
+    cam.near = r * 0.5;
+    cam.far = r * 6;
+    cam.updateProjectionMatrix();
+    this.ground.position.set(sphere.center.x, box.min.y - r * 1e-3, sphere.center.z);
+    this.ground.scale.set(r * 6, r * 6, 1);
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+  // -- framing --------------------------------------------------------------
+  /** Frame the contents: centre on the bounding box and pull back far enough
+   *  that it fits the tighter of the two field-of-view axes. */
+  fit(margin = 1.25) {
+    this.root.updateMatrixWorld(true);
+    const box = new THREE4.Box3().setFromObject(this.root);
+    if (box.isEmpty()) return;
+    box.getCenter(this.target);
+    const size = box.getSize(new THREE4.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+    this.spherical.radius = fitRadius(radius, this.perspective.fov, this.perspective.aspect, margin);
+    this.resize();
+  }
+  resize() {
+    const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
+    this.renderer.setSize(w, h);
+    const aspect = w / h;
+    this.perspective.aspect = aspect;
+    this.perspective.updateProjectionMatrix();
+    const f2 = orthoFrustum(this.spherical.radius, this.perspective.fov, aspect);
+    this.orthographic.left = f2.left;
+    this.orthographic.right = f2.right;
+    this.orthographic.top = f2.top;
+    this.orthographic.bottom = f2.bottom;
+    this.orthographic.near = 0.01;
+    this.orthographic.far = Math.max(100, this.spherical.radius * 10);
+    this.orthographic.updateProjectionMatrix();
+  }
+  dispose() {
+    cancelAnimationFrame(this.frame);
+    this.clear();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
+    this.renderer.domElement.remove();
+  }
+};
+
 // src/gui/LayerPanel.ts
 function computeEffectiveVisibility(nodes, value) {
   const result = {};
@@ -24632,6 +25102,7 @@ var Sketch2DInstance = class {
   Vec3,
   Vec4,
   VecMath,
+  Viewport,
   VoxelGrid,
   VoxelGrid2D,
   Wall,
@@ -24651,15 +25122,19 @@ var Sketch2DInstance = class {
   createParams,
   createRandom,
   edgeOutwardVisibility,
+  edgeStyle,
   extractVisiblePolylines,
+  fitRadius,
   getTheme,
   hiddenLineIdBuffer,
   holzrahmenbauLayers,
   joistDirectionFromBounds,
   joistDirectionFromPCA,
   joistDirectionFromSupports,
+  lightBalance,
   lineClipPolygon,
   noise,
+  orthoFrustum,
   perpVisibility,
   perpVisibilityOfPolys,
   polygonFromVertices,
@@ -24673,5 +25148,7 @@ var Sketch2DInstance = class {
   setClipSnap,
   sketch,
   sketch2d,
+  standardOrbit,
+  surfaceAppearance,
   writeDxf3D
 });
