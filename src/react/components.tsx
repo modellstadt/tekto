@@ -9,6 +9,7 @@ import React, {
   createContext, useContext, type ReactNode, type CSSProperties,
 } from "react";
 
+import { createPortal } from "react-dom";
 import { Scene, SceneObject } from "../scene/Scene";
 import { ParamStore, ParamSchema, ParamDef, ParamLayout, ParamFolder } from "../gui/Params";
 
@@ -516,7 +517,8 @@ export interface AccordionColumnProps {
    * bringing its own. The built-in styles are structural only: what is left if
    * you pass nothing is a plain, legible column, not a themed one.
    */
-  classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle" | "marker", string>>;
+  classes?: Partial<Record<
+    "header" | "title" | "meta" | "body" | "handle" | "marker" | "info" | "hint", string>>;
 }
 
 /** Smallest a body may be dragged to. Below this a section is worth closing. */
@@ -632,24 +634,39 @@ export function AccordionColumn({
                 })}
                 onDrag={(dy, start) => sash(above.id, s.id, dy, start)} />
             )}
-            <button type="button" onClick={() => toggle(s)} title={s.hint}
+            {/* A div in the role of a button rather than a <button>, because
+                the hint's mark inside it is interactive too and a button may
+                not contain one. Enter and Space toggle, as they would. */}
+            <div role="button" tabIndex={0} aria-expanded={isOpen}
+              onClick={() => toggle(s)}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;   // the mark handles its own
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(s); }
+              }}
               className={classes.header}
-              // Layout only. The button reset (border, background, padding,
-              // font) is applied inline ONLY when the host has passed no class
-              // of its own, because an inline style beats a class: with it
-              // always on, a header class asking for a rule under itself got a
-              // zero-width border, and a hover background never appeared. A
-              // host that styles the header owns its appearance.
+              // Layout only. The reset (background, padding, font) is applied
+              // inline ONLY when the host has passed no class of its own,
+              // because an inline style beats a class: with it always on, a
+              // header class asking for a rule under itself got a zero-width
+              // border, and a hover background never appeared. A host that
+              // styles the header owns its appearance.
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 gap: 8, width: "100%", flexShrink: 0, textAlign: "left", cursor: "pointer",
-                ...(classes.header
-                  ? {}
-                  : { font: "inherit", background: "none", border: 0, padding: "6px 12px" }),
+                userSelect: "none",
+                ...(classes.header ? {} : { font: "inherit", background: "none", padding: "6px 12px" }),
               }}>
               <span className={classes.title}>{s.title}</span>
               <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                {/* what this section is, behind a mark rather than in a
+                    paragraph under the heading: a reader who knows does not
+                    pay for it, and one who does not can ask */}
                 {s.meta !== undefined && <span className={classes.meta}>{s.meta}</span>}
+                {/* beside the chevron rather than beside the summary, so every
+                    mark sits in the same column whatever the summary's length */}
+                {s.hint && (
+                  <InfoHint text={s.hint} className={classes.info} boxClassName={classes.hint} />
+                )}
                 {/* a chevron rather than a triangle glyph, and on the right
                     where a reader scanning the headings finds it in one column
                     rather than beside titles of different lengths */}
@@ -666,7 +683,7 @@ export function AccordionColumn({
                   <path d="M2.5 4.5 6 8l3.5-3.5" />
                 </svg>
               </span>
-            </button>
+            </div>
             {isOpen && (
               <div className={classes.body}
                 ref={(el) => { bodies.current[s.id] = el; }}
@@ -685,6 +702,94 @@ export function AccordionColumn({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A small circled i that explains something on hover or focus.
+ *
+ * For text that is about how the tool works rather than about the building:
+ * the paragraph that used to sit under a heading, read once and then paid for
+ * on every visit after. It is on the accordion headings by way of `hint`, and
+ * exported so a host can put the same mark beside a label of its own.
+ *
+ * Shows on hover and on keyboard focus, and a click pins it until the next
+ * click, so it works with a mouse, a keyboard and a finger. Positioned to the
+ * right-bottom of the mark by default; a host that needs it elsewhere styles
+ * the box.
+ */
+export function InfoHint({ text, className, boxClassName, label = "What this is" }: {
+  text: ReactNode; className?: string; boxClassName?: string; label?: string;
+}) {
+  const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const mark = useRef<HTMLSpanElement | null>(null);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const shown = hover || pinned;
+
+  // Positioned from the mark's place on screen and rendered at the document
+  // root, because anywhere inside the column it would be clipped by the
+  // column's own scrolling and painted under the viewport beside it. Fixed
+  // coordinates and a portal answer to nothing but the window.
+  useEffect(() => {
+    if (!shown || !mark.current) { setAt(null); return; }
+    const place = () => {
+      const r = mark.current!.getBoundingClientRect();
+      const width = 260;
+      setAt({
+        top: r.bottom + 4,
+        left: Math.max(8, Math.min(r.left - width + r.width, window.innerWidth - width - 8)),
+      });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [shown]);
+
+  return (
+    <span ref={mark} style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+      <span role="button" tabIndex={0} aria-label={label} aria-expanded={shown}
+        className={className}
+        onClick={(e) => { e.stopPropagation(); setPinned((v) => !v); }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPinned((v) => !v); }
+          if (e.key === "Escape") setPinned(false);
+        }}
+        onFocus={() => setHover(true)} onBlur={() => { setHover(false); setPinned(false); }}
+        style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 14, height: 14, cursor: "help", lineHeight: 1,
+          ...(className ? {} : { opacity: 0.55 }),
+        }}>
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none"
+          stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+          <circle cx="8" cy="8" r="6.5" />
+          <path d="M8 7v4.2M8 4.9v.2" />
+        </svg>
+      </span>
+      {shown && at && typeof document !== "undefined" && createPortal(
+        <span role="tooltip" className={boxClassName}
+          onClick={(e) => e.stopPropagation()}
+          onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+          style={{
+            position: "fixed", top: at.top, left: at.left, zIndex: 1000,
+            width: 260, cursor: "auto", userSelect: "text",
+            ...(boxClassName ? {} : {
+              padding: "8px 10px", background: "#fff", border: "1px solid #999",
+              fontSize: 12, lineHeight: 1.4, color: "#222", boxShadow: "0 2px 8px rgba(0,0,0,.12)",
+            }),
+          }}>
+          {text}
+        </span>,
+        document.body,
+      )}
+    </span>
   );
 }
 

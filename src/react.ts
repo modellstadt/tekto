@@ -5,7 +5,7 @@
 // "tekto/react" — that subpath requires react + react-dom as peer deps.
 export {
   TektoApp, useScene, useSceneObjects, useSelection, useParams,
-  ParamPanel, InspectorPanel, Toolbar, AccordionColumn,
+  ParamPanel, InspectorPanel, Toolbar, AccordionColumn, InfoHint,
 } from "./react/components";
 export type {
   ToolbarAction, AccordionSection, AccordionColumnProps,

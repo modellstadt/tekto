@@ -98,7 +98,7 @@ interface AccordionColumnProps {
      * bringing its own. The built-in styles are structural only: what is left if
      * you pass nothing is a plain, legible column, not a themed one.
      */
-    classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle" | "marker", string>>;
+    classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle" | "marker" | "info" | "hint", string>>;
 }
 /**
  * A column of collapsible sections, one of which may take the leftover height.
@@ -122,5 +122,24 @@ interface AccordionColumnProps {
  * boundary stay where it was put.
  */
 declare function AccordionColumn({ sections, storageKey, className, style, classes, }: AccordionColumnProps): React.JSX.Element;
+/**
+ * A small circled i that explains something on hover or focus.
+ *
+ * For text that is about how the tool works rather than about the building:
+ * the paragraph that used to sit under a heading, read once and then paid for
+ * on every visit after. It is on the accordion headings by way of `hint`, and
+ * exported so a host can put the same mark beside a label of its own.
+ *
+ * Shows on hover and on keyboard focus, and a click pins it until the next
+ * click, so it works with a mouse, a keyboard and a finger. Positioned to the
+ * right-bottom of the mark by default; a host that needs it elsewhere styles
+ * the box.
+ */
+declare function InfoHint({ text, className, boxClassName, label }: {
+    text: ReactNode;
+    className?: string;
+    boxClassName?: string;
+    label?: string;
+}): React.JSX.Element;
 
-export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, useParams, useScene, useSceneObjects, useSelection };
+export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, useParams, useScene, useSceneObjects, useSelection };

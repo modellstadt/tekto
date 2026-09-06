@@ -31,6 +31,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var react_exports = {};
 __export(react_exports, {
   AccordionColumn: () => AccordionColumn,
+  InfoHint: () => InfoHint,
   InspectorPanel: () => InspectorPanel,
   ParamPanel: () => ParamPanel,
   TektoApp: () => TektoApp,
@@ -44,6 +45,7 @@ module.exports = __toCommonJS(react_exports);
 
 // src/react/components.tsx
 var import_react = __toESM(require("react"));
+var import_react_dom = require("react-dom");
 
 // src/core/math/HMath.ts
 var HMath = {
@@ -1626,11 +1628,19 @@ function AccordionColumn({
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "button",
+            "div",
             {
-              type: "button",
+              role: "button",
+              tabIndex: 0,
+              "aria-expanded": isOpen,
               onClick: () => toggle(s),
-              title: s.hint,
+              onKeyDown: (e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggle(s);
+                }
+              },
               className: classes.header,
               style: {
                 display: "flex",
@@ -1641,12 +1651,14 @@ function AccordionColumn({
                 flexShrink: 0,
                 textAlign: "left",
                 cursor: "pointer",
-                ...classes.header ? {} : { font: "inherit", background: "none", border: 0, padding: "6px 12px" }
+                userSelect: "none",
+                ...classes.header ? {} : { font: "inherit", background: "none", padding: "6px 12px" }
               },
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: classes.title, children: s.title }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 }, children: [
                   s.meta !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: classes.meta, children: s.meta }),
+                  s.hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoHint, { text: s.hint, className: classes.info, boxClassName: classes.hint }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "svg",
                     {
@@ -1688,6 +1700,131 @@ function AccordionColumn({
     }
   );
 }
+function InfoHint({ text, className, boxClassName, label = "What this is" }) {
+  const [hover, setHover] = (0, import_react.useState)(false);
+  const [pinned, setPinned] = (0, import_react.useState)(false);
+  const mark = (0, import_react.useRef)(null);
+  const [at, setAt] = (0, import_react.useState)(null);
+  const shown = hover || pinned;
+  (0, import_react.useEffect)(() => {
+    if (!shown || !mark.current) {
+      setAt(null);
+      return;
+    }
+    const place = () => {
+      const r = mark.current.getBoundingClientRect();
+      const width = 260;
+      setAt({
+        top: r.bottom + 4,
+        left: Math.max(8, Math.min(r.left - width + r.width, window.innerWidth - width - 8))
+      });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [shown]);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    "span",
+    {
+      ref: mark,
+      style: { position: "relative", display: "inline-flex", flexShrink: 0 },
+      onMouseEnter: () => setHover(true),
+      onMouseLeave: () => setHover(false),
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "span",
+          {
+            role: "button",
+            tabIndex: 0,
+            "aria-label": label,
+            "aria-expanded": shown,
+            className,
+            onClick: (e) => {
+              e.stopPropagation();
+              setPinned((v) => !v);
+            },
+            onKeyDown: (e) => {
+              e.stopPropagation();
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setPinned((v) => !v);
+              }
+              if (e.key === "Escape") setPinned(false);
+            },
+            onFocus: () => setHover(true),
+            onBlur: () => {
+              setHover(false);
+              setPinned(false);
+            },
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 14,
+              height: 14,
+              cursor: "help",
+              lineHeight: 1,
+              ...className ? {} : { opacity: 0.55 }
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "svg",
+              {
+                width: "14",
+                height: "14",
+                viewBox: "0 0 16 16",
+                "aria-hidden": "true",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "1.4",
+                strokeLinecap: "round",
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "8", cy: "8", r: "6.5" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M8 7v4.2M8 4.9v.2" })
+                ]
+              }
+            )
+          }
+        ),
+        shown && at && typeof document !== "undefined" && (0, import_react_dom.createPortal)(
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "span",
+            {
+              role: "tooltip",
+              className: boxClassName,
+              onClick: (e) => e.stopPropagation(),
+              onMouseEnter: () => setHover(true),
+              onMouseLeave: () => setHover(false),
+              style: {
+                position: "fixed",
+                top: at.top,
+                left: at.left,
+                zIndex: 1e3,
+                width: 260,
+                cursor: "auto",
+                userSelect: "text",
+                ...boxClassName ? {} : {
+                  padding: "8px 10px",
+                  background: "#fff",
+                  border: "1px solid #999",
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                  color: "#222",
+                  boxShadow: "0 2px 8px rgba(0,0,0,.12)"
+                }
+              },
+              children: text
+            }
+          ),
+          document.body
+        )
+      ]
+    }
+  );
+}
 function AccordionHandle({ onStart, onDrag, className }) {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
     "div",
@@ -1721,6 +1858,7 @@ function AccordionHandle({ onStart, onDrag, className }) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   AccordionColumn,
+  InfoHint,
   InspectorPanel,
   ParamPanel,
   TektoApp,
