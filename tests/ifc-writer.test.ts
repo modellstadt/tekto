@@ -6,7 +6,7 @@ import { Slab, SlabType, SolidSlabConstruction } from "../src/bim/slabs";
 import { OpeningType } from "../src/bim/openings";
 import { Space, boundingWalls } from "../src/bim/spaces";
 import { Stair, StairType } from "../src/bim/stairs";
-import { IfcWriter } from "../src/io/IfcWriter";
+import { IfcWriter, standardPropertyName } from "../src/io/IfcWriter";
 
 /**
  * `IfcWriter` is a STEP-21 text generator. We can't easily round-trip
@@ -235,5 +235,40 @@ describe("IfcWriter — multi-storey", () => {
     const type = makeWallType();
     const wall = new Wall({ centerline:[new Vec2(0,0), new Vec2(5,0)], thickness:0.2, height:2.5, name:"S", type });
     expect(() => w.addWall(wall, { storey: 99999 })).toThrowError(/unknown storey ref/i);
+  });
+});
+
+describe("standard property sets carry standard property names", () => {
+  it("spells the IFC name inside a Pset_, and leaves a custom set alone", () => {
+    // Pset_WallCommon is not a free-form bag. Every consumer asks for
+    // IsExternal; a file that declares the standard set and fills it with the
+    // javascript spelling has properties that are invisible to everything
+    // except the writer that produced them.
+    expect(standardPropertyName("Pset_WallCommon", "isExternal")).toBe("IsExternal");
+    expect(standardPropertyName("Pset_WallCommon", "loadBearing")).toBe("LoadBearing");
+    expect(standardPropertyName("Pset_SlabCommon", "fireRating")).toBe("FireRating");
+    // already correct, and unknown names, both pass through untouched
+    expect(standardPropertyName("Pset_WallCommon", "IsExternal")).toBe("IsExternal");
+    expect(standardPropertyName("Pset_WallCommon", "somethingOurOwn")).toBe("somethingOurOwn");
+    // a custom set is the caller's vocabulary, not IFC's
+    expect(standardPropertyName("Tekto_Joint", "isExternal")).toBe("isExternal");
+  });
+
+  it("writes IsExternal into an exported wall", () => {
+    const type = new WallType({
+      name: "Test wall", construction: SolidConstruction,
+      properties: { loadBearing: true, isExternal: true },
+    });
+    const wall = new Wall({
+      centerline: [new Vec2(0, 0), new Vec2(4, 0)],
+      thickness: 0.3, height: 2.8, name: "South", type,
+    });
+    const writer = new IfcWriter({ projectName: "P", buildingName: "B" });
+    writer.addWallSystem(new WallSystem([wall]), { storey: writer.getDefaultStorey() });
+    const ifc = writer.save();
+    expect(ifc).toContain("'IsExternal'");
+    expect(ifc).toContain("'LoadBearing'");
+    // and not the spelling that nothing reads
+    expect(ifc).not.toContain("'isExternal'");
   });
 });

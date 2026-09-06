@@ -15214,7 +15214,7 @@ var IfcWriter = class {
   writePsetEntity(name, props) {
     const propRefs = [];
     for (const [key, value] of Object.entries(props)) {
-      propRefs.push(this.writeSingleValue(key, value));
+      propRefs.push(this.writeSingleValue(standardPropertyName(name, key), value));
     }
     if (propRefs.length === 0) return null;
     return this.addEntity(
@@ -15325,6 +15325,24 @@ function ifcReal(n) {
 }
 function round3(n) {
   return Math.round(n * 1e3) / 1e3;
+}
+var IFC_PROPERTY_NAMES = {
+  isexternal: "IsExternal",
+  loadbearing: "LoadBearing",
+  firerating: "FireRating",
+  acousticrating: "AcousticRating",
+  thermaltransmittance: "ThermalTransmittance",
+  compartmentation: "Compartmentation",
+  extendtostructure: "ExtendToStructure",
+  ispermeable: "IsPermeable",
+  surfacespreadofflame: "SurfaceSpreadOfFlame",
+  combustible: "Combustible",
+  reference: "Reference",
+  status: "Status"
+};
+function standardPropertyName(psetName, key) {
+  if (!psetName.startsWith("Pset_")) return key;
+  return IFC_PROPERTY_NAMES[key.toLowerCase()] ?? key;
 }
 function isExternalWall(wall) {
   return wall.properties?.isExternal === true || wall.type?.properties?.isExternal === true;

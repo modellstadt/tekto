@@ -1047,7 +1047,7 @@ export class IfcWriter {
   private writePsetEntity(name: string, props: PropertyMap): number | null {
     const propRefs: number[] = [];
     for (const [key, value] of Object.entries(props)) {
-      propRefs.push(this.writeSingleValue(key, value));
+      propRefs.push(this.writeSingleValue(standardPropertyName(name, key), value));
     }
     if (propRefs.length === 0) return null;
     return this.addEntity(
@@ -1172,6 +1172,41 @@ function ifcReal(n: number): string {
 
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+/**
+ * The IFC name for a property inside a standard property set.
+ *
+ * A `Pset_WallCommon` is not a free-form bag: it is a standard set with
+ * standard property names, and every tool that reads one asks for `IsExternal`
+ * and `LoadBearing`. Writing the javascript spellings into it produced a file
+ * that declares the standard set and fills it with names nothing else looks
+ * for, so the properties were invisible to every consumer while looking
+ * present to us. Found by classifying our own export against eBKP-H: it scored
+ * worse than the third-party sample files, because eBKP-H splits external from
+ * internal and our walls never said which they were.
+ *
+ * Only inside a `Pset_` set, and only for names that have an IFC spelling.
+ * A custom set keeps whatever the caller wrote.
+ */
+const IFC_PROPERTY_NAMES: Record<string, string> = {
+  isexternal: "IsExternal",
+  loadbearing: "LoadBearing",
+  firerating: "FireRating",
+  acousticrating: "AcousticRating",
+  thermaltransmittance: "ThermalTransmittance",
+  compartmentation: "Compartmentation",
+  extendtostructure: "ExtendToStructure",
+  ispermeable: "IsPermeable",
+  surfacespreadofflame: "SurfaceSpreadOfFlame",
+  combustible: "Combustible",
+  reference: "Reference",
+  status: "Status",
+};
+
+export function standardPropertyName(psetName: string, key: string): string {
+  if (!psetName.startsWith("Pset_")) return key;
+  return IFC_PROPERTY_NAMES[key.toLowerCase()] ?? key;
 }
 
 /** Read the `isExternal` flag from a wall's instance or type property set. */
