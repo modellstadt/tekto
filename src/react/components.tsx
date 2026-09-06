@@ -577,10 +577,10 @@ export function AccordionColumn({
   }, []);
 
   const drag = useCallback((id: string, dy: number) => {
-    // the handle sits above the body, so dragging it up grows the body down
+    // the handle sits under the body, so dragging it down grows the body
     setState((v) => ({
       ...v,
-      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) - dy)),
+      [id]: Math.max(ACCORDION_MIN, Math.min(ACCORDION_MAX, (v[id] || 0) + dy)),
     }));
   }, []);
 
@@ -593,9 +593,6 @@ export function AccordionColumn({
         const open = (state[s.id] ?? 0) > 0;
         return (
           <React.Fragment key={s.id}>
-            {open && !s.fill && s.defaultHeight !== undefined && (
-              <AccordionHandle className={classes.handle} onDrag={(dy) => drag(s.id, dy)} />
-            )}
             <button type="button" onClick={() => toggle(s)} title={s.hint}
               className={classes.header}
               style={{
@@ -634,6 +631,12 @@ export function AccordionColumn({
                 {s.children}
               </div>
             )}
+            {/* on the rule under the body rather than beside it: the boundary
+                a reader would grab is the line they can already see, and a
+                second grey strip next to it says the same thing twice */}
+            {open && !s.fill && s.defaultHeight !== undefined && (
+              <AccordionHandle className={classes.handle} onDrag={(dy) => drag(s.id, dy)} />
+            )}
           </React.Fragment>
         );
       })}
@@ -641,7 +644,14 @@ export function AccordionColumn({
   );
 }
 
-/** The grab strip between a section and the one above it. */
+/**
+ * The grab strip on a section's lower boundary.
+ *
+ * It takes no height: negative margins pull it back over the rule the body
+ * already draws, so what a reader grabs is that line and the layout does not
+ * shift by the width of an affordance. Transparent by default, because the
+ * line is the affordance.
+ */
 function AccordionHandle({ onDrag, className }: {
   onDrag: (dy: number) => void; className?: string;
 }) {
@@ -661,8 +671,9 @@ function AccordionHandle({ onDrag, className }: {
         window.addEventListener("pointerup", up);
       }}
       style={{
-        flexShrink: 0, height: 5, cursor: "row-resize", touchAction: "none",
-        ...(className ? {} : { background: "rgba(127,127,127,0.15)" }),
+        position: "relative", zIndex: 1, flexShrink: 0,
+        height: 7, marginTop: -4, marginBottom: -3,
+        cursor: "row-resize", touchAction: "none",
       }}
     />
   );
