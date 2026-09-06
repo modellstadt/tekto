@@ -59,6 +59,13 @@ export interface Appearance {
 export interface ViewportOptions {
   background?: number;
   /**
+   * Whether the content stands on a visible ground. True by default, because a
+   * building floating in a void reads as floating. Turn it off for a viewport
+   * showing one component rather than a building: a product on a thumbnail is
+   * not standing anywhere, and the horizon behind it is noise.
+   */
+  ground?: boolean;
+  /**
    * Up axis of the meshes handed over. Tekto and IFC are both Z-up, but
    * web-ifc returns geometry already turned to three.js Y-up, so an app can
    * have both in play. Getting this wrong lays a storey-height wall on the floor.
@@ -104,18 +111,59 @@ const FALLBACK_SURFACE = 0xd9dde3;
 // a viewport draws by can be tested without one.
 // ---------------------------------------------------------------------------
 
+/** The page shaded and hidden-line are drawn on, when the host names none. */
+export const DEFAULT_BACKGROUND = 0xf5f7fa;
+
 /** Crease colour and weight for a mode. Hidden line draws them at full strength
  *  because in that mode the lines are the drawing. */
 export function edgeStyle(mode: ViewMode): { colour: number; opacity: number } {
   if (mode === "hidden-line") return { colour: 0x1b2733, opacity: 1 };
-  return { colour: 0x5a646e, opacity: mode === "ghost" ? 0.25 : 0.55 };
+  // Ghost draws on a dark ground, so its creases are light and nearly solid.
+  // They used to be dark grey at a quarter opacity on an almost white page,
+  // which is the faintest thing a screen can show: the mode that exists to
+  // reveal what is inside was the hardest one to see anything in.
+  if (mode === "ghost") return { colour: 0xe8eef6, opacity: 0.75 };
+  return { colour: 0x5a646e, opacity: 0.55 };
+}
+
+/**
+ * The page a mode is drawn on.
+ *
+ * Ghost inverts: pale edges over a dark ground read where dark edges over a
+ * pale one wash out, and a translucent surface adds light instead of
+ * subtracting it, so the parts stack up legibly instead of greying together.
+ * The other two keep the host's own background.
+ */
+export function modeBackground(mode: ViewMode, base: number): number {
+  return mode === "ghost" ? 0x1b2129 : base;
+}
+
+/**
+ * The visible plane the content stands on.
+ *
+ * Independent of whether the sun is casting: a building floating in a void
+ * with a smudge under it reads as floating, and the smudge alone was doing all
+ * the work of saying which way is down. Hidden in hidden line, where a grey
+ * plate is not what a drawing is. The tone is a step off the background rather
+ * than a colour of its own, so it reads as ground and not as a surface
+ * somebody modelled.
+ */
+export function groundAppearance(mode: ViewMode): {
+  visible: boolean; colour: number; opacity: number;
+} {
+  if (mode === "hidden-line") return { visible: false, colour: 0xffffff, opacity: 0 };
+  if (mode === "ghost") return { visible: true, colour: 0x252d38, opacity: 1 };
+  return { visible: true, colour: 0xe7ebf1, opacity: 1 };
 }
 
 /** How a mode paints a surface whose own colour is `base`. */
 export function surfaceAppearance(mode: ViewMode, base: number): Appearance {
   if (mode === "ghost") {
-    // depthWrite off, so a part behind still reads through
-    return { colour: 0xbfc8d2, opacity: 0.14, depthWrite: false, polygonOffset: false };
+    // Its own colour, not a uniform grey. Ghost used to flatten everything to
+    // one pale slate, which meant the one mode you would use to find a part
+    // inside the whole was also the one mode that threw away which product it
+    // had been assigned. depthWrite off, so a part behind still reads through.
+    return { colour: base, opacity: 0.11, depthWrite: false, polygonOffset: false };
   }
   if (mode === "hidden-line") {
     // the white surfaces are pushed back a hair so the creases sit cleanly on top
@@ -215,6 +263,13 @@ export class Viewport {
   /** Catches the cast shadow and is otherwise invisible: ShadowMaterial draws
    *  nothing where nothing falls on it, so no ground slab appears. */
   private ground: THREE.Mesh;
+  /**
+   * A visible plane under the shadow catcher, so the building stands on
+   * something rather than floating in a void with a smudge beneath it. Sized
+   * and placed with the shadow catcher; hidden in hidden line, where a grey
+   * plate is not what a drawing is.
+   */
+  private groundPlane: THREE.Mesh;
   private shadows = false;
   /** Where the light comes from, in three.js Y-up. Replaced by a real solar
    *  position through setSun; this is the fallback for a sun below the horizon,
@@ -229,7 +284,7 @@ export class Viewport {
   constructor(private host: HTMLElement, private opts: ViewportOptions = {}) {
     const home = standardOrbit(opts.view ?? "iso");
     this.spherical = new THREE.Spherical(30, home.phi, home.theta);
-    this.scene.background = new THREE.Color(opts.background ?? 0xf5f7fa);
+    this.scene.background = new THREE.Color(opts.background ?? DEFAULT_BACKGROUND);
     this.perspective = new THREE.PerspectiveCamera(45, 1, 0.05, 5000);
     this.orthographic = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 5000);
 
@@ -264,9 +319,20 @@ export class Viewport {
     this.ground.receiveShadow = true;
     this.ground.visible = false;
 
+    this.groundPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      // unlit, so the plane stays an even tone whatever the sun is doing and
+      // never competes with the building for attention
+      new THREE.MeshBasicMaterial({ transparent: true }),
+    );
+    this.groundPlane.rotation.x = -Math.PI / 2;
+    this.groundPlane.visible = false;
+    this.groundPlane.renderOrder = -1;
+
     this.setUp(opts.up ?? "y");
     this.root.add(this.meshGroup, this.outlines);
-    this.scene.add(this.sky, this.sun, this.sun.target, this.ground, this.root);
+    this.scene.add(this.sky, this.sun, this.sun.target, this.ground,
+                   this.groundPlane, this.root);
     this.bind();
     this.resize();
     this.tick();
@@ -433,9 +499,16 @@ export class Viewport {
     // hidden line is a drawing, not a photograph: a lit standard material
     // shades a face-on surface grey, which reads as a fill nobody asked for.
     // Emitting its own colour flattens it without the app having to hand over
-    // a different material for one mode.
+    // a different material for one mode. Ghost does the same for a different
+    // reason: on a dark ground the unlit side of a translucent surface falls
+    // to black, and a part is then legible from one direction only.
     if (material.emissive) {
-      material.emissive.setHex(this.mode === "hidden-line" ? look.colour : 0x000000);
+      const flat = this.mode === "hidden-line" || this.mode === "ghost";
+      material.emissive.setHex(flat ? look.colour : 0x000000);
+      // ghost emits at less than full strength: a framed wall is dozens of
+      // overlapping studs, and at full emission they accumulate until the
+      // thing you were trying to see through is opaque again
+      material.emissiveIntensity = this.mode === "ghost" ? 0.8 : 1;
     }
     material.opacity = look.opacity;
     material.transparent = look.opacity < 1;
@@ -450,7 +523,16 @@ export class Viewport {
 
   private applyMode(mode: ViewMode) {
     this.mode = mode;
+    (this.scene.background as THREE.Color).setHex(
+      modeBackground(mode, this.opts.background ?? DEFAULT_BACKGROUND));
     const balance = lightBalance(mode, this.shadows);
+    const floor = groundAppearance(mode);
+    this.groundPlane.visible = floor.visible && (this.opts.ground ?? true);
+    const gm = this.groundPlane.material as THREE.MeshBasicMaterial;
+    gm.color.setHex(floor.colour);
+    gm.opacity = floor.opacity;
+    gm.transparent = floor.opacity < 1;
+    gm.needsUpdate = true;
     this.sun.castShadow = balance.shadowed;
     this.ground.visible = balance.shadowed;
     this.sun.intensity = balance.sun;
@@ -579,6 +661,12 @@ export class Viewport {
     // just under the lowest thing in the content, so the contact reads
     this.ground.position.set(sphere.center.x, box.min.y - r * 0.001, sphere.center.z);
     this.ground.scale.set(r * 6, r * 6, 1);
+    // A hair lower again, so it never fights the shadow catcher for the same
+    // depth, and a little wider than it, so every shadow lands on it. Finite
+    // on purpose: stretched to the horizon it stops reading as ground and
+    // becomes a change of background colour, which anchors nothing.
+    this.groundPlane.position.set(sphere.center.x, box.min.y - r * 0.004, sphere.center.z);
+    this.groundPlane.scale.set(r * 7, r * 7, 1);
     this.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -633,6 +721,10 @@ export class Viewport {
   dispose() {
     cancelAnimationFrame(this.frame);
     this.clear();
+    for (const plane of [this.ground, this.groundPlane]) {
+      plane.geometry.dispose();
+      (plane.material as THREE.Material).dispose();
+    }
     this.renderer.dispose();
     // dispose() frees the renderer's resources but leaves the WebGL context
     // itself alive, and a browser allows only a handful of them.

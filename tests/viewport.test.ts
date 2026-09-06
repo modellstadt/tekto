@@ -9,13 +9,24 @@
 import { describe, it, expect } from "vitest";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
+  modeBackground, groundAppearance, DEFAULT_BACKGROUND,
 } from "../src/render/Viewport";
 
+/** Rough perceptual brightness of a packed hex colour, 0 to 255. */
+function luminance(hex: number): number {
+  const [r, g, b] = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 describe("view modes", () => {
-  it("keeps the base colour in shaded mode and drops it in the others", () => {
+  it("keeps the base colour wherever the colour still means something", () => {
     expect(surfaceAppearance("shaded", 0xc0ffee).colour).toBe(0xc0ffee);
+    // hidden line is a drawing: every surface is white paper by definition
     expect(surfaceAppearance("hidden-line", 0xc0ffee).colour).toBe(0xffffff);
-    expect(surfaceAppearance("ghost", 0xc0ffee).colour).not.toBe(0xc0ffee);
+    // ghost keeps it. Flattening every part to one grey threw away the thing
+    // an app colours by, so the mode you would use to find a part inside the
+    // whole was the one mode that could not show which product it carries.
+    expect(surfaceAppearance("ghost", 0xc0ffee).colour).toBe(0xc0ffee);
   });
 
   it("lets a part behind read through a ghost", () => {
@@ -31,10 +42,35 @@ describe("view modes", () => {
     expect(surfaceAppearance("shaded", 0).polygonOffset).toBe(false);
   });
 
-  it("draws creases hardest in hidden line and softest in ghost", () => {
+  it("draws creases hardest in hidden line", () => {
     expect(edgeStyle("hidden-line").opacity).toBe(1);
-    expect(edgeStyle("ghost").opacity).toBeLessThan(edgeStyle("shaded").opacity);
     expect(edgeStyle("hidden-line").colour).not.toBe(edgeStyle("shaded").colour);
+  });
+
+  it("inverts ghost, rather than fading it until nothing reads", () => {
+    // Ghost used to be dark creases at a quarter opacity on a near-white page,
+    // which is the faintest thing a screen can draw. It is now light creases
+    // on a dark ground: the same information, at a contrast you can see.
+    const ghost = edgeStyle("ghost");
+    expect(modeBackground("ghost", DEFAULT_BACKGROUND)).not.toBe(DEFAULT_BACKGROUND);
+    expect(luminance(ghost.colour)).toBeGreaterThan(luminance(modeBackground("ghost", DEFAULT_BACKGROUND)));
+    expect(ghost.opacity).toBeGreaterThan(edgeStyle("shaded").opacity);
+    // and the other modes keep whatever page the host asked for
+    expect(modeBackground("shaded", 0x123456)).toBe(0x123456);
+    expect(modeBackground("hidden-line", 0x123456)).toBe(0x123456);
+  });
+
+  it("stands the content on a ground everywhere but the drawing", () => {
+    expect(groundAppearance("shaded").visible).toBe(true);
+    expect(groundAppearance("ghost").visible).toBe(true);
+    expect(groundAppearance("hidden-line").visible).toBe(false);
+    // a step off the page it sits on, never a colour competing with the model
+    for (const mode of ["shaded", "ghost"] as const) {
+      const page = modeBackground(mode, DEFAULT_BACKGROUND);
+      expect(groundAppearance(mode).colour).not.toBe(page);
+      expect(Math.abs(luminance(groundAppearance(mode).colour) - luminance(page)))
+        .toBeLessThan(40);
+    }
   });
 });
 

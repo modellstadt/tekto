@@ -20111,13 +20111,23 @@ import * as THREE4 from "three";
 var OUTLINE_LIMIT = 1500;
 var OUTLINE_CHUNK = 250;
 var FALLBACK_SURFACE = 14278115;
+var DEFAULT_BACKGROUND = 16119802;
 function edgeStyle(mode) {
   if (mode === "hidden-line") return { colour: 1779507, opacity: 1 };
-  return { colour: 5923950, opacity: mode === "ghost" ? 0.25 : 0.55 };
+  if (mode === "ghost") return { colour: 15265526, opacity: 0.75 };
+  return { colour: 5923950, opacity: 0.55 };
+}
+function modeBackground(mode, base) {
+  return mode === "ghost" ? 1777961 : base;
+}
+function groundAppearance(mode) {
+  if (mode === "hidden-line") return { visible: false, colour: 16777215, opacity: 0 };
+  if (mode === "ghost") return { visible: true, colour: 2436408, opacity: 1 };
+  return { visible: true, colour: 15199217, opacity: 1 };
 }
 function surfaceAppearance(mode, base) {
   if (mode === "ghost") {
-    return { colour: 12568786, opacity: 0.14, depthWrite: false, polygonOffset: false };
+    return { colour: base, opacity: 0.11, depthWrite: false, polygonOffset: false };
   }
   if (mode === "hidden-line") {
     return { colour: 16777215, opacity: 1, depthWrite: true, polygonOffset: true };
@@ -20207,7 +20217,7 @@ var Viewport = class {
     };
     const home = standardOrbit(opts.view ?? "iso");
     this.spherical = new THREE4.Spherical(30, home.phi, home.theta);
-    this.scene.background = new THREE4.Color(opts.background ?? 16119802);
+    this.scene.background = new THREE4.Color(opts.background ?? DEFAULT_BACKGROUND);
     this.perspective = new THREE4.PerspectiveCamera(45, 1, 0.05, 5e3);
     this.orthographic = new THREE4.OrthographicCamera(-1, 1, 1, -1, 0.01, 5e3);
     this.renderer = new THREE4.WebGLRenderer({ antialias: true });
@@ -20233,9 +20243,25 @@ var Viewport = class {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.receiveShadow = true;
     this.ground.visible = false;
+    this.groundPlane = new THREE4.Mesh(
+      new THREE4.PlaneGeometry(1, 1),
+      // unlit, so the plane stays an even tone whatever the sun is doing and
+      // never competes with the building for attention
+      new THREE4.MeshBasicMaterial({ transparent: true })
+    );
+    this.groundPlane.rotation.x = -Math.PI / 2;
+    this.groundPlane.visible = false;
+    this.groundPlane.renderOrder = -1;
     this.setUp(opts.up ?? "y");
     this.root.add(this.meshGroup, this.outlines);
-    this.scene.add(this.sky, this.sun, this.sun.target, this.ground, this.root);
+    this.scene.add(
+      this.sky,
+      this.sun,
+      this.sun.target,
+      this.ground,
+      this.groundPlane,
+      this.root
+    );
     this.bind();
     this.resize();
     this.tick();
@@ -20388,7 +20414,9 @@ var Viewport = class {
     };
     material.color.setHex(look.colour);
     if (material.emissive) {
-      material.emissive.setHex(this.mode === "hidden-line" ? look.colour : 0);
+      const flat = this.mode === "hidden-line" || this.mode === "ghost";
+      material.emissive.setHex(flat ? look.colour : 0);
+      material.emissiveIntensity = this.mode === "ghost" ? 0.8 : 1;
     }
     material.opacity = look.opacity;
     material.transparent = look.opacity < 1;
@@ -20402,7 +20430,17 @@ var Viewport = class {
   }
   applyMode(mode) {
     this.mode = mode;
+    this.scene.background.setHex(
+      modeBackground(mode, this.opts.background ?? DEFAULT_BACKGROUND)
+    );
     const balance = lightBalance(mode, this.shadows);
+    const floor = groundAppearance(mode);
+    this.groundPlane.visible = floor.visible && (this.opts.ground ?? true);
+    const gm = this.groundPlane.material;
+    gm.color.setHex(floor.colour);
+    gm.opacity = floor.opacity;
+    gm.transparent = floor.opacity < 1;
+    gm.needsUpdate = true;
     this.sun.castShadow = balance.shadowed;
     this.ground.visible = balance.shadowed;
     this.sun.intensity = balance.sun;
@@ -20530,6 +20568,8 @@ var Viewport = class {
     cam.updateProjectionMatrix();
     this.ground.position.set(sphere.center.x, box.min.y - r * 1e-3, sphere.center.z);
     this.ground.scale.set(r * 6, r * 6, 1);
+    this.groundPlane.position.set(sphere.center.x, box.min.y - r * 4e-3, sphere.center.z);
+    this.groundPlane.scale.set(r * 7, r * 7, 1);
     this.renderer.shadowMap.needsUpdate = true;
   }
   // -- framing --------------------------------------------------------------
@@ -20563,6 +20603,10 @@ var Viewport = class {
   dispose() {
     cancelAnimationFrame(this.frame);
     this.clear();
+    for (const plane of [this.ground, this.groundPlane]) {
+      plane.geometry.dispose();
+      plane.material.dispose();
+    }
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
@@ -22993,6 +23037,7 @@ export {
   CubicBezierCurve,
   Curvature,
   CurveUtils,
+  DEFAULT_BACKGROUND,
   Delaunay2D,
   DistanceTransform,
   DxfExporter,
@@ -23131,6 +23176,7 @@ export {
   extractVisiblePolylines,
   fitRadius,
   getTheme,
+  groundAppearance,
   hiddenLineIdBuffer,
   holzrahmenbauLayers,
   joistDirectionFromBounds,
@@ -23138,6 +23184,7 @@ export {
   joistDirectionFromSupports,
   lightBalance,
   lineClipPolygon,
+  modeBackground,
   noise,
   orthoFrustum,
   perpVisibility,

@@ -196,7 +196,8 @@ export type { SVGRendererConfig } from "./render/SVGRenderer";
 // A viewport for meshes an app built itself, as opposed to a Scene the library
 // owns: view modes, progressive creases, a real sun, camera projections.
 export {
-  Viewport, edgeStyle, surfaceAppearance, lightBalance,
+  Viewport, edgeStyle, surfaceAppearance, lightBalance, modeBackground,
+  groundAppearance, DEFAULT_BACKGROUND,
   standardOrbit, fitRadius, orthoFrustum,
 } from "./render/Viewport";
 export type {
