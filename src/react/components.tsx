@@ -520,7 +520,7 @@ export interface AccordionColumnProps {
    * bringing its own. The built-in styles are structural only: what is left if
    * you pass nothing is a plain, legible column, not a themed one.
    */
-  classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle", string>>;
+  classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle" | "marker", string>>;
 }
 
 const ACCORDION_MIN = 40;
@@ -604,13 +604,23 @@ export function AccordionColumn({
                 font: "inherit", background: "none", border: 0, cursor: "pointer",
                 ...(classes.header ? {} : { padding: "6px 12px" }),
               }}>
-              <span className={classes.title}>
-                <span aria-hidden="true" style={{ opacity: 0.5, marginRight: 6 }}>
-                  {open ? "\u25be" : "\u25b8"}
-                </span>
-                {s.title}
+              <span className={classes.title}>{s.title}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                {s.meta !== undefined && <span className={classes.meta}>{s.meta}</span>}
+                {/* a chevron rather than a triangle glyph, and on the right
+                    where a reader scanning the headings finds it in one column
+                    rather than beside titles of different lengths */}
+                <svg className={classes.marker} width="11" height="11" viewBox="0 0 12 12"
+                  aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinecap="round" strokeLinejoin="round"
+                  style={{
+                    flexShrink: 0, opacity: 0.55,
+                    transform: open ? "rotate(180deg)" : "none",
+                    transition: "transform 0.15s",
+                  }}>
+                  <path d="M2.5 4.5 6 8l3.5-3.5" />
+                </svg>
               </span>
-              {s.meta !== undefined && <span className={classes.meta}>{s.meta}</span>}
             </button>
             {open && (
               <div className={classes.body}

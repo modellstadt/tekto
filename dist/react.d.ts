@@ -102,7 +102,7 @@ interface AccordionColumnProps {
      * bringing its own. The built-in styles are structural only: what is left if
      * you pass nothing is a plain, legible column, not a themed one.
      */
-    classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle", string>>;
+    classes?: Partial<Record<"header" | "title" | "meta" | "body" | "handle" | "marker", string>>;
 }
 /**
  * A column of collapsible sections, one of which may take the leftover height.

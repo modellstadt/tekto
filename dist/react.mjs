@@ -467,11 +467,32 @@ function AccordionColumn({
                 ...classes.header ? {} : { padding: "6px 12px" }
               },
               children: [
-                /* @__PURE__ */ jsxs("span", { className: classes.title, children: [
-                  /* @__PURE__ */ jsx("span", { "aria-hidden": "true", style: { opacity: 0.5, marginRight: 6 }, children: open ? "\u25BE" : "\u25B8" }),
-                  s.title
-                ] }),
-                s.meta !== void 0 && /* @__PURE__ */ jsx("span", { className: classes.meta, children: s.meta })
+                /* @__PURE__ */ jsx("span", { className: classes.title, children: s.title }),
+                /* @__PURE__ */ jsxs("span", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 }, children: [
+                  s.meta !== void 0 && /* @__PURE__ */ jsx("span", { className: classes.meta, children: s.meta }),
+                  /* @__PURE__ */ jsx(
+                    "svg",
+                    {
+                      className: classes.marker,
+                      width: "11",
+                      height: "11",
+                      viewBox: "0 0 12 12",
+                      "aria-hidden": "true",
+                      fill: "none",
+                      stroke: "currentColor",
+                      strokeWidth: "1.8",
+                      strokeLinecap: "round",
+                      strokeLinejoin: "round",
+                      style: {
+                        flexShrink: 0,
+                        opacity: 0.55,
+                        transform: open ? "rotate(180deg)" : "none",
+                        transition: "transform 0.15s"
+                      },
+                      children: /* @__PURE__ */ jsx("path", { d: "M2.5 4.5 6 8l3.5-3.5" })
+                    }
+                  )
+                ] })
               ]
             }
           ),
