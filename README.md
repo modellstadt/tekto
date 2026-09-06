@@ -102,13 +102,13 @@ console.log(bigTerrain.volume());   // instant
 src/
 ├── core/               ← Pure geometry, zero dependencies
 │   ├── math/           ← Vec2, Vec3, Vec4, Mat4
-│   ├── primitives/     ← Ray, Plane, Triangle, AABB, Sphere
-│   ├── mesh/           ← Mesh + FlatMesh + generators
+│   ├── geometry/       ← Ray, Plane, Triangle, AABB, Sphere, polygons, curves, surfaces, meshes
+│   ├── mesh/           ← FlatMeshGen generators
 │   └── algo/           ← Convex hull, triangulation, analysis
 ├── scene/              ← Scene graph with visual properties
 ├── render/             ← Three.js + SVG renderers
-├── gui/                ← Parameter system with auto-UI
-├── sketch/             ← Sketch API (student-facing)
+├── gui/                ← ParamStore (the one param model) + ControlPanel + theme + LayerPanel
+├── sketch/             ← sketch / sketch2d / appShell (student- and app-facing)
 └── react/              ← React components + hooks
 ```
 
@@ -127,9 +127,11 @@ src/
 
 ### Three access levels
 
-1. **Sketch API** — one function, zero framework knowledge. For students and quick experiments.
-2. **Scene + Params** — framework-agnostic. For apps without React.
-3. **React components** — `<ParamPanel>`, `<InspectorPanel>`, hooks, imported from **`tekto/react`** (install `react` + `react-dom`). For full applications. The core `tekto` barrel is React-free, so non-React apps need neither.
+1. **Sketch API** — `sketch()` (3D) / `sketch2d()` (2D canvas): one function, zero framework knowledge. For students and quick experiments. The function re-runs on every parameter change.
+2. **App Shell** — `appShell()`: a persistent sidebar + viewer for real apps. The panel is built ONCE from a declarative `params` schema and updated in place, so animation loops never fight the GUI. Comes with the top bar (lighting / render mode / camera / Sun). Subscribe with `app.params.onChange(...)`.
+3. **React components** *(optional)* — `<ParamPanel>`, `<InspectorPanel>`, hooks, imported from **`tekto/react`** (install `react` + `react-dom`). Only reach for this when you need React ecosystem integration; levels 1–2 cover most apps. The core `tekto` barrel is React-free.
+
+All three levels share the same GUI foundation: values live in a `ParamStore`, panels are rendered by the shared `ControlPanel`, colors come from `getTheme()`. A control type added there appears everywhere.
 
 ## Generators
 
@@ -367,7 +369,9 @@ Or use IDE autocomplete on the import line — every export is typed and has JSD
 - **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
 - **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — both emit AutoCAD-safe R12), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
-- **Sketch API**: `sketch`, `Lab` (the API surface you'll mostly use).
+- **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use).
+- **App Shell**: `appShell` — persistent-panel apps (panel built once, animation-friendly) with a built-in top bar (Flat/Studio lighting, render mode, Persp/Iso camera, Sun popover).
+- **GUI building blocks**: `ParamStore` (the one parameter model — all entry APIs store values here), `ControlPanel` (the shared slider/toggle/select/color/menu/tab renderer), `getTheme` (the white-on-dark panel palette), `LayerPanel`.
 
 For curated category breakdowns see **[Generators](#generators)**, **[Algorithms](#algorithms)**, and **[BIM walls, slabs, and IFC export](#bim-walls-slabs-and-ifc-export)** above. For a hands-on walk-through, open the playground (`npm run playground` in the tekto repo) and click any demo — the page's `.ts` file under [playground/pages/](playground/pages/) is exactly the kind of code you'd write to use the same API.
 

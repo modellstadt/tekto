@@ -86,7 +86,7 @@ A sketch participates in the shell by:
 - Calling `lab.registerExport({name, fileName, handler})` / `lab.registerImport({name, accept, handler})` to populate the menus. Sketches that don't register anything just hide those buttons.
 - The shell drives the directional light via `SketchInstance.setSunDirection(direction)` based on the popover's date/lat/lon — sketches don't need their own sun controls. They CAN call `lab.setSunDirection(dir)` inside the sketch fn to override per-frame (animated daily cycles).
 
-When you build a new custom app outside the testbench: copy the relevant CSS + popover blocks from `testbench.html`/`testbench.ts`. Future work could extract this into a `src/sketch/AppShell.ts` helper — not done yet.
+When you build a new custom app outside the testbench: use `appShell()` from [src/sketch/AppShell.ts](src/sketch/AppShell.ts) — it provides the panel (via the shared `ControlPanel`), the Scene + ThreeRenderer harness, and the top bar (lighting / render mode / camera / Sun popover). Do NOT copy panel/top-bar code into an app; if the shell lacks something, extend `AppShell.ts` in the library.
 
 ### Lighting + shadows
 
@@ -120,6 +120,17 @@ accents (#38d9a9) and NO gradient text in labels/titles. This is the intended
 default for every tekto app; if you build a new control type for the lab
 panel, style it white-on-dark to match. (The `colorPicker` DEFAULT COLOR VALUE
 is content, not chrome — it may stay whatever the sketch wants.)
+
+Since the GUI unification, panel colors come from [src/gui/theme.ts](src/gui/theme.ts)
+and ALL controls are rendered by [src/gui/ControlPanel.ts](src/gui/ControlPanel.ts)
+(shared by `sketch`, `sketch2d`, and `appShell`; values live in `ParamStore`).
+Add or restyle a control type THERE, never inline in Sketch.ts / Sketch2D.ts /
+AppShell.ts — those files only declare params and mount the panel.
+
+Sliders are the rectangular "scientific" style: flat 4 px track, square white
+7×14 px thumb, no rounded pill — via the injected `.tekto-slider` stylesheet in
+ControlPanel.ts (`--tekto-track` / `--tekto-thumb` CSS vars per control). Any
+new range input in tekto chrome should use that class, not `accent-color`.
 
 ## When to update this file
 
