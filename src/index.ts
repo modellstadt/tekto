@@ -193,6 +193,15 @@ export { ThreeRenderer } from "./render/ThreeRenderer";
 export type { ThreeRendererConfig } from "./render/ThreeRenderer";
 export { SVGRenderer } from "./render/SVGRenderer";
 export type { SVGRendererConfig } from "./render/SVGRenderer";
+// A viewport for meshes an app built itself, as opposed to a Scene the library
+// owns: view modes, progressive creases, a real sun, camera projections.
+export {
+  Viewport, edgeStyle, surfaceAppearance, lightBalance,
+  standardOrbit, fitRadius, orthoFrustum,
+} from "./render/Viewport";
+export type {
+  ViewMode, Projection, StandardView, Appearance, ViewportOptions, ContentOptions,
+} from "./render/Viewport";
 
 // GUI: layer panel (consumed by both the sketch API + standalone apps).
 export { LayerPanel, computeEffectiveVisibility } from "./gui/LayerPanel";

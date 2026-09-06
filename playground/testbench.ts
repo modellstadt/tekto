@@ -52,10 +52,17 @@ const CITIES: City[] = [
 
 // ─── Page registry ──────────────────────────────────────────────────
 
+/**
+ * What a page hands back. The shell only ever needs to be able to tear it
+ * down, so a page that owns its own renderer (the Viewport one does) is welcome
+ * here too; the sun and render-mode controls key off `as3D()` and no-op for it.
+ */
+type MountedPage = SketchInstance | Sketch2DInstance | { dispose(): void };
+
 interface PageEntry {
   slug: string;
   label: string;
-  load: () => Promise<{ default: (container: HTMLElement) => SketchInstance | Sketch2DInstance }>;
+  load: () => Promise<{ default: (container: HTMLElement) => MountedPage }>;
 }
 interface PageGroup { name: string; pages: PageEntry[]; }
 
@@ -91,6 +98,7 @@ const GROUPS: PageGroup[] = [
   ]},
   { name: "BIM", pages: [
     { slug: "timber",   label: "Timber + IFC", load: () => import("./pages/timber") },
+    { slug: "viewport", label: "Viewport",     load: () => import("./pages/viewport") },
     { slug: "dxf-test", label: "DXF Test",     load: () => import("./pages/dxf-test") },
     { slug: "dxf-3d",   label: "DXF 3D Writer", load: () => import("./pages/dxf-3d") },
   ]},
@@ -103,7 +111,7 @@ const PAGES = new Map(GROUPS.flatMap(g => g.pages.map(p => [p.slug, p] as const)
 // A page is either a 3D Sketch or a 2D Sketch2D. The top-bar's render/lighting/
 // sun/export controls only apply to the 3D one; `as3D()` returns the current
 // sketch only when it's a 3D SketchInstance, so those controls no-op for 2D.
-let currentSketch: SketchInstance | Sketch2DInstance | null = null;
+let currentSketch: MountedPage | null = null;
 function as3D(): SketchInstance | null {
   return currentSketch instanceof SketchInstance ? currentSketch : null;
 }
