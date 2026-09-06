@@ -493,10 +493,14 @@ export interface AccordionSection {
   /** Open before the reader has an opinion. Defaults to true for `fill`. */
   defaultOpen?: boolean;
   /**
-   * Body height in pixels when opened. For the `fill` section this is read as
-   * a floor instead: open every other section and the one that gives way must
-   * still be worth looking at, so past that point the column scrolls rather
-   * than squeezing the tree down to two rows.
+   * Body height in pixels when opened, which also makes the section draggable.
+   * Leave it out and the body is as tall as its content, which is what prose
+   * of unpredictable length wants: a supplier's note is three lines or thirty,
+   * and pinning either to 220 pixels is wrong for the other.
+   *
+   * For the `fill` section it is read as a floor instead: open every other
+   * section and the one that gives way must still be worth looking at, so past
+   * that point the column scrolls rather than squeezing the tree to two rows.
    */
   defaultHeight?: number;
   /** Hover text on the header. */
@@ -544,7 +548,8 @@ export function AccordionColumn({
     const out: Record<string, number> = {};
     for (const s of sections) {
       const open = s.defaultOpen ?? !!s.fill;
-      out[s.id] = open ? (s.fill ? 1 : s.defaultHeight ?? 220) : 0;
+      // 1 stands for "open, sized by something other than a stored number"
+      out[s.id] = open ? (s.fill ? 1 : s.defaultHeight ?? 1) : 0;
     }
     return out;
   }, [sections]);
@@ -567,7 +572,7 @@ export function AccordionColumn({
   const toggle = useCallback((s: AccordionSection) => {
     setState((v) => ({
       ...v,
-      [s.id]: v[s.id] > 0 ? 0 : (s.fill ? 1 : s.defaultHeight ?? 220),
+      [s.id]: v[s.id] > 0 ? 0 : (s.fill ? 1 : s.defaultHeight ?? 1),
     }));
   }, []);
 
@@ -588,7 +593,7 @@ export function AccordionColumn({
         const open = (state[s.id] ?? 0) > 0;
         return (
           <React.Fragment key={s.id}>
-            {open && !s.fill && (
+            {open && !s.fill && s.defaultHeight !== undefined && (
               <AccordionHandle className={classes.handle} onDrag={(dy) => drag(s.id, dy)} />
             )}
             <button type="button" onClick={() => toggle(s)} title={s.hint}
@@ -611,7 +616,9 @@ export function AccordionColumn({
               <div className={classes.body}
                 style={s.fill
                   ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" }
-                  : { flexShrink: 0, height: state[s.id], overflow: "auto" }}>
+                  : s.defaultHeight === undefined
+                    ? { flexShrink: 0 }
+                    : { flexShrink: 0, height: state[s.id], overflow: "auto" }}>
                 {s.children}
               </div>
             )}

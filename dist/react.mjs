@@ -399,7 +399,7 @@ function AccordionColumn({
     const out = {};
     for (const s of sections) {
       const open = s.defaultOpen ?? !!s.fill;
-      out[s.id] = open ? s.fill ? 1 : s.defaultHeight ?? 220 : 0;
+      out[s.id] = open ? s.fill ? 1 : s.defaultHeight ?? 1 : 0;
     }
     return out;
   }, [sections]);
@@ -421,7 +421,7 @@ function AccordionColumn({
   const toggle = useCallback((s) => {
     setState((v) => ({
       ...v,
-      [s.id]: v[s.id] > 0 ? 0 : s.fill ? 1 : s.defaultHeight ?? 220
+      [s.id]: v[s.id] > 0 ? 0 : s.fill ? 1 : s.defaultHeight ?? 1
     }));
   }, []);
   const drag = useCallback((id, dy) => {
@@ -444,7 +444,7 @@ function AccordionColumn({
       children: sections.map((s) => {
         const open = (state[s.id] ?? 0) > 0;
         return /* @__PURE__ */ jsxs(React.Fragment, { children: [
-          open && !s.fill && /* @__PURE__ */ jsx(AccordionHandle, { className: classes.handle, onDrag: (dy) => drag(s.id, dy) }),
+          open && !s.fill && s.defaultHeight !== void 0 && /* @__PURE__ */ jsx(AccordionHandle, { className: classes.handle, onDrag: (dy) => drag(s.id, dy) }),
           /* @__PURE__ */ jsxs(
             "button",
             {
@@ -479,7 +479,7 @@ function AccordionColumn({
             "div",
             {
               className: classes.body,
-              style: s.fill ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : { flexShrink: 0, height: state[s.id], overflow: "auto" },
+              style: s.fill ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : s.defaultHeight === void 0 ? { flexShrink: 0 } : { flexShrink: 0, height: state[s.id], overflow: "auto" },
               children: s.children
             }
           )

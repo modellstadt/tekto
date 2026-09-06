@@ -76,10 +76,14 @@ interface AccordionSection {
     /** Open before the reader has an opinion. Defaults to true for `fill`. */
     defaultOpen?: boolean;
     /**
-     * Body height in pixels when opened. For the `fill` section this is read as
-     * a floor instead: open every other section and the one that gives way must
-     * still be worth looking at, so past that point the column scrolls rather
-     * than squeezing the tree down to two rows.
+     * Body height in pixels when opened, which also makes the section draggable.
+     * Leave it out and the body is as tall as its content, which is what prose
+     * of unpredictable length wants: a supplier's note is three lines or thirty,
+     * and pinning either to 220 pixels is wrong for the other.
+     *
+     * For the `fill` section it is read as a floor instead: open every other
+     * section and the one that gives way must still be worth looking at, so past
+     * that point the column scrolls rather than squeezing the tree to two rows.
      */
     defaultHeight?: number;
     /** Hover text on the header. */
