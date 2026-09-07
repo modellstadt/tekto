@@ -77,6 +77,7 @@ __export(index_exports, {
   MeshGen: () => MeshFactory,
   MeshSubdivide: () => MeshSubdivide,
   MeshTransform: () => MeshTransform,
+  NavGizmo: () => NavGizmo,
   NoFitPolygon: () => NoFitPolygon,
   NurbsCurve: () => NurbsCurve,
   NurbsSurface: () => NurbsSurface,
@@ -177,6 +178,7 @@ __export(index_exports, {
   createLayout: () => createLayout,
   createParams: () => createParams,
   createRandom: () => createRandom,
+  easeInOut: () => easeInOut,
   edgeOutwardVisibility: () => edgeOutwardVisibility,
   edgeStyle: () => edgeStyle,
   extractVisiblePolylines: () => extractVisiblePolylines,
@@ -191,7 +193,9 @@ __export(index_exports, {
   lightBalance: () => lightBalance,
   lineClipPolygon: () => lineClipPolygon,
   modeBackground: () => modeBackground,
+  nearestAxis: () => nearestAxis,
   noise: () => noise,
+  orbitFor: () => orbitFor,
   orthoFrustum: () => orthoFrustum,
   perpVisibility: () => perpVisibility,
   perpVisibilityOfPolys: () => perpVisibilityOfPolys,
@@ -204,6 +208,7 @@ __export(index_exports, {
   repelBodies: () => repelBodies,
   segmentSegmentClosest: () => segmentSegmentClosest,
   setClipSnap: () => setClipSnap,
+  shortestTurn: () => shortestTurn,
   sketch: () => sketch,
   sketch2d: () => sketch2d,
   standardOrbit: () => standardOrbit,
@@ -22144,7 +22149,213 @@ var SVGRenderer = class {
 };
 
 // src/render/Viewport.ts
+var THREE5 = __toESM(require("three"));
+
+// src/render/NavGizmo.ts
 var THREE4 = __toESM(require("three"));
+var AXES = [
+  { axis: "x", dir: new THREE4.Vector3(1, 0, 0), colour: "#e0566a" },
+  { axis: "y", dir: new THREE4.Vector3(0, 1, 0), colour: "#7fb648" },
+  { axis: "z", dir: new THREE4.Vector3(0, 0, 1), colour: "#4b8fd6" }
+];
+var SVG = "http://www.w3.org/2000/svg";
+var NavGizmo = class {
+  constructor(host, opts) {
+    this.opts = opts;
+    this.balls = [];
+    this.projectionButton = null;
+    this.scratch = new THREE4.Vector3();
+    this.inverse = new THREE4.Quaternion();
+    /** Set while a drag is under way, so the click that ends one is not read as
+     *  a click on whichever ball happened to be under the pointer. */
+    this.moved = false;
+    /** The window listeners a drag needs, dropped in one go on dispose. */
+    this.listeners = new AbortController();
+    this.size = opts.size ?? 88;
+    this.centre = this.size / 2;
+    this.ballR = Math.max(7, this.size * 0.105);
+    this.reach = this.centre - this.ballR - 2;
+    this.root = document.createElement("div");
+    const corner = opts.corner ?? "bottom-right";
+    const inset = `${opts.inset ?? 12}px`;
+    this.root.style.cssText = `position:absolute;width:${this.size}px;
+      ${corner.includes("top") ? "top" : "bottom"}:${inset};
+      ${corner.includes("left") ? "left" : "right"}:${inset};
+      cursor:grab;touch-action:none;user-select:none;z-index:5;
+      display:flex;flex-direction:column;align-items:center;gap:2px`;
+    this.svg = document.createElementNS(SVG, "svg");
+    this.svg.setAttribute("viewBox", `0 0 ${this.size} ${this.size}`);
+    this.svg.setAttribute("width", String(this.size));
+    this.svg.setAttribute("height", String(this.size));
+    this.root.append(this.svg);
+    for (const { axis, dir, colour } of AXES) {
+      for (const positive of [true, false]) {
+        this.balls.push(this.makeBall(
+          positive ? dir.clone() : dir.clone().negate(),
+          colour,
+          positive,
+          positive ? axis.toUpperCase() : `-${axis.toUpperCase()}`
+        ));
+      }
+    }
+    if (opts.onProjection && opts.projectionToggle !== false) {
+      this.projectionButton = this.makeProjectionToggle();
+      this.root.append(this.projectionButton);
+    }
+    this.bind();
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    host.append(this.root);
+  }
+  makeBall(dir, colour, positive, name) {
+    const g = document.createElementNS(SVG, "g");
+    g.style.cursor = "pointer";
+    let line = null;
+    if (positive) {
+      line = document.createElementNS(SVG, "line");
+      line.setAttribute("stroke", colour);
+      line.setAttribute("stroke-width", "2");
+      line.setAttribute("stroke-linecap", "round");
+      g.append(line);
+    }
+    const circle = document.createElementNS(SVG, "circle");
+    circle.setAttribute("r", String(this.ballR));
+    circle.setAttribute("stroke", colour);
+    circle.setAttribute("stroke-width", "1.5");
+    g.append(circle);
+    let label = null;
+    if (positive) {
+      label = document.createElementNS(SVG, "text");
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("dominant-baseline", "central");
+      label.setAttribute("font-size", String(this.ballR * 1.25));
+      label.setAttribute("font-family", "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif");
+      label.setAttribute("font-weight", "600");
+      label.setAttribute("fill", "#fff");
+      label.setAttribute("pointer-events", "none");
+      label.textContent = name;
+      g.append(label);
+    }
+    g.addEventListener("pointerenter", () => {
+      circle.setAttribute("r", String(this.ballR * 1.25));
+      circle.setAttribute("stroke-width", "2.5");
+    });
+    g.addEventListener("pointerleave", () => {
+      circle.setAttribute("r", String(this.ballR));
+      circle.setAttribute("stroke-width", "1.5");
+    });
+    g.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!this.moved) this.opts.onAxis(dir.clone());
+    });
+    this.svg.append(g);
+    return { el: g, circle, label, line, dir, colour, positive, name };
+  }
+  /**
+   * The projection toggle: a caption that names the convention in force and
+   * changes it when clicked, rather than an icon nobody can read at 9 pixels.
+   */
+  makeProjectionToggle() {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "persp";
+    b.title = "Perspective or orthographic. An elevation is the orthographic one.";
+    b.style.cssText = `font:600 9px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      letter-spacing:.06em;text-transform:uppercase;padding:3px 6px;border-radius:4px;
+      border:1px solid rgba(90,100,110,.35);background:rgba(255,255,255,.82);
+      color:#5a646e;cursor:pointer;pointer-events:auto`;
+    b.addEventListener("pointerdown", (e) => e.stopPropagation());
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.opts.onProjection?.();
+    });
+    return b;
+  }
+  /** Tell the widget which projection is in force, so its caption is true. */
+  setProjection(projection) {
+    if (!this.projectionButton) return;
+    const ortho = projection === "orthographic";
+    this.projectionButton.textContent = ortho ? "ortho" : "persp";
+    this.projectionButton.style.background = ortho ? "#1b2733" : "rgba(255,255,255,.82)";
+    this.projectionButton.style.color = ortho ? "#fff" : "#5a646e";
+  }
+  bind() {
+    let dragging = false, lx = 0, ly = 0;
+    this.root.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      this.moved = false;
+      lx = e.clientX;
+      ly = e.clientY;
+      this.root.style.cursor = "grabbing";
+      e.preventDefault();
+    });
+    globalThis.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - lx, dy = e.clientY - ly;
+      if (Math.abs(dx) + Math.abs(dy) > 2) this.moved = true;
+      this.opts.onDrag(dx, dy);
+      lx = e.clientX;
+      ly = e.clientY;
+    }, { signal: this.listeners.signal });
+    const end = () => {
+      dragging = false;
+      this.root.style.cursor = "grab";
+    };
+    globalThis.addEventListener("pointerup", end, { signal: this.listeners.signal });
+    globalThis.addEventListener("pointercancel", end, { signal: this.listeners.signal });
+    this.root.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      if (!this.moved) this.opts.onSnap();
+    });
+  }
+  /**
+   * Redraw for the current camera.
+   *
+   * `contentRotation` carries the root's own turn, so the labels describe the
+   * model's axes rather than the scene's.
+   */
+  update(camera, contentRotation) {
+    this.inverse.copy(camera.quaternion).invert();
+    const placed = this.balls.map((ball) => {
+      const v = this.scratch.copy(ball.dir).applyQuaternion(contentRotation).applyQuaternion(this.inverse);
+      return {
+        ball,
+        x: this.centre + v.x * this.reach,
+        y: this.centre - v.y * this.reach,
+        depth: v.z
+        // the camera looks down -Z
+      };
+    });
+    placed.sort((a, b) => a.depth - b.depth);
+    for (const { ball, x, y, depth } of placed) {
+      this.svg.append(ball.el);
+      ball.circle.setAttribute("cx", String(x));
+      ball.circle.setAttribute("cy", String(y));
+      const away = depth < 0;
+      ball.circle.setAttribute("fill", ball.positive && !away ? ball.colour : "#ffffff");
+      ball.el.setAttribute("opacity", away ? "0.55" : "1");
+      if (ball.label) {
+        ball.label.setAttribute("x", String(x));
+        ball.label.setAttribute("y", String(y));
+        ball.label.setAttribute("fill", away ? ball.colour : "#ffffff");
+      }
+      if (ball.line) {
+        ball.line.setAttribute("x1", String(this.centre));
+        ball.line.setAttribute("y1", String(this.centre));
+        ball.line.setAttribute("x2", String(x));
+        ball.line.setAttribute("y2", String(y));
+      }
+    }
+  }
+  setVisible(on) {
+    this.root.style.display = on ? "" : "none";
+  }
+  dispose() {
+    this.listeners.abort();
+    this.root.remove();
+  }
+};
+
+// src/render/Viewport.ts
 var OUTLINE_LIMIT = 1500;
 var OUTLINE_CHUNK = 250;
 var FALLBACK_SURFACE = 14278115;
@@ -22182,13 +22393,14 @@ function lightBalance(mode, shadows) {
     groundOpacity: mode === "hidden-line" ? 0.16 : 0.24
   };
 }
+var POLE = 1e-3;
 function standardOrbit(view) {
   const H = Math.PI / 2;
   switch (view) {
     case "top":
-      return { phi: 1e-3, theta: 0 };
+      return { phi: POLE, theta: 0 };
     case "bottom":
-      return { phi: Math.PI - 1e-3, theta: 0 };
+      return { phi: Math.PI - POLE, theta: 0 };
     case "front":
       return { phi: H, theta: 0 };
     case "back":
@@ -22200,6 +22412,32 @@ function standardOrbit(view) {
     default:
       return { phi: Math.PI / 3, theta: Math.PI / 4 };
   }
+}
+function orbitFor(direction) {
+  const s = new THREE5.Spherical().setFromVector3(
+    new THREE5.Vector3(direction.x, direction.y, direction.z).normalize()
+  );
+  return { phi: Math.min(Math.PI - POLE, Math.max(POLE, s.phi)), theta: s.theta };
+}
+function shortestTurn(from, to) {
+  const TAU = Math.PI * 2;
+  let delta = (to - from) % TAU;
+  if (delta > Math.PI) delta -= TAU;
+  if (delta < -Math.PI) delta += TAU;
+  return from + delta;
+}
+function nearestAxis(direction) {
+  const v = new THREE5.Vector3(direction.x, direction.y, direction.z).normalize();
+  const axis = new THREE5.Vector3();
+  const [ax, ay, az] = [Math.abs(v.x), Math.abs(v.y), Math.abs(v.z)];
+  if (ax >= ay && ax >= az) axis.set(Math.sign(v.x) || 1, 0, 0);
+  else if (ay >= az) axis.set(0, Math.sign(v.y) || 1, 0);
+  else axis.set(0, 0, Math.sign(v.z) || 1);
+  return axis;
+}
+function easeInOut(t) {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
 }
 function fitRadius(boundingRadius, fovDeg, aspect, margin = 1.25) {
   const vFov = fovDeg * Math.PI / 180;
@@ -22216,11 +22454,11 @@ var Viewport = class {
   constructor(host, opts = {}) {
     this.host = host;
     this.opts = opts;
-    this.scene = new THREE4.Scene();
+    this.scene = new THREE5.Scene();
     this.projectionMode = "perspective";
-    this.root = new THREE4.Group();
-    this.meshGroup = new THREE4.Group();
-    this.outlines = new THREE4.Group();
+    this.root = new THREE5.Group();
+    this.meshGroup = new THREE5.Group();
+    this.outlines = new THREE5.Group();
     this.frame = 0;
     this.mode = "shaded";
     this.outlinesBuilt = false;
@@ -22232,15 +22470,29 @@ var Viewport = class {
     /** Where the light comes from, in three.js Y-up. Replaced by a real solar
      *  position through setSun; this is the fallback for a sun below the horizon,
      *  and for a viewport nobody has told a date. */
-    this.sunDir = new THREE4.Vector3(1, 1.6, 1.1).normalize();
+    this.sunDir = new THREE5.Vector3(1, 1.6, 1.1).normalize();
     this.sunNote = "generic light, no date";
     // simple orbit: enough for looking at a building, and no extra dependency
-    this.target = new THREE4.Vector3();
+    this.target = new THREE5.Vector3();
+    this.gizmo = null;
+    /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
+     *  every one of the frames a still camera also renders. */
+    this.gizmoAt = { phi: NaN, theta: NaN };
+    /**
+     * A camera move in progress. Any input from the reader drops it: a view
+     * animation that fights an orbit is worse than no animation at all.
+     */
+    this.move = null;
     this.tick = () => {
       this.frame = requestAnimationFrame(this.tick);
+      this.step();
       const camera = this.camera;
       camera.position.setFromSpherical(this.spherical).add(this.target);
       camera.lookAt(this.target);
+      if (this.gizmo && (this.spherical.phi !== this.gizmoAt.phi || this.spherical.theta !== this.gizmoAt.theta)) {
+        this.gizmo.update(camera, this.root.quaternion);
+        this.gizmoAt = { phi: this.spherical.phi, theta: this.spherical.theta };
+      }
       if (this.projectionMode === "orthographic") {
         const aspect = (this.host.clientWidth || 1) / (this.host.clientHeight || 1);
         const f2 = orthoFrustum(this.spherical.radius, this.perspective.fov, aspect);
@@ -22255,38 +22507,38 @@ var Viewport = class {
       this.renderer.render(this.scene, camera);
     };
     const home = standardOrbit(opts.view ?? "iso");
-    this.spherical = new THREE4.Spherical(30, home.phi, home.theta);
-    this.scene.background = new THREE4.Color(opts.background ?? DEFAULT_BACKGROUND);
-    this.perspective = new THREE4.PerspectiveCamera(45, 1, 0.05, 5e3);
-    this.orthographic = new THREE4.OrthographicCamera(-1, 1, 1, -1, 0.01, 5e3);
-    this.renderer = new THREE4.WebGLRenderer({ antialias: true });
+    this.spherical = new THREE5.Spherical(30, home.phi, home.theta);
+    this.scene.background = new THREE5.Color(opts.background ?? DEFAULT_BACKGROUND);
+    this.perspective = new THREE5.PerspectiveCamera(45, 1, 0.05, 5e3);
+    this.orthographic = new THREE5.OrthographicCamera(-1, 1, 1, -1, 0.01, 5e3);
+    this.renderer = new THREE5.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
     const dom = this.renderer.domElement;
     dom.style.display = "block";
     dom.style.width = "100%";
     dom.style.height = "100%";
     host.appendChild(dom);
-    this.sky = new THREE4.HemisphereLight(16777215, 8952234, 2.2);
-    this.sun = new THREE4.DirectionalLight(16777215, 1.4);
+    this.sky = new THREE5.HemisphereLight(16777215, 8952234, 2.2);
+    this.sun = new THREE5.DirectionalLight(16777215, 1.4);
     this.sun.position.set(1, 2, 1.5);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -5e-4;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE4.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
-    this.ground = new THREE4.Mesh(
-      new THREE4.PlaneGeometry(1, 1),
-      new THREE4.ShadowMaterial({ opacity: 0.22 })
+    this.ground = new THREE5.Mesh(
+      new THREE5.PlaneGeometry(1, 1),
+      new THREE5.ShadowMaterial({ opacity: 0.22 })
     );
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.receiveShadow = true;
     this.ground.visible = false;
-    this.groundPlane = new THREE4.Mesh(
-      new THREE4.PlaneGeometry(1, 1),
+    this.groundPlane = new THREE5.Mesh(
+      new THREE5.PlaneGeometry(1, 1),
       // unlit, so the plane stays an even tone whatever the sun is doing and
       // never competes with the building for attention
-      new THREE4.MeshBasicMaterial({ transparent: true })
+      new THREE5.MeshBasicMaterial({ transparent: true })
     );
     this.groundPlane.rotation.x = -Math.PI / 2;
     this.groundPlane.visible = false;
@@ -22301,6 +22553,21 @@ var Viewport = class {
       this.groundPlane,
       this.root
     );
+    if (opts.gizmo !== false) {
+      this.gizmo = new NavGizmo(host, {
+        corner: opts.gizmoCorner,
+        onAxis: (direction) => this.orbitTo(direction),
+        onDrag: (dx, dy) => {
+          this.move = null;
+          this.orbitBy(dx, dy);
+        },
+        onSnap: () => this.orbitTo(nearestAxis(this.viewDirection())),
+        onProjection: () => this.setProjection(
+          this.projectionMode === "perspective" ? "orthographic" : "perspective"
+        )
+      });
+      this.gizmo.setProjection(this.projectionMode);
+    }
     this.bind();
     this.resize();
     this.tick();
@@ -22311,6 +22578,7 @@ var Viewport = class {
   }
   setUp(up) {
     this.root.rotation.set(up === "z" ? -Math.PI / 2 : 0, 0, 0);
+    this.gizmoAt.phi = NaN;
   }
   bind() {
     const el = this.renderer.domElement;
@@ -22320,6 +22588,7 @@ var Viewport = class {
       moved = false;
       lx = e.clientX;
       ly = e.clientY;
+      this.move = null;
     });
     el.addEventListener("pointerleave", () => {
       if (this.hovered !== null) {
@@ -22334,8 +22603,7 @@ var Viewport = class {
       }
       const dx = e.clientX - lx, dy = e.clientY - ly;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      this.spherical.theta -= dx * 5e-3;
-      this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi - dy * 5e-3));
+      this.orbitBy(dx, dy);
       lx = e.clientX;
       ly = e.clientY;
     });
@@ -22345,12 +22613,19 @@ var Viewport = class {
     });
     el.addEventListener("wheel", (e) => {
       e.preventDefault();
+      this.move = null;
       this.spherical.radius = Math.max(
         0.05,
         Math.min(4e3, this.spherical.radius * (1 + Math.sign(e.deltaY) * 0.12))
       );
     }, { passive: false });
     new ResizeObserver(() => this.resize()).observe(this.host);
+  }
+  /** Orbit by a pointer travel in pixels. Shared by the canvas and the gizmo,
+   *  so dragging the widget turns the model exactly as dragging the model does. */
+  orbitBy(dx, dy) {
+    this.spherical.theta -= dx * 5e-3;
+    this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi - dy * 5e-3));
   }
   /** The mesh under the pointer, at most every other animation frame.
    *  Reported only on a change, so the host repaints on a crossing and not on
@@ -22367,11 +22642,11 @@ var Viewport = class {
   }
   meshAt(clientX, clientY) {
     const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE4.Vector2(
+    const ndc = new THREE5.Vector2(
       (clientX - rect.left) / rect.width * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1
     );
-    const ray = new THREE4.Raycaster();
+    const ray = new THREE5.Raycaster();
     ray.setFromCamera(ndc, this.camera);
     return ray.intersectObjects(this.meshGroup.children, false)[0]?.object ?? null;
   }
@@ -22427,14 +22702,14 @@ var Viewport = class {
   /** Convenience for the common case: a mesh from raw buffers, which is what
    *  every Tekto generator and every IFC reader hands over. */
   static meshFrom(buffers, material) {
-    const g = new THREE4.BufferGeometry();
-    g.setAttribute("position", new THREE4.BufferAttribute(buffers.positions, 3));
+    const g = new THREE5.BufferGeometry();
+    g.setAttribute("position", new THREE5.BufferAttribute(buffers.positions, 3));
     if (buffers.normals?.length) {
-      g.setAttribute("normal", new THREE4.BufferAttribute(buffers.normals, 3));
+      g.setAttribute("normal", new THREE5.BufferAttribute(buffers.normals, 3));
     }
-    g.setIndex(new THREE4.BufferAttribute(buffers.indices, 1));
+    g.setIndex(new THREE5.BufferAttribute(buffers.indices, 1));
     if (!buffers.normals?.length) g.computeVertexNormals();
-    return new THREE4.Mesh(g, material);
+    return new THREE5.Mesh(g, material);
   }
   // -- how it is drawn ------------------------------------------------------
   get viewMode() {
@@ -22455,13 +22730,75 @@ var Viewport = class {
    *  is a plan or an elevation; that pairing is the point of having both. */
   setProjection(projection) {
     this.projectionMode = projection;
+    this.gizmo?.setProjection(projection);
     this.resize();
   }
-  /** Point the camera at a named face, keeping the distance. */
-  setView(view) {
+  /**
+   * Point the camera at a named face, keeping the distance.
+   *
+   * Animated by default. A view change that jumps is read as the model having
+   * been replaced rather than turned, and the reader loses which face they are
+   * now looking at, which is the one thing the change was for. Pass
+   * `{ animate: false }` where a jump is wanted (restoring a stored view, or a
+   * test that wants the end state now).
+   */
+  setView(view, opts = {}) {
     const { phi, theta } = standardOrbit(view);
-    this.spherical.phi = phi;
-    this.spherical.theta = theta;
+    this.orbit(phi, theta, opts.animate !== false);
+  }
+  /**
+   * Look down a direction given in the content's own axes, so a caller with a
+   * Z-up model asks for `(0, 0, 1)` and gets a plan whichever way the viewport
+   * has turned the content to face three.js.
+   */
+  orbitTo(direction, opts = {}) {
+    const world = direction.clone().applyQuaternion(this.root.quaternion);
+    const { phi, theta } = orbitFor(world);
+    this.orbit(phi, theta, opts.animate !== false);
+  }
+  /** Which way the camera currently lies from the subject, in content axes. */
+  viewDirection() {
+    return new THREE5.Vector3().setFromSpherical(this.spherical).applyQuaternion(this.root.quaternion.clone().invert()).normalize();
+  }
+  orbit(phi, theta, animate) {
+    if (!animate) {
+      this.move = null;
+      this.spherical.phi = phi;
+      this.spherical.theta = theta;
+      return;
+    }
+    this.animate({ phi, theta: shortestTurn(this.spherical.theta, theta) });
+  }
+  /** Start a camera move to a partial end state, holding whatever it omits. */
+  animate(to, ms = 340) {
+    const from = {
+      phi: this.spherical.phi,
+      theta: this.spherical.theta,
+      radius: this.spherical.radius,
+      target: this.target.clone()
+    };
+    this.move = {
+      from,
+      to: {
+        phi: to.phi ?? from.phi,
+        theta: to.theta ?? from.theta,
+        radius: to.radius ?? from.radius,
+        target: to.target?.clone() ?? from.target.clone()
+      },
+      start: performance.now(),
+      ms
+    };
+  }
+  /** Advance a camera move, if one is running. Called once per frame. */
+  step() {
+    if (!this.move) return;
+    const { from, to, start, ms } = this.move;
+    const t = easeInOut((performance.now() - start) / ms);
+    this.spherical.phi = from.phi + (to.phi - from.phi) * t;
+    this.spherical.theta = from.theta + (to.theta - from.theta) * t;
+    this.spherical.radius = from.radius + (to.radius - from.radius) * t;
+    this.target.lerpVectors(from.target, to.target, t);
+    if (t >= 1) this.move = null;
   }
   /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
   repaint() {
@@ -22542,10 +22879,10 @@ var Viewport = class {
       const positions = [];
       const end = Math.min(i + OUTLINE_CHUNK, meshes.length);
       for (; i < end; i++) {
-        const edges = new THREE4.EdgesGeometry(meshes[i].geometry, angle);
+        const edges = new THREE5.EdgesGeometry(meshes[i].geometry, angle);
         const p = edges.getAttribute("position").array;
         const m = meshes[i].matrix;
-        const v = new THREE4.Vector3();
+        const v = new THREE5.Vector3();
         for (let k = 0; k < p.length; k += 3) {
           v.set(p[k], p[k + 1], p[k + 2]).applyMatrix4(m);
           positions.push(v.x, v.y, v.z);
@@ -22553,9 +22890,9 @@ var Viewport = class {
         edges.dispose();
       }
       if (positions.length) {
-        const g = new THREE4.BufferGeometry();
-        g.setAttribute("position", new THREE4.Float32BufferAttribute(positions, 3));
-        this.outlines.add(new THREE4.LineSegments(g, new THREE4.LineBasicMaterial({
+        const g = new THREE5.BufferGeometry();
+        g.setAttribute("position", new THREE5.Float32BufferAttribute(positions, 3));
+        this.outlines.add(new THREE5.LineSegments(g, new THREE5.LineBasicMaterial({
           color: style.colour,
           opacity: style.opacity,
           transparent: style.opacity < 1
@@ -22613,9 +22950,9 @@ var Viewport = class {
    *  when the contents or the light change. */
   frameSun() {
     this.root.updateMatrixWorld(true);
-    const box = new THREE4.Box3().setFromObject(this.meshGroup);
+    const box = new THREE5.Box3().setFromObject(this.meshGroup);
     if (box.isEmpty()) return;
-    const sphere = box.getBoundingSphere(new THREE4.Sphere());
+    const sphere = box.getBoundingSphere(new THREE5.Sphere());
     const r = Math.max(sphere.radius, 0.5);
     this.sun.position.copy(sphere.center).addScaledVector(this.sunDir, r * 3);
     this.sun.target.position.copy(sphere.center);
@@ -22640,13 +22977,42 @@ var Viewport = class {
    *  that it fits the tighter of the two field-of-view axes. */
   fit(margin = 1.25) {
     this.root.updateMatrixWorld(true);
-    const box = new THREE4.Box3().setFromObject(this.root);
+    const box = new THREE5.Box3().setFromObject(this.root);
     if (box.isEmpty()) return;
+    this.move = null;
     box.getCenter(this.target);
-    const size = box.getSize(new THREE4.Vector3());
-    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
-    this.spherical.radius = fitRadius(radius, this.perspective.fov, this.perspective.aspect, margin);
+    this.spherical.radius = this.radiusFor(box, margin);
     this.resize();
+  }
+  /**
+   * Frame part of the content: a selection, a storey, one component.
+   *
+   * Animated, unlike `fit`, because the reader is going somewhere within a
+   * model they can already see and needs to keep hold of where. The margin is
+   * looser than `fit`'s for the same reason: a part framed edge to edge loses
+   * the surroundings that say which part it is.
+   */
+  fitTo(objects, opts = {}) {
+    if (!objects.length) return;
+    this.root.updateMatrixWorld(true);
+    const box = new THREE5.Box3();
+    for (const o of objects) box.expandByObject(o);
+    if (box.isEmpty()) return;
+    const target = box.getCenter(new THREE5.Vector3());
+    const radius = this.radiusFor(box, opts.margin ?? 1.8);
+    if (opts.animate === false) {
+      this.move = null;
+      this.target.copy(target);
+      this.spherical.radius = radius;
+      this.resize();
+      return;
+    }
+    this.animate({ radius, target });
+  }
+  radiusFor(box, margin) {
+    const size = box.getSize(new THREE5.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+    return fitRadius(radius, this.perspective.fov, this.perspective.aspect, margin);
   }
   resize() {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
@@ -22665,6 +23031,7 @@ var Viewport = class {
   }
   dispose() {
     cancelAnimationFrame(this.frame);
+    this.gizmo?.dispose();
     this.clear();
     for (const plane of [this.ground, this.groundPlane]) {
       plane.geometry.dispose();
@@ -25135,6 +25502,7 @@ var Sketch2DInstance = class {
   MeshGen,
   MeshSubdivide,
   MeshTransform,
+  NavGizmo,
   NoFitPolygon,
   NurbsCurve,
   NurbsSurface,
@@ -25235,6 +25603,7 @@ var Sketch2DInstance = class {
   createLayout,
   createParams,
   createRandom,
+  easeInOut,
   edgeOutwardVisibility,
   edgeStyle,
   extractVisiblePolylines,
@@ -25249,7 +25618,9 @@ var Sketch2DInstance = class {
   lightBalance,
   lineClipPolygon,
   modeBackground,
+  nearestAxis,
   noise,
+  orbitFor,
   orthoFrustum,
   perpVisibility,
   perpVisibilityOfPolys,
@@ -25262,6 +25633,7 @@ var Sketch2DInstance = class {
   repelBodies,
   segmentSegmentClosest,
   setClipSnap,
+  shortestTurn,
   sketch,
   sketch2d,
   standardOrbit,

@@ -4515,7 +4515,7 @@ declare class SVGRenderer {
  * the library owns the model. This is the other case: an app that has already
  * built its own meshes (from IFC, from a cut list, from a supplier's geometry)
  * and wants somewhere honest to put them. It takes `THREE.Mesh`es and gives
- * back the four things every such app has otherwise rewritten:
+ * back the five things every such app has otherwise rewritten:
  *
  *  - **view modes** that answer different questions. Shaded says what a thing
  *    is made of; ghost says where a part sits inside the whole; hidden line is
@@ -4530,6 +4530,12 @@ declare class SVGRenderer {
  *    about a hundredth of a degree; what was missing was the part between it
  *    and a light: frame the shadow camera to the content, put a catcher under
  *    the lowest point, and say out loud what was assumed.
+ *  - **navigation the reader can reach.** The axis gizmo in the corner is not
+ *    decoration: without it the named views and the orthographic camera above
+ *    were public API that no application built on this class had ever called,
+ *    so the plan and elevation this viewport can draw were unreachable by
+ *    anyone using it. It also answers, before you click anything, which way is
+ *    up and which face you are looking at.
  *  - **teardown that releases the WebGL context.** `renderer.dispose()` does
  *    not, and a browser allows only a handful of contexts. A couple of
  *    viewports times every hot reload exhausts them, after which new canvases
@@ -4577,6 +4583,20 @@ interface ViewportOptions {
     up?: "y" | "z";
     /** The corner the camera starts in. */
     view?: StandardView;
+    /**
+     * The axis widget in the corner: which way is up, and a click target for
+     * every face view. True by default, because without it this class's named
+     * views and its orthographic camera are unreachable by anybody using it, and
+     * a reader has no way to tell a plan from a steep look down.
+     *
+     * Turn it off for a viewport showing one component rather than a building,
+     * where the same reasoning as `ground` applies: a product on a thumbnail has
+     * no north and the widget is noise.
+     */
+    gizmo?: boolean;
+    /** Corner for that widget. Bottom right by default, out of the way of the
+     *  toolbars apps put along the top. */
+    gizmoCorner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
     /** A click that hit nothing reports null. A drag orbits and reports nothing. */
     onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
     /**
@@ -4655,15 +4675,48 @@ declare function lightBalance(mode: ViewMode, shadows: boolean): {
 /**
  * Where the camera sits for a named view, as three.js spherical angles: phi
  * from +Y, theta around Y from +Z towards +X.
- *
- * Top and bottom are held a thousandth of a radian off the pole, because a
- * camera looking exactly along its own up vector has no defined orientation
- * and the view rolls to an arbitrary angle.
  */
 declare function standardOrbit(view: StandardView): {
     phi: number;
     theta: number;
 };
+/**
+ * Where the camera sits to look down `direction`, which points from the subject
+ * towards the camera. The inverse of what the tick loop does with a spherical.
+ *
+ * Clamped off the poles like the named views, so clicking the gizmo's Y ball
+ * lands on the same well-defined orientation that `setView("top")` does rather
+ * than on a plan whose north is whatever floating point decided.
+ */
+declare function orbitFor(direction: {
+    x: number;
+    y: number;
+    z: number;
+}): {
+    phi: number;
+    theta: number;
+};
+/**
+ * The end angle to interpolate towards so a turn takes the short way round.
+ *
+ * Without this, orbiting from theta 3.0 to -3.0 (a tenth of a turn apart on the
+ * screen) spins the building almost the whole way about instead, which reads as
+ * the viewport having lost its place rather than as a view change.
+ */
+declare function shortestTurn(from: number, to: number): number;
+/**
+ * Whichever of the six axis directions a view is already closest to. What a
+ * double click on the gizmo snaps to: the reader is nearly at an elevation and
+ * wants to be exactly at one, without having to work out which.
+ */
+declare function nearestAxis(direction: {
+    x: number;
+    y: number;
+    z: number;
+}): THREE.Vector3;
+/** Smoothstep. A camera that starts and stops abruptly reads as a cut, and a
+ *  cut is exactly what an animated view change exists to avoid. */
+declare function easeInOut(t: number): number;
 /**
  * How far back to sit so a sphere of `boundingRadius` fits, on the tighter of
  * the two field-of-view axes. A portrait panel clips a wide building on the
@@ -4719,11 +4772,23 @@ declare class Viewport {
     private sunNote;
     private target;
     private spherical;
+    private gizmo;
+    /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
+     *  every one of the frames a still camera also renders. */
+    private gizmoAt;
+    /**
+     * A camera move in progress. Any input from the reader drops it: a view
+     * animation that fights an orbit is worse than no animation at all.
+     */
+    private move;
     constructor(host: HTMLElement, opts?: ViewportOptions);
     /** The camera currently in use. Follows setProjection. */
     get camera(): THREE.Camera;
     private setUp;
     private bind;
+    /** Orbit by a pointer travel in pixels. Shared by the canvas and the gizmo,
+     *  so dragging the widget turns the model exactly as dragging the model does. */
+    private orbitBy;
     /** The mesh under the pointer, at most every other animation frame.
      *  Reported only on a change, so the host repaints on a crossing and not on
      *  every pixel of travel. */
@@ -4758,8 +4823,33 @@ declare class Viewport {
     /** Perspective or orthographic. Orthographic with hidden line and a face view
      *  is a plan or an elevation; that pairing is the point of having both. */
     setProjection(projection: Projection): void;
-    /** Point the camera at a named face, keeping the distance. */
-    setView(view: StandardView): void;
+    /**
+     * Point the camera at a named face, keeping the distance.
+     *
+     * Animated by default. A view change that jumps is read as the model having
+     * been replaced rather than turned, and the reader loses which face they are
+     * now looking at, which is the one thing the change was for. Pass
+     * `{ animate: false }` where a jump is wanted (restoring a stored view, or a
+     * test that wants the end state now).
+     */
+    setView(view: StandardView, opts?: {
+        animate?: boolean;
+    }): void;
+    /**
+     * Look down a direction given in the content's own axes, so a caller with a
+     * Z-up model asks for `(0, 0, 1)` and gets a plan whichever way the viewport
+     * has turned the content to face three.js.
+     */
+    orbitTo(direction: THREE.Vector3, opts?: {
+        animate?: boolean;
+    }): void;
+    /** Which way the camera currently lies from the subject, in content axes. */
+    private viewDirection;
+    private orbit;
+    /** Start a camera move to a partial end state, holding whatever it omits. */
+    private animate;
+    /** Advance a camera move, if one is running. Called once per frame. */
+    private step;
     /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
     repaint(): void;
     /** Apply the current mode to one mesh. The app's hook has the first word. */
@@ -4793,8 +4883,104 @@ declare class Viewport {
     /** Frame the contents: centre on the bounding box and pull back far enough
      *  that it fits the tighter of the two field-of-view axes. */
     fit(margin?: number): void;
+    /**
+     * Frame part of the content: a selection, a storey, one component.
+     *
+     * Animated, unlike `fit`, because the reader is going somewhere within a
+     * model they can already see and needs to keep hold of where. The margin is
+     * looser than `fit`'s for the same reason: a part framed edge to edge loses
+     * the surroundings that say which part it is.
+     */
+    fitTo(objects: THREE.Object3D[], opts?: {
+        margin?: number;
+        animate?: boolean;
+    }): void;
+    private radiusFor;
     private resize;
     private tick;
+    dispose(): void;
+}
+
+/**
+ * The axis widget in the corner of a viewport.
+ *
+ * It exists because the Viewport already knew how to be a plan or an
+ * elevation and no user could ask it to: `setView` and `setProjection` were
+ * public, tested, and unreachable from every application built on them. A
+ * capability with no affordance is a capability nobody has.
+ *
+ * Drawn as SVG rather than a second WebGL scene. It stays crisp at any device
+ * pixel ratio, it costs no context (a browser allows only a handful, and this
+ * library already fights for them), and hit testing is what the DOM does for a
+ * living: each ball is an element, so a click is a click rather than a
+ * raycast.
+ *
+ * What it shows is the *content's* axes, not the world's. A Z-up model is
+ * rotated into a Y-up scene by `setUp`, and a gizmo that reported the scene's
+ * axes would tell an engineer their Z was horizontal.
+ */
+
+interface NavGizmoOptions {
+    /** Pixels. The ball radius and font scale with it. */
+    size?: number;
+    /** Which corner of the host it sits in. */
+    corner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    /** Distance from the two edges of that corner, in pixels. */
+    inset?: number;
+    /**
+     * Whether to show the projection toggle under the axes.
+     *
+     * On by default, and not decoration either: clicking an axis gets you a face
+     * view, but a face view in perspective is a photograph of a building taken
+     * from the front, with the far corner smaller than the near one. An
+     * elevation is the orthographic one. Having reached the view and not the
+     * convention, a reader is one control short of the drawing they asked for.
+     */
+    projectionToggle?: boolean;
+    /** Look down this direction, in content space. The viewport animates. */
+    onAxis: (direction: THREE.Vector3) => void;
+    /** Drag on the gizmo, in pixels, to orbit. */
+    onDrag: (dx: number, dy: number) => void;
+    /** Double click: snap to whichever axis the view is already nearest. */
+    onSnap: () => void;
+    /** Flip between perspective and orthographic. */
+    onProjection?: () => void;
+}
+declare class NavGizmo {
+    private opts;
+    private root;
+    private svg;
+    private balls;
+    private projectionButton;
+    private size;
+    private centre;
+    private reach;
+    private ballR;
+    private scratch;
+    private inverse;
+    /** Set while a drag is under way, so the click that ends one is not read as
+     *  a click on whichever ball happened to be under the pointer. */
+    private moved;
+    /** The window listeners a drag needs, dropped in one go on dispose. */
+    private listeners;
+    constructor(host: HTMLElement, opts: NavGizmoOptions);
+    private makeBall;
+    /**
+     * The projection toggle: a caption that names the convention in force and
+     * changes it when clicked, rather than an icon nobody can read at 9 pixels.
+     */
+    private makeProjectionToggle;
+    /** Tell the widget which projection is in force, so its caption is true. */
+    setProjection(projection: "perspective" | "orthographic"): void;
+    private bind;
+    /**
+     * Redraw for the current camera.
+     *
+     * `contentRotation` carries the root's own turn, so the labels describe the
+     * model's axes rather than the scene's.
+     */
+    update(camera: THREE.Camera, contentRotation: THREE.Quaternion): void;
+    setVisible(on: boolean): void;
     dispose(): void;
 }
 
@@ -5849,4 +6035,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lightBalance, lineClipPolygon, modeBackground, noise, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
+export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lightBalance, lineClipPolygon, modeBackground, nearestAxis, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };

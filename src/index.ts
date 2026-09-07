@@ -198,11 +198,16 @@ export type { SVGRendererConfig } from "./render/SVGRenderer";
 export {
   Viewport, edgeStyle, surfaceAppearance, lightBalance, modeBackground,
   groundAppearance, DEFAULT_BACKGROUND,
-  standardOrbit, fitRadius, orthoFrustum,
+  standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut,
+  fitRadius, orthoFrustum,
 } from "./render/Viewport";
 export type {
   ViewMode, Projection, StandardView, Appearance, ViewportOptions, ContentOptions,
 } from "./render/Viewport";
+// The axis widget the Viewport puts in its corner. Exported for an app that
+// wants one over a scene of its own; a Viewport already has it.
+export { NavGizmo } from "./render/NavGizmo";
+export type { NavGizmoOptions } from "./render/NavGizmo";
 
 // GUI: layer panel (consumed by both the sketch API + standalone apps).
 export { LayerPanel, computeEffectiveVisibility } from "./gui/LayerPanel";

@@ -5,7 +5,7 @@
  * the library owns the model. This is the other case: an app that has already
  * built its own meshes (from IFC, from a cut list, from a supplier's geometry)
  * and wants somewhere honest to put them. It takes `THREE.Mesh`es and gives
- * back the four things every such app has otherwise rewritten:
+ * back the five things every such app has otherwise rewritten:
  *
  *  - **view modes** that answer different questions. Shaded says what a thing
  *    is made of; ghost says where a part sits inside the whole; hidden line is
@@ -20,6 +20,12 @@
  *    about a hundredth of a degree; what was missing was the part between it
  *    and a light: frame the shadow camera to the content, put a catcher under
  *    the lowest point, and say out loud what was assumed.
+ *  - **navigation the reader can reach.** The axis gizmo in the corner is not
+ *    decoration: without it the named views and the orthographic camera above
+ *    were public API that no application built on this class had ever called,
+ *    so the plan and elevation this viewport can draw were unreachable by
+ *    anyone using it. It also answers, before you click anything, which way is
+ *    up and which face you are looking at.
  *  - **teardown that releases the WebGL context.** `renderer.dispose()` does
  *    not, and a browser allows only a handful of contexts. A couple of
  *    viewports times every hot reload exhausts them, after which new canvases
@@ -31,6 +37,7 @@
  */
 import * as THREE from "three";
 import { SunPosition } from "../core/solar/SunPosition";
+import { NavGizmo } from "./NavGizmo";
 
 /**
  * How the content is drawn. Not decoration: each answers a different question.
@@ -73,6 +80,20 @@ export interface ViewportOptions {
   up?: "y" | "z";
   /** The corner the camera starts in. */
   view?: StandardView;
+  /**
+   * The axis widget in the corner: which way is up, and a click target for
+   * every face view. True by default, because without it this class's named
+   * views and its orthographic camera are unreachable by anybody using it, and
+   * a reader has no way to tell a plan from a steep look down.
+   *
+   * Turn it off for a viewport showing one component rather than a building,
+   * where the same reasoning as `ground` applies: a product on a thumbnail has
+   * no north and the widget is noise.
+   */
+  gizmo?: boolean;
+  /** Corner for that widget. Bottom right by default, out of the way of the
+   *  toolbars apps put along the top. */
+  gizmoCorner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
   /** A click that hit nothing reports null. A drag orbits and reports nothing. */
   onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
   /**
@@ -201,24 +222,80 @@ export function lightBalance(mode: ViewMode, shadows: boolean): {
 }
 
 /**
+ * Both poles are held this far off, because a camera looking exactly along its
+ * own up vector has no defined orientation and the view rolls to an arbitrary
+ * angle.
+ */
+const POLE = 0.001;
+
+/**
  * Where the camera sits for a named view, as three.js spherical angles: phi
  * from +Y, theta around Y from +Z towards +X.
- *
- * Top and bottom are held a thousandth of a radian off the pole, because a
- * camera looking exactly along its own up vector has no defined orientation
- * and the view rolls to an arbitrary angle.
  */
 export function standardOrbit(view: StandardView): { phi: number; theta: number } {
   const H = Math.PI / 2;
   switch (view) {
-    case "top": return { phi: 0.001, theta: 0 };
-    case "bottom": return { phi: Math.PI - 0.001, theta: 0 };
+    case "top": return { phi: POLE, theta: 0 };
+    case "bottom": return { phi: Math.PI - POLE, theta: 0 };
     case "front": return { phi: H, theta: 0 };
     case "back": return { phi: H, theta: Math.PI };
     case "right": return { phi: H, theta: H };
     case "left": return { phi: H, theta: -H };
     default: return { phi: Math.PI / 3, theta: Math.PI / 4 };
   }
+}
+
+/**
+ * Where the camera sits to look down `direction`, which points from the subject
+ * towards the camera. The inverse of what the tick loop does with a spherical.
+ *
+ * Clamped off the poles like the named views, so clicking the gizmo's Y ball
+ * lands on the same well-defined orientation that `setView("top")` does rather
+ * than on a plan whose north is whatever floating point decided.
+ */
+export function orbitFor(direction: { x: number; y: number; z: number }): {
+  phi: number; theta: number;
+} {
+  const s = new THREE.Spherical().setFromVector3(
+    new THREE.Vector3(direction.x, direction.y, direction.z).normalize());
+  return { phi: Math.min(Math.PI - POLE, Math.max(POLE, s.phi)), theta: s.theta };
+}
+
+/**
+ * The end angle to interpolate towards so a turn takes the short way round.
+ *
+ * Without this, orbiting from theta 3.0 to -3.0 (a tenth of a turn apart on the
+ * screen) spins the building almost the whole way about instead, which reads as
+ * the viewport having lost its place rather than as a view change.
+ */
+export function shortestTurn(from: number, to: number): number {
+  const TAU = Math.PI * 2;
+  let delta = (to - from) % TAU;
+  if (delta > Math.PI) delta -= TAU;
+  if (delta < -Math.PI) delta += TAU;
+  return from + delta;
+}
+
+/**
+ * Whichever of the six axis directions a view is already closest to. What a
+ * double click on the gizmo snaps to: the reader is nearly at an elevation and
+ * wants to be exactly at one, without having to work out which.
+ */
+export function nearestAxis(direction: { x: number; y: number; z: number }): THREE.Vector3 {
+  const v = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
+  const axis = new THREE.Vector3();
+  const [ax, ay, az] = [Math.abs(v.x), Math.abs(v.y), Math.abs(v.z)];
+  if (ax >= ay && ax >= az) axis.set(Math.sign(v.x) || 1, 0, 0);
+  else if (ay >= az) axis.set(0, Math.sign(v.y) || 1, 0);
+  else axis.set(0, 0, Math.sign(v.z) || 1);
+  return axis;
+}
+
+/** Smoothstep. A camera that starts and stops abruptly reads as a cut, and a
+ *  cut is exactly what an animated view change exists to avoid. */
+export function easeInOut(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
 }
 
 /**
@@ -289,6 +366,19 @@ export class Viewport {
   // simple orbit: enough for looking at a building, and no extra dependency
   private target = new THREE.Vector3();
   private spherical: THREE.Spherical;
+  private gizmo: NavGizmo | null = null;
+  /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
+   *  every one of the frames a still camera also renders. */
+  private gizmoAt = { phi: NaN, theta: NaN };
+  /**
+   * A camera move in progress. Any input from the reader drops it: a view
+   * animation that fights an orbit is worse than no animation at all.
+   */
+  private move: {
+    from: { phi: number; theta: number; radius: number; target: THREE.Vector3 };
+    to: { phi: number; theta: number; radius: number; target: THREE.Vector3 };
+    start: number; ms: number;
+  } | null = null;
 
   constructor(private host: HTMLElement, private opts: ViewportOptions = {}) {
     const home = standardOrbit(opts.view ?? "iso");
@@ -342,6 +432,17 @@ export class Viewport {
     this.root.add(this.meshGroup, this.outlines);
     this.scene.add(this.sky, this.sun, this.sun.target, this.ground,
                    this.groundPlane, this.root);
+    if (opts.gizmo !== false) {
+      this.gizmo = new NavGizmo(host, {
+        corner: opts.gizmoCorner,
+        onAxis: (direction) => this.orbitTo(direction),
+        onDrag: (dx, dy) => { this.move = null; this.orbitBy(dx, dy); },
+        onSnap: () => this.orbitTo(nearestAxis(this.viewDirection())),
+        onProjection: () => this.setProjection(
+          this.projectionMode === "perspective" ? "orthographic" : "perspective"),
+      });
+      this.gizmo.setProjection(this.projectionMode);
+    }
     this.bind();
     this.resize();
     this.tick();
@@ -354,6 +455,7 @@ export class Viewport {
 
   private setUp(up: "y" | "z") {
     this.root.rotation.set(up === "z" ? -Math.PI / 2 : 0, 0, 0);
+    this.gizmoAt.phi = NaN;                 // the widget's axes just moved
   }
 
   private bind() {
@@ -361,6 +463,7 @@ export class Viewport {
     let dragging = false, moved = false, lx = 0, ly = 0;
     el.addEventListener("pointerdown", (e) => {
       dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
+      this.move = null;                    // the reader outranks an animation
     });
     el.addEventListener("pointerleave", () => {
       if (this.hovered !== null) { this.hovered = null; this.opts.onHover?.(null); }
@@ -369,8 +472,7 @@ export class Viewport {
       if (!dragging) { this.hover(e); return; }
       const dx = e.clientX - lx, dy = e.clientY - ly;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      this.spherical.theta -= dx * 0.005;
-      this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi - dy * 0.005));
+      this.orbitBy(dx, dy);
       lx = e.clientX; ly = e.clientY;
     });
     el.addEventListener("pointerup", (e) => {
@@ -379,10 +481,18 @@ export class Viewport {
     });
     el.addEventListener("wheel", (e) => {
       e.preventDefault();
+      this.move = null;
       this.spherical.radius = Math.max(
         0.05, Math.min(4000, this.spherical.radius * (1 + Math.sign(e.deltaY) * 0.12)));
     }, { passive: false });
     new ResizeObserver(() => this.resize()).observe(this.host);
+  }
+
+  /** Orbit by a pointer travel in pixels. Shared by the canvas and the gizmo,
+   *  so dragging the widget turns the model exactly as dragging the model does. */
+  private orbitBy(dx: number, dy: number) {
+    this.spherical.theta -= dx * 0.005;
+    this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi - dy * 0.005));
   }
 
   /** The mesh under the pointer, at most every other animation frame.
@@ -501,14 +611,78 @@ export class Viewport {
    *  is a plan or an elevation; that pairing is the point of having both. */
   setProjection(projection: Projection) {
     this.projectionMode = projection;
+    this.gizmo?.setProjection(projection);
     this.resize();
   }
 
-  /** Point the camera at a named face, keeping the distance. */
-  setView(view: StandardView) {
+  /**
+   * Point the camera at a named face, keeping the distance.
+   *
+   * Animated by default. A view change that jumps is read as the model having
+   * been replaced rather than turned, and the reader loses which face they are
+   * now looking at, which is the one thing the change was for. Pass
+   * `{ animate: false }` where a jump is wanted (restoring a stored view, or a
+   * test that wants the end state now).
+   */
+  setView(view: StandardView, opts: { animate?: boolean } = {}) {
     const { phi, theta } = standardOrbit(view);
-    this.spherical.phi = phi;
-    this.spherical.theta = theta;
+    this.orbit(phi, theta, opts.animate !== false);
+  }
+
+  /**
+   * Look down a direction given in the content's own axes, so a caller with a
+   * Z-up model asks for `(0, 0, 1)` and gets a plan whichever way the viewport
+   * has turned the content to face three.js.
+   */
+  orbitTo(direction: THREE.Vector3, opts: { animate?: boolean } = {}) {
+    const world = direction.clone().applyQuaternion(this.root.quaternion);
+    const { phi, theta } = orbitFor(world);
+    this.orbit(phi, theta, opts.animate !== false);
+  }
+
+  /** Which way the camera currently lies from the subject, in content axes. */
+  private viewDirection(): THREE.Vector3 {
+    return new THREE.Vector3().setFromSpherical(this.spherical)
+      .applyQuaternion(this.root.quaternion.clone().invert()).normalize();
+  }
+
+  private orbit(phi: number, theta: number, animate: boolean) {
+    if (!animate) {
+      this.move = null;
+      this.spherical.phi = phi;
+      this.spherical.theta = theta;
+      return;
+    }
+    this.animate({ phi, theta: shortestTurn(this.spherical.theta, theta) });
+  }
+
+  /** Start a camera move to a partial end state, holding whatever it omits. */
+  private animate(to: Partial<{ phi: number; theta: number; radius: number; target: THREE.Vector3 }>,
+                  ms = 340) {
+    const from = {
+      phi: this.spherical.phi, theta: this.spherical.theta,
+      radius: this.spherical.radius, target: this.target.clone(),
+    };
+    this.move = {
+      from,
+      to: {
+        phi: to.phi ?? from.phi, theta: to.theta ?? from.theta,
+        radius: to.radius ?? from.radius, target: to.target?.clone() ?? from.target.clone(),
+      },
+      start: performance.now(), ms,
+    };
+  }
+
+  /** Advance a camera move, if one is running. Called once per frame. */
+  private step() {
+    if (!this.move) return;
+    const { from, to, start, ms } = this.move;
+    const t = easeInOut((performance.now() - start) / ms);
+    this.spherical.phi = from.phi + (to.phi - from.phi) * t;
+    this.spherical.theta = from.theta + (to.theta - from.theta) * t;
+    this.spherical.radius = from.radius + (to.radius - from.radius) * t;
+    this.target.lerpVectors(from.target, to.target, t);
+    if (t >= 1) this.move = null;
   }
 
   /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
@@ -707,11 +881,42 @@ export class Viewport {
     this.root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(this.root);
     if (box.isEmpty()) return;
+    this.move = null;
     box.getCenter(this.target);
+    this.spherical.radius = this.radiusFor(box, margin);
+    this.resize();
+  }
+
+  /**
+   * Frame part of the content: a selection, a storey, one component.
+   *
+   * Animated, unlike `fit`, because the reader is going somewhere within a
+   * model they can already see and needs to keep hold of where. The margin is
+   * looser than `fit`'s for the same reason: a part framed edge to edge loses
+   * the surroundings that say which part it is.
+   */
+  fitTo(objects: THREE.Object3D[], opts: { margin?: number; animate?: boolean } = {}) {
+    if (!objects.length) return;
+    this.root.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    for (const o of objects) box.expandByObject(o);
+    if (box.isEmpty()) return;
+    const target = box.getCenter(new THREE.Vector3());
+    const radius = this.radiusFor(box, opts.margin ?? 1.8);
+    if (opts.animate === false) {
+      this.move = null;
+      this.target.copy(target);
+      this.spherical.radius = radius;
+      this.resize();
+      return;
+    }
+    this.animate({ radius, target });
+  }
+
+  private radiusFor(box: THREE.Box3, margin: number): number {
     const size = box.getSize(new THREE.Vector3());
     const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
-    this.spherical.radius = fitRadius(radius, this.perspective.fov, this.perspective.aspect, margin);
-    this.resize();
+    return fitRadius(radius, this.perspective.fov, this.perspective.aspect, margin);
   }
 
   private resize() {
@@ -730,9 +935,15 @@ export class Viewport {
 
   private tick = () => {
     this.frame = requestAnimationFrame(this.tick);
+    this.step();
     const camera = this.camera as THREE.PerspectiveCamera | THREE.OrthographicCamera;
     camera.position.setFromSpherical(this.spherical).add(this.target);
     camera.lookAt(this.target);
+    if (this.gizmo
+        && (this.spherical.phi !== this.gizmoAt.phi || this.spherical.theta !== this.gizmoAt.theta)) {
+      this.gizmo.update(camera, this.root.quaternion);
+      this.gizmoAt = { phi: this.spherical.phi, theta: this.spherical.theta };
+    }
     // an orthographic frustum is a function of the orbit radius, so zooming
     // has to reshape it rather than move a camera that does not care
     if (this.projectionMode === "orthographic") {
@@ -749,6 +960,7 @@ export class Viewport {
 
   dispose() {
     cancelAnimationFrame(this.frame);
+    this.gizmo?.dispose();
     this.clear();
     for (const plane of [this.ground, this.groundPlane]) {
       plane.geometry.dispose();

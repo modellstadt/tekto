@@ -7,9 +7,11 @@
  * the parts that need no WebGL to check.
  */
 import { describe, it, expect } from "vitest";
+import * as THREE from "three";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, DEFAULT_BACKGROUND,
+  orbitFor, shortestTurn, nearestAxis, easeInOut,
 } from "../src/render/Viewport";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
@@ -110,6 +112,59 @@ describe("standard views", () => {
     expect(standardOrbit("top").phi).toBeGreaterThan(0);
     expect(standardOrbit("top").phi).toBeLessThan(0.01);
     expect(Math.PI - standardOrbit("bottom").phi).toBeLessThan(0.01);
+  });
+});
+
+describe("navigation", () => {
+  /** What the tick loop does with a spherical, so a round trip is checkable. */
+  function cameraDirection(orbit: { phi: number; theta: number }): THREE.Vector3 {
+    return new THREE.Vector3()
+      .setFromSpherical(new THREE.Spherical(1, orbit.phi, orbit.theta)).normalize();
+  }
+
+  it("puts the camera on the axis the gizmo was clicked on", () => {
+    for (const axis of [
+      new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0),
+      new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1),
+    ]) {
+      const back = cameraDirection(orbitFor(axis));
+      expect(back.distanceTo(axis)).toBeLessThan(1e-6);
+    }
+  });
+
+  it("holds the poles off, so clicking Y is a plan and not a random roll", () => {
+    // the same guard the named views get: straight down the up vector, the
+    // camera has no defined orientation and north lands wherever
+    expect(orbitFor({ x: 0, y: 1, z: 0 }).phi).toBe(standardOrbit("top").phi);
+    expect(orbitFor({ x: 0, y: -1, z: 0 }).phi).toBe(standardOrbit("bottom").phi);
+  });
+
+  it("turns the short way round", () => {
+    // the bug: 3.0 to -3.0 is a tenth of a turn apart on screen, and
+    // interpolating the numbers spins the building nearly the whole way about
+    expect(shortestTurn(3.0, -3.0)).toBeCloseTo(3.0 + (Math.PI * 2 - 6.0));
+    expect(Math.abs(shortestTurn(3.0, -3.0) - 3.0)).toBeLessThan(Math.PI);
+    expect(shortestTurn(0.2, 0.5)).toBeCloseTo(0.5);
+    // and it lands on an angle that is still the one asked for
+    const turned = shortestTurn(3.0, -3.0);
+    expect(Math.cos(turned)).toBeCloseTo(Math.cos(-3.0));
+    expect(Math.sin(turned)).toBeCloseTo(Math.sin(-3.0));
+  });
+
+  it("snaps to the axis the view is already nearest", () => {
+    expect(nearestAxis({ x: 0.9, y: 0.2, z: 0.1 })).toEqual(new THREE.Vector3(1, 0, 0));
+    expect(nearestAxis({ x: -0.1, y: -0.9, z: 0.2 })).toEqual(new THREE.Vector3(0, -1, 0));
+    // an exact corner has to pick one rather than return nothing
+    expect(nearestAxis({ x: 1, y: 1, z: 1 }).length()).toBe(1);
+  });
+
+  it("eases in and out, and ends where it was sent", () => {
+    expect(easeInOut(0)).toBe(0);
+    expect(easeInOut(1)).toBe(1);
+    expect(easeInOut(0.5)).toBeCloseTo(0.5);
+    // a frame late must not overshoot: the clamp is what ends the animation
+    expect(easeInOut(1.4)).toBe(1);
+    expect(easeInOut(-0.2)).toBe(0);
   });
 });
 
