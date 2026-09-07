@@ -76,6 +76,13 @@ export interface ViewportOptions {
   /** A click that hit nothing reports null. A drag orbits and reports nothing. */
   onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
   /**
+   * What the pointer is over, as it moves. Reported only when it changes, and
+   * never while orbiting, so a host can paint a hover without a raycast per
+   * frame. Without this a model reads as a picture: nothing answers until you
+   * have already clicked, and you cannot tell what a click would select.
+   */
+  onHover?: (mesh: THREE.Mesh | null) => void;
+  /**
    * The app's last word on how one mesh looks, asked before the mode decides.
    * Return null to let the mode paint it. This is where a selection colour, or
    * "this part is spoken for", belongs: the viewport has no opinion on either.
@@ -271,6 +278,8 @@ export class Viewport {
    */
   private groundPlane: THREE.Mesh;
   private shadows = false;
+  private hovered: THREE.Mesh | null = null;
+  private lastHover = 0;
   /** Where the light comes from, in three.js Y-up. Replaced by a real solar
    *  position through setSun; this is the fallback for a sun below the horizon,
    *  and for a viewport nobody has told a date. */
@@ -353,8 +362,11 @@ export class Viewport {
     el.addEventListener("pointerdown", (e) => {
       dragging = true; moved = false; lx = e.clientX; ly = e.clientY;
     });
+    el.addEventListener("pointerleave", () => {
+      if (this.hovered !== null) { this.hovered = null; this.opts.onHover?.(null); }
+    });
     el.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
+      if (!dragging) { this.hover(e); return; }
       const dx = e.clientX - lx, dy = e.clientY - ly;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       this.spherical.theta -= dx * 0.005;
@@ -373,17 +385,34 @@ export class Viewport {
     new ResizeObserver(() => this.resize()).observe(this.host);
   }
 
-  private pick(e: PointerEvent) {
-    if (!this.opts.onPick) return;
+  /** The mesh under the pointer, at most every other animation frame.
+   *  Reported only on a change, so the host repaints on a crossing and not on
+   *  every pixel of travel. */
+  private hover(e: PointerEvent) {
+    if (!this.opts.onHover) return;
+    const now = performance.now();
+    if (now - this.lastHover < 40) return;
+    this.lastHover = now;
+    const hit = this.meshAt(e.clientX, e.clientY);
+    if (hit === this.hovered) return;
+    this.hovered = hit;
+    this.opts.onHover(hit);
+  }
+
+  private meshAt(clientX: number, clientY: number): THREE.Mesh | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
-    const hit = ray.intersectObjects(this.meshGroup.children, false)[0];
-    this.opts.onPick((hit?.object as THREE.Mesh) ?? null, e);
+    return (ray.intersectObjects(this.meshGroup.children, false)[0]?.object as THREE.Mesh) ?? null;
+  }
+
+  private pick(e: PointerEvent) {
+    if (!this.opts.onPick) return;
+    this.opts.onPick(this.meshAt(e.clientX, e.clientY), e);
   }
 
   // -- content --------------------------------------------------------------

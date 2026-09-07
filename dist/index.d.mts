@@ -4580,6 +4580,13 @@ interface ViewportOptions {
     /** A click that hit nothing reports null. A drag orbits and reports nothing. */
     onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
     /**
+     * What the pointer is over, as it moves. Reported only when it changes, and
+     * never while orbiting, so a host can paint a hover without a raycast per
+     * frame. Without this a model reads as a picture: nothing answers until you
+     * have already clicked, and you cannot tell what a click would select.
+     */
+    onHover?: (mesh: THREE.Mesh | null) => void;
+    /**
      * The app's last word on how one mesh looks, asked before the mode decides.
      * Return null to let the mode paint it. This is where a selection colour, or
      * "this part is spoken for", belongs: the viewport has no opinion on either.
@@ -4703,6 +4710,8 @@ declare class Viewport {
      */
     private groundPlane;
     private shadows;
+    private hovered;
+    private lastHover;
     /** Where the light comes from, in three.js Y-up. Replaced by a real solar
      *  position through setSun; this is the fallback for a sun below the horizon,
      *  and for a viewport nobody has told a date. */
@@ -4715,6 +4724,11 @@ declare class Viewport {
     get camera(): THREE.Camera;
     private setUp;
     private bind;
+    /** The mesh under the pointer, at most every other animation frame.
+     *  Reported only on a change, so the host repaints on a crossing and not on
+     *  every pixel of travel. */
+    private hover;
+    private meshAt;
     private pick;
     /**
      * Show these meshes, replacing whatever was there.

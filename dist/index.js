@@ -22227,6 +22227,8 @@ var Viewport = class {
     this.buildingOutlines = false;
     this.content = {};
     this.shadows = false;
+    this.hovered = null;
+    this.lastHover = 0;
     /** Where the light comes from, in three.js Y-up. Replaced by a real solar
      *  position through setSun; this is the fallback for a sun below the horizon,
      *  and for a viewport nobody has told a date. */
@@ -22319,8 +22321,17 @@ var Viewport = class {
       lx = e.clientX;
       ly = e.clientY;
     });
+    el.addEventListener("pointerleave", () => {
+      if (this.hovered !== null) {
+        this.hovered = null;
+        this.opts.onHover?.(null);
+      }
+    });
     el.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
+      if (!dragging) {
+        this.hover(e);
+        return;
+      }
       const dx = e.clientX - lx, dy = e.clientY - ly;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       this.spherical.theta -= dx * 5e-3;
@@ -22341,17 +22352,32 @@ var Viewport = class {
     }, { passive: false });
     new ResizeObserver(() => this.resize()).observe(this.host);
   }
-  pick(e) {
-    if (!this.opts.onPick) return;
+  /** The mesh under the pointer, at most every other animation frame.
+   *  Reported only on a change, so the host repaints on a crossing and not on
+   *  every pixel of travel. */
+  hover(e) {
+    if (!this.opts.onHover) return;
+    const now = performance.now();
+    if (now - this.lastHover < 40) return;
+    this.lastHover = now;
+    const hit = this.meshAt(e.clientX, e.clientY);
+    if (hit === this.hovered) return;
+    this.hovered = hit;
+    this.opts.onHover(hit);
+  }
+  meshAt(clientX, clientY) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE4.Vector2(
-      (e.clientX - rect.left) / rect.width * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
     );
     const ray = new THREE4.Raycaster();
     ray.setFromCamera(ndc, this.camera);
-    const hit = ray.intersectObjects(this.meshGroup.children, false)[0];
-    this.opts.onPick(hit?.object ?? null, e);
+    return ray.intersectObjects(this.meshGroup.children, false)[0]?.object ?? null;
+  }
+  pick(e) {
+    if (!this.opts.onPick) return;
+    this.opts.onPick(this.meshAt(e.clientX, e.clientY), e);
   }
   // -- content --------------------------------------------------------------
   /**
