@@ -4862,6 +4862,23 @@ declare function edgeStyle(mode: ViewMode): {
  */
 declare function modeBackground(mode: ViewMode, base: number): number;
 /**
+ * How a cut face is drawn.
+ *
+ * Poché: solid and dark, and flat rather than lit. A section is a drawing
+ * convention before it is a picture, and the convention is that cut material
+ * reads as one mass so the eye separates what was sliced from what is merely
+ * seen beyond it. Shading the cut instead, which is what a lit material does,
+ * gives it highlights and gradients and it stops reading as a cut at all: it
+ * becomes another grey surface among the grey surfaces behind it.
+ *
+ * Ghost inverts, as it does everywhere else here. On its dark ground a black
+ * poché would be a hole rather than a solid, so the cut goes pale and the
+ * relationship survives.
+ */
+declare function sectionAppearance(mode: ViewMode): {
+    colour: number;
+};
+/**
  * The visible plane the content stands on.
  *
  * Independent of whether the sun is casting: a building floating in a void
@@ -4967,22 +4984,16 @@ declare class Viewport {
     /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
     private highlight;
     /**
-     * A live section is two things in two different spaces, which is why they
-     * are two groups.
+     * The poché: one back-faced copy of each mesh while a section is live.
      *
-     * The stencil markers share geometry and local matrices with the meshes, so
-     * they belong under `root` and inherit its up-axis rotation exactly as the
-     * meshes do. The cap quad is placed from the clipping plane, and three
-     * applies clipping planes in world space, so a cap parented under `root` has
-     * a world-space position read as a local one and lands wherever the up-axis
-     * rotation sends it. That is why the first version cut correctly and capped
-     * nothing.
+     * Under `root`, sharing geometry and local matrices with the meshes, so it
+     * inherits the up-axis rotation exactly as they do.
      */
     private sectionGroup;
-    private sectionCap;
     /** kept so a colour change can rebuild the same cut */
     private sectionRequest;
     private section;
+    /** null means "whatever the view mode says", which is the usual case. */
     private sectionColour;
     private frame;
     private mode;
@@ -5129,23 +5140,16 @@ declare class Viewport {
      * face three.js. `at` is a fraction of the content's extent along that axis,
      * so 0.5 is halfway through whatever is loaded. Pass null to clear.
      *
-     * The capping is the whole point and the reason this is not three lines.
-     * A clipping plane on its own leaves the cut hollow: you see the inside of
-     * the far face and the building reads as a shell, which is wrong about the
-     * one thing a section exists to show. So each mesh is drawn twice more into
-     * the stencil buffer, back faces incrementing and front faces decrementing,
-     * which leaves a non-zero stencil exactly where the plane passes through
-     * solid material; a quad over the plane is then drawn only there.
-     *
-     * It assumes closed geometry. Our own framing boxes are closed and cap
-     * cleanly. Imported IFC geometry frequently is not, and an open mesh caps
-     * with holes: that is a fault in the model rather than in this code, and it
-     * looks like one, which is better than quietly filling it in.
+     * The capping is the whole point and the reason this is not three lines. A
+     * clipping plane on its own leaves the cut hollow: you see the far side from
+     * the inside and the building reads as a shell, which is wrong about the one
+     * thing a section exists to show. How the cut is filled is explained where
+     * it is done, below.
      */
     setSection(section: SectionRequest | null): void;
-    /** What the cut face is painted. A tone of its own by default, because a cut
-     *  is not a surface anybody specified. */
-    setSectionColour(colour: number): void;
+    /** Override what the cut face is painted. Pass null to go back to following
+     *  the view mode, which is what a section normally wants. */
+    setSectionColour(colour: number | null): void;
     /** The section in force, or null. */
     get sectionAt(): SectionRequest | null;
     private clearSection;
@@ -6464,4 +6468,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, sectionAppearance, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };

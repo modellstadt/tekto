@@ -193,6 +193,26 @@ export function modeBackground(mode: ViewMode, base: number): number {
 }
 
 /**
+ * How a cut face is drawn.
+ *
+ * Poché: solid and dark, and flat rather than lit. A section is a drawing
+ * convention before it is a picture, and the convention is that cut material
+ * reads as one mass so the eye separates what was sliced from what is merely
+ * seen beyond it. Shading the cut instead, which is what a lit material does,
+ * gives it highlights and gradients and it stops reading as a cut at all: it
+ * becomes another grey surface among the grey surfaces behind it.
+ *
+ * Ghost inverts, as it does everywhere else here. On its dark ground a black
+ * poché would be a hole rather than a solid, so the cut goes pale and the
+ * relationship survives.
+ */
+export function sectionAppearance(mode: ViewMode): { colour: number } {
+  if (mode === "ghost") return { colour: 0xe8eef6 };
+  // the same near-black the hidden-line creases use, so a cut and a line agree
+  return { colour: 0x1b2733 };
+}
+
+/**
  * The visible plane the content stands on.
  *
  * Independent of whether the sun is casting: a building floating in a void
@@ -365,23 +385,17 @@ export class Viewport {
   /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
   private highlight = new THREE.Group();
   /**
-   * A live section is two things in two different spaces, which is why they
-   * are two groups.
+   * The poché: one back-faced copy of each mesh while a section is live.
    *
-   * The stencil markers share geometry and local matrices with the meshes, so
-   * they belong under `root` and inherit its up-axis rotation exactly as the
-   * meshes do. The cap quad is placed from the clipping plane, and three
-   * applies clipping planes in world space, so a cap parented under `root` has
-   * a world-space position read as a local one and lands wherever the up-axis
-   * rotation sends it. That is why the first version cut correctly and capped
-   * nothing.
+   * Under `root`, sharing geometry and local matrices with the meshes, so it
+   * inherits the up-axis rotation exactly as they do.
    */
   private sectionGroup = new THREE.Group();
-  private sectionCap = new THREE.Group();
   /** kept so a colour change can rebuild the same cut */
   private sectionRequest: SectionRequest | null = null;
   private section: THREE.Plane | null = null;
-  private sectionColour = 0xd8d2c4;
+  /** null means "whatever the view mode says", which is the usual case. */
+  private sectionColour: number | null = null;
   private frame = 0;
   private mode: ViewMode = "shaded";
   private outlinesBuilt = false;
@@ -442,10 +456,7 @@ export class Viewport {
     this.perspective = new THREE.PerspectiveCamera(45, 1, 0.05, 5000);
     this.orthographic = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 5000);
 
-    // stencil: true is the default, and named here because the section's caps
-    // depend on it entirely. A renderer without a stencil buffer clips the
-    // model and leaves the cut hollow, with nothing to say why.
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
     // fill the host exactly: without this the canvas keeps its intrinsic size
     // and the view sits off-centre inside its container
@@ -488,7 +499,6 @@ export class Viewport {
 
     this.setUp(opts.up ?? "y");
     this.root.add(this.meshGroup, this.outlines, this.highlight, this.sectionGroup);
-    this.scene.add(this.sectionCap);          // world space: see the field
     this.scene.add(this.sky, this.sun, this.sun.target, this.ground,
                    this.groundPlane, this.root);
     if (opts.gizmo !== false) {
@@ -846,18 +856,11 @@ export class Viewport {
    * face three.js. `at` is a fraction of the content's extent along that axis,
    * so 0.5 is halfway through whatever is loaded. Pass null to clear.
    *
-   * The capping is the whole point and the reason this is not three lines.
-   * A clipping plane on its own leaves the cut hollow: you see the inside of
-   * the far face and the building reads as a shell, which is wrong about the
-   * one thing a section exists to show. So each mesh is drawn twice more into
-   * the stencil buffer, back faces incrementing and front faces decrementing,
-   * which leaves a non-zero stencil exactly where the plane passes through
-   * solid material; a quad over the plane is then drawn only there.
-   *
-   * It assumes closed geometry. Our own framing boxes are closed and cap
-   * cleanly. Imported IFC geometry frequently is not, and an open mesh caps
-   * with holes: that is a fault in the model rather than in this code, and it
-   * looks like one, which is better than quietly filling it in.
+   * The capping is the whole point and the reason this is not three lines. A
+   * clipping plane on its own leaves the cut hollow: you see the far side from
+   * the inside and the building reads as a shell, which is wrong about the one
+   * thing a section exists to show. How the cut is filled is explained where
+   * it is done, below.
    */
   setSection(section: SectionRequest | null) {
     this.clearSection();
@@ -888,62 +891,44 @@ export class Viewport {
     this.section = plane;
     this.applyClipping([plane]);
 
-    // the stencil pair per mesh, and one quad to fill what they mark
-    const stencilBase = new THREE.MeshBasicMaterial({
-      depthWrite: false, depthTest: false, colorWrite: false,
-      stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc,
+    // Poché by back faces, not by a stencilled quad.
+    //
+    // The textbook way to cap a clipped model is a stencil pass per mesh and a
+    // quad drawn where the count is non-zero. It works on a handful of closed
+    // solids and it did not work here: on a 402-mesh timber frame the count
+    // came back to zero everywhere but a one-pixel rim, and neither excluding
+    // the 36 meshes that are not watertight nor checking the transforms, the
+    // winding or the plane's placement recovered it.
+    //
+    // This is simpler and cannot fail. What you actually see through a cut is
+    // the inside of the solid, which is its back faces; painting those flat
+    // and dark makes the cut read as material rather than as a hole. It is not
+    // a true planar cap, because it follows the far surface rather than the
+    // plane, but at a section that difference is a few millimetres of depth
+    // nobody can see, and it needs nothing of the geometry: no manifoldness,
+    // no consistent winding, no per-object bookkeeping.
+    //
+    // One extra draw per mesh while a section is live, and none otherwise.
+    const poche = new THREE.MeshBasicMaterial({
+      color: this.sectionColour ?? sectionAppearance(this.mode).colour,
+      side: THREE.BackSide,
       clippingPlanes: [plane],
     });
     for (const mesh of this.meshGroup.children as THREE.Mesh[]) {
       if (!mesh.geometry) continue;
-      for (const [side, op] of [
-        [THREE.BackSide, THREE.IncrementWrapStencilOp],
-        [THREE.FrontSide, THREE.DecrementWrapStencilOp],
-      ] as const) {
-        const material = stencilBase.clone();
-        material.side = side;
-        material.stencilFail = op;
-        material.stencilZFail = op;
-        material.stencilZPass = op;
-        const marker = new THREE.Mesh(mesh.geometry, material);
-        marker.matrixAutoUpdate = false;
-        marker.matrix.copy(mesh.matrix);
-        marker.renderOrder = 1;
-        this.sectionGroup.add(marker);
-      }
+      const inside = new THREE.Mesh(mesh.geometry, poche);
+      inside.matrixAutoUpdate = false;
+      inside.matrix.copy(mesh.matrix);
+      inside.matrixWorldNeedsUpdate = true;
+      // behind the surfaces, so a solid the cut misses still looks like itself
+      inside.renderOrder = -1;
+      this.sectionGroup.add(inside);
     }
-    stencilBase.dispose();
-
-    // big enough to cover the cut whatever angle it is at, which is the box's
-    // diagonal rather than any one of its sides
-    const size = box.getSize(new THREE.Vector3()).length() * 1.2;
-    const cap = new THREE.Mesh(
-      new THREE.PlaneGeometry(size, size),
-      new THREE.MeshStandardMaterial({
-        color: this.sectionColour, metalness: 0, roughness: 1,
-        side: THREE.DoubleSide,
-        stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc,
-        stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp,
-        stencilZPass: THREE.ReplaceStencilOp,
-      }));
-    cap.renderOrder = 2;
-    // Centred on the content, not on the plane's own nearest point.
-    //
-    // `coplanarPoint` returns the point of the plane closest to the world
-    // origin, which is only the middle of the cut for content that happens to
-    // straddle the origin. A building modelled from a corner at (0,0) put the
-    // quad half a building away and capped the near half of the cut and not
-    // the far half, which read as one wall being missed rather than as the
-    // quad being in the wrong place.
-    plane.projectPoint(centre, cap.position);
-    cap.lookAt(cap.position.clone().add(plane.normal));
-    cap.onAfterRender = (renderer) => renderer.clearStencil();
-    this.sectionCap.add(cap);
   }
 
-  /** What the cut face is painted. A tone of its own by default, because a cut
-   *  is not a surface anybody specified. */
-  setSectionColour(colour: number) {
+  /** Override what the cut face is painted. Pass null to go back to following
+   *  the view mode, which is what a section normally wants. */
+  setSectionColour(colour: number | null) {
     if (colour === this.sectionColour) return;
     this.sectionColour = colour;
     if (this.sectionRequest) this.setSection(this.sectionRequest);
@@ -953,12 +938,6 @@ export class Viewport {
   get sectionAt(): SectionRequest | null { return this.sectionRequest; }
 
   private clearSection() {
-    for (const child of this.sectionCap.children as THREE.Mesh[]) {
-      child.geometry.dispose();
-      const m = child.material;
-      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
-    }
-    this.sectionCap.clear();
     for (const child of this.sectionGroup.children as THREE.Mesh[]) {
       const m = child.material;
       (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
@@ -1071,6 +1050,7 @@ export class Viewport {
   }
 
   private applyMode(mode: ViewMode) {
+    const changed = mode !== this.mode;
     this.mode = mode;
     (this.scene.background as THREE.Color).setHex(
       modeBackground(mode, this.opts.background ?? DEFAULT_BACKGROUND));
@@ -1082,6 +1062,11 @@ export class Viewport {
     gm.opacity = floor.opacity;
     gm.transparent = floor.opacity < 1;
     gm.needsUpdate = true;
+    // the cut is drawn by the mode, so a mode change has to rebuild it or the
+    // poché keeps the tone of the mode the reader has just left
+    if (changed && this.sectionRequest && this.sectionColour === null) {
+      queueMicrotask(() => { if (this.sectionRequest) this.setSection(this.sectionRequest); });
+    }
     this.sun.castShadow = balance.shadowed;
     this.ground.visible = balance.shadowed;
     this.sun.intensity = balance.sun;

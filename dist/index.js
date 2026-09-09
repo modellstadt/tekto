@@ -214,6 +214,7 @@ __export(index_exports, {
   realizeSlab: () => realizeSlab,
   repelBodies: () => repelBodies,
   reverseContact: () => reverse,
+  sectionAppearance: () => sectionAppearance,
   segmentSegmentClosest: () => segmentSegmentClosest,
   setClipSnap: () => setClipSnap,
   shortestTurn: () => shortestTurn,
@@ -22662,6 +22663,10 @@ function edgeStyle(mode) {
 function modeBackground(mode, base) {
   return mode === "ghost" ? 1777961 : base;
 }
+function sectionAppearance(mode) {
+  if (mode === "ghost") return { colour: 15265526 };
+  return { colour: 1779507 };
+}
 function groundAppearance(mode) {
   if (mode === "hidden-line") return { visible: false, colour: 16777215, opacity: 0 };
   if (mode === "ghost") return { visible: true, colour: 2436408, opacity: 1 };
@@ -22756,23 +22761,17 @@ var Viewport = class {
     /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
     this.highlight = new THREE5.Group();
     /**
-     * A live section is two things in two different spaces, which is why they
-     * are two groups.
+     * The poché: one back-faced copy of each mesh while a section is live.
      *
-     * The stencil markers share geometry and local matrices with the meshes, so
-     * they belong under `root` and inherit its up-axis rotation exactly as the
-     * meshes do. The cap quad is placed from the clipping plane, and three
-     * applies clipping planes in world space, so a cap parented under `root` has
-     * a world-space position read as a local one and lands wherever the up-axis
-     * rotation sends it. That is why the first version cut correctly and capped
-     * nothing.
+     * Under `root`, sharing geometry and local matrices with the meshes, so it
+     * inherits the up-axis rotation exactly as they do.
      */
     this.sectionGroup = new THREE5.Group();
-    this.sectionCap = new THREE5.Group();
     /** kept so a colour change can rebuild the same cut */
     this.sectionRequest = null;
     this.section = null;
-    this.sectionColour = 14209732;
+    /** null means "whatever the view mode says", which is the usual case. */
+    this.sectionColour = null;
     this.frame = 0;
     this.mode = "shaded";
     this.outlinesBuilt = false;
@@ -22836,7 +22835,7 @@ var Viewport = class {
     this.scene.background = new THREE5.Color(opts.background ?? DEFAULT_BACKGROUND);
     this.perspective = new THREE5.PerspectiveCamera(45, 1, 0.05, 5e3);
     this.orthographic = new THREE5.OrthographicCamera(-1, 1, 1, -1, 0.01, 5e3);
-    this.renderer = new THREE5.WebGLRenderer({ antialias: true, stencil: true });
+    this.renderer = new THREE5.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
     const dom = this.renderer.domElement;
     dom.style.display = "block";
@@ -22870,7 +22869,6 @@ var Viewport = class {
     this.groundPlane.renderOrder = -1;
     this.setUp(opts.up ?? "y");
     this.root.add(this.meshGroup, this.outlines, this.highlight, this.sectionGroup);
-    this.scene.add(this.sectionCap);
     this.scene.add(
       this.sky,
       this.sun,
@@ -23221,18 +23219,11 @@ var Viewport = class {
    * face three.js. `at` is a fraction of the content's extent along that axis,
    * so 0.5 is halfway through whatever is loaded. Pass null to clear.
    *
-   * The capping is the whole point and the reason this is not three lines.
-   * A clipping plane on its own leaves the cut hollow: you see the inside of
-   * the far face and the building reads as a shell, which is wrong about the
-   * one thing a section exists to show. So each mesh is drawn twice more into
-   * the stencil buffer, back faces incrementing and front faces decrementing,
-   * which leaves a non-zero stencil exactly where the plane passes through
-   * solid material; a quad over the plane is then drawn only there.
-   *
-   * It assumes closed geometry. Our own framing boxes are closed and cap
-   * cleanly. Imported IFC geometry frequently is not, and an open mesh caps
-   * with holes: that is a fault in the model rather than in this code, and it
-   * looks like one, which is better than quietly filling it in.
+   * The capping is the whole point and the reason this is not three lines. A
+   * clipping plane on its own leaves the cut hollow: you see the far side from
+   * the inside and the building reads as a shell, which is wrong about the one
+   * thing a section exists to show. How the cut is filled is explained where
+   * it is done, below.
    */
   setSection(section) {
     this.clearSection();
@@ -23267,57 +23258,23 @@ var Viewport = class {
     );
     this.section = plane;
     this.applyClipping([plane]);
-    const stencilBase = new THREE5.MeshBasicMaterial({
-      depthWrite: false,
-      depthTest: false,
-      colorWrite: false,
-      stencilWrite: true,
-      stencilFunc: THREE5.AlwaysStencilFunc,
+    const poche = new THREE5.MeshBasicMaterial({
+      color: this.sectionColour ?? sectionAppearance(this.mode).colour,
+      side: THREE5.BackSide,
       clippingPlanes: [plane]
     });
     for (const mesh of this.meshGroup.children) {
       if (!mesh.geometry) continue;
-      for (const [side, op] of [
-        [THREE5.BackSide, THREE5.IncrementWrapStencilOp],
-        [THREE5.FrontSide, THREE5.DecrementWrapStencilOp]
-      ]) {
-        const material = stencilBase.clone();
-        material.side = side;
-        material.stencilFail = op;
-        material.stencilZFail = op;
-        material.stencilZPass = op;
-        const marker = new THREE5.Mesh(mesh.geometry, material);
-        marker.matrixAutoUpdate = false;
-        marker.matrix.copy(mesh.matrix);
-        marker.renderOrder = 1;
-        this.sectionGroup.add(marker);
-      }
+      const inside = new THREE5.Mesh(mesh.geometry, poche);
+      inside.matrixAutoUpdate = false;
+      inside.matrix.copy(mesh.matrix);
+      inside.matrixWorldNeedsUpdate = true;
+      inside.renderOrder = -1;
+      this.sectionGroup.add(inside);
     }
-    stencilBase.dispose();
-    const size = box.getSize(new THREE5.Vector3()).length() * 1.2;
-    const cap = new THREE5.Mesh(
-      new THREE5.PlaneGeometry(size, size),
-      new THREE5.MeshStandardMaterial({
-        color: this.sectionColour,
-        metalness: 0,
-        roughness: 1,
-        side: THREE5.DoubleSide,
-        stencilWrite: true,
-        stencilRef: 0,
-        stencilFunc: THREE5.NotEqualStencilFunc,
-        stencilFail: THREE5.ReplaceStencilOp,
-        stencilZFail: THREE5.ReplaceStencilOp,
-        stencilZPass: THREE5.ReplaceStencilOp
-      })
-    );
-    cap.renderOrder = 2;
-    plane.projectPoint(centre, cap.position);
-    cap.lookAt(cap.position.clone().add(plane.normal));
-    cap.onAfterRender = (renderer) => renderer.clearStencil();
-    this.sectionCap.add(cap);
   }
-  /** What the cut face is painted. A tone of its own by default, because a cut
-   *  is not a surface anybody specified. */
+  /** Override what the cut face is painted. Pass null to go back to following
+   *  the view mode, which is what a section normally wants. */
   setSectionColour(colour) {
     if (colour === this.sectionColour) return;
     this.sectionColour = colour;
@@ -23328,12 +23285,6 @@ var Viewport = class {
     return this.sectionRequest;
   }
   clearSection() {
-    for (const child of this.sectionCap.children) {
-      child.geometry.dispose();
-      const m = child.material;
-      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
-    }
-    this.sectionCap.clear();
     for (const child of this.sectionGroup.children) {
       const m = child.material;
       (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
@@ -23431,6 +23382,7 @@ var Viewport = class {
     material.needsUpdate = true;
   }
   applyMode(mode) {
+    const changed = mode !== this.mode;
     this.mode = mode;
     this.scene.background.setHex(
       modeBackground(mode, this.opts.background ?? DEFAULT_BACKGROUND)
@@ -23443,6 +23395,11 @@ var Viewport = class {
     gm.opacity = floor.opacity;
     gm.transparent = floor.opacity < 1;
     gm.needsUpdate = true;
+    if (changed && this.sectionRequest && this.sectionColour === null) {
+      queueMicrotask(() => {
+        if (this.sectionRequest) this.setSection(this.sectionRequest);
+      });
+    }
     this.sun.castShadow = balance.shadowed;
     this.ground.visible = balance.shadowed;
     this.sun.intensity = balance.sun;
@@ -26317,6 +26274,7 @@ var Sketch2DInstance = class {
   realizeSlab,
   repelBodies,
   reverseContact,
+  sectionAppearance,
   segmentSegmentClosest,
   setClipSnap,
   shortestTurn,

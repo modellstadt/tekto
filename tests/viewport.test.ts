@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
-  modeBackground, groundAppearance, DEFAULT_BACKGROUND,
+  modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut,
 } from "../src/render/Viewport";
 
@@ -73,6 +73,26 @@ describe("view modes", () => {
       expect(Math.abs(luminance(groundAppearance(mode).colour) - luminance(page)))
         .toBeLessThan(40);
     }
+  });
+});
+
+describe("cut faces", () => {
+  it("draws a cut dark, so it reads as material rather than as a surface", () => {
+    // poché: the convention is that cut material is one solid mass, which is
+    // what separates what was sliced from what is merely seen beyond it. This
+    // was a warm mid grey and read as another surface among the surfaces
+    const page = modeBackground("shaded", DEFAULT_BACKGROUND);
+    expect(luminance(sectionAppearance("shaded").colour))
+      .toBeLessThan(luminance(page) - 100);
+  });
+
+  it("agrees with the line weight of the drawing it belongs to", () => {
+    expect(sectionAppearance("hidden-line").colour).toBe(edgeStyle("hidden-line").colour);
+  });
+
+  it("inverts on ghost's dark ground, where a black cut would be a hole", () => {
+    const ghostPage = modeBackground("ghost", DEFAULT_BACKGROUND);
+    expect(luminance(sectionAppearance("ghost").colour)).toBeGreaterThan(luminance(ghostPage));
   });
 });
 
