@@ -38,6 +38,7 @@
 import * as THREE from "three";
 import { SunPosition } from "../core/solar/SunPosition";
 import { NavGizmo } from "./NavGizmo";
+import { Callouts, layoutLabels, labelWidthFor, type CalloutItem } from "./Callouts";
 
 /**
  * How the content is drawn. Not decoration: each answers a different question.
@@ -94,6 +95,17 @@ export interface ViewportOptions {
   /** Corner for that widget. Bottom right by default, out of the way of the
    *  toolbars apps put along the top. */
   gizmoCorner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  /**
+   * The projection changed, which the host cannot otherwise know: the gizmo
+   * offers the toggle, so a host that only ever called `setProjection` itself
+   * would still be out of date the moment a reader used the widget.
+   */
+  onProjection?: (projection: Projection) => void;
+  /** A click on a callout label. See `setCallouts`. */
+  onPickCallout?: (id: string) => void;
+  /** The pointer over a callout label, so a host can light the element it
+   *  points at. Null on leaving. */
+  onHoverCallout?: (id: string | null) => void;
   /** A click that hit nothing reports null. A drag orbits and reports nothing. */
   onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
   /**
@@ -367,6 +379,15 @@ export class Viewport {
   private target = new THREE.Vector3();
   private spherical: THREE.Spherical;
   private gizmo: NavGizmo | null = null;
+  private callouts: Callouts | null = null;
+  /** World-space anchor per callout, remeasured only when the content changes:
+   *  a bounding box costs a walk of the geometry and nothing in the scene
+   *  moves except the camera. */
+  private calloutAnchors = new Map<string, THREE.Vector3>();
+  /** Which callouts the reader can actually see, recomputed on a timer rather
+   *  than per frame, because it costs a raycast each. */
+  private calloutVisible = new Set<string>();
+  private calloutCheckedAt = 0;
   /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
    *  every one of the frames a still camera also renders. */
   private gizmoAt = { phi: NaN, theta: NaN };
@@ -572,6 +593,11 @@ export class Viewport {
     }
     this.meshGroup.clear();
     this.outlines.clear();
+    // anchors were measured from meshes that no longer exist, so a label left
+    // over from the last model would point at where something used to be
+    this.calloutAnchors.clear();
+    this.calloutVisible.clear();
+    this.callouts?.setItems([]);
     this.outlinesBuilt = false;
     this.buildingOutlines = false;
   }
@@ -610,9 +636,11 @@ export class Viewport {
   /** Perspective or orthographic. Orthographic with hidden line and a face view
    *  is a plan or an elevation; that pairing is the point of having both. */
   setProjection(projection: Projection) {
+    const changed = projection !== this.projectionMode;
     this.projectionMode = projection;
     this.gizmo?.setProjection(projection);
     this.resize();
+    if (changed) this.opts.onProjection?.(projection);
   }
 
   /**
@@ -683,6 +711,91 @@ export class Viewport {
     this.spherical.radius = from.radius + (to.radius - from.radius) * t;
     this.target.lerpVectors(from.target, to.target, t);
     if (t >= 1) this.move = null;
+  }
+
+  /**
+   * Label these things, in the margins, with leaders to them.
+   *
+   * What a label says is the host's business, as colour is: this class knows
+   * how a drawing is annotated and nothing about what the annotation means.
+   * Pass an empty array to clear.
+   *
+   * Anchors are measured here and once, because a bounding box costs a walk of
+   * the geometry and nothing in this scene moves except the camera.
+   */
+  setCallouts(items: CalloutItem[]) {
+    if (!items.length && !this.callouts) return;
+    if (!this.callouts) {
+      this.callouts = new Callouts(this.host, {
+        onPick: (id) => this.opts.onPickCallout?.(id),
+        onHover: (id) => this.opts.onHoverCallout?.(id),
+      });
+    }
+    this.callouts.setItems(items);
+    this.calloutAnchors.clear();
+    this.root.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    for (const item of items) {
+      if (!item.objects.length) continue;
+      box.makeEmpty();
+      for (const o of item.objects) box.expandByObject(o);
+      if (!box.isEmpty()) this.calloutAnchors.set(item.id, box.getCenter(new THREE.Vector3()));
+    }
+    this.calloutCheckedAt = 0;             // re-test visibility on the next frame
+  }
+
+  /**
+   * Which anchors the reader can actually see.
+   *
+   * A leader pointing confidently at a wall that is behind three other walls
+   * is worse than no leader: on a face view half the building is occluded, and
+   * without this every one of those elements would still be labelled and the
+   * reader would have no way to tell which. One raycast per callout, on a
+   * timer, because the answer only changes when the camera moves.
+   */
+  private checkCalloutVisibility() {
+    this.calloutVisible.clear();
+    const camera = this.camera;
+    const ray = new THREE.Raycaster();
+    const meshes = this.meshGroup.children;
+    const direction = new THREE.Vector3();
+    for (const [id, anchor] of this.calloutAnchors) {
+      const wanted = this.callouts?.objectsOf(id) ?? [];
+      direction.copy(anchor).sub(camera.position);
+      const distance = direction.length();
+      ray.set(camera.position, direction.normalize());
+      ray.far = distance;                  // nothing beyond the anchor can hide it
+      const hit = ray.intersectObjects(meshes, false)[0];
+      // its own geometry standing in front of its centre is not occlusion: a
+      // wall's centre is inside the wall, so every callout would fail
+      if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
+        this.calloutVisible.add(id);
+      }
+    }
+  }
+
+  /** Project, cull and lay out this frame's labels. */
+  private drawCallouts() {
+    if (!this.callouts) return;
+    const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
+    const camera = this.camera;
+    const now = performance.now();
+    if (now - this.calloutCheckedAt > 180) {
+      this.checkCalloutVisibility();
+      this.calloutCheckedAt = now;
+    }
+    const v = new THREE.Vector3();
+    const anchors: { id: string; x: number; y: number }[] = [];
+    for (const [id, anchor] of this.calloutAnchors) {
+      if (!this.calloutVisible.has(id)) continue;
+      v.copy(anchor).project(camera);
+      if (v.z > 1) continue;               // behind the camera
+      anchors.push({ id, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+    }
+    const labelWidth = labelWidthFor(w);
+    this.callouts.setLabelWidth(labelWidth);
+    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
+    this.callouts.update(placed, dropped.length);
   }
 
   /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
@@ -944,6 +1057,10 @@ export class Viewport {
       this.gizmo.update(camera, this.root.quaternion);
       this.gizmoAt = { phi: this.spherical.phi, theta: this.spherical.theta };
     }
+    // after lookAt, so the labels are placed against the camera that is about
+    // to be rendered rather than the one from the frame before
+    camera.updateMatrixWorld();
+    this.drawCallouts();
     // an orthographic frustum is a function of the orbit radius, so zooming
     // has to reshape it rather than move a camera that does not care
     if (this.projectionMode === "orthographic") {
@@ -961,6 +1078,7 @@ export class Viewport {
   dispose() {
     cancelAnimationFrame(this.frame);
     this.gizmo?.dispose();
+    this.callouts?.dispose();
     this.clear();
     for (const plane of [this.ground, this.groundPlane]) {
       plane.geometry.dispose();

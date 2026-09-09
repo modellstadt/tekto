@@ -4509,6 +4509,150 @@ declare class SVGRenderer {
 }
 
 /**
+ * Labels that point at elements, laid out the way a drawing does.
+ *
+ * The distinction that decides everything here: a tag in a modelling tool
+ * names what you drew and floats where the thing is. A callout on a drawing
+ * sits in the margin, in a column, with a leader to the thing it is about. The
+ * second reads at a glance and stays readable while you turn the model,
+ * because the labels never overlap and never swim; the first turns into a
+ * heap the moment two elements line up behind each other, which on a building
+ * is most of the time.
+ *
+ * So this is not "billboard some text at a world position". It is: project the
+ * anchors, drop the ones you cannot see, stack what is left into the two
+ * margins in the order their anchors run down the screen, and draw a leader
+ * from each label to its anchor.
+ *
+ * The layout is a pure function of screen positions (`layoutLabels`), so the
+ * rule that two labels never overlap is checked without a browser.
+ */
+
+/** What the host wants said about one thing in the scene. */
+interface CalloutItem {
+    id: string;
+    /** the line that is read. Keep it short: this is a margin, not a panel. */
+    text: string;
+    /** a quieter second line, for a grade or a count */
+    detail?: string;
+    /** a swatch, so a callout and the element it points at agree by colour */
+    colour?: string;
+    /** what it points at. The anchor is the centre of their combined bounds. */
+    objects: THREE.Object3D[];
+}
+/** One label, placed. Pixel coordinates within the host. */
+interface Placement {
+    id: string;
+    side: "left" | "right";
+    /** where the label's own box sits */
+    x: number;
+    y: number;
+    /** where its leader ends */
+    anchorX: number;
+    anchorY: number;
+}
+/**
+ * How wide a label may be in a host of this width.
+ *
+ * Fixed at 150 px this was fine in a full-window viewport and useless in a
+ * panel: two 150 px margins in a 374 px column leave 74 px of drawing, so the
+ * annotation covered the thing it annotated. A share of the width instead,
+ * floored at something a product code still fits in and capped so a wide
+ * viewport does not grow billboards.
+ */
+declare function labelWidthFor(hostWidth: number): number;
+interface LayoutOptions {
+    width: number;
+    height: number;
+    /** vertical pitch between labels, which is a label's height plus its gap */
+    rowHeight?: number;
+    /** how wide a label is allowed to be */
+    labelWidth?: number;
+    /** clearance from the host's edges */
+    inset?: number;
+}
+/** What a layout could place, and what it could not. */
+interface Layout {
+    placed: Placement[];
+    /**
+     * Ids there was no room for, in the order they were given.
+     *
+     * Reported rather than clipped. A margin holds a fixed number of rows, and
+     * the first version of this let the surplus run off the bottom edge into an
+     * `overflow: hidden`, so eleven of thirty labels simply were not there and
+     * nothing said so. A reader counting labelled elements would have counted
+     * wrong. The caller is expected to say how many are missing.
+     */
+    dropped: string[];
+}
+/**
+ * Stack labels into the left and right margins without overlapping.
+ *
+ * Each label wants to sit level with its own anchor and is pushed down until
+ * it clears the one above; if that runs the column off the bottom, the whole
+ * column is lifted back inside. Labels keep the vertical order of their
+ * anchors, which is what makes the leaders readable: leaders that cross each
+ * other are worse than no leaders, because the reader follows the wrong one
+ * and believes the answer.
+ *
+ * Anchors on the left half of the screen get the left margin. Not because the
+ * side matters, but because a leader that crosses the whole drawing to reach
+ * the far margin passes over everything in between.
+ *
+ * More labels than rows is resolved by *input order*, which is the caller's
+ * priority, and never by compressing the pitch: labels printed on top of each
+ * other are not more information, they are less.
+ */
+declare function layoutLabels(anchors: {
+    id: string;
+    x: number;
+    y: number;
+}[], opts: LayoutOptions): Layout;
+/**
+ * The DOM layer: labels, leaders, and clicks.
+ *
+ * Knows nothing about cameras or meshes. It is handed placements in pixels and
+ * renders them, which is what keeps the layout rule above testable.
+ */
+declare class Callouts {
+    private opts;
+    private root;
+    private svg;
+    private labels;
+    private items;
+    private overflow;
+    private labelWidth;
+    constructor(host: HTMLElement, opts?: {
+        labelWidth?: number;
+        onPick?: (id: string) => void;
+        onHover?: (id: string | null) => void;
+    });
+    /** What there is to say. Placements arrive separately, each frame. */
+    setItems(items: CalloutItem[]): void;
+    /** Track the host's width, so labels stay a share of it rather than a
+     *  constant that only suits one panel size. */
+    setLabelWidth(px: number): void;
+    /** The objects a caller must measure to anchor each callout. */
+    objectsOf(id: string): THREE.Object3D[];
+    get ids(): string[];
+    /**
+     * Draw this frame's placements. Anything not placed is hidden, not removed:
+     * an element that comes back into view keeps its element rather than
+     * flickering a new one in.
+     *
+     * `unplaced` is how many the margins had no room for, and it is shown. A
+     * reader who can see fifteen labels and is not told there were twenty-two
+     * has been given a wrong count, quietly, which is the failure this whole
+     * project is arranged against.
+     */
+    update(placements: Placement[], unplaced?: number): void;
+    private showOverflow;
+    private make;
+    setVisible(on: boolean): void;
+    dispose(): void;
+}
+
+/**
  * A viewport for looking at a building.
  *
  * ThreeRenderer draws a `Scene` of `SceneObject`s and is the right thing when
@@ -4597,6 +4741,17 @@ interface ViewportOptions {
     /** Corner for that widget. Bottom right by default, out of the way of the
      *  toolbars apps put along the top. */
     gizmoCorner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    /**
+     * The projection changed, which the host cannot otherwise know: the gizmo
+     * offers the toggle, so a host that only ever called `setProjection` itself
+     * would still be out of date the moment a reader used the widget.
+     */
+    onProjection?: (projection: Projection) => void;
+    /** A click on a callout label. See `setCallouts`. */
+    onPickCallout?: (id: string) => void;
+    /** The pointer over a callout label, so a host can light the element it
+     *  points at. Null on leaving. */
+    onHoverCallout?: (id: string | null) => void;
     /** A click that hit nothing reports null. A drag orbits and reports nothing. */
     onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
     /**
@@ -4773,6 +4928,15 @@ declare class Viewport {
     private target;
     private spherical;
     private gizmo;
+    private callouts;
+    /** World-space anchor per callout, remeasured only when the content changes:
+     *  a bounding box costs a walk of the geometry and nothing in the scene
+     *  moves except the camera. */
+    private calloutAnchors;
+    /** Which callouts the reader can actually see, recomputed on a timer rather
+     *  than per frame, because it costs a raycast each. */
+    private calloutVisible;
+    private calloutCheckedAt;
     /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
      *  every one of the frames a still camera also renders. */
     private gizmoAt;
@@ -4850,6 +5014,29 @@ declare class Viewport {
     private animate;
     /** Advance a camera move, if one is running. Called once per frame. */
     private step;
+    /**
+     * Label these things, in the margins, with leaders to them.
+     *
+     * What a label says is the host's business, as colour is: this class knows
+     * how a drawing is annotated and nothing about what the annotation means.
+     * Pass an empty array to clear.
+     *
+     * Anchors are measured here and once, because a bounding box costs a walk of
+     * the geometry and nothing in this scene moves except the camera.
+     */
+    setCallouts(items: CalloutItem[]): void;
+    /**
+     * Which anchors the reader can actually see.
+     *
+     * A leader pointing confidently at a wall that is behind three other walls
+     * is worse than no leader: on a face view half the building is occluded, and
+     * without this every one of those elements would still be labelled and the
+     * reader would have no way to tell which. One raycast per callout, on a
+     * timer, because the answer only changes when the camera moves.
+     */
+    private checkCalloutVisibility;
+    /** Project, cull and lay out this frame's labels. */
+    private drawCallouts;
     /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
     repaint(): void;
     /** Apply the current mode to one mesh. The app's hook has the first word. */
@@ -6035,4 +6222,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lightBalance, lineClipPolygon, modeBackground, nearestAxis, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
+export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };

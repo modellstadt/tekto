@@ -208,6 +208,10 @@ export type {
 // wants one over a scene of its own; a Viewport already has it.
 export { NavGizmo } from "./render/NavGizmo";
 export type { NavGizmoOptions } from "./render/NavGizmo";
+// Labels in the margins with leaders to what they name, laid out the way a
+// drawing is annotated rather than floated at the thing.
+export { Callouts, layoutLabels, labelWidthFor } from "./render/Callouts";
+export type { CalloutItem, Placement, LayoutOptions } from "./render/Callouts";
 
 // GUI: layer panel (consumed by both the sketch API + standalone apps).
 export { LayerPanel, computeEffectiveVisibility } from "./gui/LayerPanel";

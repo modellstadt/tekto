@@ -36,6 +36,7 @@ __export(index_exports, {
   BalloonFrame: () => BalloonFrame,
   BlobDetect: () => BlobDetect,
   BspTree: () => BspTree,
+  Callouts: () => Callouts,
   Capsule2D: () => Capsule2D,
   CltConstruction: () => CltConstruction,
   ConnectedMesh: () => ConnectedMesh,
@@ -190,6 +191,8 @@ __export(index_exports, {
   joistDirectionFromBounds: () => joistDirectionFromBounds,
   joistDirectionFromPCA: () => joistDirectionFromPCA,
   joistDirectionFromSupports: () => joistDirectionFromSupports,
+  labelWidthFor: () => labelWidthFor,
+  layoutLabels: () => layoutLabels,
   lightBalance: () => lightBalance,
   lineClipPolygon: () => lineClipPolygon,
   modeBackground: () => modeBackground,
@@ -22355,6 +22358,188 @@ var NavGizmo = class {
   }
 };
 
+// src/render/Callouts.ts
+var SVG2 = "http://www.w3.org/2000/svg";
+function labelWidthFor(hostWidth) {
+  return Math.round(Math.max(88, Math.min(170, hostWidth * 0.27)));
+}
+function layoutLabels(anchors, opts) {
+  const rowHeight = opts.rowHeight ?? 30;
+  const labelWidth = opts.labelWidth ?? labelWidthFor(opts.width);
+  const inset = opts.inset ?? 8;
+  const capacity = Math.max(0, Math.floor((opts.height - 2 * inset) / rowHeight));
+  const placed = [];
+  const dropped = [];
+  for (const side of ["left", "right"]) {
+    const mine = anchors.filter((a) => a.x < opts.width / 2 === (side === "left"));
+    const keep = mine.slice(0, capacity).sort((a, b) => a.y - b.y);
+    for (const a of mine.slice(capacity)) dropped.push(a.id);
+    if (!keep.length) continue;
+    const ys = [];
+    let previous = -Infinity;
+    for (const a of keep) {
+      const y = Math.max(a.y, previous + rowHeight, inset);
+      ys.push(y);
+      previous = y;
+    }
+    const overshoot = ys[ys.length - 1] + rowHeight - (opts.height - inset);
+    if (overshoot > 0) {
+      let floor = inset;
+      for (let i = 0; i < ys.length; i++) {
+        ys[i] = Math.max(ys[i] - overshoot, floor);
+        floor = ys[i] + rowHeight;
+      }
+    }
+    keep.forEach((a, i) => placed.push({
+      id: a.id,
+      side,
+      x: side === "left" ? inset : opts.width - inset - labelWidth,
+      y: ys[i],
+      anchorX: a.x,
+      anchorY: a.y
+    }));
+  }
+  return { placed, dropped };
+}
+var Callouts = class {
+  constructor(host, opts = {}) {
+    this.opts = opts;
+    this.labels = /* @__PURE__ */ new Map();
+    this.items = /* @__PURE__ */ new Map();
+    this.overflow = null;
+    this.labelWidth = opts.labelWidth ?? 150;
+    this.root = document.createElement("div");
+    this.root.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4";
+    this.svg = document.createElementNS(SVG2, "svg");
+    this.svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;overflow:visible";
+    this.root.append(this.svg);
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    host.append(this.root);
+  }
+  /** What there is to say. Placements arrive separately, each frame. */
+  setItems(items) {
+    this.items = new Map(items.map((i) => [i.id, i]));
+    for (const [id, el] of this.labels) {
+      if (!this.items.has(id)) {
+        el.box.remove();
+        el.leader.remove();
+        this.labels.delete(id);
+      }
+    }
+  }
+  /** Track the host's width, so labels stay a share of it rather than a
+   *  constant that only suits one panel size. */
+  setLabelWidth(px) {
+    if (px === this.labelWidth) return;
+    this.labelWidth = px;
+    for (const { box } of this.labels.values()) box.style.width = `${px}px`;
+  }
+  /** The objects a caller must measure to anchor each callout. */
+  objectsOf(id) {
+    return this.items.get(id)?.objects ?? [];
+  }
+  get ids() {
+    return [...this.items.keys()];
+  }
+  /**
+   * Draw this frame's placements. Anything not placed is hidden, not removed:
+   * an element that comes back into view keeps its element rather than
+   * flickering a new one in.
+   *
+   * `unplaced` is how many the margins had no room for, and it is shown. A
+   * reader who can see fifteen labels and is not told there were twenty-two
+   * has been given a wrong count, quietly, which is the failure this whole
+   * project is arranged against.
+   */
+  update(placements, unplaced = 0) {
+    const placed = new Set(placements.map((p) => p.id));
+    for (const [id, el] of this.labels) {
+      if (!placed.has(id)) {
+        el.box.hidden = true;
+        el.leader.setAttribute("points", "");
+      }
+    }
+    for (const p of placements) {
+      const item = this.items.get(p.id);
+      if (!item) continue;
+      const el = this.labels.get(p.id) ?? this.make(p.id, item);
+      el.box.hidden = false;
+      el.box.style.left = `${p.x}px`;
+      el.box.style.top = `${p.y}px`;
+      const from = p.side === "left" ? p.x + this.labelWidth : p.x;
+      const knee = p.side === "left" ? from + 10 : from - 10;
+      const mid = p.y + 9;
+      el.leader.setAttribute(
+        "points",
+        `${from},${mid} ${knee},${mid} ${p.anchorX},${p.anchorY}`
+      );
+    }
+    this.showOverflow(unplaced);
+  }
+  showOverflow(n) {
+    if (!n) {
+      this.overflow?.remove();
+      this.overflow = null;
+      return;
+    }
+    if (!this.overflow) {
+      this.overflow = document.createElement("div");
+      this.overflow.style.cssText = `position:absolute;left:50%;bottom:6px;transform:translateX(-50%);
+        pointer-events:none;padding:2px 7px;border-radius:3px;
+        background:rgba(255,255,255,.9);border:1px solid rgba(90,100,110,.25);
+        font:500 10px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#79838d`;
+      this.root.append(this.overflow);
+    }
+    this.overflow.textContent = `${n} more not labelled: no room in the margins`;
+  }
+  make(id, item) {
+    const leader = document.createElementNS(SVG2, "polyline");
+    leader.setAttribute("fill", "none");
+    leader.setAttribute("stroke", "#8a949e");
+    leader.setAttribute("stroke-width", "1");
+    this.svg.append(leader);
+    const box = document.createElement("button");
+    box.type = "button";
+    const stripe = item.colour ?? "#8a949e";
+    box.style.cssText = `position:absolute;pointer-events:auto;width:${this.labelWidth}px;
+      box-sizing:border-box;text-align:left;padding:2px 4px 2px 5px;border-radius:2px;
+      cursor:pointer;border:1px solid rgba(90,100,110,.28);border-left:3px solid ${stripe};
+      background:rgba(255,255,255,.94);
+      font:500 10.5px/1.25 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      color:#2b3540;box-shadow:0 1px 2px rgba(20,30,40,.12);display:block;
+      overflow:hidden;white-space:nowrap`;
+    const text = document.createElement("span");
+    text.textContent = item.text;
+    text.style.cssText = "display:block;overflow:hidden;text-overflow:ellipsis";
+    box.append(text);
+    if (item.detail) {
+      const d = document.createElement("span");
+      d.textContent = item.detail;
+      d.style.cssText = `display:block;color:#79838d;font-weight:400;font-size:9.5px;
+        overflow:hidden;text-overflow:ellipsis`;
+      box.append(d);
+    }
+    box.title = item.detail ? `${item.text} (${item.detail})` : item.text;
+    box.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.opts.onPick?.(id);
+    });
+    box.addEventListener("pointerenter", () => this.opts.onHover?.(id));
+    box.addEventListener("pointerleave", () => this.opts.onHover?.(null));
+    box.addEventListener("pointerdown", (e) => e.stopPropagation());
+    this.root.append(box);
+    const el = { box, leader };
+    this.labels.set(id, el);
+    return el;
+  }
+  setVisible(on) {
+    this.root.style.display = on ? "" : "none";
+  }
+  dispose() {
+    this.root.remove();
+  }
+};
+
 // src/render/Viewport.ts
 var OUTLINE_LIMIT = 1500;
 var OUTLINE_CHUNK = 250;
@@ -22475,6 +22660,15 @@ var Viewport = class {
     // simple orbit: enough for looking at a building, and no extra dependency
     this.target = new THREE5.Vector3();
     this.gizmo = null;
+    this.callouts = null;
+    /** World-space anchor per callout, remeasured only when the content changes:
+     *  a bounding box costs a walk of the geometry and nothing in the scene
+     *  moves except the camera. */
+    this.calloutAnchors = /* @__PURE__ */ new Map();
+    /** Which callouts the reader can actually see, recomputed on a timer rather
+     *  than per frame, because it costs a raycast each. */
+    this.calloutVisible = /* @__PURE__ */ new Set();
+    this.calloutCheckedAt = 0;
     /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
      *  every one of the frames a still camera also renders. */
     this.gizmoAt = { phi: NaN, theta: NaN };
@@ -22493,6 +22687,8 @@ var Viewport = class {
         this.gizmo.update(camera, this.root.quaternion);
         this.gizmoAt = { phi: this.spherical.phi, theta: this.spherical.theta };
       }
+      camera.updateMatrixWorld();
+      this.drawCallouts();
       if (this.projectionMode === "orthographic") {
         const aspect = (this.host.clientWidth || 1) / (this.host.clientHeight || 1);
         const f2 = orthoFrustum(this.spherical.radius, this.perspective.fov, aspect);
@@ -22696,6 +22892,9 @@ var Viewport = class {
     }
     this.meshGroup.clear();
     this.outlines.clear();
+    this.calloutAnchors.clear();
+    this.calloutVisible.clear();
+    this.callouts?.setItems([]);
     this.outlinesBuilt = false;
     this.buildingOutlines = false;
   }
@@ -22729,9 +22928,11 @@ var Viewport = class {
   /** Perspective or orthographic. Orthographic with hidden line and a face view
    *  is a plan or an elevation; that pairing is the point of having both. */
   setProjection(projection) {
+    const changed = projection !== this.projectionMode;
     this.projectionMode = projection;
     this.gizmo?.setProjection(projection);
     this.resize();
+    if (changed) this.opts.onProjection?.(projection);
   }
   /**
    * Point the camera at a named face, keeping the distance.
@@ -22799,6 +23000,86 @@ var Viewport = class {
     this.spherical.radius = from.radius + (to.radius - from.radius) * t;
     this.target.lerpVectors(from.target, to.target, t);
     if (t >= 1) this.move = null;
+  }
+  /**
+   * Label these things, in the margins, with leaders to them.
+   *
+   * What a label says is the host's business, as colour is: this class knows
+   * how a drawing is annotated and nothing about what the annotation means.
+   * Pass an empty array to clear.
+   *
+   * Anchors are measured here and once, because a bounding box costs a walk of
+   * the geometry and nothing in this scene moves except the camera.
+   */
+  setCallouts(items) {
+    if (!items.length && !this.callouts) return;
+    if (!this.callouts) {
+      this.callouts = new Callouts(this.host, {
+        onPick: (id) => this.opts.onPickCallout?.(id),
+        onHover: (id) => this.opts.onHoverCallout?.(id)
+      });
+    }
+    this.callouts.setItems(items);
+    this.calloutAnchors.clear();
+    this.root.updateMatrixWorld(true);
+    const box = new THREE5.Box3();
+    for (const item of items) {
+      if (!item.objects.length) continue;
+      box.makeEmpty();
+      for (const o of item.objects) box.expandByObject(o);
+      if (!box.isEmpty()) this.calloutAnchors.set(item.id, box.getCenter(new THREE5.Vector3()));
+    }
+    this.calloutCheckedAt = 0;
+  }
+  /**
+   * Which anchors the reader can actually see.
+   *
+   * A leader pointing confidently at a wall that is behind three other walls
+   * is worse than no leader: on a face view half the building is occluded, and
+   * without this every one of those elements would still be labelled and the
+   * reader would have no way to tell which. One raycast per callout, on a
+   * timer, because the answer only changes when the camera moves.
+   */
+  checkCalloutVisibility() {
+    this.calloutVisible.clear();
+    const camera = this.camera;
+    const ray = new THREE5.Raycaster();
+    const meshes = this.meshGroup.children;
+    const direction = new THREE5.Vector3();
+    for (const [id, anchor] of this.calloutAnchors) {
+      const wanted = this.callouts?.objectsOf(id) ?? [];
+      direction.copy(anchor).sub(camera.position);
+      const distance = direction.length();
+      ray.set(camera.position, direction.normalize());
+      ray.far = distance;
+      const hit = ray.intersectObjects(meshes, false)[0];
+      if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
+        this.calloutVisible.add(id);
+      }
+    }
+  }
+  /** Project, cull and lay out this frame's labels. */
+  drawCallouts() {
+    if (!this.callouts) return;
+    const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
+    const camera = this.camera;
+    const now = performance.now();
+    if (now - this.calloutCheckedAt > 180) {
+      this.checkCalloutVisibility();
+      this.calloutCheckedAt = now;
+    }
+    const v = new THREE5.Vector3();
+    const anchors = [];
+    for (const [id, anchor] of this.calloutAnchors) {
+      if (!this.calloutVisible.has(id)) continue;
+      v.copy(anchor).project(camera);
+      if (v.z > 1) continue;
+      anchors.push({ id, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
+    }
+    const labelWidth = labelWidthFor(w);
+    this.callouts.setLabelWidth(labelWidth);
+    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
+    this.callouts.update(placed, dropped.length);
   }
   /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
   repaint() {
@@ -23032,6 +23313,7 @@ var Viewport = class {
   dispose() {
     cancelAnimationFrame(this.frame);
     this.gizmo?.dispose();
+    this.callouts?.dispose();
     this.clear();
     for (const plane of [this.ground, this.groundPlane]) {
       plane.geometry.dispose();
@@ -25461,6 +25743,7 @@ var Sketch2DInstance = class {
   BalloonFrame,
   BlobDetect,
   BspTree,
+  Callouts,
   Capsule2D,
   CltConstruction,
   ConnectedMesh,
@@ -25615,6 +25898,8 @@ var Sketch2DInstance = class {
   joistDirectionFromBounds,
   joistDirectionFromPCA,
   joistDirectionFromSupports,
+  labelWidthFor,
+  layoutLabels,
   lightBalance,
   lineClipPolygon,
   modeBackground,
