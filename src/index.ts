@@ -113,7 +113,9 @@ export type { IdBufferOptions } from "./io/IdBufferHiddenLine";
 export { IfcFile } from "./io/IfcFile";
 export type { IfcParseOptions } from "./io/IfcFile";
 export { IfcModel } from "./io/IfcModel";
-export type { IfcParseElementsOptions, IfcElementData, IfcModelData, IfcSpatialNode } from "./io/IfcModel";
+export type {
+  IfcParseElementsOptions, IfcElementData, IfcModelData, IfcSpatialNode, IfcRelations,
+} from "./io/IfcModel";
 export { IfcWriter } from "./io/IfcWriter";
 export type { IfcWriterOptions, AddWallSystemOptions } from "./io/IfcWriter";
 
@@ -203,6 +205,7 @@ export {
 } from "./render/Viewport";
 export type {
   ViewMode, Projection, StandardView, Appearance, ViewportOptions, ContentOptions,
+  SectionRequest,
 } from "./render/Viewport";
 // The axis widget the Viewport puts in its corner. Exported for an app that
 // wants one over a scene of its own; a Viewport already has it.
@@ -211,6 +214,14 @@ export type { NavGizmoOptions } from "./render/NavGizmo";
 // Labels in the margins with leaders to what they name, laid out the way a
 // drawing is annotated rather than floated at the thing.
 export { Callouts, layoutLabels, labelWidthFor } from "./render/Callouts";
+// Which elements touch which, worked out from geometry. The companion to the
+// relations an IFC file states, and separate because inference is not testimony.
+export {
+  boxOf, contactBetween, findAdjacent, neighboursOf, reverse as reverseContact,
+} from "./bim/adjacency";
+export type {
+  Box, Contact, Adjacency, UpAxis, AdjacencyOptions,
+} from "./bim/adjacency";
 export type { CalloutItem, Placement, LayoutOptions } from "./render/Callouts";
 
 // GUI: layer panel (consumed by both the sketch API + standalone apps).

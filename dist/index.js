@@ -170,12 +170,14 @@ __export(index_exports, {
   WallType: () => WallType,
   appShell: () => appShell,
   boundingWalls: () => boundingWalls,
+  boxOf: () => boxOf,
   buildCutList: () => buildCutList,
   chooseJoistDirection: () => chooseJoistDirection,
   clampedUniformKnots: () => clampedUniformKnots,
   closestPointOnSegment: () => closestPointOnSegment,
   cltLayers: () => cltLayers,
   computeEffectiveVisibility: () => computeEffectiveVisibility,
+  contactBetween: () => contactBetween,
   createLayout: () => createLayout,
   createParams: () => createParams,
   createRandom: () => createRandom,
@@ -183,6 +185,7 @@ __export(index_exports, {
   edgeOutwardVisibility: () => edgeOutwardVisibility,
   edgeStyle: () => edgeStyle,
   extractVisiblePolylines: () => extractVisiblePolylines,
+  findAdjacent: () => findAdjacent,
   fitRadius: () => fitRadius,
   getTheme: () => getTheme,
   groundAppearance: () => groundAppearance,
@@ -197,6 +200,7 @@ __export(index_exports, {
   lineClipPolygon: () => lineClipPolygon,
   modeBackground: () => modeBackground,
   nearestAxis: () => nearestAxis,
+  neighboursOf: () => neighboursOf,
   noise: () => noise,
   orbitFor: () => orbitFor,
   orthoFrustum: () => orthoFrustum,
@@ -209,6 +213,7 @@ __export(index_exports, {
   realize: () => realize,
   realizeSlab: () => realizeSlab,
   repelBodies: () => repelBodies,
+  reverseContact: () => reverse,
   segmentSegmentClosest: () => segmentSegmentClosest,
   setClipSnap: () => setClipSnap,
   shortestTurn: () => shortestTurn,
@@ -15905,6 +15910,107 @@ var IfcFile = {
 
 // src/io/IfcModel.ts
 var WEBIFC_IFCPROJECT = 103090709;
+var REL_TYPES = {
+  voids: 1401173127,
+  // IfcRelVoidsElement: an opening carved into a wall
+  fills: 3940055652,
+  // IfcRelFillsElement: a window or door filling one
+  connectsPath: 3945020480,
+  // IfcRelConnectsPathElements: wall meets wall
+  connects: 1204542856,
+  // IfcRelConnectsElements: the general supertype
+  definesByType: 781010003,
+  // IfcRelDefinesByType: occurrence to its type
+  aggregates: 160246688
+  // IfcRelAggregates: a whole and its parts
+};
+function refs(value) {
+  if (value == null) return [];
+  const list = Array.isArray(value) ? value : [value];
+  return list.map((v) => typeof v === "number" ? v : v?.value).filter(
+    (v) => typeof v === "number"
+  );
+}
+async function readRelations(api, modelID, log) {
+  const out = /* @__PURE__ */ new Map();
+  const of = (id) => {
+    let r = out.get(id);
+    if (!r) out.set(id, r = {});
+    return r;
+  };
+  const lines = (type) => {
+    const found = [];
+    try {
+      const ids = api.GetLineIDsWithType(modelID, type);
+      for (let i = 0; i < ids.size(); i++) {
+        try {
+          found.push(api.GetLine(modelID, ids.get(i)));
+        } catch {
+        }
+      }
+    } catch {
+    }
+    return found;
+  };
+  const openingOf = /* @__PURE__ */ new Map();
+  for (const rel of lines(REL_TYPES.voids)) {
+    const host = refs(rel?.RelatingBuildingElement)[0];
+    for (const opening of refs(rel?.RelatedOpeningElement)) {
+      if (host !== void 0) openingOf.set(opening, host);
+    }
+  }
+  let filled = 0;
+  for (const rel of lines(REL_TYPES.fills)) {
+    const opening = refs(rel?.RelatingOpeningElement)[0];
+    const host = opening === void 0 ? void 0 : openingOf.get(opening);
+    if (host === void 0) continue;
+    for (const filler of refs(rel?.RelatedBuildingElement)) {
+      of(host).hosts = [...of(host).hosts ?? [], filler];
+      of(filler).hostedBy = host;
+      filled++;
+    }
+  }
+  let connected = 0;
+  for (const [type, name] of [
+    [REL_TYPES.connectsPath, "IfcRelConnectsPathElements"],
+    [REL_TYPES.connects, "IfcRelConnectsElements"]
+  ]) {
+    for (const rel of lines(type)) {
+      const a = refs(rel?.RelatingElement)[0], b = refs(rel?.RelatedElement)[0];
+      if (a === void 0 || b === void 0 || a === b) continue;
+      const description = (rel?.Name?.value ?? rel?.Description?.value) || void 0;
+      for (const [from, to] of [[a, b], [b, a]]) {
+        const r = of(from);
+        r.connectedTo = [...r.connectedTo ?? [], { to, relation: name, description }];
+      }
+      connected++;
+    }
+  }
+  let typed = 0;
+  for (const rel of lines(REL_TYPES.definesByType)) {
+    const typeId = refs(rel?.RelatingType)[0];
+    if (typeId === void 0) continue;
+    let typeName;
+    try {
+      typeName = readValue(api.GetLine(modelID, typeId)?.Name);
+    } catch {
+    }
+    for (const occurrence of refs(rel?.RelatedObjects)) {
+      Object.assign(of(occurrence), { typeId, typeName });
+      typed++;
+    }
+  }
+  for (const rel of lines(REL_TYPES.aggregates)) {
+    const whole = refs(rel?.RelatingObject)[0];
+    if (whole === void 0) continue;
+    const parts = refs(rel?.RelatedObjects);
+    if (!parts.length) continue;
+    of(whole).parts = [...of(whole).parts ?? [], ...parts];
+    for (const p of parts) of(p).partOf = whole;
+  }
+  log(`relations: ${filled} openings filled, ${connected} connections, ${typed} typed`);
+  return out;
+}
 function titleCase(name) {
   if (!name) return name;
   const lower = name.toLowerCase();
@@ -15936,6 +16042,7 @@ var IfcModel = {
     const recenter = options.recenter ?? true;
     const wantProps = options.properties ?? true;
     const wantTree = options.tree ?? true;
+    const wantRelations = options.relations ?? true;
     const log = options.onProgress ?? (() => {
     });
     const { IfcAPI } = await import("web-ifc");
@@ -15997,6 +16104,7 @@ var IfcModel = {
       cy = (minY + maxY) / 2;
       cz = (minZ + maxZ) / 2;
     }
+    const relations = wantRelations ? await readRelations(api, modelID, log) : /* @__PURE__ */ new Map();
     const elements = [];
     for (const e of raw) {
       let ifcClass = "IfcProduct";
@@ -16055,7 +16163,8 @@ var IfcModel = {
           indices: new Uint32Array(e.indices)
         },
         properties,
-        psets
+        psets,
+        ...relations.has(e.expressID) ? { relations: relations.get(e.expressID) } : {}
       });
     }
     let lengthScale = 1;
@@ -16248,13 +16357,13 @@ var IfcWriter = class {
     const cl = wall.centerline;
     if (cl.length < 2) throw new Error("IfcWriter.addWall: centerline needs \u2265 2 points");
     const storey = this.resolveStorey(opts.storey);
-    const refs = [];
+    const refs2 = [];
     for (let i = 0; i < cl.length - 1; i++) {
-      refs.push(this.writeStraightWall(wall, cl[i], cl[i + 1], i, cl.length - 1, storey));
+      refs2.push(this.writeStraightWall(wall, cl[i], cl[i + 1], i, cl.length - 1, storey));
     }
-    const primaryRef = refs[0];
+    const primaryRef = refs2[0];
     this.wallByObject.set(wall, primaryRef);
-    for (const r of refs) this.attachToStorey(r, storey);
+    for (const r of refs2) this.attachToStorey(r, storey);
     if (wall.type) {
       const typeRef = this.ensureWallType(wall.type, opts.includeMaterials ?? true);
       const batch = this.definesByTypeBatches.get(typeRef) ?? [];
@@ -22644,6 +22753,26 @@ var Viewport = class {
     this.root = new THREE5.Group();
     this.meshGroup = new THREE5.Group();
     this.outlines = new THREE5.Group();
+    /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
+    this.highlight = new THREE5.Group();
+    /**
+     * A live section is two things in two different spaces, which is why they
+     * are two groups.
+     *
+     * The stencil markers share geometry and local matrices with the meshes, so
+     * they belong under `root` and inherit its up-axis rotation exactly as the
+     * meshes do. The cap quad is placed from the clipping plane, and three
+     * applies clipping planes in world space, so a cap parented under `root` has
+     * a world-space position read as a local one and lands wherever the up-axis
+     * rotation sends it. That is why the first version cut correctly and capped
+     * nothing.
+     */
+    this.sectionGroup = new THREE5.Group();
+    this.sectionCap = new THREE5.Group();
+    /** kept so a colour change can rebuild the same cut */
+    this.sectionRequest = null;
+    this.section = null;
+    this.sectionColour = 14209732;
     this.frame = 0;
     this.mode = "shaded";
     this.outlinesBuilt = false;
@@ -22707,7 +22836,7 @@ var Viewport = class {
     this.scene.background = new THREE5.Color(opts.background ?? DEFAULT_BACKGROUND);
     this.perspective = new THREE5.PerspectiveCamera(45, 1, 0.05, 5e3);
     this.orthographic = new THREE5.OrthographicCamera(-1, 1, 1, -1, 0.01, 5e3);
-    this.renderer = new THREE5.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE5.WebGLRenderer({ antialias: true, stencil: true });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
     const dom = this.renderer.domElement;
     dom.style.display = "block";
@@ -22740,7 +22869,8 @@ var Viewport = class {
     this.groundPlane.visible = false;
     this.groundPlane.renderOrder = -1;
     this.setUp(opts.up ?? "y");
-    this.root.add(this.meshGroup, this.outlines);
+    this.root.add(this.meshGroup, this.outlines, this.highlight, this.sectionGroup);
+    this.scene.add(this.sectionCap);
     this.scene.add(
       this.sky,
       this.sun,
@@ -22890,8 +23020,10 @@ var Viewport = class {
       line.geometry.dispose();
       line.material.dispose();
     }
+    this.clearSection();
     this.meshGroup.clear();
     this.outlines.clear();
+    this.setOutlined([]);
     this.calloutAnchors.clear();
     this.calloutVisible.clear();
     this.callouts?.setItems([]);
@@ -23080,6 +23212,195 @@ var Viewport = class {
     this.callouts.setLabelWidth(labelWidth);
     const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
     this.callouts.update(placed, dropped.length);
+  }
+  /**
+   * Cut the model with a plane, and cap the cut so it reads as solid.
+   *
+   * `axis` is in the content's own frame, so a Z-up model asks for "z" and
+   * gets a horizontal cut whichever way the viewport has turned the content to
+   * face three.js. `at` is a fraction of the content's extent along that axis,
+   * so 0.5 is halfway through whatever is loaded. Pass null to clear.
+   *
+   * The capping is the whole point and the reason this is not three lines.
+   * A clipping plane on its own leaves the cut hollow: you see the inside of
+   * the far face and the building reads as a shell, which is wrong about the
+   * one thing a section exists to show. So each mesh is drawn twice more into
+   * the stencil buffer, back faces incrementing and front faces decrementing,
+   * which leaves a non-zero stencil exactly where the plane passes through
+   * solid material; a quad over the plane is then drawn only there.
+   *
+   * It assumes closed geometry. Our own framing boxes are closed and cap
+   * cleanly. Imported IFC geometry frequently is not, and an open mesh caps
+   * with holes: that is a fault in the model rather than in this code, and it
+   * looks like one, which is better than quietly filling it in.
+   */
+  setSection(section) {
+    this.clearSection();
+    this.sectionRequest = section;
+    this.renderer.localClippingEnabled = section !== null;
+    if (!section) {
+      this.applyClipping([]);
+      return;
+    }
+    this.root.updateMatrixWorld(true);
+    const box = new THREE5.Box3().setFromObject(this.meshGroup);
+    if (box.isEmpty()) {
+      this.applyClipping([]);
+      return;
+    }
+    const local = new THREE5.Vector3(
+      section.axis === "x" ? 1 : 0,
+      section.axis === "y" ? 1 : 0,
+      section.axis === "z" ? 1 : 0
+    );
+    const normal = local.clone().applyQuaternion(this.root.quaternion).normalize();
+    if (section.flip) normal.negate();
+    const lo = new THREE5.Vector3(), hi = new THREE5.Vector3();
+    box.getCenter(lo);
+    const half = box.getSize(new THREE5.Vector3()).multiplyScalar(0.5);
+    const reach = Math.abs(normal.x) * half.x + Math.abs(normal.y) * half.y + Math.abs(normal.z) * half.z;
+    const centre = box.getCenter(hi);
+    const t = (Math.min(1, Math.max(0, section.at)) - 0.5) * 2 * reach;
+    const plane = new THREE5.Plane(
+      normal.clone().negate(),
+      centre.dot(normal) + t
+    );
+    this.section = plane;
+    this.applyClipping([plane]);
+    const stencilBase = new THREE5.MeshBasicMaterial({
+      depthWrite: false,
+      depthTest: false,
+      colorWrite: false,
+      stencilWrite: true,
+      stencilFunc: THREE5.AlwaysStencilFunc,
+      clippingPlanes: [plane]
+    });
+    for (const mesh of this.meshGroup.children) {
+      if (!mesh.geometry) continue;
+      for (const [side, op] of [
+        [THREE5.BackSide, THREE5.IncrementWrapStencilOp],
+        [THREE5.FrontSide, THREE5.DecrementWrapStencilOp]
+      ]) {
+        const material = stencilBase.clone();
+        material.side = side;
+        material.stencilFail = op;
+        material.stencilZFail = op;
+        material.stencilZPass = op;
+        const marker = new THREE5.Mesh(mesh.geometry, material);
+        marker.matrixAutoUpdate = false;
+        marker.matrix.copy(mesh.matrix);
+        marker.renderOrder = 1;
+        this.sectionGroup.add(marker);
+      }
+    }
+    stencilBase.dispose();
+    const size = box.getSize(new THREE5.Vector3()).length() * 1.2;
+    const cap = new THREE5.Mesh(
+      new THREE5.PlaneGeometry(size, size),
+      new THREE5.MeshStandardMaterial({
+        color: this.sectionColour,
+        metalness: 0,
+        roughness: 1,
+        side: THREE5.DoubleSide,
+        stencilWrite: true,
+        stencilRef: 0,
+        stencilFunc: THREE5.NotEqualStencilFunc,
+        stencilFail: THREE5.ReplaceStencilOp,
+        stencilZFail: THREE5.ReplaceStencilOp,
+        stencilZPass: THREE5.ReplaceStencilOp
+      })
+    );
+    cap.renderOrder = 2;
+    plane.projectPoint(centre, cap.position);
+    cap.lookAt(cap.position.clone().add(plane.normal));
+    cap.onAfterRender = (renderer) => renderer.clearStencil();
+    this.sectionCap.add(cap);
+  }
+  /** What the cut face is painted. A tone of its own by default, because a cut
+   *  is not a surface anybody specified. */
+  setSectionColour(colour) {
+    if (colour === this.sectionColour) return;
+    this.sectionColour = colour;
+    if (this.sectionRequest) this.setSection(this.sectionRequest);
+  }
+  /** The section in force, or null. */
+  get sectionAt() {
+    return this.sectionRequest;
+  }
+  clearSection() {
+    for (const child of this.sectionCap.children) {
+      child.geometry.dispose();
+      const m = child.material;
+      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
+    }
+    this.sectionCap.clear();
+    for (const child of this.sectionGroup.children) {
+      const m = child.material;
+      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
+      if (child.geometry && !this.meshGroup.children.some((mesh) => mesh.geometry === child.geometry)) child.geometry.dispose();
+    }
+    this.sectionGroup.clear();
+    this.section = null;
+  }
+  /** Clipping is per material in three, so it has to reach every one the app
+   *  handed over as well as the ones this class makes. */
+  applyClipping(planes) {
+    const set = (m) => {
+      for (const one of Array.isArray(m) ? m : [m]) {
+        one.clippingPlanes = planes.length ? planes : null;
+        one.needsUpdate = true;
+      }
+    };
+    for (const mesh of this.meshGroup.children) set(mesh.material);
+    for (const line of this.outlines.children) set(line.material);
+    for (const line of this.highlight.children) set(line.material);
+  }
+  /**
+   * Draw a bright outline around these meshes, on top of everything.
+   *
+   * The way to mark a set of elements without spending their fill colour,
+   * which matters once an app paints by something (a product, a state, an
+   * evidence grade) and still needs to say "these ones". Dimming everything
+   * else says the same thing by destroying the rest of the picture.
+   *
+   * Drawn with `depthTest` off, so an outlined element reads through the
+   * fabric in front of it. That is not a compromise: the usual reason to
+   * highlight a set is that some of it is behind something, and an outline you
+   * can only see when nothing is in the way answers the easy half of the
+   * question.
+   *
+   * One pixel wide. `LineBasicMaterial.linewidth` is ignored by every WebGL
+   * implementation worth naming, and this machine reports an aliased line
+   * width range of exactly [1, 1]. Thickness would mean the instanced-quad
+   * line from three's examples, which this library already imports elsewhere
+   * for its controls, so it is available; it is not used here because drawing
+   * over the top is what makes the highlight legible, and a saturated line at
+   * one pixel over the fabric reads better than a thick one behind it. If a
+   * host wants weight as well, that is the change to make.
+   */
+  setOutlined(meshes, colour = 2063072) {
+    for (const line of this.highlight.children) {
+      line.geometry.dispose();
+      line.material.dispose();
+    }
+    this.highlight.clear();
+    if (!meshes.length) return;
+    const material = new THREE5.LineBasicMaterial({
+      color: colour,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.95
+    });
+    const angle = this.content.creaseAngle ?? 30;
+    for (const object of meshes) {
+      const mesh = object;
+      if (!mesh.geometry) continue;
+      const edges = new THREE5.EdgesGeometry(mesh.geometry, angle);
+      const line = new THREE5.LineSegments(edges, material);
+      line.applyMatrix4(mesh.matrix);
+      line.renderOrder = 999;
+      this.highlight.add(line);
+    }
   }
   /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
   repaint() {
@@ -23314,6 +23635,8 @@ var Viewport = class {
     cancelAnimationFrame(this.frame);
     this.gizmo?.dispose();
     this.callouts?.dispose();
+    this.setOutlined([]);
+    this.clearSection();
     this.clear();
     for (const plane of [this.ground, this.groundPlane]) {
       plane.geometry.dispose();
@@ -23324,6 +23647,79 @@ var Viewport = class {
     this.renderer.domElement.remove();
   }
 };
+
+// src/bim/adjacency.ts
+function boxOf(positions) {
+  if (!positions.length) return null;
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      const v = positions[i + k];
+      if (v < min[k]) min[k] = v;
+      if (v > max[k]) max[k] = v;
+    }
+  }
+  return { min, max };
+}
+function share(aMin, aMax, bMin, bMax) {
+  return Math.min(aMax, bMax) - Math.max(aMin, bMin);
+}
+function contactBetween(a, b, opts = {}) {
+  const tol = opts.tolerance ?? 0.05;
+  const up = opts.up ?? 2;
+  const gaps = [0, 1, 2].map((k) => share(a.min[k], a.max[k], b.min[k], b.max[k]));
+  if (gaps.some((g) => g < -tol)) return null;
+  const flat = [0, 1, 2].filter((k) => k !== up);
+  const area = flat.reduce((p, k) => p * Math.max(0, gaps[k]), 1);
+  const footprint = (box) => flat.reduce((p, k) => p * (box.max[k] - box.min[k]), 1);
+  const smaller = Math.min(footprint(a), footprint(b));
+  const overlap = smaller > 0 ? Math.min(1, area / smaller) : 0;
+  const verticalTouch = gaps[up] <= tol;
+  if (verticalTouch) {
+    if (overlap < (opts.minOverlap ?? 0.02)) return null;
+    const aAbove = a.min[up] >= b.max[up] - tol;
+    const bAbove = b.min[up] >= a.max[up] - tol;
+    if (aAbove) return { contact: "supportedBy", overlap };
+    if (bAbove) return { contact: "supports", overlap };
+  }
+  if (flat.some((k) => gaps[k] <= tol)) return { contact: "abuts", overlap };
+  return { contact: "overlaps", overlap };
+}
+function reverse(contact) {
+  return contact === "supports" ? "supportedBy" : contact === "supportedBy" ? "supports" : contact;
+}
+function findAdjacent(elements, opts = {}) {
+  const tol = opts.tolerance ?? 0.05;
+  const up = opts.up ?? 2;
+  const sorted = [...elements].sort((p, q) => p.box.min[up] - q.box.min[up]);
+  const out = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const a = sorted[i];
+    for (let j = i + 1; j < sorted.length; j++) {
+      const b = sorted[j];
+      if (b.box.min[up] > a.box.max[up] + tol) break;
+      const met = contactBetween(a.box, b.box, opts);
+      if (!met) continue;
+      out.push({
+        a: a.id,
+        b: b.id,
+        contact: met.contact,
+        tolerance: tol,
+        overlap: met.overlap
+      });
+    }
+  }
+  return out;
+}
+function neighboursOf(id, all) {
+  const out = [];
+  for (const r of all) {
+    if (r.a === id) out.push({ id: r.b, contact: r.contact, overlap: r.overlap, tolerance: r.tolerance });
+    else if (r.b === id) out.push({ id: r.a, contact: reverse(r.contact), overlap: r.overlap, tolerance: r.tolerance });
+  }
+  return out;
+}
 
 // src/gui/LayerPanel.ts
 function computeEffectiveVisibility(nodes, value) {
@@ -25877,12 +26273,14 @@ var Sketch2DInstance = class {
   WallType,
   appShell,
   boundingWalls,
+  boxOf,
   buildCutList,
   chooseJoistDirection,
   clampedUniformKnots,
   closestPointOnSegment,
   cltLayers,
   computeEffectiveVisibility,
+  contactBetween,
   createLayout,
   createParams,
   createRandom,
@@ -25890,6 +26288,7 @@ var Sketch2DInstance = class {
   edgeOutwardVisibility,
   edgeStyle,
   extractVisiblePolylines,
+  findAdjacent,
   fitRadius,
   getTheme,
   groundAppearance,
@@ -25904,6 +26303,7 @@ var Sketch2DInstance = class {
   lineClipPolygon,
   modeBackground,
   nearestAxis,
+  neighboursOf,
   noise,
   orbitFor,
   orthoFrustum,
@@ -25916,6 +26316,7 @@ var Sketch2DInstance = class {
   realize,
   realizeSlab,
   repelBodies,
+  reverseContact,
   segmentSegmentClosest,
   setClipSnap,
   shortestTurn,

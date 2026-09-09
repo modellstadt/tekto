@@ -50,6 +50,20 @@ import { Callouts, layoutLabels, labelWidthFor, type CalloutItem } from "./Callo
  */
 export type ViewMode = "shaded" | "ghost" | "hidden-line";
 
+/**
+ * Where to cut, in the content's own axes.
+ *
+ * `at` is a fraction of the content's extent along that axis, so 0.5 is
+ * halfway through whatever is loaded and the caller needs to know nothing
+ * about the model's coordinates.
+ */
+export interface SectionRequest {
+  axis: "x" | "y" | "z";
+  at: number;
+  /** keep the far side instead of the near one */
+  flip?: boolean;
+}
+
 /** Perspective for looking at a building, orthographic for drawing one. */
 export type Projection = "perspective" | "orthographic";
 
@@ -348,6 +362,26 @@ export class Viewport {
   private root = new THREE.Group();
   private meshGroup = new THREE.Group();
   private outlines = new THREE.Group();
+  /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
+  private highlight = new THREE.Group();
+  /**
+   * A live section is two things in two different spaces, which is why they
+   * are two groups.
+   *
+   * The stencil markers share geometry and local matrices with the meshes, so
+   * they belong under `root` and inherit its up-axis rotation exactly as the
+   * meshes do. The cap quad is placed from the clipping plane, and three
+   * applies clipping planes in world space, so a cap parented under `root` has
+   * a world-space position read as a local one and lands wherever the up-axis
+   * rotation sends it. That is why the first version cut correctly and capped
+   * nothing.
+   */
+  private sectionGroup = new THREE.Group();
+  private sectionCap = new THREE.Group();
+  /** kept so a colour change can rebuild the same cut */
+  private sectionRequest: SectionRequest | null = null;
+  private section: THREE.Plane | null = null;
+  private sectionColour = 0xd8d2c4;
   private frame = 0;
   private mode: ViewMode = "shaded";
   private outlinesBuilt = false;
@@ -408,7 +442,10 @@ export class Viewport {
     this.perspective = new THREE.PerspectiveCamera(45, 1, 0.05, 5000);
     this.orthographic = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 5000);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // stencil: true is the default, and named here because the section's caps
+    // depend on it entirely. A renderer without a stencil buffer clips the
+    // model and leaves the cut hollow, with nothing to say why.
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
     // fill the host exactly: without this the canvas keeps its intrinsic size
     // and the view sits off-centre inside its container
@@ -450,7 +487,8 @@ export class Viewport {
     this.groundPlane.renderOrder = -1;
 
     this.setUp(opts.up ?? "y");
-    this.root.add(this.meshGroup, this.outlines);
+    this.root.add(this.meshGroup, this.outlines, this.highlight, this.sectionGroup);
+    this.scene.add(this.sectionCap);          // world space: see the field
     this.scene.add(this.sky, this.sun, this.sun.target, this.ground,
                    this.groundPlane, this.root);
     if (opts.gizmo !== false) {
@@ -591,8 +629,10 @@ export class Viewport {
       line.geometry.dispose();
       (line.material as THREE.Material).dispose();
     }
+    this.clearSection();            // its markers share geometry with the meshes
     this.meshGroup.clear();
     this.outlines.clear();
+    this.setOutlined([]);           // its geometry came from meshes now gone
     // anchors were measured from meshes that no longer exist, so a label left
     // over from the last model would point at where something used to be
     this.calloutAnchors.clear();
@@ -796,6 +836,199 @@ export class Viewport {
     this.callouts.setLabelWidth(labelWidth);
     const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
     this.callouts.update(placed, dropped.length);
+  }
+
+  /**
+   * Cut the model with a plane, and cap the cut so it reads as solid.
+   *
+   * `axis` is in the content's own frame, so a Z-up model asks for "z" and
+   * gets a horizontal cut whichever way the viewport has turned the content to
+   * face three.js. `at` is a fraction of the content's extent along that axis,
+   * so 0.5 is halfway through whatever is loaded. Pass null to clear.
+   *
+   * The capping is the whole point and the reason this is not three lines.
+   * A clipping plane on its own leaves the cut hollow: you see the inside of
+   * the far face and the building reads as a shell, which is wrong about the
+   * one thing a section exists to show. So each mesh is drawn twice more into
+   * the stencil buffer, back faces incrementing and front faces decrementing,
+   * which leaves a non-zero stencil exactly where the plane passes through
+   * solid material; a quad over the plane is then drawn only there.
+   *
+   * It assumes closed geometry. Our own framing boxes are closed and cap
+   * cleanly. Imported IFC geometry frequently is not, and an open mesh caps
+   * with holes: that is a fault in the model rather than in this code, and it
+   * looks like one, which is better than quietly filling it in.
+   */
+  setSection(section: SectionRequest | null) {
+    this.clearSection();
+    this.sectionRequest = section;
+    this.renderer.localClippingEnabled = section !== null;
+    if (!section) { this.applyClipping([]); return; }
+
+    this.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(this.meshGroup);
+    // nothing to cut, so nothing to clip either: leaving the planes on would
+    // hide whatever content arrives next
+    if (box.isEmpty()) { this.applyClipping([]); return; }
+    // the axis named in the content's frame, turned into the scene's
+    const local = new THREE.Vector3(
+      section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
+    const normal = local.clone().applyQuaternion(this.root.quaternion).normalize();
+    if (section.flip) normal.negate();
+    const lo = new THREE.Vector3(), hi = new THREE.Vector3();
+    box.getCenter(lo);
+    const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    const reach = Math.abs(normal.x) * half.x + Math.abs(normal.y) * half.y
+                + Math.abs(normal.z) * half.z;
+    const centre = box.getCenter(hi);
+    // constant of a plane through the point at `at` along the normal
+    const t = (Math.min(1, Math.max(0, section.at)) - 0.5) * 2 * reach;
+    const plane = new THREE.Plane(normal.clone().negate(),
+                                  centre.dot(normal) + t);
+    this.section = plane;
+    this.applyClipping([plane]);
+
+    // the stencil pair per mesh, and one quad to fill what they mark
+    const stencilBase = new THREE.MeshBasicMaterial({
+      depthWrite: false, depthTest: false, colorWrite: false,
+      stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc,
+      clippingPlanes: [plane],
+    });
+    for (const mesh of this.meshGroup.children as THREE.Mesh[]) {
+      if (!mesh.geometry) continue;
+      for (const [side, op] of [
+        [THREE.BackSide, THREE.IncrementWrapStencilOp],
+        [THREE.FrontSide, THREE.DecrementWrapStencilOp],
+      ] as const) {
+        const material = stencilBase.clone();
+        material.side = side;
+        material.stencilFail = op;
+        material.stencilZFail = op;
+        material.stencilZPass = op;
+        const marker = new THREE.Mesh(mesh.geometry, material);
+        marker.matrixAutoUpdate = false;
+        marker.matrix.copy(mesh.matrix);
+        marker.renderOrder = 1;
+        this.sectionGroup.add(marker);
+      }
+    }
+    stencilBase.dispose();
+
+    // big enough to cover the cut whatever angle it is at, which is the box's
+    // diagonal rather than any one of its sides
+    const size = box.getSize(new THREE.Vector3()).length() * 1.2;
+    const cap = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshStandardMaterial({
+        color: this.sectionColour, metalness: 0, roughness: 1,
+        side: THREE.DoubleSide,
+        stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc,
+        stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp,
+        stencilZPass: THREE.ReplaceStencilOp,
+      }));
+    cap.renderOrder = 2;
+    // Centred on the content, not on the plane's own nearest point.
+    //
+    // `coplanarPoint` returns the point of the plane closest to the world
+    // origin, which is only the middle of the cut for content that happens to
+    // straddle the origin. A building modelled from a corner at (0,0) put the
+    // quad half a building away and capped the near half of the cut and not
+    // the far half, which read as one wall being missed rather than as the
+    // quad being in the wrong place.
+    plane.projectPoint(centre, cap.position);
+    cap.lookAt(cap.position.clone().add(plane.normal));
+    cap.onAfterRender = (renderer) => renderer.clearStencil();
+    this.sectionCap.add(cap);
+  }
+
+  /** What the cut face is painted. A tone of its own by default, because a cut
+   *  is not a surface anybody specified. */
+  setSectionColour(colour: number) {
+    if (colour === this.sectionColour) return;
+    this.sectionColour = colour;
+    if (this.sectionRequest) this.setSection(this.sectionRequest);
+  }
+
+  /** The section in force, or null. */
+  get sectionAt(): SectionRequest | null { return this.sectionRequest; }
+
+  private clearSection() {
+    for (const child of this.sectionCap.children as THREE.Mesh[]) {
+      child.geometry.dispose();
+      const m = child.material;
+      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
+    }
+    this.sectionCap.clear();
+    for (const child of this.sectionGroup.children as THREE.Mesh[]) {
+      const m = child.material;
+      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
+      if (child.geometry && !(this.meshGroup.children as THREE.Mesh[])
+          .some((mesh) => mesh.geometry === child.geometry)) child.geometry.dispose();
+    }
+    this.sectionGroup.clear();
+    this.section = null;
+  }
+
+  /** Clipping is per material in three, so it has to reach every one the app
+   *  handed over as well as the ones this class makes. */
+  private applyClipping(planes: THREE.Plane[]) {
+    const set = (m: THREE.Material | THREE.Material[]) => {
+      for (const one of Array.isArray(m) ? m : [m]) {
+        one.clippingPlanes = planes.length ? planes : null;
+        one.needsUpdate = true;
+      }
+    };
+    for (const mesh of this.meshGroup.children as THREE.Mesh[]) set(mesh.material);
+    for (const line of this.outlines.children as THREE.LineSegments[]) set(line.material);
+    for (const line of this.highlight.children as THREE.LineSegments[]) set(line.material);
+  }
+
+  /**
+   * Draw a bright outline around these meshes, on top of everything.
+   *
+   * The way to mark a set of elements without spending their fill colour,
+   * which matters once an app paints by something (a product, a state, an
+   * evidence grade) and still needs to say "these ones". Dimming everything
+   * else says the same thing by destroying the rest of the picture.
+   *
+   * Drawn with `depthTest` off, so an outlined element reads through the
+   * fabric in front of it. That is not a compromise: the usual reason to
+   * highlight a set is that some of it is behind something, and an outline you
+   * can only see when nothing is in the way answers the easy half of the
+   * question.
+   *
+   * One pixel wide. `LineBasicMaterial.linewidth` is ignored by every WebGL
+   * implementation worth naming, and this machine reports an aliased line
+   * width range of exactly [1, 1]. Thickness would mean the instanced-quad
+   * line from three's examples, which this library already imports elsewhere
+   * for its controls, so it is available; it is not used here because drawing
+   * over the top is what makes the highlight legible, and a saturated line at
+   * one pixel over the fabric reads better than a thick one behind it. If a
+   * host wants weight as well, that is the change to make.
+   */
+  setOutlined(meshes: THREE.Object3D[], colour = 0x1f7ae0) {
+    for (const line of this.highlight.children as THREE.LineSegments[]) {
+      line.geometry.dispose();
+      (line.material as THREE.Material).dispose();
+    }
+    this.highlight.clear();
+    if (!meshes.length) return;
+    const material = new THREE.LineBasicMaterial({
+      color: colour, depthTest: false, transparent: true, opacity: 0.95,
+    });
+    const angle = this.content.creaseAngle ?? 30;
+    for (const object of meshes) {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.geometry) continue;
+      // recomputed rather than fetched: the cached creases are merged into
+      // buffers of a few hundred meshes each, so there is no per-element
+      // geometry to reuse. For a selection of a few elements that is cheap.
+      const edges = new THREE.EdgesGeometry(mesh.geometry, angle);
+      const line = new THREE.LineSegments(edges, material);
+      line.applyMatrix4(mesh.matrix);
+      line.renderOrder = 999;
+      this.highlight.add(line);
+    }
   }
 
   /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
@@ -1079,6 +1312,8 @@ export class Viewport {
     cancelAnimationFrame(this.frame);
     this.gizmo?.dispose();
     this.callouts?.dispose();
+    this.setOutlined([]);
+    this.clearSection();
     this.clear();
     for (const plane of [this.ground, this.groundPlane]) {
       plane.geometry.dispose();

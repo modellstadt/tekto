@@ -2508,7 +2508,48 @@ interface IfcParseElementsOptions {
     properties?: boolean;
     /** Read the spatial structure (site / storey / space). Default: true. */
     tree?: boolean;
+    /**
+     * Read element-to-element relations: what fills what, what touches what,
+     * what type an occurrence is. A handful of whole-model queries rather than
+     * per element, so it is cheap even on a large file. Default: true.
+     */
+    relations?: boolean;
     onProgress?: (msg: string) => void;
+}
+/**
+ * How one element relates to another, in IFC's own vocabulary.
+ *
+ * The names are IFC's because the concepts are: there is no reason to invent a
+ * word for "the window is in this wall" when the schema has spent thirty years
+ * settling on one, and an app that speaks these names can hand them to any
+ * other tool that reads the format.
+ *
+ *   hosts / hostedBy   IfcRelVoidsElement + IfcRelFillsElement, chained. A wall
+ *                      hosts the window filling the opening carved into it.
+ *   connectedTo        IfcRelConnectsElements and its subtypes, of which
+ *                      IfcRelConnectsPathElements (wall meets wall) is the one
+ *                      that actually appears in files.
+ *   typeId             IfcRelDefinesByType. The unit a specification is
+ *                      written against: nobody picks a product for one wall.
+ *   partOf / parts     IfcRelAggregates, a whole and its pieces.
+ */
+interface IfcRelations {
+    /** openings in this element are filled by these elements */
+    hosts?: number[];
+    /** this element fills an opening in that one */
+    hostedBy?: number;
+    /** elements this one is recorded as touching, and how the file said so */
+    connectedTo?: {
+        to: number;
+        relation: string;
+        description?: string;
+    }[];
+    /** the IfcTypeObject this occurrence is defined by */
+    typeId?: number;
+    typeName?: string;
+    /** the whole this is a part of, and the parts it is made of */
+    partOf?: number;
+    parts?: number[];
 }
 interface IfcElementData {
     expressID: number;
@@ -2521,6 +2562,16 @@ interface IfcElementData {
     properties: Record<string, string | number | boolean>;
     /** The same values kept by their set name, when the origin matters. */
     psets: Record<string, Record<string, string | number | boolean>>;
+    /**
+     * What the file says this element is connected to.
+     *
+     * Stated, never inferred. Everything here was written down by whoever
+     * authored the model; anything worked out from geometry is a different kind
+     * of claim and lives in `adjacency.ts`, which says so. A file that records
+     * no connections leaves this empty rather than guessing, because "the author
+     * did not say" and "these do not touch" are different facts.
+     */
+    relations?: IfcRelations;
 }
 interface IfcSpatialNode {
     expressID: number;
@@ -4699,6 +4750,19 @@ declare class Callouts {
  *              lines hidden by the surfaces in front of them
  */
 type ViewMode = "shaded" | "ghost" | "hidden-line";
+/**
+ * Where to cut, in the content's own axes.
+ *
+ * `at` is a fraction of the content's extent along that axis, so 0.5 is
+ * halfway through whatever is loaded and the caller needs to know nothing
+ * about the model's coordinates.
+ */
+interface SectionRequest {
+    axis: "x" | "y" | "z";
+    at: number;
+    /** keep the far side instead of the near one */
+    flip?: boolean;
+}
 /** Perspective for looking at a building, orthographic for drawing one. */
 type Projection = "perspective" | "orthographic";
 /** The six faces of the bounding box, plus the corner view. */
@@ -4900,6 +4964,26 @@ declare class Viewport {
     private root;
     private meshGroup;
     private outlines;
+    /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
+    private highlight;
+    /**
+     * A live section is two things in two different spaces, which is why they
+     * are two groups.
+     *
+     * The stencil markers share geometry and local matrices with the meshes, so
+     * they belong under `root` and inherit its up-axis rotation exactly as the
+     * meshes do. The cap quad is placed from the clipping plane, and three
+     * applies clipping planes in world space, so a cap parented under `root` has
+     * a world-space position read as a local one and lands wherever the up-axis
+     * rotation sends it. That is why the first version cut correctly and capped
+     * nothing.
+     */
+    private sectionGroup;
+    private sectionCap;
+    /** kept so a colour change can rebuild the same cut */
+    private sectionRequest;
+    private section;
+    private sectionColour;
     private frame;
     private mode;
     private outlinesBuilt;
@@ -5037,6 +5121,61 @@ declare class Viewport {
     private checkCalloutVisibility;
     /** Project, cull and lay out this frame's labels. */
     private drawCallouts;
+    /**
+     * Cut the model with a plane, and cap the cut so it reads as solid.
+     *
+     * `axis` is in the content's own frame, so a Z-up model asks for "z" and
+     * gets a horizontal cut whichever way the viewport has turned the content to
+     * face three.js. `at` is a fraction of the content's extent along that axis,
+     * so 0.5 is halfway through whatever is loaded. Pass null to clear.
+     *
+     * The capping is the whole point and the reason this is not three lines.
+     * A clipping plane on its own leaves the cut hollow: you see the inside of
+     * the far face and the building reads as a shell, which is wrong about the
+     * one thing a section exists to show. So each mesh is drawn twice more into
+     * the stencil buffer, back faces incrementing and front faces decrementing,
+     * which leaves a non-zero stencil exactly where the plane passes through
+     * solid material; a quad over the plane is then drawn only there.
+     *
+     * It assumes closed geometry. Our own framing boxes are closed and cap
+     * cleanly. Imported IFC geometry frequently is not, and an open mesh caps
+     * with holes: that is a fault in the model rather than in this code, and it
+     * looks like one, which is better than quietly filling it in.
+     */
+    setSection(section: SectionRequest | null): void;
+    /** What the cut face is painted. A tone of its own by default, because a cut
+     *  is not a surface anybody specified. */
+    setSectionColour(colour: number): void;
+    /** The section in force, or null. */
+    get sectionAt(): SectionRequest | null;
+    private clearSection;
+    /** Clipping is per material in three, so it has to reach every one the app
+     *  handed over as well as the ones this class makes. */
+    private applyClipping;
+    /**
+     * Draw a bright outline around these meshes, on top of everything.
+     *
+     * The way to mark a set of elements without spending their fill colour,
+     * which matters once an app paints by something (a product, a state, an
+     * evidence grade) and still needs to say "these ones". Dimming everything
+     * else says the same thing by destroying the rest of the picture.
+     *
+     * Drawn with `depthTest` off, so an outlined element reads through the
+     * fabric in front of it. That is not a compromise: the usual reason to
+     * highlight a set is that some of it is behind something, and an outline you
+     * can only see when nothing is in the way answers the easy half of the
+     * question.
+     *
+     * One pixel wide. `LineBasicMaterial.linewidth` is ignored by every WebGL
+     * implementation worth naming, and this machine reports an aliased line
+     * width range of exactly [1, 1]. Thickness would mean the instanced-quad
+     * line from three's examples, which this library already imports elsewhere
+     * for its controls, so it is available; it is not used here because drawing
+     * over the top is what makes the highlight legible, and a saturated line at
+     * one pixel over the fabric reads better than a thick one behind it. If a
+     * host wants weight as well, that is the change to make.
+     */
+    setOutlined(meshes: THREE.Object3D[], colour?: number): void;
     /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
     repaint(): void;
     /** Apply the current mode to one mesh. The app's hook has the first word. */
@@ -5170,6 +5309,109 @@ declare class NavGizmo {
     setVisible(on: boolean): void;
     dispose(): void;
 }
+
+/**
+ * Which elements touch which, worked out from geometry.
+ *
+ * The companion to the relations an IFC file states, and deliberately a
+ * separate module, because the two are different kinds of claim. A file that
+ * records `IfcRelConnectsPathElements` is telling you its author drew those
+ * two walls as meeting. A bounding box overlap is telling you that we measured
+ * something and decided to call it contact. The first is testimony and the
+ * second is inference, and an app that shows them alike will eventually assert
+ * a load path nobody modelled.
+ *
+ * So every result here carries the tolerance it was found at, and the caller is
+ * expected to say so. "Bears on, derived at 50 mm" is a different sentence from
+ * "connected, stated by the file", and the difference is exactly the difference
+ * between a certified figure and one somebody typed.
+ *
+ * Boxes rather than surfaces on purpose. Real contact between two solids is a
+ * surface intersection, which is expensive, needs closed geometry that
+ * imported models rarely have, and answers a question nobody asked: what a
+ * reader wants is "what is next to this", not the area of the interface. An
+ * axis-aligned box test over a few hundred elements is milliseconds, degrades
+ * honestly on skew geometry (it over-reports, which a stated tolerance
+ * warns about) and needs nothing of the mesh but its extent.
+ */
+/** An axis-aligned box, in whatever units the model is in. */
+interface Box {
+    min: [number, number, number];
+    max: [number, number, number];
+}
+/**
+ * How two elements meet, named for what a builder would call it.
+ *
+ * The vertical cases are separated from the horizontal one because they are
+ * different questions. "What does this wall carry" and "what does this wall
+ * butt against" have different answers, different trades and, in this project,
+ * different interface requirements. Collapsing them into one "adjacent" would
+ * throw away the half that matters.
+ */
+type Contact = "supports" | "supportedBy" | "abuts" | "overlaps";
+interface Adjacency {
+    a: number;
+    b: number;
+    /** how `a` meets `b`; the reverse pair carries the opposite sense */
+    contact: Contact;
+    /** the gap that was tolerated to call this contact, in model units */
+    tolerance: number;
+    /** how much of the two boxes' footprint is shared, 0 to 1. A wall resting
+     *  its whole length on a slab reads differently from one clipping a corner. */
+    overlap: number;
+}
+/** Up, as an axis index. Tekto and IFC are Z-up; three.js content is Y-up. */
+type UpAxis = 0 | 1 | 2;
+interface AdjacencyOptions {
+    /** How close counts as touching, in model units. 0.05 for metres is a
+     *  builder's tolerance: it catches a wall drawn 30 mm off a slab and does
+     *  not join two walls a hand's width apart. */
+    tolerance?: number;
+    up?: UpAxis;
+    /** Below this shared footprint the pair is dropped, so two elements that
+     *  merely graze at a corner are not reported as bearing on each other. */
+    minOverlap?: number;
+}
+/** The box of a set of points, or null for no points. */
+declare function boxOf(positions: ArrayLike<number>): Box | null;
+/**
+ * Whether two boxes touch, and how.
+ *
+ * The test is the same in every axis: they must overlap or nearly overlap in
+ * all three. What decides the *kind* of contact is which axis is the tight
+ * one. If the pair only just meets along the up axis and one sits above the
+ * other, that is bearing. If they meet tightly in a horizontal axis, they
+ * abut. If they genuinely interpenetrate in all three, the geometry overlaps,
+ * which is usually a modelling fault worth reporting rather than hiding.
+ */
+declare function contactBetween(a: Box, b: Box, opts?: AdjacencyOptions): {
+    contact: Contact;
+    overlap: number;
+} | null;
+/** The opposite sense, so both elements can be asked the same question. */
+declare function reverse(contact: Contact): Contact;
+/**
+ * Every touching pair among these elements.
+ *
+ * Swept along the up axis rather than compared pairwise: sorting by the bottom
+ * of each box and walking forward until the next box starts above the current
+ * one's top turns a quadratic scan into something a project-scale model can
+ * afford. On 446 elements the difference is 99,000 comparisons against a few
+ * thousand.
+ */
+declare function findAdjacent(elements: {
+    id: number;
+    box: Box;
+}[], opts?: AdjacencyOptions): Adjacency[];
+/** The adjacencies of one element, both directions folded together, so a
+ *  caller can ask "what is next to this" without knowing which side of the
+ *  pair it was found on. */
+declare function neighboursOf(id: number, all: Adjacency[]): {
+    id: number;
+    contact: Contact;
+    overlap: number;
+    tolerance: number;
+}[];
 
 /**
  * LayerPanel — reusable tree-based layer/visibility panel.
@@ -6222,4 +6464,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
