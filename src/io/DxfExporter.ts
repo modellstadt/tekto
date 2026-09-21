@@ -455,7 +455,7 @@ export class DxfExporter {
       viewDir: [view.viewDir.x, view.viewDir.y, view.viewDir.z],
       upDir: [upDir.x, upDir.y, upDir.z],
       scale: options?.scale ?? 1000,
-      precision: options?.precision ?? 3,
+      precision: options?.precision ?? _defaultPrecision(options?.scale ?? 1000),
       depthBias: options?.depthBias,
     };
   }
@@ -489,7 +489,7 @@ export class DxfExporter {
   /** Project edges and write DXF. Runs hidden-line removal unless hiddenLine=false. */
   toDxf(view: DxfView, options?: DxfWriteOptions): string {
     const scale = options?.scale ?? 1000;
-    const prec  = options?.precision ?? 3;
+    const prec  = options?.precision ?? _defaultPrecision(scale);
     const doHL  = options?.hiddenLine !== false;
     const bias  = options?.depthBias ?? 0.01;
 
@@ -561,7 +561,7 @@ export class DxfExporter {
    */
   toDxfGpu(view: DxfView, options?: DxfWriteOptions & IdBufferOptions): string {
     const scale = options?.scale ?? 1000;
-    const prec  = options?.precision ?? 3;
+    const prec  = options?.precision ?? _defaultPrecision(scale);
     const segs = this.toSegmentsGpu(view, {
       resolution: options?.resolution ?? 4096,
       debugLayers: options?.debugLayers,
@@ -582,7 +582,7 @@ export class DxfExporter {
 
   /** Write DXF from pre-computed segments (e.g. merged from multiple sources). */
   toDxfFromSegments(segs: DxfSegment[], options?: { scale?: number; precision?: number }): string {
-    return _writeDxf(segs, [...this._layers.values()], options?.scale ?? 1000, options?.precision ?? 3);
+    return _writeDxf(segs, [...this._layers.values()], options?.scale ?? 1000, options?.precision ?? _defaultPrecision(options?.scale ?? 1000));
   }
 
   /** Return edge counts grouped by layer name. Useful for debugging edge classification. */
@@ -602,6 +602,10 @@ export class DxfExporter {
 // ── Silhouette edge resolution ────────────────────────────────────────────────
 
 /** Resolve view-dependent silhouette edges and merge with static edges. */
+/** Default decimals for a given output scale: 3 decimals is 1 µm in millimetres
+ *  (scale 1000) but only 1 mm in metres (scale 1) — so metre output gets 6. */
+function _defaultPrecision(scale: number): number { return scale >= 100 ? 3 : 6; }
+
 function _withSilhouettes(edges: IEdge[], silhouettes: ISilhouetteEdge[], viewDir: Vec3): IEdge[] {
   if (silhouettes.length === 0) return edges;
   const vx = viewDir.x, vy = viewDir.y, vz = viewDir.z;

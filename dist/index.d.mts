@@ -2210,6 +2210,16 @@ interface DxfMeshOptions {
      * toggle triangulation noise on/off independently.
      */
     softEdgeLayer?: string;
+    /**
+     * Resolve smooth edges (below featureAngle) as VIEW-DEPENDENT silhouettes
+     * instead of emitting every one of them: each becomes a candidate that is
+     * kept at export only where its two faces straddle the view direction (one
+     * front-, one back-facing) — i.e. the true outline of a curved surface, on
+     * this mesh's layer, occlusion-tested like any edge. Coplanar tessellation
+     * edges can never be a silhouette and are dropped. Takes precedence over
+     * softEdgeLayer. Same technique addBspTree already uses. Default: false.
+     */
+    silhouettes?: boolean;
 }
 interface DxfEdgeOptions {
     layer?: string;

@@ -14714,7 +14714,7 @@ var DxfExporter = class {
       viewDir: [view.viewDir.x, view.viewDir.y, view.viewDir.z],
       upDir: [upDir.x, upDir.y, upDir.z],
       scale: options?.scale ?? 1e3,
-      precision: options?.precision ?? 3,
+      precision: options?.precision ?? _defaultPrecision(options?.scale ?? 1e3),
       depthBias: options?.depthBias
     };
   }
@@ -14745,7 +14745,7 @@ var DxfExporter = class {
   /** Project edges and write DXF. Runs hidden-line removal unless hiddenLine=false. */
   toDxf(view, options) {
     const scale = options?.scale ?? 1e3;
-    const prec = options?.precision ?? 3;
+    const prec = options?.precision ?? _defaultPrecision(scale);
     const doHL = options?.hiddenLine !== false;
     const bias = options?.depthBias ?? 0.01;
     if (options?.debugLayers) {
@@ -14822,7 +14822,7 @@ var DxfExporter = class {
    */
   toDxfGpu(view, options) {
     const scale = options?.scale ?? 1e3;
-    const prec = options?.precision ?? 3;
+    const prec = options?.precision ?? _defaultPrecision(scale);
     const segs = this.toSegmentsGpu(view, {
       resolution: options?.resolution ?? 4096,
       debugLayers: options?.debugLayers,
@@ -14842,7 +14842,7 @@ var DxfExporter = class {
   }
   /** Write DXF from pre-computed segments (e.g. merged from multiple sources). */
   toDxfFromSegments(segs, options) {
-    return _writeDxf(segs, [...this._layers.values()], options?.scale ?? 1e3, options?.precision ?? 3);
+    return _writeDxf(segs, [...this._layers.values()], options?.scale ?? 1e3, options?.precision ?? _defaultPrecision(options?.scale ?? 1e3));
   }
   /** Return edge counts grouped by layer name. Useful for debugging edge classification. */
   debugEdgeCounts() {
@@ -14859,6 +14859,9 @@ var DxfExporter = class {
     return this;
   }
 };
+function _defaultPrecision(scale) {
+  return scale >= 100 ? 3 : 6;
+}
 function _withSilhouettes(edges, silhouettes, viewDir) {
   if (silhouettes.length === 0) return edges;
   const vx = viewDir.x, vy = viewDir.y, vz = viewDir.z;
