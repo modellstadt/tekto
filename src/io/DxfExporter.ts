@@ -53,6 +53,16 @@ export interface DxfMeshOptions {
    * toggle triangulation noise on/off independently.
    */
   softEdgeLayer?: string;
+  /**
+   * Resolve smooth edges (below featureAngle) as VIEW-DEPENDENT silhouettes
+   * instead of emitting every one of them: each becomes a candidate that is
+   * kept at export only where its two faces straddle the view direction (one
+   * front-, one back-facing) — i.e. the true outline of a curved surface, on
+   * this mesh's layer, occlusion-tested like any edge. Coplanar tessellation
+   * edges can never be a silhouette and are dropped. Takes precedence over
+   * softEdgeLayer. Same technique addBspTree already uses. Default: false.
+   */
+  silhouettes?: boolean;
 }
 
 export interface DxfEdgeOptions {
@@ -165,6 +175,7 @@ export class DxfExporter {
     const featAngle      = options?.featureAngle   ?? 30;
     const boundary       = options?.boundary       ?? true;
     const softEdgeLayer  = options?.softEdgeLayer;
+    const silhouettes    = options?.silhouettes    ?? false;
     const cosThresh      = Math.cos(featAngle * Math.PI / 180);
 
     const nTri = indices.length / 3;
@@ -230,8 +241,9 @@ export class DxfExporter {
       const aVtx = +as, bVtx = +bs;
       const ai = aVtx * 3, bi = bVtx * 3;
       let include = false;
-      let kind: 'feature' | 'boundary' | undefined;
+      let kind: 'feature' | 'boundary' | 'silhouette' | undefined;
       let edgeLayer = layer; // may be overridden to softEdgeLayer for soft edges
+      let asSilhouette = false; // smooth edge resolved per view (options.silhouettes)
 
       // Deduplicate adjacent triangles by normal direction for angle calculation.
       // Multiple triangles with the same normal (coplanar) count as one unique face.
@@ -251,7 +263,8 @@ export class DxfExporter {
         // Multiple triangles, all coplanar (same normal) → soft interior edge.
         // Note: duplicate/overlapping triangles also land here; routing them to
         // the soft layer rather than boundary is the correct CAD behaviour.
-        if (softEdgeLayer) { include = true; kind = 'feature'; edgeLayer = softEdgeLayer; }
+        // With silhouettes on: a coplanar edge is never an outline → dropped.
+        if (!silhouettes && softEdgeLayer) { include = true; kind = 'feature'; edgeLayer = softEdgeLayer; }
       } else if (featAngle < 0) {
         include = true; kind = 'feature';
       } else {
@@ -266,6 +279,9 @@ export class DxfExporter {
         }
         if (minDot < cosThresh) {
           include = true; kind = 'feature';
+        } else if (silhouettes) {
+          // Smooth edge → view-dependent silhouette candidate (see options.silhouettes)
+          include = true; kind = 'silhouette'; asSilhouette = true;
         } else if (softEdgeLayer) {
           // Sharp enough to share an edge but angle below threshold → soft
           include = true; kind = 'feature'; edgeLayer = softEdgeLayer;
@@ -290,14 +306,20 @@ export class DxfExporter {
         });
         const adjArr: number[] = [];
         ring2.forEach(t => adjArr.push(triBase + t));
-        this._edges.push({
+        const edge: IEdge = {
           ax: positions[ai], ay: positions[ai + 1], az: positions[ai + 2],
           bx: positions[bi], by: positions[bi + 1], bz: positions[bi + 2],
           layer: edgeLayer, kind,
           adjTris: adjArr,
           adjNormals: uniqueNormals.map(t => fn[t]),
           meshTriRange: [triBase, triBase + nTri],
-        });
+        };
+        if (asSilhouette) {
+          const n0 = fn[uniqueNormals[0]], n1 = fn[uniqueNormals[1]];
+          this._silhouetteEdges.push({ ...edge, n0x: n0[0], n0y: n0[1], n0z: n0[2], n1x: n1[0], n1y: n1[1], n1z: n1[2] });
+        } else {
+          this._edges.push(edge);
+        }
       }
     }
     return this;

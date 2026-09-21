@@ -254,8 +254,11 @@ export class ControlPanel {
 
       const dropdown = document.createElement("div");
       dropdown.dataset.menuDropdown = menuName;
+      // position:fixed, placed from the button's rect when opened: an absolute
+      // dropdown lives inside the panel, whose overflow clips it — a menu near the
+      // panel's right edge (or one with long labels) was cut off mid-label.
       dropdown.style.cssText = `
-        display:none;position:absolute;top:100%;left:0;z-index:100;
+        display:none;position:fixed;z-index:1000;overflow-y:auto;
         min-width:160px;background:${t.popupBg};
         border:1px solid ${t.border};border-radius:4px;padding:4px 0;
         box-shadow:0 4px 16px rgba(0,0,0,.4);
@@ -346,7 +349,12 @@ export class ControlPanel {
         this.closeMenus();
         if (!isOpen) {
           this.activeMenu = menuName;
+          const r = btn.getBoundingClientRect();
           dropdown.style.display = "block";
+          dropdown.style.top = `${r.bottom}px`;
+          dropdown.style.maxHeight = `${Math.max(120, window.innerHeight - r.bottom - 8)}px`;   // long menus scroll
+          // Clamp to the window so a menu near the right edge still opens fully.
+          dropdown.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - dropdown.offsetWidth - 4))}px`;
           btn.style.color = t.accent;
         }
       });

@@ -14436,6 +14436,7 @@ var DxfExporter = class {
     const featAngle = options?.featureAngle ?? 30;
     const boundary = options?.boundary ?? true;
     const softEdgeLayer = options?.softEdgeLayer;
+    const silhouettes = options?.silhouettes ?? false;
     const cosThresh = Math.cos(featAngle * Math.PI / 180);
     const nTri = indices.length / 3;
     const triBase = this._tris.length;
@@ -14502,6 +14503,7 @@ var DxfExporter = class {
       let include = false;
       let kind;
       let edgeLayer = layer;
+      let asSilhouette = false;
       const uniqueNormals = [];
       for (const t of tris) {
         const n = fn[t];
@@ -14517,7 +14519,7 @@ var DxfExporter = class {
           kind = "boundary";
         }
       } else if (uniqueNormals.length === 1) {
-        if (softEdgeLayer) {
+        if (!silhouettes && softEdgeLayer) {
           include = true;
           kind = "feature";
           edgeLayer = softEdgeLayer;
@@ -14537,6 +14539,10 @@ var DxfExporter = class {
         if (minDot < cosThresh) {
           include = true;
           kind = "feature";
+        } else if (silhouettes) {
+          include = true;
+          kind = "silhouette";
+          asSilhouette = true;
         } else if (softEdgeLayer) {
           include = true;
           kind = "feature";
@@ -14560,7 +14566,7 @@ var DxfExporter = class {
         });
         const adjArr = [];
         ring2.forEach((t) => adjArr.push(triBase + t));
-        this._edges.push({
+        const edge = {
           ax: positions[ai],
           ay: positions[ai + 1],
           az: positions[ai + 2],
@@ -14572,7 +14578,13 @@ var DxfExporter = class {
           adjTris: adjArr,
           adjNormals: uniqueNormals.map((t) => fn[t]),
           meshTriRange: [triBase, triBase + nTri]
-        });
+        };
+        if (asSilhouette) {
+          const n0 = fn[uniqueNormals[0]], n1 = fn[uniqueNormals[1]];
+          this._silhouetteEdges.push({ ...edge, n0x: n0[0], n0y: n0[1], n0z: n0[2], n1x: n1[0], n1y: n1[1], n1z: n1[2] });
+        } else {
+          this._edges.push(edge);
+        }
       }
     }
     return this;
@@ -20260,7 +20272,7 @@ var ControlPanel = class {
       const dropdown = document.createElement("div");
       dropdown.dataset.menuDropdown = menuName;
       dropdown.style.cssText = `
-        display:none;position:absolute;top:100%;left:0;z-index:100;
+        display:none;position:fixed;z-index:1000;overflow-y:auto;
         min-width:160px;background:${t.popupBg};
         border:1px solid ${t.border};border-radius:4px;padding:4px 0;
         box-shadow:0 4px 16px rgba(0,0,0,.4);
@@ -20362,7 +20374,11 @@ var ControlPanel = class {
         this.closeMenus();
         if (!isOpen) {
           this.activeMenu = menuName;
+          const r = btn.getBoundingClientRect();
           dropdown.style.display = "block";
+          dropdown.style.top = `${r.bottom}px`;
+          dropdown.style.maxHeight = `${Math.max(120, window.innerHeight - r.bottom - 8)}px`;
+          dropdown.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - dropdown.offsetWidth - 4))}px`;
           btn.style.color = t.accent;
         }
       });
