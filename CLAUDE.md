@@ -6,7 +6,7 @@ Read this before you make changes. The companion document is [README.md](README.
 
 This repo is the **public library**. It ships the library plus the playground/testbench.
 
-Stand-alone applications that *consume* the library live in their own separate, independent repos and link back via `"tekto": "file:../tekto"`. Keep this repo to the library and its playground — if you find yourself wanting to add an `apps/` directory here, stop: an app belongs in its own consumer repo, not in the library.
+Stand-alone applications that *consume* the library live in their own separate, independent repos and pin a release tag (`"tekto": "github:modellstadt/tekto#vX.Y.Z"`); only the maintainer's local workspace links `"file:../tekto"`. Keep this repo to the library and its playground — if you find yourself wanting to add an `apps/` directory here, stop: an app belongs in its own consumer repo, not in the library.
 
 This is a teaching/research toolkit, not a shipping product. The maintainer is iterating quickly on architectural-geometry experiments. Optimise for:
 - **Readable diffs** over clever refactors.
@@ -60,6 +60,15 @@ After the edit:
 - [ ] `npm run lint` (which is `tsc --noEmit -p tsconfig.lint.json`, covering `src/` + `playground/` + `tests/`) is clean.
 - [ ] Affected tests pass (`npm test`). Add a test if the change is non-trivial *and* the rest of the module has tests; otherwise don't pad the suite.
 - [ ] If the change touches the public API (anything exported from `src/index.ts`), I've updated the README's [What's available from `tekto`](README.md#whats-available-from-tekto) list. (Sanity-check exact names against `src/index.ts` — that bucket list paraphrases; e.g. it must use the canonical conversions `fromConnectedMesh`/`toConnectedMesh`, never the removed `fromMesh`/`toMesh`.)
+
+## Team workflow
+
+Several people and their agents work on this repo. The full rules are in [CONTRIBUTING.md](CONTRIBUTING.md); the ones agents break most:
+
+- **Work on a branch, deliver a PR.** `main` is protected; nothing lands without a PR and green CI (lint, tests, build on `npm ci`).
+- **Never commit `dist/`** outside a `release/vX.Y.Z` branch. CI rejects it. If a build touched it: `git checkout origin/main -- dist`.
+- **Changed the public API** (`src/index.ts`, `src/react.ts`)? Add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md); mark renames/removals **Breaking** with how to migrate.
+- **Added or removed a dependency?** Commit the updated `package-lock.json` in the same PR, or `npm ci` fails in CI.
 
 ## What to *never* do without asking
 

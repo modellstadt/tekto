@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    name: lint · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the dist/ guard diffs against the base branch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      # dist/ is committed so `github:` installs need no build step. It is rebuilt
+      # ONLY in release PRs (branch release/vX.Y.Z); anywhere else, two open PRs
+      # would conflict on generated files.
+      - name: dist/ only changes in release PRs
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release/')
+        run: |
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- dist)
+          if [ -n "$changed" ]; then
+            echo "::error::This PR changes dist/, which is rebuilt only in release PRs (branch release/vX.Y.Z). Revert with: git checkout origin/main -- dist"
+            echo "$changed"
+            exit 1
+          fi

@@ -4,6 +4,7 @@ node_modules/
 
 # Build outputs: dist/ IS committed so `github:` installs need no build step
 # (the consuming app installs the prebuilt files; no `prepare`/tsup on install).
+# It is rebuilt only in release/vX.Y.Z PRs — CI rejects dist/ changes elsewhere.
 
 # Vite / Vitest caches — pollute the working tree on every test/build
 node_modules/.vite/
