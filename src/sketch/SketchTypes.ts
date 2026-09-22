@@ -48,6 +48,8 @@ export interface SketchConfig {
    * frame) that already provides a top bar with the current page title.
    */
   showHeader?: boolean;
+  /** Show the ✎ Markup button (draw instructions on the view; see Markup.ts). Default `true`. */
+  markup?: boolean;
 }
 
 // ─── Export / Import registrations (top-bar shell menus) ─────────────

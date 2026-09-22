@@ -1347,6 +1347,82 @@ export class ThreeRenderer {
     return null;
   }
 
+  /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
+   *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
+  hitAt(clientX: number, clientY: number): { id: string; point: Vec3 } | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width)  * 2 - 1,
+      -((clientY - rect.top)  / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const cam = this.activeCamera as THREE.OrthographicCamera & THREE.PerspectiveCamera;
+    this.raycaster.params.Line.threshold =
+      cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
+    const targets: THREE.Object3D[] = [];
+    for (const t of this.objectMap.values()) if (t.visible) targets.push(t);
+    const hits = this.raycaster.intersectObjects(targets, true);
+    for (const h of hits) {
+      let cur: THREE.Object3D | null = h.object;
+      let shown = true;
+      while (cur && !cur.userData.geomId) { if (!cur.visible) shown = false; cur = cur.parent; }
+      if (shown && cur?.userData.geomId) {
+        return { id: cur.userData.geomId as string, point: new Vec3(h.point.x, h.point.y, h.point.z) };
+      }
+    }
+    return null;
+  }
+
+  /** Where a viewport ray meets the ground plane (z=0 for Z-up, y=0 otherwise), via the active camera. */
+  groundAt(clientX: number, clientY: number): Vec3 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width)  * 2 - 1,
+      -((clientY - rect.top)  / rect.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const n = this.isZUp ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
+    const hit = new THREE.Vector3();
+    return this.raycaster.ray.intersectPlane(new THREE.Plane(n, 0), hit) ? new Vec3(hit.x, hit.y, hit.z) : null;
+  }
+
+  /** World-space bounds of a scene object as currently rendered, or null if empty/unknown. */
+  objectBounds(id: string): { min: Vec3; max: Vec3 } | null {
+    const t = this.objectMap.get(id);
+    if (!t) return null;
+    const b = new THREE.Box3().setFromObject(t);
+    if (b.isEmpty()) return null;
+    return { min: new Vec3(b.min.x, b.min.y, b.min.z), max: new Vec3(b.max.x, b.max.y, b.max.z) };
+  }
+
+  /** Is the scene object currently shown (its own style and every parent)? */
+  isObjectShown(id: string): boolean {
+    let cur: THREE.Object3D | null = this.objectMap.get(id) ?? null;
+    if (!cur) return false;
+    for (; cur; cur = cur.parent) if (!cur.visible) return false;
+    return true;
+  }
+
+  /** The camera as plain numbers, enough to reproduce the view. */
+  cameraState(): { projection: "perspective" | "orthographic"; position: number[]; target: number[]; up: number[]; fov: number } {
+    const c = this.activeCamera;
+    const t = this.controls?.target ?? new THREE.Vector3();
+    return {
+      projection: this._isOrtho ? "orthographic" : "perspective",
+      position: [c.position.x, c.position.y, c.position.z],
+      target: [t.x, t.y, t.z],
+      up: [c.up.x, c.up.y, c.up.z],
+      fov: this.camera.fov,
+    };
+  }
+
+  /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
+   *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
+  snapshotPng(): string {
+    this.render();
+    return this.renderer.domElement.toDataURL("image/png");
+  }
+
   // ── Gizmo (transform controls) ──
 
   setGizmoMode(mode: GizmoMode): void {

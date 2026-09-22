@@ -45,6 +45,7 @@ import { ParamStore } from "../gui/Params";
 import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
 import { ThreeRenderer } from "../render/ThreeRenderer";
+import { MarkupOverlay, MarkupCaptureOptions } from "./Markup";
 import { noise } from "../core/math/noise";
 import { createRandom, SeededRandom } from "../core/math/random";
 
@@ -218,6 +219,11 @@ export class SketchInstance {
   private panelEl!: HTMLElement;
   private viewportEl!: HTMLElement;
   private logEl!: HTMLElement;
+  // Markup overlay (Markup.ts). While it is open, every object added to the scene
+  // records the user-code line that created it, so a mark can point at source.
+  private markup: MarkupOverlay | null = null;
+  private _trackSource = false;
+  private _srcById = new Map<string, string>();
   private separatorCount = 0;
   private _prevParamFingerprint = "";
   /** Log container inside the "Info" tab (tab mode only; set during render) */
@@ -249,6 +255,10 @@ export class SketchInstance {
     // View-layer capture: while a begin/endViewLayer scope is open, every
     // object added to the scene is recorded under the innermost layer name.
     this.scene.on((e) => {
+      if (e.type === "object:add" && this._trackSource) {
+        const site = callSite();
+        if (site) this._srcById.set(e.id, site);
+      }
       if (e.type === "object:add" && this._viewLayerStack.length > 0) {
         const name = this._viewLayerStack[this._viewLayerStack.length - 1];
         this._viewLayerObjects.get(name)!.push(e.id);
@@ -269,6 +279,7 @@ export class SketchInstance {
     this.wireInput();
     this.runSketch();
     this.startLoop();
+    if (this.config.markup !== false) this.initMarkup();
   }
 
   // ── DOM Construction ──
@@ -626,6 +637,7 @@ export class SketchInstance {
     const __runT0 = performance.now();
     // Clear scene but preserve params
     this.scene.clear();
+    this._srcById.clear();
     this.buttons = [];
     this.logs = [];
     this.infoText = "";
@@ -1611,9 +1623,92 @@ export class SketchInstance {
     return () => this._importListeners.delete(fn);
   }
 
+  // ── Markup (see Markup.ts) ──
+
+  private initMarkup() {
+    const self = this;
+    this.markup = new MarkupOverlay({
+      viewport: this.viewportEl.parentElement!,
+      title: this.config.title ?? "sketch",
+      hitAt: (x, y) => this.renderer.hitAt(x, y),
+      groundAt: (x, y) => this.renderer.groundAt(x, y),
+      snapshotPng: () => this.renderer.snapshotPng(),
+      describe: (id) => this.describeObject(id),
+      context: () => this.markupContext(),
+      setTracking(on) {
+        if (on === self._trackSource) return;
+        self._trackSource = on;
+        if (on) self.runSketch();   // re-create the scene so every object gets its site
+      },
+    });
+    // One handle per page for agents driving a browser (tools/snap.mjs). Last sketch wins.
+    (window as any).__tekto = {
+      owner: this,
+      snapshot: (opts?: MarkupCaptureOptions) => this.markup!.capture(opts),
+      params: () => this.store.getAll(),
+      setParams: (p: Record<string, unknown>) => { this.store.loadJSON(p); },
+      camera: (pos: number[], target?: number[]) => {
+        this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
+        if (target) this.renderer.lookAt(target[0], target[1], target[2]);
+      },
+    };
+  }
+
+  private describeObject(id: string) {
+    const o = this.scene.get(id);
+    if (!o) return null;
+    return {
+      id, type: o.type,
+      ...(o.style.layer ? { layer: o.style.layer } : {}),
+      ...(o.style.label ? { label: o.style.label } : {}),
+      ...(o.pickTag ? { tag: o.pickTag } : {}),
+      ...(typeof o.style.color === "string" ? { color: o.style.color } : {}),
+      ...(this._srcById.has(id) ? { src: this._srcById.get(id) } : {}),
+    };
+  }
+
+  /** Camera, params and a scene summary grouped by (layer, label, type, source line). */
+  private markupContext(): Record<string, unknown> {
+    const groups = new Map<string, { layer?: string; label?: string; type: string; src?: string; color?: string; count: number; ids: string[]; min: number[]; max: number[] }>();
+    const objects: unknown[] = [];
+    let shown = 0;
+    for (const o of this.scene.all()) {
+      if (!this.renderer.isObjectShown(o.id)) continue;
+      const b = this.renderer.objectBounds(o.id);
+      if (!b) continue;
+      shown++;
+      const d = this.describeObject(o.id)!;
+      const key = [d.layer, d.label, d.type, d.src, d.color].join("|");
+      let g = groups.get(key);
+      if (!g) {
+        g = { layer: d.layer, label: d.label, type: d.type, src: d.src, color: d.color, count: 0, ids: [], min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+        groups.set(key, g);
+      }
+      g.count++;
+      if (g.ids.length < 10) g.ids.push(o.id);
+      const lo = [b.min.x, b.min.y, b.min.z], hi = [b.max.x, b.max.y, b.max.z];
+      for (let i = 0; i < 3; i++) { g.min[i] = Math.min(g.min[i], lo[i]); g.max[i] = Math.max(g.max[i], hi[i]); }
+      if (objects.length < 150) objects.push({ ...d, bounds: [lo, hi].map((v) => v.map((n) => +n.toFixed(4))) });
+    }
+    const r4 = (v: number[]) => v.map((n) => +n.toFixed(4));
+    const cam = this.renderer.cameraState();
+    return {
+      camera: { ...cam, position: r4(cam.position), target: r4(cam.target) },
+      up: this.config.up ?? "y",
+      params: this.store.getAll(),
+      scene: {
+        shownObjects: shown,
+        groups: [...groups.values()].map(({ min, max, ...g }) => ({ ...g, bounds: [r4(min), r4(max)] })),
+        ...(shown <= 150 ? { objects } : {}),
+      },
+    };
+  }
+
   /** Destroy the sketch and clean up */
   dispose() {
     this.disposed = true;
+    this.markup?.dispose();
+    if ((window as any).__tekto?.owner === this) delete (window as any).__tekto;
     if (this._boundKeyDown) window.removeEventListener("keydown", this._boundKeyDown);
     if (this._boundKeyUp) window.removeEventListener("keyup", this._boundKeyUp);
     this._boundKeyDown = null;
@@ -1621,4 +1716,21 @@ export class SketchInstance {
     this.panel.dispose();
     this.renderer.dispose();
   }
+}
+
+/** First stack frame outside tekto itself — the user's line that created an object.
+ *  Raw "url:line:col"; the dev-server plugin maps it through the source map to "file.ts:line". */
+function callSite(): string | undefined {
+  const limit = (Error as any).stackTraceLimit;
+  (Error as any).stackTraceLimit = 40;
+  const stack = new Error().stack ?? "";
+  (Error as any).stackTraceLimit = limit;
+  for (const line of stack.split("\n").slice(1)) {
+    const m = line.match(/(https?:\/\/[^\s)]+):(\d+):(\d+)/) ?? line.match(/@(\S+):(\d+):(\d+)$/);
+    if (!m) continue;
+    const url = m[1];
+    if (/\/tekto\/(src|dist)\/|node_modules|\/@vite\/|\/@fs\/.*\/tekto\/src\//.test(url)) continue;
+    return `${url}:${m[2]}:${m[3]}`;
+  }
+  return undefined;
 }

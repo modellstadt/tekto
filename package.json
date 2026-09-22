@@ -1,13 +1,14 @@
 {
   "name": "tekto",
   "version": "0.2.0",
-  "description": "Computational geometry toolkit — interactive 3D generation, analysis, and visualization (meshes, curves, NURBS, SDF, voxels, graphs, BIM/IFC)",
+  "description": "AI-first platform for online CAD experiments — one-function interactive geometry apps in the browser that coding agents can write, see and take markup on (meshes, NURBS, SDF, voxels, graphs, BIM/IFC)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "src"
+    "src",
+    "tools"
   ],
   "exports": {
     ".": {
@@ -19,7 +20,8 @@
       "types": "./dist/react.d.ts",
       "import": "./dist/react.mjs",
       "require": "./dist/react.js"
-    }
+    },
+    "./markup-vite": "./tools/markup-vite-plugin.mjs"
   },
   "scripts": {
     "build":         "tsup src/index.ts src/react.ts --format cjs,esm --dts --external three --external react --external react-dom --external web-ifc",
@@ -28,7 +30,8 @@
     "test":          "vitest run",
     "test:watch":    "vitest",
     "test:coverage": "vitest run --coverage",
-    "playground":    "vite playground"
+    "playground":    "vite playground",
+    "snap":          "node tools/snap.mjs"
   },
   "dependencies": {
     "polygon-clipping": "^0.15.7",
@@ -67,6 +70,12 @@
     "web-ifc": "^0.0.77"
   },
   "keywords": [
+    "ai-first",
+    "cad",
+    "ai-agents",
+    "llm",
+    "parametric-design",
+    "browser",
     "computational-geometry",
     "mesh",
     "nurbs",

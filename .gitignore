@@ -9,3 +9,6 @@ node_modules/
 # Vite / Vitest caches — pollute the working tree on every test/build
 node_modules/.vite/
 .vite/
+
+# Markup / snap bundles (tools/markup-vite-plugin.mjs) — local handoff to an agent, not source
+.tekto/
