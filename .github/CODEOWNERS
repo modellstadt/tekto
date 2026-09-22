@@ -1,0 +1,19 @@
+# Who reviews what. GitHub requests these people automatically on a PR.
+# The LAST matching line wins. Replace @modellstadt per area as the team grows,
+# e.g. `/src/bim/ @alice` — see CONTRIBUTING.md.
+
+*                  @modellstadt
+
+# Public API: every export here is a promise to the apps that pin a tekto tag.
+/src/index.ts      @modellstadt
+/src/react.ts      @modellstadt
+
+/src/core/         @modellstadt
+/src/render/       @modellstadt
+/src/sketch/       @modellstadt
+/src/bim/          @modellstadt
+/src/io/           @modellstadt
+
+# Process and agent rules
+/.github/          @modellstadt
+/CLAUDE.md         @modellstadt
