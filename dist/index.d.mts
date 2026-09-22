@@ -4475,6 +4475,32 @@ declare class ThreeRenderer {
     private applyHandleStyle;
     /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
     pickAt(clientX: number, clientY: number): string | null;
+    /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
+     *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
+    hitAt(clientX: number, clientY: number): {
+        id: string;
+        point: Vec3;
+    } | null;
+    /** Where a viewport ray meets the ground plane (z=0 for Z-up, y=0 otherwise), via the active camera. */
+    groundAt(clientX: number, clientY: number): Vec3 | null;
+    /** World-space bounds of a scene object as currently rendered, or null if empty/unknown. */
+    objectBounds(id: string): {
+        min: Vec3;
+        max: Vec3;
+    } | null;
+    /** Is the scene object currently shown (its own style and every parent)? */
+    isObjectShown(id: string): boolean;
+    /** The camera as plain numbers, enough to reproduce the view. */
+    cameraState(): {
+        projection: "perspective" | "orthographic";
+        position: number[];
+        target: number[];
+        up: number[];
+        fov: number;
+    };
+    /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
+     *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
+    snapshotPng(): string;
     setGizmoMode(mode: GizmoMode): void;
     getGizmoMode(): GizmoMode;
     attachGizmo(id: string): void;
@@ -5534,6 +5560,8 @@ interface SketchConfig {
      * frame) that already provides a top bar with the current page title.
      */
     showHeader?: boolean;
+    /** Show the ✎ Markup button (draw instructions on the view; see Markup.ts). Default `true`. */
+    markup?: boolean;
 }
 /** Item registered via `lab.registerExport(...)`. */
 interface ExportRegistration {
@@ -6079,6 +6107,9 @@ declare class SketchInstance {
     private panelEl;
     private viewportEl;
     private logEl;
+    private markup;
+    private _trackSource;
+    private _srcById;
     private separatorCount;
     private _prevParamFingerprint;
     /** Log container inside the "Info" tab (tab mode only; set during render) */
@@ -6207,6 +6238,10 @@ declare class SketchInstance {
      */
     onExportsChange(fn: () => void): () => void;
     onImportsChange(fn: () => void): () => void;
+    private initMarkup;
+    private describeObject;
+    /** Camera, params and a scene summary grouped by (layer, label, type, source line). */
+    private markupContext;
     /** Destroy the sketch and clean up */
     dispose(): void;
 }
@@ -6298,6 +6333,55 @@ interface AppShellInstance<S extends ParamSchema = ParamSchema> {
     dispose(): void;
 }
 declare function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppShellInstance<S>;
+
+/**
+ * Markup — draw on the viewport to tell an AI (or a colleague) what to change.
+ *
+ * The point is not the drawing, it is what the drawing is resolved to. A circle
+ * in a screenshot makes the reader guess which object, where in space, and which
+ * line of code. Here every mark is resolved at the moment it is drawn:
+ *
+ *   - the strokes are kept as vectors (screen space), simplified for the file;
+ *   - each mark is raycast into the scene: which objects it touches or encloses
+ *     (with their layer, label and the source line that created them), and the
+ *     world points it lands on;
+ *   - the same marks are burnt into a PNG with big numbers, for a vision model.
+ *
+ * A capture is a bundle — `view.png` (marks), `clean.png` (no marks) and
+ * `markup.json` (camera, params, marks, scene summary). It is POSTed to the dev
+ * server (tools/markup-vite-plugin.mjs writes it to `.tekto/markup/`); without
+ * the plugin the three files are downloaded instead.
+ *
+ * `window.__tekto.snapshot()` produces the same bundle without any marks, so an
+ * agent driving a headless browser (tools/snap.mjs) sees what a person sees.
+ */
+
+interface MarkupObjectRef {
+    id: string;
+    type: string;
+    layer?: string;
+    label?: string;
+    tag?: string;
+    color?: string;
+    /** Where the object was created, e.g. "pages/primitives.ts:12" (resolved by the dev server). */
+    src?: string;
+}
+type MarkKind = "point" | "loop" | "line" | "cross" | "stroke";
+interface MarkupCaptureOptions {
+    /** Overall instruction, written to markup.json and the PNG legend. */
+    note?: string;
+    /** POST to the dev server (default true); false only returns the bundle. */
+    save?: boolean;
+    /** Short word for the folder name, e.g. "snap". */
+    label?: string;
+}
+interface MarkupBundle {
+    markup: Record<string, unknown>;
+    viewPng: string;
+    cleanPng: string;
+    /** Folder the dev server wrote to, if it did. */
+    dir?: string;
+}
 
 /**
  * Tekto Sketch2D API
@@ -6478,4 +6562,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, sectionAppearance, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, sectionAppearance, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };

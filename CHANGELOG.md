@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.2.1 — 2026-09-22
+
 - **✎ Markup:** every 3D `sketch()` has a Markup button. Draw on the view and
   each mark is resolved to the objects it touches (layer, label, source line)
   and world points, saved as a bundle an agent can read. New exports:
