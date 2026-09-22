@@ -21916,7 +21916,7 @@ var ThreeRenderer = class {
     tc.addEventListener("objectChange", () => {
       if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
     });
-    this.threeScene.add(tc);
+    this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
     this.transformControls = tc;
   }
   /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */

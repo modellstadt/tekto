@@ -1,12 +1,17 @@
-import * as react_jsx_runtime from 'react/jsx-runtime';
-import { ReactNode, CSSProperties } from 'react';
+import React, { ReactNode, CSSProperties } from 'react';
 import { P as ParamStore, q as ParamLayout, S as Scene, e as ParamSchema, u as SceneObject } from './Params-XUrkP8an.js';
+
+/**
+ * Tekto React Integration
+ *
+ * Components and hooks that wire the Scene, Renderer, and Params together.
+ */
 
 declare function useScene(): Scene;
 declare function TektoApp({ scene: extScene, children, }: {
     scene?: Scene;
     children: ReactNode;
-}): react_jsx_runtime.JSX.Element;
+}): React.JSX.Element;
 /** Reactively watch all scene objects */
 declare function useSceneObjects(): SceneObject[];
 /** Watch selection */
@@ -31,12 +36,12 @@ interface ParamPanelProps {
     style?: CSSProperties;
     className?: string;
 }
-declare function ParamPanel({ store, layout, title, style, className }: ParamPanelProps): react_jsx_runtime.JSX.Element;
+declare function ParamPanel({ store, layout, title, style, className }: ParamPanelProps): React.JSX.Element;
 declare function InspectorPanel({ style, className, onSelect, }: {
     style?: CSSProperties;
     className?: string;
     onSelect?: (id: string) => void;
-}): react_jsx_runtime.JSX.Element;
+}): React.JSX.Element;
 interface ToolbarAction {
     key: string;
     label: string;
@@ -50,7 +55,7 @@ declare function Toolbar({ actions, style, className, }: {
     actions: ToolbarAction[];
     style?: CSSProperties;
     className?: string;
-}): react_jsx_runtime.JSX.Element;
+}): React.JSX.Element;
 /**
  * One section of an AccordionColumn.
  *
@@ -116,7 +121,7 @@ interface AccordionColumnProps {
  * own; from then on it is a section like the others, which is what makes a
  * boundary stay where it was put.
  */
-declare function AccordionColumn({ sections, storageKey, className, style, classes, }: AccordionColumnProps): react_jsx_runtime.JSX.Element;
+declare function AccordionColumn({ sections, storageKey, className, style, classes, }: AccordionColumnProps): React.JSX.Element;
 /**
  * A small circled i that explains something on hover or focus.
  *
@@ -135,6 +140,6 @@ declare function InfoHint({ text, className, boxClassName, label }: {
     className?: string;
     boxClassName?: string;
     label?: string;
-}): react_jsx_runtime.JSX.Element;
+}): React.JSX.Element;
 
 export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, useParams, useScene, useSceneObjects, useSelection };
