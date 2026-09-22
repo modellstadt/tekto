@@ -1464,7 +1464,10 @@ export class ThreeRenderer {
     tc.addEventListener("objectChange", () => {
       if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
     });
-    this.threeScene.add(tc);
+    // three ≥ r169: TransformControls is no longer an Object3D — its visible
+    // gizmo is `getHelper()`. Adding `tc` itself throws ("not an instance of
+    // THREE.Object3D") and no gizmo appears. Older three: add the controls.
+    this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
     this.transformControls = tc;
   }
 

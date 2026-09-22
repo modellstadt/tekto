@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- Fix: the move / rotate / scale gizmo never appeared with three.js r169 or newer
+  (`TransformControls` is no longer an `Object3D`; its visible part is `getHelper()`).
+
 ## 0.2.1 — 2026-09-22
 
 - **✎ Markup:** every 3D `sketch()` has a Markup button. Draw on the view and
