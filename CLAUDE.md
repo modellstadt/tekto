@@ -8,7 +8,7 @@ This repo is the **public library**. It ships the library plus the playground/te
 
 Stand-alone applications that *consume* the library live in their own separate, independent repos and pin a release tag (`"tekto": "github:modellstadt/tekto#vX.Y.Z"`); only the maintainer's local workspace links `"file:../tekto"`. Keep this repo to the library and its playground — if you find yourself wanting to add an `apps/` directory here, stop: an app belongs in its own consumer repo, not in the library.
 
-This is a teaching/research toolkit, not a shipping product. The maintainer is iterating quickly on architectural-geometry experiments. Optimise for:
+Tekto is an **AI-first platform for online CAD experiments**: people and agents iterate on the same browser-based model (sketch apps, Markup, `snap`). Keeping the library easy for an agent to read, drive and check is part of the job, not a side concern. It is a teaching/research platform, not a shipping product. The maintainer is iterating quickly on architectural-geometry experiments. Optimise for:
 - **Readable diffs** over clever refactors.
 - **One concrete change per request** — do not bundle unrelated cleanups unless asked.
 - **Reading the surrounding code before editing.** The same concept (e.g. mesh) often has two names because of backward-compat aliases. See [README.md → Mesh vs FlatMesh](README.md#mesh-vs-flatmesh).

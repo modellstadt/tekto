@@ -1,8 +1,16 @@
 # ⬡ Tekto
 
-Computational geometry toolkit for **interactive 3D generation, analysis, and visualization**. Built for teaching and experimentation.
+**An AI-first platform for online CAD experiments.** Describe a design idea to a coding agent and get a running, interactive CAD app in the browser. Then point at what to change, right in the viewport, and iterate together.
 
-It's not just meshes: curves & **NURBS** surfaces, **SDF** fields, voxels, graphs (incl. planar/Delaunay), **BIM** timber framing + **IFC** export, solar, and physics — plus analysis (curvature, mesh metrics, convex hull) and renderers, all in one toolkit.
+Tekto is designed so that people and AI agents work on the same model:
+
+- **One function = one app.** The [Sketch API](#sketch-api-easiest) turns a single function into an interactive 3D or 2D app with sliders. It is small enough for an agent to write, read and rewrite in one go.
+- **People can point.** Draw on the viewport with [✎ Markup](#markup--instructions-for-an-ai-drawn-on-the-view). Each mark is resolved to the objects it touches, their world coordinates and the source line that created them, not just a circle on a screenshot.
+- **Agents can look.** `npm run snap` captures a running sketch in headless Chrome the way a person sees it, so an agent can check its own change before claiming it works.
+- **Written for agents.** [CLAUDE.md](CLAUDE.md) is the agent handbook (conventions, gotchas, what never to do without asking), and the whole public API is one entry point, `src/index.ts`.
+- **Online by default.** Everything is plain browser code (TypeScript, three.js, Vite). An experiment is a static page you can share as a link.
+
+Underneath is a full computational geometry toolkit: meshes, curves & **NURBS** surfaces, **SDF** fields, voxels, graphs (incl. planar/Delaunay), 2D polygon booleans and nesting, **BIM** timber framing + **IFC** export, solar and physics, plus analysis (curvature, mesh metrics, convex hull) and renderers. Built for teaching and research.
 
 **Mesh** (adjacency-tracked) → for editing, subdivision, topology queries  
 **FlatMesh** (typed arrays) → for rendering, animation, large meshes (500K+ tris)  
@@ -249,6 +257,37 @@ scene.addMesh(flat, { color: "#e0a14f", edgeColor: "#e0a14f" }); // colored edge
 Note this draws creases, not view-dependent silhouettes — a smooth sphere has no
 sharp edges, so in hidden-line it reads as the occluding solid with no lines.
 
+## Markup — instructions for an AI, drawn on the view
+
+Every 3D `sketch()` has a **✎ Markup** button in the viewport corner. Draw on the view, give each mark a short note, write an overall instruction and press **Save** (⌘S). The capture is a bundle an agent can read:
+
+```
+.tekto/markup/<stamp>-<sketch>/     (and a copy in .tekto/markup/latest/)
+  view.png      the view with numbered magenta marks and a legend of the notes
+  clean.png     the same view without marks
+  markup.json   camera, params, one entry per mark, and a summary of the scene
+```
+
+Each mark keeps its strokes as vectors *and* the scene objects they touch, resolved when you draw it. That means its kind (`loop` = the things inside, `line`, `point`, `cross`, `stroke`), the objects it hits with their layer, label and colour, the **source line that created each one** (e.g. `apps/stair/main.ts:212`), and the world points it lands on. The PNG shows what you meant; the JSON says exactly which object, where, and in which file. Shift-drag adds a stroke to the previous mark. Esc closes Markup.
+
+An agent can take the same capture itself, without marks, to look at its own result:
+
+```bash
+npm run snap -- "http://localhost:5173/testbench.html?page=primitives" \
+  [--params '{"Radius":2}'] [--camera 8,6,10,0,0,0] [--size 1400x900]
+```
+
+`snap` drives headless Chrome over the DevTools protocol (no extra dependency), prints page errors, and writes to `.tekto/markup/<stamp>-snap/`.
+
+Saving to disk and mapping stack positions to `.ts` lines is done by a small Vite plugin; the playground already has it. In an app's `vite.config`:
+
+```js
+import tektoMarkup from "tekto/markup-vite";
+export default { plugins: [tektoMarkup()] };
+```
+
+Without the plugin, Save downloads the three files instead. Turn the button off with `sketch(fn, { markup: false })`.
+
 ## Exploring everything via the testbench
 
 Every part of the library is exercised by the playground testbench:
@@ -370,7 +409,7 @@ Or use IDE autocomplete on the import line — every export is typed and has JSD
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
 - **Viewport**: `Viewport` — a three.js viewport over meshes *you* built (from IFC, a cut list, a supplier), as opposed to a `Scene` the library owns. Shaded / ghost / hidden-line modes, perspective or orthographic with named views (orthographic + hidden line + `front` is an elevation), creases built progressively so a project-scale model still gets them, a real sun from `SunPosition` with a framed shadow camera, and a teardown that actually releases the WebGL context. Colour stays yours through `appearanceOf`.
 - **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — both emit AutoCAD-safe R12), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
-- **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use).
+- **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use). Types `MarkupBundle` / `MarkupCaptureOptions` / `MarkupObjectRef` / `MarkKind` for the [Markup](#markup--instructions-for-an-ai-drawn-on-the-view) capture.
 - **App Shell**: `appShell` — persistent-panel apps (panel built once, animation-friendly) with a built-in top bar (Flat/Studio lighting, render mode, Persp/Iso camera, Sun popover).
 - **React** (from `tekto/react`): `AccordionColumn` — a column of collapsible sections, one of which takes the leftover height and scrolls; headers stay visible with their own summary, open sections drag taller, and the arrangement persists. The shape every inspector ends up with.
 - **GUI building blocks**: `ParamStore` (the one parameter model — all entry APIs store values here), `ControlPanel` (the shared slider/toggle/select/color/menu/tab renderer), `getTheme` (the white-on-dark panel palette), `LayerPanel`.
@@ -386,7 +425,8 @@ If you're an LLM helping someone use tekto, please:
 3. **Pattern-match against the playground demos** ([playground/pages/](playground/pages/)) — every public API has at least one demo that exercises it. They're the canonical "how to use X" examples. Find one and copy its shape.
 4. **Sketches re-run on every parameter change.** Don't put expensive one-shot work inside the sketch body. Use `lab.button(...)` for one-shots; cache anything across runs in module-scope variables.
 5. **Coordinate convention is Z-up** (XY = ground plane). When emitting DXF or screen-space SVG, drop Z. The walls / slabs / sun-position modules all assume this convention; don't rotate to Y-up just because Three.js does by default.
-6. **Vec2 / Vec3 / Vec4 / Mat4 are immutable.** All ops return new instances. Don't mutate `.x` / `.y` / `.z` — search for `as any` in the repo before reaching for that escape hatch.
+6. **Look before you claim.** When the user says "see the markup", read `.tekto/markup/latest/markup.json` and `view.png`. To check your own change visually, run `npm run snap -- <page url>` against the running dev server and read the bundle it prints. See [Markup](#markup--instructions-for-an-ai-drawn-on-the-view).
+7. **Vec2 / Vec3 / Vec4 / Mat4 are immutable.** All ops return new instances. Don't mutate `.x` / `.y` / `.z` — search for `as any` in the repo before reaching for that escape hatch.
 
 The recurring "the same concept has two or more names" pitfalls are catalogued near the top of CLAUDE.md. Reading those three points alone will save you most debugging time.
 

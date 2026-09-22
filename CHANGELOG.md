@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **✎ Markup:** every 3D `sketch()` has a Markup button. Draw on the view and
+  each mark is resolved to the objects it touches (layer, label, source line)
+  and world points, saved as a bundle an agent can read. New exports:
+  `MarkupBundle`, `MarkupCaptureOptions`, `MarkupObjectRef`, `MarkKind`;
+  `SketchConfig.markup`; dev-server plugin `tekto/markup-vite`.
+- **`npm run snap`** (`tools/snap.mjs`): capture a running sketch in headless
+  Chrome, so an agent can check its own change.
+- Descriptions: tekto is an AI-first platform for online CAD experiments.
 - CI: every PR runs lint, tests and a build on a clean install; PRs outside
   `release/*` may not change `dist/`.
 - Team process: `CONTRIBUTING.md`, `CODEOWNERS`, PR template.
