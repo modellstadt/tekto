@@ -14,6 +14,15 @@ Tekto is an **AI-first platform for online CAD experiments**: people and agents 
 - **Reading the surrounding code before editing.** The same concept (e.g. mesh) often has two names because of backward-compat aliases. See [README.md → Mesh vs FlatMesh](README.md#mesh-vs-flatmesh).
 - **Anything an outside consumer needs must be re-exported from `src/index.ts`.** Deep imports like `from "tekto/src/scene/Scene"` are forbidden — apps can only see the public surface. If you add a new module that an app will use, also add the export here. **Exception — the React layer:** React components/hooks are exported from `src/react.ts` (the separate `tekto/react` entry), *not* `src/index.ts`. This keeps the core `tekto` barrel React-free so non-React apps don't need react installed. Anything that imports `react` belongs in `src/react.ts`, never in the core barrel.
 
+## Rebuilt vs retained scenes
+
+Two ways an app produces a scene — get this right before writing code, and see [README → Two scene models](README.md#two-scene-models-rebuilt-vs-retained):
+
+- **Rebuilt** — `sketch()` / `sketch2d()`: the function re-runs on every param change and re-creates every object. Ids are positional (per-scene counter, reset by `Scene.clear()`), so a selection holds only while the run declares the same objects in the same order. Never store an id beyond a run, and don't hang app state off one.
+- **Retained** — the app owns a document and syncs a long-lived `Scene` (`appShell()` or a custom/React UI). Ids are created with the object and last for its lifetime: that is the CAD "handle", and the model to choose when the user selects, renames, saves or reopens things.
+
+Asked for something with selection, an outliner, undo or save/load? That is the retained model — do not build it on `sketch()`.
+
 ## Where things live
 
 The public surface is [src/index.ts](src/index.ts) — **read it first**; it's the authoritative export map. The README Architecture tree is a conceptual sketch and lags the real folders (it still shows `core/primitives/`). Actual layout:

@@ -141,6 +141,42 @@ src/
 
 All three levels share the same GUI foundation: values live in a `ParamStore`, panels are rendered by the shared `ControlPanel`, colors come from `getTheme()`. A control type added there appears everywhere.
 
+### Two scene models: rebuilt vs retained
+
+The access levels above are about the GUI. This is the other axis — **who owns
+the objects** — and it decides whether an object has a lasting identity. Pick it
+before you start; converting later means rewriting the app's core.
+
+| | **Rebuilt** (`sketch()` / `sketch2d()`) | **Retained** (`Scene` you own) |
+|---|---|---|
+| The scene is | re-created by your function on every param change | created once, then edited |
+| Objects | are thrown away and re-declared each run | live until you remove them |
+| Identity | positional: ids follow declaration order and restart at `clear()` | an id per object, stable for its whole life |
+| Selection / gizmo | survives a re-run while the run declares the same objects (see [`Scene.genId`](src/scene/Scene.ts)) | survives anything |
+| Undo / redo | not a concept — the code is the state | yours to implement over your document |
+| Save / load | save the params, re-run the code | save the objects, ids and all |
+| Best for | studies, demos, teaching, anything parametric end-to-end | apps where the user builds, names and reopens things |
+| Examples | every playground page | `apps/_template-react` in tekto-apps |
+
+**Rebuilt** is the fast path: write a function, get sliders, change a number and
+everything is recomputed. The cost is that no object outlives a run, so nothing
+can carry a lasting handle. What tekto guarantees is narrower: rebuilding the
+same content reproduces the same ids, which is what keeps a selection and its
+transform gizmo attached across the re-run a click triggers. Add, remove or
+reorder an object and the ids after it shift.
+
+**Retained** is the CAD model: your app holds a document (a list of shapes, a
+building model, a graph), each entry gets an id when it is created, and that id
+is the handle — through edits, undo, saving and reopening. The `Scene` is then
+synced from the document instead of cleared, so only what changed is touched.
+`sketch()` is not involved; use `appShell()` or your own UI (React, or anything
+else) and drive the `Scene`/`ThreeRenderer` directly.
+
+**Choosing.** If a user will point at a thing and expect it to stay that thing —
+select it, rename it, attach data to it, save the file, come back tomorrow — you
+need the retained model. If the whole design is a function of its parameters,
+stay with the rebuilt one; it is far less code.
+
 ## Generators
 
 | Generator | Description |
