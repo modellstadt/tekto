@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Changed — scene ids are per scene and restart at `clear()`.** Rebuilding the
+  same content gives the same ids, so a selection (highlight + transform gizmo)
+  now survives the sketch re-run that a pick triggers; before, the gizmo was left
+  stranded at the origin. The stability is positional: a run that adds, removes
+  or reorders objects shifts the ids after it. Ids are no longer unique across
+  scenes or across clears — don't store them beyond a scene's lifetime.
+- New playground page **Pick & Gizmo**, covering picking + TransformControls.
+
 - Browser tests (Playwright): every playground page must render a live canvas
   with no console errors. `npm run test:ui`; runs in CI as a second job.
 

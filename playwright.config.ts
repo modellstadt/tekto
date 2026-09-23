@@ -6,6 +6,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
+  // Headless Chrome renders WebGL in software: the heavier pages (streamlines,
+  // SDF) need well over the 30 s default, more so on CI hardware.
+  timeout: 90_000,
   // Each test holds a live WebGL context; too many at once and Chrome starts
   // dropping them (a page then renders no canvas). Four is comfortable.
   workers: process.env.CI ? 2 : 4,

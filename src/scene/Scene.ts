@@ -156,11 +156,11 @@ export type SceneEventListener = (event: SceneEvent) => void;
 
 // ─── Scene Manager ───────────────────────────
 
-let _idCounter = 0;
-function genId(prefix: string): string { return `${prefix}_${++_idCounter}`; }
 
 export class Scene {
   private objects = new Map<string, SceneObject>();
+  /** Per-scene, reset by clear(): see genId. */
+  private idCounter = 0;
   private listeners = new Set<SceneEventListener>();
   private selectedIds = new Set<string>();
   private hoveredId: string | null = null;
@@ -248,14 +248,32 @@ export class Scene {
     this.objects.clear();
     this.selectedIds.clear();
     this.hoveredId = null;
+    // Ids restart, so rebuilding the same content gives the same ids (see genId).
+    this.idCounter = 0;
     this.emit({ type: "scene:clear" });
   }
+
+  /**
+   * Ids are per-scene and restart at clear(), so a sketch that declares the
+   * same objects in the same order gets the SAME ids on every run. That is what
+   * lets a selection (highlight + transform gizmo) survive a re-run.
+   *
+   * The stability is POSITIONAL: ids follow declaration order, so a run that
+   * adds, removes or reorders an object shifts every id after it — a selection
+   * can then land on the neighbour. Sketches that need a selection to hold
+   * across such a change should declare their objects unconditionally (and
+   * vary style instead), or track their own keys.
+   *
+   * Ids stay unique within a scene; they are NOT unique across scenes or across
+   * clears, so don't store them outside the scene's lifetime.
+   */
+  private genId(prefix: string): string { return `${prefix}_${++this.idCounter}`; }
 
   // ── Builder Methods ──
 
   addPoint(position: Vec3, style?: Partial<VisualStyle>, data?: Record<string, any>): SceneObject {
     return this.add({
-      id: genId("pt"), type: "point", position,
+      id: this.genId("pt"), type: "point", position,
       style: { ...DEFAULT_STYLE, color: "#ff6b6b", pointSize: 0.1, ...style },
       interactive: true, data: data ?? {},
     });
@@ -267,7 +285,7 @@ export class Scene {
 
   addSegment(start: Vec3, end: Vec3, style?: Partial<VisualStyle>): SceneObject {
     return this.add({
-      id: genId("seg"), type: "segment", start, end,
+      id: this.genId("seg"), type: "segment", start, end,
       style: { ...DEFAULT_STYLE, color: "#4dabf7", ...style },
       interactive: true, data: {},
     });
@@ -275,7 +293,7 @@ export class Scene {
 
   addPolygon(vertices: Vec3[], style?: Partial<VisualStyle>): SceneObject {
     return this.add({
-      id: genId("poly"), type: "polygon", vertices,
+      id: this.genId("poly"), type: "polygon", vertices,
       style: { ...DEFAULT_STYLE, color: "#51cf66", opacity: 0.6, ...style },
       interactive: true, data: {},
     });
@@ -286,7 +304,7 @@ export class Scene {
    *  where N can be in the thousands. */
   addPolyline(vertices: Vec3[], style?: Partial<VisualStyle>): SceneObject {
     return this.add({
-      id: genId("pline"), type: "polyline", vertices,
+      id: this.genId("pline"), type: "polyline", vertices,
       style: { ...DEFAULT_STYLE, color: "#4dabf7", ...style },
       interactive: false, data: {},
     });
@@ -294,7 +312,7 @@ export class Scene {
 
   addMesh(mesh: Mesh, style?: Partial<VisualStyle>): SceneObject {
     return this.add({
-      id: genId("mesh"), type: "mesh", mesh,
+      id: this.genId("mesh"), type: "mesh", mesh,
       style: { ...DEFAULT_STYLE, color: "#845ef7", ...style },
       interactive: true, data: {},
     });
@@ -302,7 +320,7 @@ export class Scene {
 
   addFlatMesh(data: FlatMeshData, style?: Partial<VisualStyle>): SceneObject {
     return this.add({
-      id: genId("mesh"), type: "mesh", flatMeshData: data,
+      id: this.genId("mesh"), type: "mesh", flatMeshData: data,
       style: { ...DEFAULT_STYLE, color: "#845ef7", ...style },
       interactive: true, data: {},
     });
@@ -310,7 +328,7 @@ export class Scene {
 
   addCircle(center: Vec3, radius: number, style?: Partial<VisualStyle>): SceneObject {
     return this.add({
-      id: genId("cir"), type: "circle", center, radius,
+      id: this.genId("cir"), type: "circle", center, radius,
       style: { ...DEFAULT_STYLE, color: "#ffd43b", ...style },
       interactive: true, data: {},
     });
@@ -318,7 +336,7 @@ export class Scene {
 
   addPlane(normal: Vec3, distance: number, style?: Partial<VisualStyle>): SceneObject {
     return this.add({
-      id: genId("plane"), type: "plane", normal, distance,
+      id: this.genId("plane"), type: "plane", normal, distance,
       style: { ...DEFAULT_STYLE, color: "#aaaaaa", opacity: 0.3, ...style },
       interactive: false, data: {},
     });
@@ -479,12 +497,12 @@ export class Scene {
         mesh: obj.mesh ? Mesh.fromJSON(obj.mesh) : undefined,
       };
       scene.objects.set(sceneObj.id, sceneObj);
-      // Advance the global counter past any IDs already used in the JSON
+      // Advance this scene's counter past any IDs already used in the JSON
       // so newly added objects never collide with restored ones.
       const match = sceneObj.id.match(/_(\d+)$/);
       if (match) {
         const num = parseInt(match[1]);
-        if (num > _idCounter) _idCounter = num;
+        if (num > scene.idCounter) scene.idCounter = num;
       }
     }
     return scene;

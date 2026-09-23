@@ -715,6 +715,22 @@ export class SketchInstance {
       this._prevParamFingerprint = fingerprint;
       this.panelRender(hasInfoTab);
     }
+    // A run rebuilds the scene, so the highlight and the transform gizmo were
+    // pointing at objects that no longer exist. Scene ids restart at clear(),
+    // so the re-created object has the same id — re-attach to it, or drop the
+    // selection if this run no longer declares it. Without this, clicking an
+    // object left the gizmo stranded at the origin.
+    if (this._selectedId) {
+      if (this.scene.has(this._selectedId)) {
+        this.renderer.setSelectionHighlight(this._selectedId);
+        this.renderer.attachGizmo(this._selectedId);
+      } else {
+        this._selectedId = null;
+        this.renderer.setSelectionHighlight(null);
+        this.renderer.detachGizmo();
+      }
+    }
+
     this.updateLog();
     console.debug(`tekto: sketch run ${(performance.now() - __runT0).toFixed(1)}ms (${this.scene.count()} objects)`);
   }
