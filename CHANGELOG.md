@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- Browser tests (Playwright): every playground page must render a live canvas
+  with no console errors. `npm run test:ui`; runs in CI as a second job.
+
 - Fix: the move / rotate / scale gizmo never appeared with three.js r169 or newer
   (`TransformControls` is no longer an `Object3D`; its visible part is `getHelper()`).
 

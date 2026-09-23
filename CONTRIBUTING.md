@@ -14,6 +14,8 @@ Most of them are enforced by GitHub, so you find out early.
 3. **Open a PR.** The template has a short checklist.
 4. **CI must be green.** Every PR runs `npm run lint`, `npm test` and
    `npm run build` on a clean install (`npm ci`). Run the first two locally first.
+   A second job runs the browser tests (`npm run test:ui`), which load every
+   playground page in Chromium and fail on any console error.
 5. **Review.** `.github/CODEOWNERS` requests the right reviewer automatically.
 6. **Squash-merge**, then delete the branch.
 
@@ -26,6 +28,15 @@ merge commits.
 It is rebuilt **only** in release PRs; otherwise every pair of open PRs would
 conflict on generated files. CI fails a non-release PR that touches `dist/`.
 If you ran `npm run build` by accident: `git checkout origin/main -- dist`.
+
+## Two kinds of test
+
+- **`npm test`** (vitest, `tests/*.test.ts`) — geometry and logic, in Node.
+- **`npm run test:ui`** (Playwright, `tests/e2e/*.spec.ts`) — the library in a
+  real browser: every playground page must mount a live canvas and log nothing.
+  This is what catches renderer breakage that unit tests cannot see, such as a
+  three.js API that moved under us. Add a slug to `PAGES` when you add a page.
+  First run: `npx playwright install chromium`.
 
 ## The public API is a promise
 
