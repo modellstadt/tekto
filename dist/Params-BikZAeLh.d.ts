@@ -549,6 +549,8 @@ type SceneEvent = {
 type SceneEventListener = (event: SceneEvent) => void;
 declare class Scene {
     private objects;
+    /** Per-scene, reset by clear(): see genId. */
+    private idCounter;
     private listeners;
     private selectedIds;
     private hoveredId;
@@ -577,6 +579,21 @@ declare class Scene {
     setStyle(id: string, style: Partial<VisualStyle>): void;
     remove(id: string): void;
     clear(): void;
+    /**
+     * Ids are per-scene and restart at clear(), so a sketch that declares the
+     * same objects in the same order gets the SAME ids on every run. That is what
+     * lets a selection (highlight + transform gizmo) survive a re-run.
+     *
+     * The stability is POSITIONAL: ids follow declaration order, so a run that
+     * adds, removes or reorders an object shifts every id after it — a selection
+     * can then land on the neighbour. Sketches that need a selection to hold
+     * across such a change should declare their objects unconditionally (and
+     * vary style instead), or track their own keys.
+     *
+     * Ids stay unique within a scene; they are NOT unique across scenes or across
+     * clears, so don't store them outside the scene's lifetime.
+     */
+    private genId;
     addPoint(position: Vec3, style?: Partial<VisualStyle>, data?: Record<string, any>): SceneObject;
     addPoints(positions: Vec3[], style?: Partial<VisualStyle>): SceneObject[];
     addSegment(start: Vec3, end: Vec3, style?: Partial<VisualStyle>): SceneObject;

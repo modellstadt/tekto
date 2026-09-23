@@ -845,13 +845,11 @@ var DEFAULT_STYLE = {
   doubleSided: true,
   visible: true
 };
-var _idCounter = 0;
-function genId(prefix) {
-  return `${prefix}_${++_idCounter}`;
-}
 var Scene = class _Scene {
   constructor() {
     this.objects = /* @__PURE__ */ new Map();
+    /** Per-scene, reset by clear(): see genId. */
+    this.idCounter = 0;
     this.listeners = /* @__PURE__ */ new Set();
     this.selectedIds = /* @__PURE__ */ new Set();
     this.hoveredId = null;
@@ -937,12 +935,30 @@ var Scene = class _Scene {
     this.objects.clear();
     this.selectedIds.clear();
     this.hoveredId = null;
+    this.idCounter = 0;
     this.emit({ type: "scene:clear" });
+  }
+  /**
+   * Ids are per-scene and restart at clear(), so a sketch that declares the
+   * same objects in the same order gets the SAME ids on every run. That is what
+   * lets a selection (highlight + transform gizmo) survive a re-run.
+   *
+   * The stability is POSITIONAL: ids follow declaration order, so a run that
+   * adds, removes or reorders an object shifts every id after it — a selection
+   * can then land on the neighbour. Sketches that need a selection to hold
+   * across such a change should declare their objects unconditionally (and
+   * vary style instead), or track their own keys.
+   *
+   * Ids stay unique within a scene; they are NOT unique across scenes or across
+   * clears, so don't store them outside the scene's lifetime.
+   */
+  genId(prefix) {
+    return `${prefix}_${++this.idCounter}`;
   }
   // ── Builder Methods ──
   addPoint(position, style, data) {
     return this.add({
-      id: genId("pt"),
+      id: this.genId("pt"),
       type: "point",
       position,
       style: { ...DEFAULT_STYLE, color: "#ff6b6b", pointSize: 0.1, ...style },
@@ -955,7 +971,7 @@ var Scene = class _Scene {
   }
   addSegment(start, end, style) {
     return this.add({
-      id: genId("seg"),
+      id: this.genId("seg"),
       type: "segment",
       start,
       end,
@@ -966,7 +982,7 @@ var Scene = class _Scene {
   }
   addPolygon(vertices, style) {
     return this.add({
-      id: genId("poly"),
+      id: this.genId("poly"),
       type: "polygon",
       vertices,
       style: { ...DEFAULT_STYLE, color: "#51cf66", opacity: 0.6, ...style },
@@ -979,7 +995,7 @@ var Scene = class _Scene {
    *  where N can be in the thousands. */
   addPolyline(vertices, style) {
     return this.add({
-      id: genId("pline"),
+      id: this.genId("pline"),
       type: "polyline",
       vertices,
       style: { ...DEFAULT_STYLE, color: "#4dabf7", ...style },
@@ -989,7 +1005,7 @@ var Scene = class _Scene {
   }
   addMesh(mesh, style) {
     return this.add({
-      id: genId("mesh"),
+      id: this.genId("mesh"),
       type: "mesh",
       mesh,
       style: { ...DEFAULT_STYLE, color: "#845ef7", ...style },
@@ -999,7 +1015,7 @@ var Scene = class _Scene {
   }
   addFlatMesh(data, style) {
     return this.add({
-      id: genId("mesh"),
+      id: this.genId("mesh"),
       type: "mesh",
       flatMeshData: data,
       style: { ...DEFAULT_STYLE, color: "#845ef7", ...style },
@@ -1009,7 +1025,7 @@ var Scene = class _Scene {
   }
   addCircle(center, radius, style) {
     return this.add({
-      id: genId("cir"),
+      id: this.genId("cir"),
       type: "circle",
       center,
       radius,
@@ -1020,7 +1036,7 @@ var Scene = class _Scene {
   }
   addPlane(normal, distance, style) {
     return this.add({
-      id: genId("plane"),
+      id: this.genId("plane"),
       type: "plane",
       normal,
       distance,
@@ -1164,7 +1180,7 @@ var Scene = class _Scene {
       const match = sceneObj.id.match(/_(\d+)$/);
       if (match) {
         const num = parseInt(match[1]);
-        if (num > _idCounter) _idCounter = num;
+        if (num > scene.idCounter) scene.idCounter = num;
       }
     }
     return scene;

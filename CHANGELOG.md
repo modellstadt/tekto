@@ -6,8 +6,7 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
-- Docs: **Two scene models — rebuilt vs retained** (README + CLAUDE.md): which
-  model gives objects a lasting identity, and how to choose before writing code.
+## 0.3.0 — 2026-09-23
 
 - **Changed — scene ids are per scene and restart at `clear()`.** Rebuilding the
   same content gives the same ids, so a selection (highlight + transform gizmo)
@@ -16,9 +15,12 @@ before 1.0, breaking changes bump the minor version. See
   or reorders objects shifts the ids after it. Ids are no longer unique across
   scenes or across clears — don't store them beyond a scene's lifetime.
 - New playground page **Pick & Gizmo**, covering picking + TransformControls.
-
 - Browser tests (Playwright): every playground page must render a live canvas
   with no console errors. `npm run test:ui`; runs in CI as a second job.
+- Docs: **Two scene models — rebuilt vs retained** (README + CLAUDE.md): which
+  model gives objects a lasting identity, and how to choose before writing code.
+
+## 0.2.2 — 2026-09-22
 
 - Fix: the move / rotate / scale gizmo never appeared with three.js r169 or newer
   (`TransformControls` is no longer an `Object3D`; its visible part is `getHelper()`).
