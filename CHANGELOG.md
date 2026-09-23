@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- Docs: **Two scene models — rebuilt vs retained** (README + CLAUDE.md): which
+  model gives objects a lasting identity, and how to choose before writing code.
+
 - **Changed — scene ids are per scene and restart at `clear()`.** Rebuilding the
   same content gives the same ids, so a selection (highlight + transform gizmo)
   now survives the sketch re-run that a pick triggers; before, the gizmo was left
