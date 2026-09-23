@@ -12,3 +12,7 @@ node_modules/.vite/
 
 # Markup / snap bundles (tools/markup-vite-plugin.mjs) — local handoff to an agent, not source
 .tekto/
+
+# Playwright
+test-results/
+playwright-report/

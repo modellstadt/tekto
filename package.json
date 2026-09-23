@@ -31,11 +31,13 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "playground": "vite playground",
-    "snap": "node tools/snap.mjs"
+    "snap": "node tools/snap.mjs",
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed"
   },
   "dependencies": {
-    "polygon-clipping": "^0.15.7",
-    "poly-decomp": "^0.3.0"
+    "poly-decomp": "^0.3.0",
+    "polygon-clipping": "^0.15.7"
   },
   "peerDependencies": {
     "react": ">=18.0.0",
@@ -58,6 +60,7 @@
     }
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
     "@types/three": "^0.160.0",
