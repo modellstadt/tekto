@@ -92,6 +92,7 @@ const GROUPS: PageGroup[] = [
   { name: "Motion & Camera", pages: [
     { slug: "particles", label: "Particles 2D", load: () => import("./pages/particles") },
     { slug: "camera",    label: "Camera",       load: () => import("./pages/camera") },
+    { slug: "gizmo",     label: "Pick & Gizmo", load: () => import("./pages/gizmo") },
   ]},
   { name: "Sketch2D", pages: [
     { slug: "pointer-2d", label: "Pointer Input", load: () => import("./pages/pointer-2d") },

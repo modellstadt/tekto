@@ -11,7 +11,7 @@ const PAGES = [
   "primitives", "transforms", "lines-points", "shape-modes", "colors",
   "mesh-factory", "curves", "nurbs-surfaces", "mesh-ops", "curvature", "streamlines", "bsp-csg",
   "sdf", "graph", "planar-graph", "voxel-2d",
-  "particles", "camera",
+  "particles", "camera", "gizmo",
   "pointer-2d",
   "timber", "viewport", "dxf-test", "dxf-3d",
 ] as const;
