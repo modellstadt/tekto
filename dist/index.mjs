@@ -14,7 +14,7 @@ import {
   VecMath,
   closestPointOnSegment,
   segmentSegmentClosest
-} from "./chunk-QKIO3ZDY.mjs";
+} from "./chunk-KSHZOMZ3.mjs";
 
 // src/core/math/noise.ts
 var P = [
@@ -22878,6 +22878,16 @@ var SketchInstance = class {
     if (fingerprint !== this._prevParamFingerprint) {
       this._prevParamFingerprint = fingerprint;
       this.panelRender(hasInfoTab);
+    }
+    if (this._selectedId) {
+      if (this.scene.has(this._selectedId)) {
+        this.renderer.setSelectionHighlight(this._selectedId);
+        this.renderer.attachGizmo(this._selectedId);
+      } else {
+        this._selectedId = null;
+        this.renderer.setSelectionHighlight(null);
+        this.renderer.detachGizmo();
+      }
     }
     this.updateLog();
     console.debug(`tekto: sketch run ${(performance.now() - __runT0).toFixed(1)}ms (${this.scene.count()} objects)`);
