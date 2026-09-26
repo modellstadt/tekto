@@ -6,7 +6,7 @@ Read this before you make changes. The companion document is [README.md](README.
 
 This repo is the **public library**. It ships the library plus the playground/testbench.
 
-Stand-alone applications that *consume* the library live in their own separate, independent repos and pin a release tag (`"tekto": "github:modellstadt/tekto#vX.Y.Z"`); only the maintainer's local workspace links `"file:../tekto"`. Keep this repo to the library and its playground — if you find yourself wanting to add an `apps/` directory here, stop: an app belongs in its own consumer repo, not in the library.
+Stand-alone applications that *consume* the library live in their own separate, independent repos and pin a release — a tag (`"tekto": "github:modellstadt/tekto#vX.Y.Z"`) or a vendored copy of a release (`"tekto": "file:vendor/tekto"`, as buchholz-stair does); only the maintainer's local workspace links `"file:../tekto"`. Keep this repo to the library and its playground — if you find yourself wanting to add an `apps/` directory here, stop: an app belongs in its own consumer repo, not in the library.
 
 Tekto is an **AI-first platform for online CAD experiments**: people and agents iterate on the same browser-based model (sketch apps, Markup, `snap`). Keeping the library easy for an agent to read, drive and check is part of the job, not a side concern. It is a teaching/research platform, not a shipping product. The maintainer is iterating quickly on architectural-geometry experiments. Optimise for:
 - **Readable diffs** over clever refactors.
@@ -25,14 +25,14 @@ Asked for something with selection, an outliner, undo or save/load? That is the 
 
 ## Where things live
 
-The public surface is [src/index.ts](src/index.ts) — **read it first**; it's the authoritative export map. The README Architecture tree is a conceptual sketch and lags the real folders (it still shows `core/primitives/`). Actual layout:
+The public surface is [src/index.ts](src/index.ts) — **read it first**; it's the authoritative export map. The [README Architecture tree](README.md#architecture) matches the folders today; if they ever diverge, the folders win and the tree gets fixed. Layout:
 
 - math → `src/core/math/`
 - geometry primitives (Ray, Plane, Triangle, AABB, Sphere), 2D polygon ops, curves, surfaces → `src/core/geometry/` (**not** `core/primitives/` — that dir was removed)
 - the mesh → `src/core/geometry/mesh/Mesh.ts` (one class: id-based editing + typed arrays + connectivity), its generators in `MeshFactory.ts` next to it, and the operations (`MeshTransform`, `MeshSubdivide`, `MeshCleanup`, `MeshAnalysis`, `MeshOffset`) in the same folder. (`ConnectedMesh.ts` and `src/core/mesh/` are gone.)
 - BIM → `src/bim/`, IO → `src/io/`, renderers → `src/render/`
 
-## The two things that catch agents out most
+## What catches agents out most
 
 1. **There is one `Mesh`.** It is edited by id (`addNode`/`addFace`/`node(id)`/`splitEdge` …) *and* read as arrays (`positions`/`indices`/`normals`, `toMeshData()`); ids are indices, removal leaves a tombstone until `compact()`. `face.nodes` is a snapshot — reversing it does nothing; use `mesh.reverseFace(id)`. `node.position = p` writes through. `ConnectedMesh`, `FlatMesh`, `MeshGen`, `FlatMeshGen`, `RenderMesh` no longer exist — write `Mesh` and `MeshFactory`. There is no conversion step: `fromConnectedMesh`/`toConnectedMesh`/`toIndexedTriangles` are gone; `toMeshData()` gives the Float32 arrays for GPU/IO. **Also removed — don't reference them:** `src/core/primitives/primitives.ts` (primitives live directly in `src/core/geometry/` — `Ray.ts`, `Triangle.ts`, `AABB.ts`, `Sphere.ts`, etc.) and the `src/core/geometry/mesh/MeshData.ts` stub. (`Wall`, `Slab`, `ExtrudedRibbon`, `NurbsSurface`, `BspTree` still legitimately have their own `toMesh()` that builds a `Mesh`.)
 2. **The Sketch function re-runs end-to-end on every parameter change.** No memoisation, no diffing. If you put expensive work inside the function body, every slider drag re-runs it. One-shot work goes in button callbacks; cached state goes into module-scope variables.
@@ -41,25 +41,28 @@ The public surface is [src/index.ts](src/index.ts) — **read it first**; it's t
 
 ## Vec immutability
 
-`Vec2`/`Vec3`/`Vec4`/`Mat4` use `readonly` fields. All ops return new instances. There are a few intentional escape hatches that mutate a node's position in place via `(node as any).position = …` — in `MeshAnalysis.laplacianSmooth` (re-exported as `Algo.laplacianSmooth`) and in the rotate handlers in `src/sketch/Sketch.ts`. These mutate `MeshNode.position`, which is a mutable field — *not* the `readonly` Vec components — so `MeshTransform.translate`/`scale` reassign `node.position` directly, no `as any` needed. Search the repo for `as any` before adding a new one; if you find a clean way to express the mutation in legal TS, prefer it.
+`Vec2`/`Vec3`/`Vec4`/`Mat4` use `readonly` fields. All ops return new instances; never mutate `.x`/`.y`/`.z`. To move a mesh node, assign a new vector — `node.position = p` (a write-through accessor on the `MeshNode` view) or `mesh.setPosition(id, p)` — and for whole-mesh passes use the array methods (`mesh.translate`, `mapPositions`, `MeshTransform.*`). No `as any` is needed for any of this. The dozen left in `src/` are type-system escapes (typed-array generics, `ParamStore` keys, `Error.stackTraceLimit`, three.js internals), none of them mutate geometry, and a new one needs a reason in a comment.
 
-## Coordinate convention
+## Coordinate convention — there are two, know which one you're in
 
-Z-up. XY is the ground plane. The `Top` camera preset is "looking down -Z, up=+Y". When emitting DXF or screen-space SVG, drop the Z.
+- **Y-up (three.js):** `sketch()` defaults to `up: "y"`, and `MeshFactory` primitives are built Y-up (a grid's height is y, a sphere's poles are on y, a cylinder stands along y). Almost every playground page lives here.
+- **Z-up (CAD):** `appShell()` defaults to `up: "z"`, and BIM (walls, slabs, stairs), DXF, sun position and the `Top` camera preset ("looking down −Z, up = +Y") all assume XY is the ground plane. When emitting DXF or screen-space SVG, drop the Z.
+
+Mixing them is the classic mistake: a Y-up primitive in a Z-up app lies on its side. Pass `up: "z"` to `sketch()` when the content is CAD, and rotate `MeshFactory` output (`MeshTransform.swapAxes`) rather than "fixing" the generators.
 
 ## What to use, what to avoid
 
 - **Use `MeshFactory`** for procedural meshes; `Mesh` carries connectivity at every size, so there is no separate "big mesh" path. For data that arrives as arrays (a scan, an IFC), `new Mesh(positions, indices)` — 1M triangles load in under 100 ms.
 - **Hot loops read arrays, not views.** `mesh.faceVerts(id)`, `mesh.positions`, `mesh.indices` cost nothing; `mesh.node(id).position` allocates a view and a `Vec3`. Fine for a pass over a few thousand nodes, not for an inner loop over a million.
 - **Use `sketch(...)`** to build a runnable demo. Don't reach for the React app shell unless you specifically need persistent state, multiple panels, or routing.
-- **Avoid** importing `three` inside `src/` — it's an externalised peer dep. Add new Three.js calls in `src/render/ThreeRenderer.ts` and expose what you need through the renderer interface.
+- **`three` is allowed only in `src/render/`** (`ThreeRenderer`, `Viewport`, `Callouts`, `NavGizmo`) **and the two GPU-assisted exporters in `src/io/`** (`IdBufferHiddenLine`, `PolylineVisibility`). Never in `core/`, `scene/`, `sketch/`, `gui/` or `bim/` — those must run without WebGL (tests, workers, the 2D sketch). It's an externalised peer dep; a sketch reaches the renderer through the `Lab` / `SketchInstance` API, not by importing three itself.
 - **Avoid** adding new files when an existing file is a good home. The library prefers a handful of larger, well-organised modules over many tiny ones.
 
 ## Editing checklist
 
 Before writing the edit:
 
-- [ ] I've located the canonical file via `src/index.ts` (authoritative export map); the [README Architecture tree](README.md#architecture) is a conceptual overview and may lag the real folder names.
+- [ ] I've located the canonical file via `src/index.ts` (the authoritative export map).
 - [ ] I've read the surrounding 50–100 lines, not just the symbol I'm changing.
 - [ ] I'm using the canonical name (`Mesh`, `MeshFactory`), not a deprecated alias, and not adding one.
 - [ ] If touching a fragile function (see [src/index.ts](src/index.ts) and [README.md → One mesh](README.md#one-mesh)), I'm either avoiding it or actually fixing it.
@@ -81,7 +84,7 @@ Several people and their agents work on this repo. The full rules are in [CONTRI
 
 ## What to *never* do without asking
 
-- **Run `git push`, `git push --force`, `git reset --hard`, `git checkout .`** — none of these. Even on feature branches.
+- **Push to `main`, force-push, `git reset --hard`, `git checkout .`** — none of these. Pushing the feature branch to open the PR you were asked for *is* the workflow, not an exception; pushing anything else, or merging, is not yours to decide.
 - **Bypass hooks** (`--no-verify`, `--no-gpg-sign`). If a hook is wrong, fix the hook.
 - **Reformat / re-style code that's not part of the diff.** The repo has no Prettier/ESLint config; the maintainer's existing style is the style.
 - **Delete files** without listing them first and getting approval. Even removing dead exports.
@@ -118,6 +121,7 @@ Shadow flags are applied in `addToThree` based on the current lighting mode, so 
 ## When you're stuck
 
 - Run `npm run lint` to see what TypeScript thinks of your change.
+- Look before you claim. With the dev server running, `npm run snap -- <page url>` captures the sketch the way a person sees it (`.tekto/markup/latest/view.png` + `markup.json`); read it before saying a visual change works. A user's ✎ Markup lands in the same folder — "see the markup" means read that.
 - Search for prior art: most APIs in `src/` are exercised by at least one playground page. Find one and pattern-match.
 - If you're working through an assistant that keeps cross-conversation memory, read what's already there before re-deriving context.
 - Open a clarifying question rather than guess; when exploring, give a 2-3-sentence recommendation, not a decided plan.
