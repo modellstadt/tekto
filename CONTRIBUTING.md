@@ -46,7 +46,9 @@ what apps rely on. Deep imports are not allowed.
 - **Adding** an export: fine. Update the README's "What's available" list.
 - **Renaming, removing or changing the behaviour** of an export is a
   **breaking change**. Mark it **Breaking** in `CHANGELOG.md` with how to migrate,
-  and prefer keeping a deprecated alias for one release.
+  and rename every caller in the same PR. No backward-compat aliases: one name
+  per concept. Apps pin a version, so they upgrade deliberately and read the
+  changelog then — an alias would only postpone that.
 
 Every PR that users would notice adds a line under **Unreleased** in
 `CHANGELOG.md`.
@@ -65,17 +67,32 @@ To release (maintainer):
 4. Tag the merge commit and push the tag:
    `git tag -a vX.Y.Z -m "tekto vX.Y.Z" && git push origin vX.Y.Z`
 
-## Apps pin a version
+## Apps pin a release
 
-Apps in other repos must pin a release tag, never the moving `main`:
+Apps in other repos must depend on a release, never on the moving `main`. Two
+ways, same effect:
 
 ```json
-"tekto": "github:modellstadt/tekto#v0.2.0"
+"tekto": "github:modellstadt/tekto#v0.4.0"
 ```
 
-Upgrading is then a deliberate change in the app: bump the tag, read the
-changelog, run the app. Only the maintainer's local workspace uses
-`"file:../tekto"` to develop tekto and an app side by side.
+or a **vendored copy** of a release — its `package.json` plus `dist/` checked
+into the app under `vendor/tekto`:
+
+```json
+"tekto": "file:vendor/tekto"
+```
+
+Vendor when the app is installed where a git dependency is fragile: a `github:`
+spec forces a build-from-source on install, needs git (and keys) on the machine,
+and some npm versions choke on the `#tag` URL. That broke a partner's install of
+buchholz-stair once, which is why it vendors and guards against git specs in
+`prebuild`. Vercel-deployed apps and anything a partner installs should vendor;
+your own dev machine can pin the tag.
+
+Either way, upgrading is a deliberate change in the app: bump the tag or refresh
+the vendored copy, read the changelog, run the app. Only the maintainer's local
+workspace uses `"file:../tekto"` to develop tekto and an app side by side.
 
 ## Working with coding agents
 

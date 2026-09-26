@@ -1245,7 +1245,7 @@ export class SketchInstance {
 
       translate(x, y, z) {
         for (const n of mesh.nodes()) {
-          (n as any).position = n.position.add(new Vec3(x, y, z));
+          n.position = n.position.add(new Vec3(x, y, z));
         }
         mesh.computeVertexNormals();
         self.scene.update(obj.id, { mesh });
@@ -1254,7 +1254,7 @@ export class SketchInstance {
 
       scale(s) {
         for (const n of mesh.nodes()) {
-          (n as any).position = n.position.mul(s);
+          n.position = n.position.mul(s);
         }
         mesh.computeVertexNormals();
         self.scene.update(obj.id, { mesh });
@@ -1265,7 +1265,7 @@ export class SketchInstance {
         const c = Math.cos(rad), s = Math.sin(rad);
         for (const n of mesh.nodes()) {
           const p = n.position;
-          (n as any).position = new Vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
+          n.position = new Vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
         }
         mesh.computeVertexNormals();
         self.scene.update(obj.id, { mesh });
@@ -1276,7 +1276,7 @@ export class SketchInstance {
         const c = Math.cos(rad), s = Math.sin(rad);
         for (const n of mesh.nodes()) {
           const p = n.position;
-          (n as any).position = new Vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
+          n.position = new Vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
         }
         mesh.computeVertexNormals();
         self.scene.update(obj.id, { mesh });
@@ -1287,7 +1287,7 @@ export class SketchInstance {
         const c = Math.cos(rad), s = Math.sin(rad);
         for (const n of mesh.nodes()) {
           const p = n.position;
-          (n as any).position = new Vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z);
+          n.position = new Vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z);
         }
         mesh.computeVertexNormals();
         self.scene.update(obj.id, { mesh });
