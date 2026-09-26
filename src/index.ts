@@ -12,7 +12,7 @@ export type { SeededRandom } from "./core/math/random";
 
 // Geometry Primitives (new canonical locations)
 export { Ray } from "./core/geometry/Ray";
-export { HPlane, HPlane as Plane } from "./core/geometry/HPlane";
+export { Plane } from "./core/geometry/Plane";
 export { Triangle } from "./core/geometry/Triangle";
 export { AABB } from "./core/geometry/AABB";
 export { Sphere } from "./core/geometry/Sphere";

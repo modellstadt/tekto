@@ -10,20 +10,20 @@
  */
 
 import { Vec3 } from "../math/vectors";
-import { HPlane } from "../geometry/HPlane";
+import { Plane } from "../geometry/Plane";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
 export interface BspPolygon {
   vertices: Vec3[];
-  plane: HPlane;
+  plane: Plane;
   /** Optional user data carried through splits (e.g. material, layer). */
   shared?: unknown;
 }
 
 /** BSP tree node. null children represent empty half-spaces. */
 export interface BspNode {
-  plane: HPlane;
+  plane: Plane;
   front: BspNode | null;
   back: BspNode | null;
   coplanarFront: BspPolygon[];
@@ -40,7 +40,7 @@ const EPS = 1e-5;
 
 /** Create a BspPolygon from vertices, computing the plane automatically. */
 export function polygonFromVertices(vertices: Vec3[], shared?: unknown): BspPolygon {
-  const plane = HPlane.fromThreePoints(vertices[0], vertices[1], vertices[2]);
+  const plane = Plane.fromThreePoints(vertices[0], vertices[1], vertices[2]);
   return { vertices, plane, shared };
 }
 
@@ -59,7 +59,7 @@ const enum Side { COPLANAR = 0, FRONT = 1, BACK = 2, SPANNING = 3 }
  */
 function splitPolygon(
   polygon: BspPolygon,
-  plane: HPlane,
+  plane: Plane,
   coplanarFront: BspPolygon[],
   coplanarBack: BspPolygon[],
   front: BspPolygon[],

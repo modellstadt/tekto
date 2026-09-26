@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Breaking — `HPlane` is `Plane`.** The class was always exported as `Plane` as well; the
+  `HPlane` name and the deep path `core/geometry/HPlane` are gone. Last of the aliases.
+
 ## 0.4.0 — 2026-09-26
 
 - **Breaking — one `Mesh` class.** `ConnectedMesh` (Map per element) and the flat

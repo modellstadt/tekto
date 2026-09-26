@@ -6,7 +6,7 @@
 
 import { Vec3 } from "../math/vectors";
 import { HMath } from "../math/HMath";
-import { HPlane } from "./HPlane";
+import { Plane } from "./Plane";
 import { closestPointOnSegment } from "./Segment";
 
 export class Triangle {
@@ -49,7 +49,7 @@ export class Triangle {
   }
 
   closestPointTo(p: Vec3): Vec3 {
-    const plane = HPlane.fromThreePoints(this.a, this.b, this.c);
+    const plane = Plane.fromThreePoints(this.a, this.b, this.c);
     const proj = plane.projectPoint(p);
     if (this.containsPoint(proj)) return proj;
 
