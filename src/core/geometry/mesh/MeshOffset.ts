@@ -10,7 +10,7 @@
 // which was itself ported from the HDGeo Java MeshOffset.
 
 import { Vec3 } from "../../math/vectors";
-import { ConnectedMesh } from "./ConnectedMesh";
+import { Mesh } from "./Mesh";
 
 /**
  * Offset (thicken) a mesh by a uniform distance along its vertex normals.
@@ -18,7 +18,7 @@ import { ConnectedMesh } from "./ConnectedMesh";
  * surface; if `closeSides` is true, boundary edges are bridged with quad
  * strips to form a closed solid.
  */
-export function offset(mesh: ConnectedMesh, distance: number, closeSides = true): ConnectedMesh {
+export function offset(mesh: Mesh, distance: number, closeSides = true): Mesh {
   return offsetByFunction(mesh, () => distance, closeSides);
 }
 
@@ -28,13 +28,13 @@ export function offset(mesh: ConnectedMesh, distance: number, closeSides = true)
  * vertex (positive = along normal, negative = against).
  */
 export function offsetByFunction(
-  mesh: ConnectedMesh,
+  mesh: Mesh,
   distanceFn: (originalNodeId: number) => number,
   closeSides = true,
-): ConnectedMesh {
+): Mesh {
   mesh.computeVertexNormals();
 
-  const result = new ConnectedMesh();
+  const result = new Mesh();
   const originalIds = [...mesh.nodes()].map(n => n.id);
 
   // 1. Copy original vertices (mapping original id → new id).
@@ -87,8 +87,8 @@ export function offsetByFunction(
  * Offset every vertex by the same world-space direction (no normals).
  * Useful for extruding a flat mesh into a prism.
  */
-export function offsetDirection(mesh: ConnectedMesh, direction: Vec3, closeSides = true): ConnectedMesh {
-  const result = new ConnectedMesh();
+export function offsetDirection(mesh: Mesh, direction: Vec3, closeSides = true): Mesh {
+  const result = new Mesh();
   const originalIds = [...mesh.nodes()].map(n => n.id);
 
   const originalToBase = new Map<number, number>();
@@ -130,14 +130,14 @@ export function offsetDirection(mesh: ConnectedMesh, direction: Vec3, closeSides
  * the same iteration order as `mesh.nodes()`).
  */
 export function offsetByArrays(
-  mesh: ConnectedMesh, normals: Vec3[], distances: number[], closeSides = true,
-): ConnectedMesh {
+  mesh: Mesh, normals: Vec3[], distances: number[], closeSides = true,
+): Mesh {
   const originalIds = [...mesh.nodes()].map(n => n.id);
   if (normals.length !== originalIds.length || distances.length !== originalIds.length) {
     throw new Error("MeshOffset.offsetByArrays: normals and distances must match vertex count");
   }
 
-  const result = new ConnectedMesh();
+  const result = new Mesh();
   const idIndex = new Map<number, number>();
   originalIds.forEach((id, i) => idIndex.set(id, i));
 

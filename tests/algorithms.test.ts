@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Algo } from "../src/core/algo/algorithms";
 import { Vec2, Vec3 } from "../src/core/math/vectors";
-import { MeshFactory as MeshGen } from "../src/core/geometry/mesh/MeshFactory";
+import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 
 describe("Algo — 2D", () => {
   it("convexHull2D returns convex hull", () => {
@@ -75,21 +75,21 @@ describe("Algo — 2D", () => {
 
 describe("Algo — 3D mesh analysis", () => {
   it("meshVolume of unit box is ~1", () => {
-    const box = MeshGen.box(1, 1, 1);
-    const tri = MeshGen.triangulate(box);
+    const box = MeshFactory.box(1, 1, 1);
+    const tri = MeshFactory.triangulate(box);
     const vol = Algo.meshVolume(tri);
     expect(vol).toBeCloseTo(1, 1);
   });
 
   it("meshSurfaceArea of unit box is 6", () => {
-    const box = MeshGen.box(1, 1, 1);
-    const tri = MeshGen.triangulate(box);
+    const box = MeshFactory.box(1, 1, 1);
+    const tri = MeshFactory.triangulate(box);
     const area = Algo.meshSurfaceArea(tri);
     expect(area).toBeCloseTo(6, 1);
   });
 
   it("laplacianSmooth modifies positions", () => {
-    const m = MeshGen.sphere(1, 8, 6);
+    const m = MeshFactory.sphere(1, 8, 6);
     const posBefore = m.node(0)!.position.clone();
     Algo.laplacianSmooth(m, 3, 0.5);
     const posAfter = m.node(0)!.position;

@@ -2,11 +2,11 @@
  * BSP Tree & CSG — boolean operations on meshes.
  */
 import {
-  sketch, SketchInstance, MeshFactory, ConnectedMesh, BspTree, Vec3,
+  sketch, SketchInstance, MeshFactory, Mesh, BspTree, Vec3,
 } from "../../src";
 
-/** Convert ConnectedMesh → {positions, indices} for BSP, with optional translation. */
-function meshToFlat(mesh: ConnectedMesh, dx = 0, dy = 0, dz = 0) {
+/** Convert Mesh → {positions, indices} for BSP, with optional translation. */
+function meshToFlat(mesh: Mesh, dx = 0, dy = 0, dz = 0) {
   const idMap = new Map<number, number>();
   const positions: number[] = [];
   let idx = 0;

@@ -16,12 +16,12 @@ import {
   extractVisiblePolylines, polylinesToSVG,
   noise, Vec3,
 } from "../../src";
-import type { ConnectedMesh, VisibilityView } from "../../src";
+import type { Mesh, VisibilityView } from "../../src";
 
 type ShapeName = "sphere" | "torus" | "subdivided box" | "wavy grid" | "bumpy sphere";
 
-function buildMesh(shape: ShapeName, detail: number, bumpiness: number): ConnectedMesh {
-  let m: ConnectedMesh;
+function buildMesh(shape: ShapeName, detail: number, bumpiness: number): Mesh {
+  let m: Mesh;
   switch (shape) {
     case "sphere":
       m = MeshFactory.sphere(1, 24 + detail * 12, 16 + detail * 8);

@@ -36,8 +36,8 @@
  */
 
 import { Vec2, Vec3, MathUtils } from "../core/math/vectors";
-import { ConnectedMesh as Mesh } from "../core/geometry/mesh/ConnectedMesh";
-import { MeshFactory as MeshGen } from "../core/geometry/mesh/MeshFactory";
+import { Mesh } from "../core/geometry/mesh/Mesh";
+import { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import { Algo } from "../core/algo/algorithms";
 import { Scene, VisualStyle, FlatMeshData, RenderMode } from "../scene/Scene";
 import { LayerPanel, LayerMap, LayerNode } from "../gui/LayerPanel";
@@ -905,31 +905,31 @@ export class SketchInstance {
       },
 
       sphere(r = 1, seg = 24, rings = 16) {
-        return self.addMeshHandle(MeshGen.sphere(r, seg, rings));
+        return self.addMeshHandle(MeshFactory.sphere(r, seg, rings));
       },
 
       box(w = 1, h = 1, d = 1) {
-        return self.addMeshHandle(MeshGen.box(w, h, d));
+        return self.addMeshHandle(MeshFactory.box(w, h, d));
       },
 
       torus(R = 1, r = 0.3, seg = 32, sides = 16) {
-        return self.addMeshHandle(MeshGen.torus(R, r, seg, sides));
+        return self.addMeshHandle(MeshFactory.torus(R, r, seg, sides));
       },
 
       cylinder(rt = 1, rb = 1, h = 2, seg = 24) {
-        return self.addMeshHandle(MeshGen.cylinder(rt, rb, h, seg));
+        return self.addMeshHandle(MeshFactory.cylinder(rt, rb, h, seg));
       },
 
       grid(w = 10, d = 10, dx = 24, dz = 24, hfn) {
-        return self.addMeshHandle(MeshGen.grid(w, d, dx, dz, hfn));
+        return self.addMeshHandle(MeshFactory.grid(w, d, dx, dz, hfn));
       },
 
       revolve(profile, seg = 32) {
-        return self.addMeshHandle(MeshGen.revolve(profile, seg));
+        return self.addMeshHandle(MeshFactory.revolve(profile, seg));
       },
 
       extrude(polygon, direction) {
-        return self.addMeshHandle(MeshGen.extrude(polygon, direction));
+        return self.addMeshHandle(MeshFactory.extrude(polygon, direction));
       },
 
       point(x, y, z) {
@@ -958,7 +958,7 @@ export class SketchInstance {
 
       // ── Algorithms ──
       algo: Algo,
-      MeshGen,
+      MeshFactory,
 
       // ── Scene Control ──
       clear() { self.scene.clear(); },
@@ -1296,7 +1296,7 @@ export class SketchInstance {
 
       subdivide(iterations = 1, opts?: { creaseAngleDeg?: number; creaseEdge?: (a: Vec3, b: Vec3) => boolean; pinVertex?: (p: Vec3) => boolean }) {
         let m = mesh;
-        for (let i = 0; i < iterations; i++) m = MeshGen.subdivide(m, opts);
+        for (let i = 0; i < iterations; i++) m = MeshFactory.subdivide(m, opts);
         self.scene.remove(obj.id);
         return self.addMeshHandle(m, obj.style);
       },
@@ -1324,7 +1324,7 @@ export class SketchInstance {
     // FlatMeshHandle supports style changes but not geometry transforms
     const handle: MeshHandle = {
       get id() { return obj.id; },
-      get mesh() { return null as any; }, // no ConnectedMesh backing
+      get mesh() { return null as any; }, // flat data has no Mesh object behind it
       color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
       opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
       wireframe(w = true) { self.scene.setStyle(obj.id, { wireframe: w }); return handle; },

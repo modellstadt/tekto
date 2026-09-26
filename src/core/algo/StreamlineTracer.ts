@@ -20,7 +20,7 @@
  *    be added later if streamline density needs to be uniform across the mesh.
  */
 import { Vec3 } from "../math/vectors";
-import type { ConnectedMesh } from "../geometry/mesh/ConnectedMesh";
+import type { Mesh } from "../geometry/mesh/Mesh";
 import { closestPointOnSegment } from "../geometry/Segment";
 
 export interface StreamlineOptions {
@@ -71,7 +71,7 @@ export const StreamlineTracer = {
    * @returns              array of polylines (each polyline is Vec3[])
    */
   trace(
-    mesh: ConnectedMesh,
+    mesh: Mesh,
     field: Map<number, Vec3>,
     options: StreamlineOptions = {},
   ): Vec3[][] {
@@ -115,7 +115,7 @@ export const StreamlineTracer = {
 
 // ─── Internals ────────────────────────────────
 
-function computeAverageEdgeLength(mesh: ConnectedMesh): number {
+function computeAverageEdgeLength(mesh: Mesh): number {
   const edges = mesh.edgesArray();
   if (edges.length === 0) return 0.1;
   let total = 0;
@@ -135,7 +135,7 @@ interface FaceCache {
   centers: Map<number, Vec3>;
 }
 
-function buildFaceCache(mesh: ConnectedMesh): FaceCache {
+function buildFaceCache(mesh: Mesh): FaceCache {
   const normals = new Map<number, Vec3>();
   const centers = new Map<number, Vec3>();
   for (const f of mesh.faces()) {
@@ -156,7 +156,7 @@ function buildFaceCache(mesh: ConnectedMesh): FaceCache {
 }
 
 /** Returns true if `p` lies inside (or on) the polygon `face` (assumed roughly planar). */
-function isPointInFace(mesh: ConnectedMesh, faceId: number, p: Vec3): boolean {
+function isPointInFace(mesh: Mesh, faceId: number, p: Vec3): boolean {
   const f = mesh.face(faceId)!;
   const n = f.nodes;
   // Fan-triangulate from node[0]; the point is inside the face iff it lies in any tri.
@@ -187,7 +187,7 @@ interface ExitHit {
  * which edge of `faceId` the ray exits through.
  */
 function findExitEdge(
-  mesh: ConnectedMesh,
+  mesh: Mesh,
   faceId: number,
   pos: Vec3,
   dir: Vec3,
@@ -230,7 +230,7 @@ function findExitEdge(
  * edge physically closest to the proposed next position.
  */
 function closestEdgeFallback(
-  mesh: ConnectedMesh,
+  mesh: Mesh,
   faceId: number,
   proposedNext: Vec3,
 ): ExitHit | null {
@@ -254,14 +254,14 @@ function closestEdgeFallback(
   return bestEdge >= 0 ? { edgeId: bestEdge, point: bestPoint } : null;
 }
 
-function neighborFace(mesh: ConnectedMesh, edgeId: number, currentFaceId: number): number {
+function neighborFace(mesh: Mesh, edgeId: number, currentFaceId: number): number {
   const e = mesh.edge(edgeId)!;
   if (e.faces.length < 2) return -1;
   return e.faces[0] === currentFaceId ? e.faces[1] : e.faces[0];
 }
 
 function traceEuler(
-  mesh: ConnectedMesh,
+  mesh: Mesh,
   cache: FaceCache,
   startFaceId: number,
   startDir: Vec3,

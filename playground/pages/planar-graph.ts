@@ -79,12 +79,7 @@ export default function (container: HTMLElement): SketchInstance {
     if (showFaces.value && graph.faces.length > 0) {
       const fm = graph.toFlatMesh((_face, fi) => FACE_PALETTE[fi % FACE_PALETTE.length]);
       if (fm.triangleCount > 0) {
-        lab.flatMesh({
-          positions: fm.positions,
-          normals:   fm.normals,
-          indices:   fm.indices,
-          colors:    fm.colors ?? undefined,
-        }).doubleSided(true);
+        lab.flatMesh(fm.toMeshData()).doubleSided(true);
       }
     }
 

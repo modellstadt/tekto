@@ -6,6 +6,28 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Breaking — one `Mesh` class.** `ConnectedMesh` (Map per element) and the flat
+  `Mesh`/`FlatMesh` (typed arrays, triangles only) are now a single `Mesh`: typed-array
+  storage, polygon faces, and full connectivity (edges, node↔edge↔face links) kept
+  incrementally by every edit. Both APIs survive on the one class — `addNode`/`addFace`/
+  `node(id)`/`splitEdge`… and `positions`/`indices`/`normals`/`smooth`… — so most code
+  compiles unchanged. Same 200k-triangle grid: 31 ms / 45 MB instead of 238 ms / 232 MB;
+  1M triangles load from arrays in 83 ms. Migration:
+  - `ConnectedMesh` and `FlatMesh` still exist as deprecated aliases of `Mesh`; they go in
+    the next minor. `RenderMesh`, `MeshGen`, `FlatMeshGen` are removed: write `Mesh` and
+    `MeshFactory` (which gained `midpointSubdivide`, and `grid(...).update(fn)`).
+  - Ids are indices; removing an element leaves a tombstone until `compact()`, which
+    renumbers. `nodeCount` counts live nodes, `vertexCount` counts slots.
+  - `face.nodes` (and `node.edges`, `node.faces`, `face.edges`) are snapshots; reversing a
+    face is `mesh.reverseFace(id)`. `node.position = p` still writes through.
+  - `toIndexedTriangles()` → `toMeshData()`; `FlatMesh.fromConnectedMesh(m)` /
+    `m.toConnectedMesh()` return the mesh itself and are deprecated.
+  - `mesh.positions` is `Float64Array` (the analysis code needs the precision); the
+    `MeshData` handed to the renderer/IO stays `Float32Array`. A flat mesh no longer
+    satisfies `FlatMeshData` structurally — pass `mesh.toMeshData()`.
+  - `toJSON()` writes `{positions, faces}`; `fromJSON()` also reads both old formats.
+  - `lab.MeshGen` is `lab.MeshFactory`; `edgeFaces(id)` returns face ids, not objects.
+
 ## 0.3.0 — 2026-09-23
 
 - **Changed — scene ids are per scene and restart at `clear()`.** Rebuilding the

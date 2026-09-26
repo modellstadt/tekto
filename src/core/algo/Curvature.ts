@@ -15,7 +15,7 @@
  * make the field sign-consistent across the mesh before tracing streamlines.
  */
 import { Vec3 } from "../math/vectors";
-import type { ConnectedMesh } from "../geometry/mesh/ConnectedMesh";
+import type { Mesh } from "../geometry/mesh/Mesh";
 
 export interface VertexCurvature {
   /** Principal curvature with larger (signed) value. */
@@ -59,7 +59,7 @@ export const Curvature = {
    * zero curvature and an arbitrary (but unit) direction pair; check
    * `result.isBoundary` to filter them out.
    */
-  taubin(mesh: ConnectedMesh): Map<number, VertexCurvature> {
+  taubin(mesh: Mesh): Map<number, VertexCurvature> {
     mesh.computeVertexNormals();
 
     const result = new Map<number, VertexCurvature>();
@@ -185,7 +185,7 @@ export const Curvature = {
    * each other out wherever two adjacent vertices have opposite sign.
    */
   facePrincipalField(
-    mesh: ConnectedMesh,
+    mesh: Mesh,
     curvatures: Map<number, VertexCurvature>,
     which: "max" | "min",
   ): Map<number, Vec3> {
@@ -232,7 +232,7 @@ export const Curvature = {
    * Not globally optimal — seams will appear near umbilic / singular points.
    * Mutates `curvatures` in place.
    */
-  combDirections(mesh: ConnectedMesh, curvatures: Map<number, VertexCurvature>): void {
+  combDirections(mesh: Mesh, curvatures: Map<number, VertexCurvature>): void {
     const visited = new Set<number>();
     const queue: number[] = [];
 

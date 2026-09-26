@@ -5,76 +5,29 @@
  */
 
 import { Vec3 } from "../../math/vectors";
-import { ConnectedMesh } from "./ConnectedMesh";
+import { Mesh } from "./Mesh";
 
 export const MeshAnalysis = {
 
-  /** Compute mesh volume (for closed, consistent-winding triangle meshes) */
-  meshVolume(mesh: ConnectedMesh): number {
-    let volume = 0;
-    for (const face of mesh.faces()) {
-      if (face.nodes.length !== 3) continue;
-      const a = mesh.node(face.nodes[0])!.position;
-      const b = mesh.node(face.nodes[1])!.position;
-      const c = mesh.node(face.nodes[2])!.position;
-      volume += a.dot(b.cross(c)) / 6;
-    }
-    return Math.abs(volume);
+  /** Mesh volume (closed, consistently wound; polygons are fan-triangulated). */
+  meshVolume(mesh: Mesh): number { return mesh.volume(); },
+
+  /** Mesh surface area. */
+  meshSurfaceArea(mesh: Mesh): number { return mesh.surfaceArea(); },
+
+  /** Mesh centroid (vertex average). */
+  meshCentroid(mesh: Mesh): Vec3 { return mesh.centroid(); },
+
+  /** Laplacian smooth (moves each interior vertex toward the average of its neighbors). */
+  laplacianSmooth(mesh: Mesh, iterations = 1, factor = 0.5): void {
+    mesh.smooth(iterations, factor);
   },
 
-  /** Compute mesh surface area */
-  meshSurfaceArea(mesh: ConnectedMesh): number {
-    let area = 0;
-    for (const face of mesh.faces()) {
-      if (face.nodes.length < 3) continue;
-      const positions = face.nodes.map(n => mesh.node(n)!.position);
-      for (let i = 1; i < positions.length - 1; i++) {
-        area += positions[i].sub(positions[0]).cross(positions[i + 1].sub(positions[0])).len() * 0.5;
-      }
-    }
-    return area;
-  },
+  /** 3D Convex hull — returns a Mesh */
+  convexHull3D(points: Vec3[]): Mesh {
+    if (points.length < 4) return new Mesh();
 
-  /** Mesh centroid (vertex average) */
-  meshCentroid(mesh: ConnectedMesh): Vec3 {
-    let sum = Vec3.zero();
-    let count = 0;
-    for (const node of mesh.nodes()) {
-      sum = sum.add(node.position);
-      count++;
-    }
-    return count > 0 ? sum.div(count) : Vec3.zero();
-  },
-
-  /** Laplacian smooth (moves each vertex toward the average of its neighbors) */
-  laplacianSmooth(mesh: ConnectedMesh, iterations = 1, factor = 0.5): void {
-    for (let iter = 0; iter < iterations; iter++) {
-      const newPositions = new Map<number, Vec3>();
-      for (const node of mesh.nodes()) {
-        const neighbors = mesh.nodeNeighbors(node.id);
-        if (neighbors.length === 0 || mesh.isBoundaryNode(node.id)) {
-          newPositions.set(node.id, node.position);
-          continue;
-        }
-        const avg = neighbors
-          .map(nid => mesh.node(nid)!.position)
-          .reduce((s, p) => s.add(p), Vec3.zero())
-          .div(neighbors.length);
-        newPositions.set(node.id, node.position.lerp(avg, factor));
-      }
-      for (const [id, pos] of newPositions) {
-        const node = mesh.node(id)!;
-        (node as any).position = pos;
-      }
-    }
-    mesh.computeVertexNormals();
-  },
-
-  /** 3D Convex hull — returns a ConnectedMesh */
-  convexHull3D(points: Vec3[]): ConnectedMesh {
-    if (points.length < 4) return new ConnectedMesh();
-
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = mesh.addNodes(points);
 
     // Find non-coplanar initial 4 points

@@ -6,7 +6,7 @@
  */
 
 import { Vec3 } from "../math/vectors";
-import { ConnectedMesh } from "../geometry/mesh/ConnectedMesh";
+import { Mesh } from "../geometry/mesh/Mesh";
 import { HPlane } from "../geometry/HPlane";
 
 // ─── Spring ──────────────────────────────────
@@ -43,7 +43,7 @@ export class SpringSystem3D {
 
   // ── Init from mesh ──
 
-  initFromMesh(mesh: ConnectedMesh, trussThickness = 0, useHinges = true): void {
+  initFromMesh(mesh: Mesh, trussThickness = 0, useHinges = true): void {
     const useTruss = Math.abs(trussThickness) > 0.001;
     const nodes = mesh.nodesArray();
     const layer1Count = nodes.length;
@@ -117,7 +117,7 @@ export class SpringSystem3D {
   }
 
   private computeSmoothNormals(
-    mesh: ConnectedMesh, nodes: ReturnType<ConnectedMesh["nodesArray"]>,
+    mesh: Mesh, nodes: ReturnType<Mesh["nodesArray"]>,
     idToIdx: Map<number, number>,
   ): Vec3[] {
     const normals = new Array<Vec3>(nodes.length).fill(Vec3.zero());
@@ -141,7 +141,7 @@ export class SpringSystem3D {
     return normals;
   }
 
-  private addBendingSprings(mesh: ConnectedMesh, idToIdx: Map<number, number>): void {
+  private addBendingSprings(mesh: Mesh, idToIdx: Map<number, number>): void {
     for (const edge of mesh.edges()) {
       if (edge.faces.length < 2) continue;
       const fA = mesh.face(edge.faces[0]);
@@ -248,7 +248,7 @@ export class SpringSystem3D {
 
   // ── Update mesh from simulation ──
 
-  updateMesh(mesh: ConnectedMesh): void {
+  updateMesh(mesh: Mesh): void {
     const nodes = mesh.nodesArray();
     if (this.pos.length < nodes.length) return;
 

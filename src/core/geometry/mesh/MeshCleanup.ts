@@ -1,16 +1,16 @@
 /**
- * Tekto MeshCleanup — Vertex merging and welding on ConnectedMesh.
+ * Tekto MeshCleanup — Vertex merging and welding on Mesh.
  *
  * Mirrors HDGEO.Core.MeshCleanup.
  */
 
 import { Vec3 } from "../../math/vectors";
-import { ConnectedMesh } from "./ConnectedMesh";
+import { Mesh } from "./Mesh";
 
 export const MeshCleanup = {
 
   /** Merges vertices that have the exact same position (binary equality). */
-  mergeIdenticalVertices(mesh: ConnectedMesh): void {
+  mergeIdenticalVertices(mesh: Mesh): void {
     const allNodes = mesh.nodesArray();
     const allFaces = mesh.facesArray();
 
@@ -53,7 +53,7 @@ export const MeshCleanup = {
   },
 
   /** Merges vertices that are within a certain distance of each other. */
-  weldVertices(mesh: ConnectedMesh, threshold: number): void {
+  weldVertices(mesh: Mesh, threshold: number): void {
     if (threshold <= 1e-6) {
       MeshCleanup.mergeIdenticalVertices(mesh);
       return;
@@ -108,7 +108,7 @@ export const MeshCleanup = {
   },
 };
 
-function applyRemap(mesh: ConnectedMesh, positions: Vec3[], faces: number[][]): void {
+function applyRemap(mesh: Mesh, positions: Vec3[], faces: number[][]): void {
   mesh.clear();
   const ids = positions.map(p => mesh.addNode(p));
   for (const f of faces) {

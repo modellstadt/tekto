@@ -6,7 +6,7 @@
  */
 
 import { Vec2, Vec3 } from "../math/vectors";
-import { ConnectedMesh } from "../geometry/mesh/ConnectedMesh";
+import { Mesh } from "../geometry/mesh/Mesh";
 
 // ─── Gaussian kernel helper ──────────────────
 
@@ -491,7 +491,7 @@ const MS_EDGE_TABLE = new Int8Array([
 // ═════════════════════════════════════════════
 
 export const MarchingCubes = {
-  extract(grid: VoxelGrid, iso = 0): ConnectedMesh {
+  extract(grid: VoxelGrid, iso = 0): Mesh {
     const { nx, ny, nz, x1, y1, z1, cellSize, values } = grid;
     const nyz = ny * nz;
     const n = new Float32Array(8);
@@ -567,7 +567,7 @@ export const MarchingCubes = {
       }
     }
 
-    return ConnectedMesh.fromIndexedTriangles(positions, indices);
+    return Mesh.fromIndexedTriangles(positions, indices);
   },
 };
 

@@ -10,8 +10,8 @@
  */
 
 import type { Vec2, Vec3 } from "../core/math/vectors";
-import type { ConnectedMesh as Mesh } from "../core/geometry/mesh/ConnectedMesh";
-import type { MeshFactory as MeshGen } from "../core/geometry/mesh/MeshFactory";
+import type { Mesh } from "../core/geometry/mesh/Mesh";
+import type { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import type { Algo } from "../core/algo/algorithms";
 import type { Scene, VisualStyle, FlatMeshData } from "../scene/Scene";
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
@@ -309,7 +309,7 @@ export interface Lab {
 
   // ── Algorithms ──
   algo: typeof Algo;
-  MeshGen: typeof MeshGen;
+  MeshFactory: typeof MeshFactory;
 
   // ── Scene control ──
   clear(): void;

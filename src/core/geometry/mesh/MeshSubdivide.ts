@@ -1,18 +1,18 @@
 /**
- * Tekto MeshSubdivide — Subdivision and refinement operations on ConnectedMesh.
+ * Tekto MeshSubdivide — Subdivision and refinement operations on Mesh.
  *
  * Mirrors HDGEO.Core.MeshSubdivide.
  * Note: CatmullClark is in MeshFactory.subdivide().
  */
 
 import { Vec3 } from "../../math/vectors";
-import { ConnectedMesh, MeshNode } from "./ConnectedMesh";
+import { Mesh, MeshNode } from "./Mesh";
 import { MeshTransform } from "./MeshTransform";
 
 export const MeshSubdivide = {
 
   /** Splits all edges longer than maxLength in a single pass. */
-  splitLongEdges(mesh: ConnectedMesh, maxLength: number): void {
+  splitLongEdges(mesh: Mesh, maxLength: number): void {
     const maxLenSq = maxLength * maxLength;
 
     // Collect edges that need splitting
@@ -38,7 +38,7 @@ export const MeshSubdivide = {
   /**
    * Iteratively subdivides the mesh until all edges are shorter than targetLength.
    */
-  refineByEdgeLength(mesh: ConnectedMesh, targetLength: number, maxIterations = 5): void {
+  refineByEdgeLength(mesh: Mesh, targetLength: number, maxIterations = 5): void {
     for (let iter = 0; iter < maxIterations; iter++) {
       const targetSq = targetLength * targetLength;
       const toSplit: number[] = [];
@@ -65,7 +65,7 @@ export const MeshSubdivide = {
    * Doo-Sabin subdivision: each face shrinks toward its centroid, creating
    * new F-faces, E-faces (edge quads), and V-faces (vertex n-gons).
    */
-  dooSabin(mesh: ConnectedMesh): void {
+  dooSabin(mesh: Mesh): void {
     const allFaces = mesh.facesArray();
     const allEdges = mesh.edgesArray();
     const allNodes = mesh.nodesArray();
@@ -201,7 +201,7 @@ export const MeshSubdivide = {
 
 /** Ordered ring of face IDs around an interior vertex (for Doo-Sabin). */
 function dooSabinFaceRing(
-  mesh: ConnectedMesh,
+  mesh: Mesh,
   node: MeshNode,
   _allFaces: any[],
   _vertPosInFace: Map<string, number>,
@@ -256,7 +256,7 @@ function dooSabinFaceRing(
   return ring.length === facesAround.length ? ring : null;
 }
 
-function findSharedEdge(mesh: ConnectedMesh, nodeA: number, nodeB: number) {
+function findSharedEdge(mesh: Mesh, nodeA: number, nodeB: number) {
   const nA = mesh.node(nodeA);
   if (!nA) return null;
   for (const eId of nA.edges) {
