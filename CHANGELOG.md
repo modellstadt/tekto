@@ -6,8 +6,13 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.5.0 — 2026-09-26
+
 - **Breaking — `HPlane` is `Plane`.** The class was always exported as `Plane` as well; the
   `HPlane` name and the deep path `core/geometry/HPlane` are gone. Last of the aliases.
+- Docs: CLAUDE.md and CONTRIBUTING.md checked against the code — two coordinate
+  conventions (Y-up sketch/MeshFactory, Z-up appShell/BIM/DXF), `three` scope, no
+  backward-compat aliases, apps pin a tag or vendor a release.
 
 ## 0.4.0 — 2026-09-26
 

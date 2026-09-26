@@ -1,10 +1,10 @@
 import {
   AABB,
   HMath,
-  HPlane,
   Mat4,
   MathUtils,
   Mesh,
+  Plane,
   Scene,
   Segment,
   Triangle,
@@ -14,7 +14,7 @@ import {
   VecMath,
   closestPointOnSegment,
   segmentSegmentClosest
-} from "./chunk-L76BR4GT.mjs";
+} from "./chunk-XU6OAJZA.mjs";
 
 // src/core/math/noise.ts
 var P = [
@@ -3800,7 +3800,7 @@ function traceEuler(mesh, cache, startFaceId, startDir, field, maxSteps, dt, lif
 // src/core/algo/BspTree.ts
 var EPS2 = 1e-5;
 function polygonFromVertices(vertices, shared) {
-  const plane = HPlane.fromThreePoints(vertices[0], vertices[1], vertices[2]);
+  const plane = Plane.fromThreePoints(vertices[0], vertices[1], vertices[2]);
   return { vertices, plane, shared };
 }
 function flipPolygon(p) {
@@ -11275,7 +11275,7 @@ var SpringSystem3D = class {
     this.springs = [];
     // Settings
     this.gravity = new Vec3(0, -9.81, 0);
-    this.floorPlane = new HPlane(new Vec3(0, 0, 1), -10);
+    this.floorPlane = new Plane(new Vec3(0, 0, 1), -10);
     this.globalVelDamping = 0.02;
     this.useGlobalStiffness = true;
     this.globalStiffness = 200;
@@ -24091,7 +24091,6 @@ export {
   Graph,
   GridGraph,
   HMath,
-  HPlane,
   HelixCurve,
   HolzrahmenBau,
   HolzrahmenBauJointStyle,
@@ -24128,7 +24127,7 @@ export {
   PlanarGraph,
   PlanarGraphCleanup,
   PlanarGraphRepair,
-  HPlane as Plane,
+  Plane,
   Polygon2D,
   PolygonBool,
   PolylineCurve,
