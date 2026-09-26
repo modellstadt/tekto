@@ -179,27 +179,33 @@ describe("MeshFactory (array side)", () => {
     expect(sub.triangleCount).toBe(fm.triangleCount * 4);
   });
 
-  it("performance: generates an 80K-tri grid in under 100ms", () => {
+  // The two timing tests guard against connectivity being rebuilt per edit — that
+  // regression costs seconds, not milliseconds — so the bounds are loose enough for
+  // a cold CI runner (locally ~30 ms and ~20 ms) and each builds once to warm the JIT.
+  it("performance: builds an 80K-tri grid with edges in well under a second", () => {
+    MeshFactory.grid(10, 10, 200, 200);
     const start = performance.now();
     const fm = MeshFactory.grid(10, 10, 200, 200);
     const elapsed = performance.now() - start;
     expect(fm.triangleCount).toBe(200 * 200 * 2); // 80K tris
-    expect(elapsed).toBeLessThan(100);
+    expect(fm.edgeCount).toBe(2 * 200 * 201);
+    expect(elapsed).toBeLessThan(400);
   });
 
-  it("performance: loads 200K triangles from arrays in under 150ms", () => {
+  it("performance: loads 200K triangles from arrays in well under a second", () => {
     const n = 316, pos = new Float32Array((n + 1) * (n + 1) * 3), idx = new Uint32Array(n * n * 6);
     let k = 0;
     for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) {
       const a = iz * (n + 1) + ix, b = a + 1, c = a + n + 1, d = c + 1;
       idx[k++] = a; idx[k++] = b; idx[k++] = d; idx[k++] = a; idx[k++] = d; idx[k++] = c;
     }
+    new Mesh(pos, idx);
     const start = performance.now();
     const m = new Mesh(pos, idx);
     const elapsed = performance.now() - start;
     expect(m.triangleCount).toBe(n * n * 2);
     expect(m.edgeCount).toBe(3 * n * n + 2 * n);
-    expect(elapsed).toBeLessThan(150);
+    expect(elapsed).toBeLessThan(500);
     void Vec3;
   });
 });
