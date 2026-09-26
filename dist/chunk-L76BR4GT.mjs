@@ -1,52 +1,3 @@
-"use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// src/react.ts
-var react_exports = {};
-__export(react_exports, {
-  AccordionColumn: () => AccordionColumn,
-  InfoHint: () => InfoHint,
-  InspectorPanel: () => InspectorPanel,
-  ParamPanel: () => ParamPanel,
-  TektoApp: () => TektoApp,
-  Toolbar: () => Toolbar,
-  useParams: () => useParams,
-  useScene: () => useScene,
-  useSceneObjects: () => useSceneObjects,
-  useSelection: () => useSelection
-});
-module.exports = __toCommonJS(react_exports);
-
-// src/react/components.tsx
-var import_react = __toESM(require("react"));
-var import_react_dom = require("react-dom");
-
 // src/core/math/HMath.ts
 var HMath = {
   DEG2RAD: Math.PI / 180,
@@ -103,6 +54,7 @@ var HMath = {
     return null;
   }
 };
+var MathUtils = HMath;
 
 // src/core/math/vectors.ts
 var Vec2 = class _Vec2 {
@@ -307,6 +259,647 @@ var Vec3 = class _Vec3 {
     return new _Vec3(j.x, j.y, j.z);
   }
 };
+var Vec4 = class {
+  constructor(x = 0, y = 0, z = 0, w = 0) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+    this.w = w;
+  }
+  dot(v) {
+    return this.x * v.x + this.y * v.y + this.z * v.z + this.w * v.w;
+  }
+  toVec3() {
+    return new Vec3(this.x, this.y, this.z);
+  }
+  toArray() {
+    return [this.x, this.y, this.z, this.w];
+  }
+};
+var Mat4 = class _Mat4 {
+  /** 16 elements in column-major order */
+  constructor(m = new Float64Array(16)) {
+    this.m = m;
+    if (m.length === 0) {
+      this.m = _Mat4.identity().m;
+    }
+  }
+  static identity() {
+    const m = new Float64Array(16);
+    m[0] = 1;
+    m[5] = 1;
+    m[10] = 1;
+    m[15] = 1;
+    return new _Mat4(m);
+  }
+  static translation(x, y, z) {
+    const m = _Mat4.identity().m.slice();
+    m[12] = x;
+    m[13] = y;
+    m[14] = z;
+    return new _Mat4(new Float64Array(m));
+  }
+  static scaling(x, y, z) {
+    const m = new Float64Array(16);
+    m[0] = x;
+    m[5] = y;
+    m[10] = z;
+    m[15] = 1;
+    return new _Mat4(m);
+  }
+  static rotationX(rad) {
+    const c = Math.cos(rad), s = Math.sin(rad);
+    const m = _Mat4.identity().m.slice();
+    m[5] = c;
+    m[6] = s;
+    m[9] = -s;
+    m[10] = c;
+    return new _Mat4(new Float64Array(m));
+  }
+  static rotationY(rad) {
+    const c = Math.cos(rad), s = Math.sin(rad);
+    const m = _Mat4.identity().m.slice();
+    m[0] = c;
+    m[2] = -s;
+    m[8] = s;
+    m[10] = c;
+    return new _Mat4(new Float64Array(m));
+  }
+  static rotationZ(rad) {
+    const c = Math.cos(rad), s = Math.sin(rad);
+    const m = _Mat4.identity().m.slice();
+    m[0] = c;
+    m[1] = s;
+    m[4] = -s;
+    m[5] = c;
+    return new _Mat4(new Float64Array(m));
+  }
+  static lookAt(eye, target, up) {
+    const z = eye.sub(target).normalize();
+    const x = up.cross(z).normalize();
+    const y = z.cross(x);
+    const m = new Float64Array(16);
+    m[0] = x.x;
+    m[1] = y.x;
+    m[2] = z.x;
+    m[3] = 0;
+    m[4] = x.y;
+    m[5] = y.y;
+    m[6] = z.y;
+    m[7] = 0;
+    m[8] = x.z;
+    m[9] = y.z;
+    m[10] = z.z;
+    m[11] = 0;
+    m[12] = -x.dot(eye);
+    m[13] = -y.dot(eye);
+    m[14] = -z.dot(eye);
+    m[15] = 1;
+    return new _Mat4(m);
+  }
+  multiply(b) {
+    const a = this.m, bm = b.m, r = new Float64Array(16);
+    for (let col = 0; col < 4; col++) {
+      for (let row = 0; row < 4; row++) {
+        r[col * 4 + row] = a[row] * bm[col * 4] + a[4 + row] * bm[col * 4 + 1] + a[8 + row] * bm[col * 4 + 2] + a[12 + row] * bm[col * 4 + 3];
+      }
+    }
+    return new _Mat4(r);
+  }
+  transformPoint(v) {
+    const m = this.m;
+    const w = m[3] * v.x + m[7] * v.y + m[11] * v.z + m[15];
+    return new Vec3(
+      (m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12]) / w,
+      (m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13]) / w,
+      (m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14]) / w
+    );
+  }
+  transformDirection(v) {
+    const m = this.m;
+    return new Vec3(
+      m[0] * v.x + m[4] * v.y + m[8] * v.z,
+      m[1] * v.x + m[5] * v.y + m[9] * v.z,
+      m[2] * v.x + m[6] * v.y + m[10] * v.z
+    );
+  }
+  invert() {
+    const m = this.m, r = new Float64Array(16);
+    const a00 = m[0], a01 = m[1], a02 = m[2], a03 = m[3], a10 = m[4], a11 = m[5], a12 = m[6], a13 = m[7], a20 = m[8], a21 = m[9], a22 = m[10], a23 = m[11], a30 = m[12], a31 = m[13], a32 = m[14], a33 = m[15];
+    const b00 = a00 * a11 - a01 * a10, b01 = a00 * a12 - a02 * a10, b02 = a00 * a13 - a03 * a10, b03 = a01 * a12 - a02 * a11, b04 = a01 * a13 - a03 * a11, b05 = a02 * a13 - a03 * a12, b06 = a20 * a31 - a21 * a30, b07 = a20 * a32 - a22 * a30, b08 = a20 * a33 - a23 * a30, b09 = a21 * a32 - a22 * a31, b10 = a21 * a33 - a23 * a31, b11 = a22 * a33 - a23 * a32;
+    let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+    if (Math.abs(det) < 1e-12) return _Mat4.identity();
+    det = 1 / det;
+    r[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
+    r[1] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
+    r[2] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
+    r[3] = (a22 * b04 - a21 * b05 - a23 * b03) * det;
+    r[4] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
+    r[5] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
+    r[6] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
+    r[7] = (a20 * b05 - a22 * b02 + a23 * b01) * det;
+    r[8] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
+    r[9] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
+    r[10] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
+    r[11] = (a21 * b02 - a20 * b04 - a23 * b00) * det;
+    r[12] = (a11 * b07 - a10 * b09 - a12 * b06) * det;
+    r[13] = (a00 * b09 - a01 * b07 + a02 * b06) * det;
+    r[14] = (a31 * b01 - a30 * b03 - a32 * b00) * det;
+    r[15] = (a20 * b03 - a21 * b01 + a22 * b00) * det;
+    return new _Mat4(r);
+  }
+  toArray() {
+    return Array.from(this.m);
+  }
+};
+
+// src/core/math/VecMath.ts
+var EPSILON = HMath.EPSILON;
+var TWO_PI = Math.PI * 2;
+var VecMath = {
+  // ================================================================
+  // INTERPOLATION & POINT CONSTRUCTION
+  // ================================================================
+  /** Point between a and b at parameter t (0=a, 1=b). */
+  pointBetween(a, b, t) {
+    return a.lerp(b, t);
+  },
+  /** Point on segment a→b at absolute distance from a. */
+  pointBetweenAbsolute(a, b, distance) {
+    const len = a.distTo(b);
+    if (len < EPSILON) return a;
+    return a.lerp(b, distance / len);
+  },
+  /** Generates evenly spaced points along a segment (inclusive of endpoints). */
+  pointsBetween(a, b, segments) {
+    if (segments < 1) return [a, b];
+    const pts = [];
+    for (let i = 0; i <= segments; i++)
+      pts.push(a.lerp(b, i / segments));
+    return pts;
+  },
+  /** Generates points along a segment with minimum spacing. */
+  pointsAlongSegment(a, b, spacing) {
+    const len = a.distTo(b);
+    const n = Math.max(1, Math.floor(len / spacing));
+    const step = b.sub(a).div(n);
+    const pts = [];
+    for (let i = 0; i <= n; i++)
+      pts.push(a.add(step.mul(i)));
+    return pts;
+  },
+  // ================================================================
+  // POLAR / ANGLE CONSTRUCTION
+  // ================================================================
+  /** Creates a 2D unit vector from an angle (radians). */
+  fromAngle2D(angle) {
+    return new Vec2(Math.cos(angle), Math.sin(angle));
+  },
+  /** Creates a 3D point from polar coordinates in XY plane. */
+  polar(angle, length) {
+    return new Vec3(length * Math.cos(angle), length * Math.sin(angle), 0);
+  },
+  /** Creates a 3D point from polar coordinates in XZ plane with height Y. */
+  polarXZ(angle, length, y = 0) {
+    return new Vec3(length * Math.cos(angle), y, length * Math.sin(angle));
+  },
+  /** Creates a point at origin offset by polar (angle, length). */
+  polarOffset(origin, angle, length) {
+    return origin.add(VecMath.fromAngle2D(angle).mul(length));
+  },
+  // ================================================================
+  // ANGLES
+  // ================================================================
+  /** 2D heading angle of a Vec2 (radians, -PI..PI). */
+  angle2D(v) {
+    return Math.atan2(v.y, v.x);
+  },
+  /** 2D heading angle of a Vec3 projected to XY. */
+  angle2DFrom3D(v) {
+    return Math.atan2(v.y, v.x);
+  },
+  /** Positive angle (0..2PI) of a 2D vector. */
+  anglePositive(v) {
+    const a = Math.atan2(v.y, v.x);
+    return a < 0 ? a + TWO_PI : a;
+  },
+  /**
+   * Angle between two 3D vectors (radians, 0..PI).
+   * Safe: returns 0 for zero-length vectors, clamps dot to avoid NaN.
+   */
+  angleBetween(a, b) {
+    const ma = a.len();
+    const mb = b.len();
+    if (ma < EPSILON || mb < EPSILON) return 0;
+    const dot = HMath.clamp(a.dot(b) / (ma * mb), -1, 1);
+    return Math.acos(dot);
+  },
+  /**
+   * Signed angle from vector a to vector b around the given axis (radians, -PI..PI).
+   */
+  angleBetweenSigned(a, b, axis) {
+    const angle = VecMath.angleBetween(a, b);
+    const cross = a.cross(b);
+    if (cross.dot(axis) < 0) return -angle;
+    return angle;
+  },
+  /** Counter-clockwise angle from direction a to b (radians, 0..2PI). */
+  angleBetweenCCW(a, b) {
+    let angle = Math.atan2(b.y, b.x) - Math.atan2(a.y, a.x);
+    if (angle < 0) angle += TWO_PI;
+    return angle;
+  },
+  /** Angle at vertex P between edges PA and PB (radians, 0..PI). */
+  angleAtVertex(p, a, b) {
+    const va = a.sub(p);
+    const vb = b.sub(p);
+    const dot = va.dot(vb);
+    const cross = va.x * vb.y - va.y * vb.x;
+    return Math.abs(Math.atan2(cross, dot));
+  },
+  /** Angle between two line segments sharing a common endpoint (radians). */
+  angleBetweenSegments(a1, a2, b1, b2) {
+    return VecMath.angleBetween(a2.sub(a1), b2.sub(b1));
+  },
+  // ================================================================
+  // PERPENDICULAR / ROTATION 2D
+  // ================================================================
+  /** Rotates a 2D vector 90° counter-clockwise. */
+  rotate90(v) {
+    return new Vec2(-v.y, v.x);
+  },
+  /** Rotates a 2D vector 90° clockwise. */
+  rotate90CW(v) {
+    return new Vec2(v.y, -v.x);
+  },
+  /** Rotates a 2D vector by an angle (radians). */
+  rotate2D(v, angle) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return new Vec2(v.x * c - v.y * s, v.x * s + v.y * c);
+  },
+  // ================================================================
+  // DISTANCE UTILITIES
+  // ================================================================
+  /** Shortest distance from point to infinite line through a and b. */
+  distanceToLine(p, lineA, lineB) {
+    const ab = lineB.sub(lineA);
+    const abSq = ab.lenSq();
+    if (abSq < EPSILON) return p.distTo(lineA);
+    const t = p.sub(lineA).dot(ab) / abSq;
+    return p.distTo(lineA.add(ab.mul(t)));
+  },
+  /** Shortest distance from point to segment ab. */
+  distanceToSegment(p, a, b) {
+    const ab = b.sub(a);
+    const abSq = ab.lenSq();
+    if (abSq < EPSILON) return p.distTo(a);
+    const t = HMath.clamp(p.sub(a).dot(ab) / abSq, 0, 1);
+    return p.distTo(a.add(ab.mul(t)));
+  },
+  /** Squared distance from point to segment ab (avoids sqrt). */
+  distanceToSegmentSq(p, a, b) {
+    const ab = b.sub(a);
+    const abSq = ab.lenSq();
+    if (abSq < EPSILON) return p.distSqTo(a);
+    const t = HMath.clamp(p.sub(a).dot(ab) / abSq, 0, 1);
+    return p.distSqTo(a.add(ab.mul(t)));
+  },
+  /** 2D distance from point to segment (XY only). */
+  distanceToSegment2D(p, a, b) {
+    const ab = b.sub(a);
+    const abSq = ab.lenSq();
+    if (abSq < EPSILON) return p.distTo(a);
+    const t = HMath.clamp(p.sub(a).dot(ab) / abSq, 0, 1);
+    return p.distTo(a.add(ab.mul(t)));
+  },
+  /** 2D distance from point to infinite line through a and b. */
+  distanceToLine2D(p, a, b) {
+    const ab = b.sub(a);
+    const abSq = ab.lenSq();
+    if (abSq < EPSILON) return p.distTo(a);
+    const t = p.sub(a).dot(ab) / abSq;
+    return p.distTo(a.add(ab.mul(t)));
+  },
+  // ================================================================
+  // CLOSEST POINT
+  // ================================================================
+  /** Closest point on infinite line through a and b to point p. */
+  closestPointOnLine(p, lineA, lineB) {
+    const ab = lineB.sub(lineA);
+    const abSq = ab.lenSq();
+    if (abSq < EPSILON) return lineA;
+    const t = p.sub(lineA).dot(ab) / abSq;
+    return lineA.add(ab.mul(t));
+  },
+  /**
+   * Closest points between two 3D line segments.
+   * Returns { c1, c2 } — points on segment 1 and segment 2.
+   */
+  closestPointsSegmentSegment(a1, a2, b1, b2) {
+    const u = a2.sub(a1);
+    const v = b2.sub(b1);
+    const w = a1.sub(b1);
+    const a = u.dot(u);
+    const b = u.dot(v);
+    const c = v.dot(v);
+    const d = u.dot(w);
+    const e = v.dot(w);
+    const D = a * c - b * b;
+    let sN, sD = D;
+    let tN, tD = D;
+    if (D < EPSILON) {
+      sN = 0;
+      sD = 1;
+      tN = e;
+      tD = c;
+    } else {
+      sN = b * e - c * d;
+      tN = a * e - b * d;
+      if (sN < 0) {
+        sN = 0;
+        tN = e;
+        tD = c;
+      } else if (sN > sD) {
+        sN = sD;
+        tN = e + b;
+        tD = c;
+      }
+    }
+    if (tN < 0) {
+      tN = 0;
+      if (-d < 0) sN = 0;
+      else if (-d > a) sN = sD;
+      else {
+        sN = -d;
+        sD = a;
+      }
+    } else if (tN > tD) {
+      tN = tD;
+      if (-d + b < 0) sN = 0;
+      else if (-d + b > a) sN = sD;
+      else {
+        sN = -d + b;
+        sD = a;
+      }
+    }
+    const sc = Math.abs(sN) < EPSILON ? 0 : sN / sD;
+    const tc = Math.abs(tN) < EPSILON ? 0 : tN / tD;
+    return {
+      c1: a1.add(u.mul(sc)),
+      c2: b1.add(v.mul(tc))
+    };
+  },
+  // ================================================================
+  // PROJECTION
+  // ================================================================
+  /** Projects a vector onto a plane defined by its normal. */
+  projectOnPlane(v, planeNormal) {
+    return v.sub(planeNormal.mul(v.dot(planeNormal)));
+  },
+  // ================================================================
+  // OFFSET (2D line offset for polygon operations)
+  // ================================================================
+  /**
+   * Offsets a 2D line segment by a perpendicular distance.
+   * Positive = left side when walking from p1 to p2.
+   */
+  offsetSegment2D(p1, p2, offset) {
+    const dir = p2.sub(p1).normalize();
+    const perp = new Vec2(-dir.y, dir.x);
+    const off = perp.mul(offset);
+    return { a: p1.add(off), b: p2.add(off) };
+  },
+  // ================================================================
+  // MATRIX CONSTRUCTION
+  // ================================================================
+  /**
+   * Creates a rotation matrix that rotates direction 'from' to direction 'to'.
+   * Both should be unit vectors.
+   */
+  rotationBetween(from, to) {
+    const dot = from.dot(to);
+    if (dot > 1 - EPSILON) return Mat4.identity();
+    if (dot < -1 + EPSILON) {
+      let axis2 = Vec3.unitX().cross(from);
+      if (axis2.lenSq() < EPSILON) axis2 = Vec3.unitY().cross(from);
+      axis2 = axis2.normalize();
+      const k = axis2;
+      const m2 = new Float64Array(16);
+      m2[0] = 2 * k.x * k.x - 1;
+      m2[4] = 2 * k.x * k.y;
+      m2[8] = 2 * k.x * k.z;
+      m2[12] = 0;
+      m2[1] = 2 * k.y * k.x;
+      m2[5] = 2 * k.y * k.y - 1;
+      m2[9] = 2 * k.y * k.z;
+      m2[13] = 0;
+      m2[2] = 2 * k.z * k.x;
+      m2[6] = 2 * k.z * k.y;
+      m2[10] = 2 * k.z * k.z - 1;
+      m2[14] = 0;
+      m2[3] = 0;
+      m2[7] = 0;
+      m2[11] = 0;
+      m2[15] = 1;
+      return new Mat4(m2);
+    }
+    const cross = from.cross(to);
+    const angle = Math.acos(HMath.clamp(dot, -1, 1));
+    const axis = cross.normalize();
+    const co = Math.cos(angle), s = Math.sin(angle), t = 1 - co;
+    const { x, y, z } = axis;
+    const m = new Float64Array(16);
+    m[0] = t * x * x + co;
+    m[4] = t * x * y - s * z;
+    m[8] = t * x * z + s * y;
+    m[12] = 0;
+    m[1] = t * x * y + s * z;
+    m[5] = t * y * y + co;
+    m[9] = t * y * z - s * x;
+    m[13] = 0;
+    m[2] = t * x * z - s * y;
+    m[6] = t * y * z + s * x;
+    m[10] = t * z * z + co;
+    m[14] = 0;
+    m[3] = 0;
+    m[7] = 0;
+    m[11] = 0;
+    m[15] = 1;
+    return new Mat4(m);
+  },
+  /**
+   * Builds a coordinate frame matrix from an origin, a Z-axis direction (normal),
+   * and an approximate X-axis hint.
+   */
+  frameFromNormal(origin, normal, xHint) {
+    const z = normal.normalize();
+    const hint = xHint ?? (Math.abs(z.dot(Vec3.unitY())) < 0.99 ? Vec3.unitY() : Vec3.unitX());
+    const x = hint.cross(z).normalize();
+    const y = z.cross(x);
+    const m = new Float64Array(16);
+    m[0] = x.x;
+    m[1] = x.y;
+    m[2] = x.z;
+    m[3] = 0;
+    m[4] = y.x;
+    m[5] = y.y;
+    m[6] = y.z;
+    m[7] = 0;
+    m[8] = z.x;
+    m[9] = z.y;
+    m[10] = z.z;
+    m[11] = 0;
+    m[12] = origin.x;
+    m[13] = origin.y;
+    m[14] = origin.z;
+    m[15] = 1;
+    return new Mat4(m);
+  },
+  // ================================================================
+  // WINDING & ORIENTATION
+  // ================================================================
+  /**
+   * Returns the signed area of the parallelogram formed by triangle (p0, p1, p2) in 2D.
+   * Positive if counter-clockwise, negative if clockwise.
+   */
+  cross2D(p0, p1, p2) {
+    return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
+  },
+  /** Returns +1 (CCW/left), -1 (CW/right), or 0 (collinear). */
+  orientation(p0, p1, p2) {
+    const c = VecMath.cross2D(p0, p1, p2);
+    if (c > EPSILON) return 1;
+    if (c < -EPSILON) return -1;
+    return 0;
+  },
+  /** Tests if four 2D points form a convex quadrilateral. */
+  isConvexQuad(a, b, c, d) {
+    const o1 = VecMath.orientation(a, b, c);
+    const o2 = VecMath.orientation(b, c, d);
+    const o3 = VecMath.orientation(c, d, a);
+    const o4 = VecMath.orientation(d, a, b);
+    return o1 === o2 && o2 === o3 && o3 === o4 && o1 !== 0;
+  },
+  /** Tests if a point lies on the line segment ab (2D, within tolerance). */
+  isPointOnSegment2D(a, b, p, tolerance = 1e-3) {
+    return VecMath.distanceToSegment2D(p, a, b) < tolerance;
+  },
+  // ================================================================
+  // TRIANGLE UTILITIES
+  // ================================================================
+  /** Signed volume of tetrahedron formed by triangle and origin (for mesh volume). */
+  triangleSignedVolume(a, b, c) {
+    return a.dot(b.cross(c)) / 6;
+  },
+  /** 3D triangle area via cross product magnitude. */
+  triangleArea(a, b, c) {
+    return b.sub(a).cross(c.sub(a)).len() * 0.5;
+  },
+  /** 2D triangle area (signed). */
+  triangleArea2D(a, b, c) {
+    return VecMath.cross2D(a, b, c) * 0.5;
+  },
+  /** Normal of a triangle (unit length). */
+  triangleNormal(a, b, c) {
+    return b.sub(a).cross(c.sub(a)).normalize();
+  },
+  // ================================================================
+  // BISECTOR
+  // ================================================================
+  /**
+   * 2D angular bisector direction at vertex P between edges PA and PB.
+   * The returned vector points into the bisector, unit length.
+   */
+  bisector2D(p, a, b) {
+    const da = a.sub(p).normalize();
+    const db = b.sub(p).normalize();
+    const bisect = da.add(db);
+    const len = bisect.len();
+    if (len < EPSILON) return VecMath.rotate90(da);
+    return bisect.div(len);
+  },
+  // ================================================================
+  // ARC UTILITIES
+  // ================================================================
+  /** Arc length from angle and radius. */
+  arcLength(angle, radius) {
+    return radius * angle;
+  },
+  /** Arc angle from arc length and radius. */
+  arcAngle(length, radius) {
+    return length / radius;
+  },
+  // ================================================================
+  // 3x3 DETERMINANT
+  // ================================================================
+  /** Determinant of a 3x3 matrix given by rows. */
+  determinant3x3(a, b, c, d, e, f, g, h, i) {
+    return a * e * i - a * f * h - b * d * i + b * f * g + c * d * h - c * e * g;
+  },
+  /** Direction, length, and unit perpendicular of a 2D segment (XY plane). */
+  segmentPerpendicular2D(ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < EPSILON) return { dx: 0, dy: 0, len: 0, px: 0, py: 0 };
+    return { dx: dx / len, dy: dy / len, len, px: -dy / len, py: dx / len };
+  }
+};
+
+// src/core/geometry/HPlane.ts
+var HPlane = class _HPlane {
+  /** ax + by + cz + d = 0 */
+  constructor(normal, d) {
+    this.normal = normal;
+    this.d = d;
+  }
+  static fromPointNormal(point, normal) {
+    const n = normal.normalize();
+    return new _HPlane(n, -n.dot(point));
+  }
+  static fromThreePoints(a, b, c) {
+    const n = b.sub(a).cross(c.sub(a)).normalize();
+    return new _HPlane(n, -n.dot(a));
+  }
+  static XY() {
+    return new _HPlane(Vec3.unitZ(), 0);
+  }
+  static XZ() {
+    return new _HPlane(Vec3.unitY(), 0);
+  }
+  static YZ() {
+    return new _HPlane(Vec3.unitX(), 0);
+  }
+  distToPoint(point) {
+    return this.normal.dot(point) + this.d;
+  }
+  projectPoint(point) {
+    return point.sub(this.normal.mul(this.distToPoint(point)));
+  }
+  side(point) {
+    const d = this.distToPoint(point);
+    if (d > HMath.EPSILON) return 1;
+    if (d < -HMath.EPSILON) return -1;
+    return 0;
+  }
+  /** Reflects a vector off the plane (like a light ray bouncing). */
+  reflectVector(direction) {
+    return direction.reflect(this.normal);
+  }
+  /** Reflects a point to the other side of the plane. */
+  reflectPoint(point) {
+    const dist = this.distToPoint(point);
+    return point.sub(this.normal.mul(2 * dist));
+  }
+  /** Returns a new plane with the normal flipped. */
+  flipped() {
+    return new _HPlane(this.normal.neg(), -this.d);
+  }
+  toJSON() {
+    return { normal: this.normal.toJSON(), d: this.d };
+  }
+};
 
 // src/core/geometry/AABB.ts
 var AABB = class _AABB {
@@ -366,71 +959,128 @@ var AABB = class _AABB {
   }
 };
 
-// src/core/geometry/HPlane.ts
-var HPlane = class _HPlane {
-  /** ax + by + cz + d = 0 */
-  constructor(normal, d) {
-    this.normal = normal;
-    this.d = d;
+// src/core/geometry/Segment.ts
+var Segment = class _Segment {
+  constructor(a, b) {
+    this.a = a;
+    this.b = b;
   }
-  static fromPointNormal(point, normal) {
-    const n = normal.normalize();
-    return new _HPlane(n, -n.dot(point));
+  get direction() {
+    return this.b.sub(this.a);
   }
-  static fromThreePoints(a, b, c) {
-    const n = b.sub(a).cross(c.sub(a)).normalize();
-    return new _HPlane(n, -n.dot(a));
+  get length() {
+    return this.a.distTo(this.b);
   }
-  static XY() {
-    return new _HPlane(Vec3.unitZ(), 0);
+  get lengthSquared() {
+    return this.a.distSqTo(this.b);
   }
-  static XZ() {
-    return new _HPlane(Vec3.unitY(), 0);
+  get midpoint() {
+    return this.a.add(this.b).mul(0.5);
   }
-  static YZ() {
-    return new _HPlane(Vec3.unitX(), 0);
+  /** Point on segment at parameter t (0=A, 1=B). */
+  pointAt(t) {
+    return this.a.lerp(this.b, t);
   }
-  distToPoint(point) {
-    return this.normal.dot(point) + this.d;
+  /** Closest point on this segment to point p. */
+  closestPoint(p) {
+    const ab = this.b.sub(this.a);
+    const abSq = ab.lenSq();
+    if (abSq < HMath.EPSILON) return this.a;
+    const t = HMath.clamp(p.sub(this.a).dot(ab) / abSq, 0, 1);
+    return this.a.add(ab.mul(t));
   }
-  projectPoint(point) {
-    return point.sub(this.normal.mul(this.distToPoint(point)));
+  /** Parameter t of the closest point on the segment to p (clamped 0..1). */
+  closestParameter(p) {
+    const ab = this.b.sub(this.a);
+    const abSq = ab.lenSq();
+    if (abSq < HMath.EPSILON) return 0;
+    return HMath.clamp(p.sub(this.a).dot(ab) / abSq, 0, 1);
   }
-  side(point) {
-    const d = this.distToPoint(point);
-    if (d > HMath.EPSILON) return 1;
-    if (d < -HMath.EPSILON) return -1;
-    return 0;
+  /** Distance from a point to this segment. */
+  distanceTo(p) {
+    return p.distTo(this.closestPoint(p));
   }
-  /** Reflects a vector off the plane (like a light ray bouncing). */
-  reflectVector(direction) {
-    return direction.reflect(this.normal);
+  /** Squared distance from a point to this segment. */
+  distanceSquaredTo(p) {
+    return p.distSqTo(this.closestPoint(p));
   }
-  /** Reflects a point to the other side of the plane. */
-  reflectPoint(point) {
-    const dist = this.distToPoint(point);
-    return point.sub(this.normal.mul(2 * dist));
+  /** Bounding box of this segment. */
+  get bounds() {
+    return new AABB(
+      new Vec3(Math.min(this.a.x, this.b.x), Math.min(this.a.y, this.b.y), Math.min(this.a.z, this.b.z)),
+      new Vec3(Math.max(this.a.x, this.b.x), Math.max(this.a.y, this.b.y), Math.max(this.a.z, this.b.z))
+    );
   }
-  /** Returns a new plane with the normal flipped. */
-  flipped() {
-    return new _HPlane(this.normal.neg(), -this.d);
+  /** Splits a segment into n equal parts, returning n+1 points. */
+  static split(a, b, segments) {
+    if (segments < 1) segments = 1;
+    const pts = [];
+    for (let i = 0; i <= segments; i++)
+      pts.push(a.lerp(b, i / segments));
+    return pts;
   }
-  toJSON() {
-    return { normal: this.normal.toJSON(), d: this.d };
+  /**
+   * Finds the closest points between this segment and another.
+   * Returns { c1, c2 } — points on this segment and the other.
+   */
+  closestPointsTo(other) {
+    return VecMath.closestPointsSegmentSegment(this.a, this.b, other.a, other.b);
+  }
+  /** Shortest distance between two segments. */
+  distanceToSegment(other) {
+    const { c1, c2 } = this.closestPointsTo(other);
+    return c1.distTo(c2);
+  }
+  /** Returns a new segment reversed (B→A). */
+  reversed() {
+    return new _Segment(this.b, this.a);
+  }
+  toString() {
+    return `Segment [${this.a} \u2192 ${this.b}]`;
   }
 };
-
-// src/core/math/VecMath.ts
-var EPSILON = HMath.EPSILON;
-var TWO_PI = Math.PI * 2;
-
-// src/core/geometry/Segment.ts
 function closestPointOnSegment(p, a, b) {
   const ab = b.sub(a);
   const lenSq = ab.lenSq();
   if (lenSq < HMath.EPSILON) return a;
   const t = HMath.clamp(p.sub(a).dot(ab) / lenSq, 0, 1);
   return a.add(ab.mul(t));
+}
+function segmentSegmentClosest(a1, a2, b1, b2) {
+  const d1 = a2.sub(a1), d2 = b2.sub(b1), r = a1.sub(b1);
+  const a = d1.dot(d1), e = d2.dot(d2), f = d2.dot(r);
+  let t, u;
+  if (a <= HMath.EPSILON && e <= HMath.EPSILON) {
+    return { pointA: a1, pointB: b1, t: 0, u: 0 };
+  }
+  if (a <= HMath.EPSILON) {
+    t = 0;
+    u = HMath.clamp(f / e, 0, 1);
+  } else {
+    const c = d1.dot(r);
+    if (e <= HMath.EPSILON) {
+      u = 0;
+      t = HMath.clamp(-c / a, 0, 1);
+    } else {
+      const b = d1.dot(d2);
+      const denom = a * e - b * b;
+      t = denom !== 0 ? HMath.clamp((b * f - c * e) / denom, 0, 1) : 0;
+      u = (b * t + f) / e;
+      if (u < 0) {
+        u = 0;
+        t = HMath.clamp(-c / a, 0, 1);
+      } else if (u > 1) {
+        u = 1;
+        t = HMath.clamp((b - c) / a, 0, 1);
+      }
+    }
+  }
+  return {
+    pointA: a1.add(d1.mul(t)),
+    pointB: b1.add(d2.mul(u)),
+    t,
+    u
+  };
 }
 
 // src/core/geometry/Triangle.ts
@@ -1947,700 +2597,20 @@ var Scene = class _Scene {
   }
 };
 
-// src/react/components.tsx
-var import_jsx_runtime = require("react/jsx-runtime");
-var Ctx = (0, import_react.createContext)(null);
-function useScene() {
-  const ctx = (0, import_react.useContext)(Ctx);
-  if (!ctx) throw new Error("useScene must be inside <TektoApp>");
-  return ctx.scene;
-}
-function TektoApp({
-  scene: extScene,
-  children
-}) {
-  const scene = (0, import_react.useMemo)(() => extScene ?? new Scene(), [extScene]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Ctx.Provider, { value: { scene }, children });
-}
-function useSceneObjects() {
-  const scene = useScene();
-  const [objects, setObjects] = (0, import_react.useState)(scene.all());
-  (0, import_react.useEffect)(() => scene.on(() => setObjects([...scene.all()])), [scene]);
-  return objects;
-}
-function useSelection() {
-  const scene = useScene();
-  const [ids, setIds] = (0, import_react.useState)([]);
-  (0, import_react.useEffect)(() => scene.on((e) => {
-    if (e.type === "selection:change") setIds(e.ids);
-  }), [scene]);
-  return {
-    ids,
-    select: (id) => scene.select(id),
-    deselect: (id) => scene.deselect(id),
-    toggle: (id) => scene.toggleSelect(id),
-    clear: () => scene.clearSelection(),
-    isSelected: (id) => scene.isSelected(id)
-  };
-}
-function useParams(store) {
-  const [values, setValues] = (0, import_react.useState)(store.getAll());
-  (0, import_react.useEffect)(() => {
-    return store.onChange(() => setValues({ ...store.getAll() }));
-  }, [store]);
-  const set = (0, import_react.useCallback)((key, value) => store.set(key, value), [store]);
-  return { values, set, store };
-}
-function ParamPanel({ store, layout, title, style, className }) {
-  const { values, set } = useParams(store);
-  const schema = store.getSchema();
-  const renderParam = (key) => {
-    const def = schema[key];
-    if (!def) return null;
-    const label = def.label ?? key;
-    switch (def.type) {
-      case "float":
-      case "int":
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rowStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: label }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "input",
-            {
-              type: "range",
-              min: def.min,
-              max: def.max,
-              step: def.step ?? (def.type === "int" ? 1 : (def.max - def.min) / 100),
-              value: values[key],
-              onChange: (e) => set(key, parseFloat(e.target.value)),
-              style: sliderStyle
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: valueStyle, children: def.type === "int" ? values[key] : values[key]?.toFixed(2) })
-        ] }, key);
-      case "bool":
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rowStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: label }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "input",
-            {
-              type: "checkbox",
-              checked: values[key],
-              onChange: (e) => set(key, e.target.checked),
-              style: checkStyle
-            }
-          )
-        ] }, key);
-      case "select":
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rowStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: label }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "select",
-            {
-              value: values[key],
-              onChange: (e) => set(key, e.target.value),
-              style: selectStyle,
-              children: def.options.map((o) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: o, children: o }, o))
-            }
-          )
-        ] }, key);
-      case "color":
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rowStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: label }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "input",
-            {
-              type: "color",
-              value: values[key],
-              onChange: (e) => set(key, e.target.value),
-              style: colorStyle
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: valueStyle, children: values[key] })
-        ] }, key);
-      case "string":
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: rowStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: label }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "input",
-            {
-              type: "text",
-              value: values[key],
-              placeholder: def.placeholder,
-              onChange: (e) => set(key, e.target.value),
-              style: textStyle
-            }
-          )
-        ] }, key);
-      case "vec3":
-        const v = values[key];
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...rowStyle, flexDirection: "column", alignItems: "stretch" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { style: labelStyle, children: label }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 4 }, children: ["x", "y", "z"].map((axis, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "input",
-            {
-              type: "number",
-              value: v[i],
-              step: def.step ?? 0.1,
-              onChange: (e) => {
-                const nv = [...v];
-                nv[i] = parseFloat(e.target.value) || 0;
-                set(key, nv);
-              },
-              style: { ...textStyle, flex: 1 },
-              placeholder: axis
-            },
-            axis
-          )) })
-        ] }, key);
-      case "button":
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: rowStyle, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: def.action, style: buttonStyle, children: label }) }, key);
-      default:
-        return null;
-    }
-  };
-  const renderFolder = (folder) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FolderWidget, { label: folder.label, defaultOpen: folder.open !== false, children: folder.params.map(renderParam) }, folder.label);
-  const allKeys = Object.keys(schema);
-  const layoutKeys = layout?.folders.flatMap((f) => f.params) ?? [];
-  const ungroupedKeys = allKeys.filter((k) => !layoutKeys.includes(k));
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className, style: { ...panelStyle, ...style }, children: [
-    title && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: panelTitleStyle, children: title }),
-    layout?.folders.map(renderFolder),
-    ungroupedKeys.length > 0 && ungroupedKeys.map(renderParam)
-  ] });
-}
-function FolderWidget({
-  label,
-  defaultOpen = true,
-  children
-}) {
-  const [open, setOpen] = (0, import_react.useState)(defaultOpen);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 8 }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-      "div",
-      {
-        onClick: () => setOpen(!open),
-        style: {
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 0",
-          color: "#8899bb",
-          fontSize: 11,
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: "1px",
-          userSelect: "none"
-        },
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { transform: open ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.15s", fontSize: 10 }, children: "\u25B6" }),
-          label
-        ]
-      }
-    ),
-    open && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { paddingLeft: 4 }, children })
-  ] });
-}
-function InspectorPanel({
-  style,
-  className,
-  onSelect
-}) {
-  const objects = useSceneObjects();
-  const selection = useSelection();
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className, style: { ...panelStyle, ...style }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: panelTitleStyle, children: [
-      "Scene Objects (",
-      objects.length,
-      ")"
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 1 }, children: [
-      objects.map((obj) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-        "div",
-        {
-          onClick: () => {
-            selection.toggle(obj.id);
-            onSelect?.(obj.id);
-          },
-          style: {
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "5px 8px",
-            borderRadius: 4,
-            cursor: "pointer",
-            background: selection.isSelected(obj.id) ? "rgba(59,130,246,.15)" : "transparent",
-            borderLeft: `3px solid ${obj.style.color}`
-          },
-          children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5a6080", fontSize: 11, fontFamily: "monospace" }, children: obj.type }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#9aa0b8", fontSize: 11, fontFamily: "monospace" }, children: obj.id }),
-            obj.style.label && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: "#6a7090", fontSize: 10, fontStyle: "italic" }, children: [
-              '"',
-              obj.style.label,
-              '"'
-            ] })
-          ]
-        },
-        obj.id
-      )),
-      objects.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#3a3f58", fontStyle: "italic", fontSize: 12, padding: 8 }, children: "Empty scene" })
-    ] })
-  ] });
-}
-function Toolbar({
-  actions,
-  style,
-  className
-}) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const a of actions) {
-    const g = a.group ?? "__default";
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(a);
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className, style: { display: "flex", gap: 2, ...style }, children: [...groups.entries()].map(([group, items], gi) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.default.Fragment, { children: [
-    gi > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 1, background: "#1e2035", margin: "4px 4px" } }),
-    items.map((a) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-      "button",
-      {
-        onClick: a.onClick,
-        title: a.shortcut ? `${a.label} (${a.shortcut})` : a.label,
-        style: {
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 12px",
-          border: "1px solid",
-          borderColor: a.active ? "#3b82f6" : "#1e2035",
-          borderRadius: 6,
-          background: a.active ? "rgba(59,130,246,.12)" : "transparent",
-          color: a.active ? "#93c5fd" : "#6a7090",
-          cursor: "pointer",
-          fontSize: 12,
-          fontFamily: "'DM Sans', sans-serif",
-          transition: "all 0.12s",
-          whiteSpace: "nowrap"
-        },
-        children: [
-          a.icon && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: a.icon }),
-          a.label
-        ]
-      },
-      a.key
-    ))
-  ] }, group)) });
-}
-var panelStyle = {
-  padding: 12,
-  background: "rgba(14, 15, 26, 0.95)",
-  borderRadius: 8,
-  border: "1px solid #1a1c2e",
-  color: "#c8cad8",
-  fontFamily: "'DM Sans', sans-serif",
-  fontSize: 13,
-  maxHeight: "100%",
-  overflowY: "auto"
+export {
+  HMath,
+  MathUtils,
+  Vec2,
+  Vec3,
+  Vec4,
+  Mat4,
+  VecMath,
+  HPlane,
+  AABB,
+  Segment,
+  closestPointOnSegment,
+  segmentSegmentClosest,
+  Triangle,
+  Mesh,
+  Scene
 };
-var panelTitleStyle = {
-  fontSize: 11,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "1.2px",
-  color: "#5a6080",
-  marginBottom: 12,
-  fontFamily: "monospace"
-};
-var rowStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  marginBottom: 6
-};
-var labelStyle = {
-  width: 80,
-  flexShrink: 0,
-  fontSize: 12,
-  color: "#8a90a8",
-  textTransform: "capitalize"
-};
-var sliderStyle = {
-  flex: 1,
-  height: 4,
-  appearance: "auto",
-  accentColor: "#3b82f6",
-  cursor: "pointer"
-};
-var valueStyle = {
-  width: 48,
-  textAlign: "right",
-  fontSize: 11,
-  fontFamily: "monospace",
-  color: "#6ee7b7"
-};
-var checkStyle = {
-  accentColor: "#3b82f6",
-  cursor: "pointer"
-};
-var selectStyle = {
-  flex: 1,
-  padding: "4px 8px",
-  background: "#0a0b14",
-  border: "1px solid #1e2035",
-  borderRadius: 4,
-  color: "#c8cad8",
-  fontSize: 12,
-  fontFamily: "inherit"
-};
-var textStyle = {
-  flex: 1,
-  padding: "4px 8px",
-  background: "#0a0b14",
-  border: "1px solid #1e2035",
-  borderRadius: 4,
-  color: "#c8cad8",
-  fontSize: 12,
-  fontFamily: "inherit"
-};
-var colorStyle = {
-  width: 32,
-  height: 24,
-  border: "1px solid #1e2035",
-  borderRadius: 4,
-  padding: 0,
-  cursor: "pointer",
-  background: "none"
-};
-var buttonStyle = {
-  width: "100%",
-  padding: "7px 12px",
-  border: "1px solid #1e2035",
-  borderRadius: 5,
-  background: "transparent",
-  color: "#8a90a8",
-  cursor: "pointer",
-  fontSize: 12,
-  fontFamily: "monospace",
-  transition: "all 0.15s"
-};
-var ACCORDION_MIN = 40;
-var FLEXING = 1;
-function AccordionColumn({
-  sections,
-  storageKey,
-  className,
-  style,
-  classes = {}
-}) {
-  const initial = (0, import_react.useMemo)(() => {
-    const out = {};
-    for (const s of sections) {
-      const open2 = s.defaultOpen ?? !!s.fill;
-      out[s.id] = open2 ? s.fill ? FLEXING : s.defaultHeight ?? FLEXING : 0;
-    }
-    return out;
-  }, [sections]);
-  const [state, setState] = (0, import_react.useState)(() => {
-    if (!storageKey) return initial;
-    try {
-      return { ...initial, ...JSON.parse(localStorage.getItem(storageKey) || "{}") };
-    } catch {
-      return initial;
-    }
-  });
-  (0, import_react.useEffect)(() => {
-    if (!storageKey) return;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(state));
-    } catch {
-    }
-  }, [state, storageKey]);
-  const toggle = (0, import_react.useCallback)((s) => {
-    setState((v) => ({
-      ...v,
-      [s.id]: v[s.id] > 0 ? 0 : s.fill ? FLEXING : s.defaultHeight ?? FLEXING
-    }));
-  }, []);
-  const bodies = (0, import_react.useRef)({});
-  const sash = (0, import_react.useCallback)((aboveId, belowId, dy, start) => {
-    const move = Math.max(
-      ACCORDION_MIN - start.above,
-      Math.min(dy, start.below - ACCORDION_MIN)
-    );
-    setState((v) => ({
-      ...v,
-      [aboveId]: start.above + move,
-      [belowId]: start.below - move
-    }));
-  }, []);
-  const open = sections.filter((s) => (state[s.id] ?? 0) > 0);
-  const resizable = (s) => !!s.fill || s.defaultHeight !== void 0;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-    "div",
-    {
-      className,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-        overflowY: "auto",
-        ...style
-      },
-      children: sections.map((s) => {
-        const isOpen = (state[s.id] ?? 0) > 0;
-        const at = open.indexOf(s);
-        const above = isOpen && at > 0 ? open[at - 1] : void 0;
-        const flexing = !!s.fill && state[s.id] === FLEXING;
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.default.Fragment, { children: [
-          above && resizable(above) && resizable(s) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            AccordionHandle,
-            {
-              className: classes.handle,
-              onStart: () => ({
-                above: bodies.current[above.id]?.clientHeight ?? 0,
-                below: bodies.current[s.id]?.clientHeight ?? 0
-              }),
-              onDrag: (dy, start) => sash(above.id, s.id, dy, start)
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "div",
-            {
-              role: "button",
-              tabIndex: 0,
-              "aria-expanded": isOpen,
-              onClick: () => toggle(s),
-              onKeyDown: (e) => {
-                if (e.target !== e.currentTarget) return;
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  toggle(s);
-                }
-              },
-              className: classes.header,
-              style: {
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                width: "100%",
-                flexShrink: 0,
-                textAlign: "left",
-                cursor: "pointer",
-                userSelect: "none",
-                ...classes.header ? {} : { font: "inherit", background: "none", padding: "6px 12px" }
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: classes.title, children: s.title }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 }, children: [
-                  s.meta !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: classes.meta, children: s.meta }),
-                  s.hint && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoHint, { text: s.hint, className: classes.info, boxClassName: classes.hint }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "svg",
-                    {
-                      className: classes.marker,
-                      width: "11",
-                      height: "11",
-                      viewBox: "0 0 12 12",
-                      "aria-hidden": "true",
-                      fill: "none",
-                      stroke: "currentColor",
-                      strokeWidth: "1.8",
-                      strokeLinecap: "round",
-                      strokeLinejoin: "round",
-                      style: {
-                        flexShrink: 0,
-                        transform: isOpen ? "rotate(180deg)" : "none",
-                        transition: "transform 0.15s"
-                      },
-                      children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M2.5 4.5 6 8l3.5-3.5" })
-                    }
-                  )
-                ] })
-              ]
-            }
-          ),
-          isOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "div",
-            {
-              className: classes.body,
-              ref: (el) => {
-                bodies.current[s.id] = el;
-              },
-              style: flexing ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : resizable(s) ? { flexShrink: 0, height: state[s.id], overflow: "auto" } : { flexShrink: 0 },
-              children: s.children
-            }
-          )
-        ] }, s.id);
-      })
-    }
-  );
-}
-function InfoHint({ text, className, boxClassName, label = "What this is" }) {
-  const [hover, setHover] = (0, import_react.useState)(false);
-  const [pinned, setPinned] = (0, import_react.useState)(false);
-  const mark = (0, import_react.useRef)(null);
-  const [at, setAt] = (0, import_react.useState)(null);
-  const shown = hover || pinned;
-  (0, import_react.useEffect)(() => {
-    if (!shown || !mark.current) {
-      setAt(null);
-      return;
-    }
-    const place = () => {
-      const r = mark.current.getBoundingClientRect();
-      const width = 260;
-      setAt({
-        top: r.bottom + 4,
-        left: Math.max(8, Math.min(r.left - width + r.width, window.innerWidth - width - 8))
-      });
-    };
-    place();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [shown]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-    "span",
-    {
-      ref: mark,
-      style: { position: "relative", display: "inline-flex", flexShrink: 0 },
-      onMouseEnter: () => setHover(true),
-      onMouseLeave: () => setHover(false),
-      children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "span",
-          {
-            role: "button",
-            tabIndex: 0,
-            "aria-label": label,
-            "aria-expanded": shown,
-            className,
-            onClick: (e) => {
-              e.stopPropagation();
-              setPinned((v) => !v);
-            },
-            onKeyDown: (e) => {
-              e.stopPropagation();
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setPinned((v) => !v);
-              }
-              if (e.key === "Escape") setPinned(false);
-            },
-            onFocus: () => setHover(true),
-            onBlur: () => {
-              setHover(false);
-              setPinned(false);
-            },
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 14,
-              height: 14,
-              cursor: "help",
-              lineHeight: 1,
-              ...className ? {} : { opacity: 0.55 }
-            },
-            children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-              "svg",
-              {
-                width: "14",
-                height: "14",
-                viewBox: "0 0 16 16",
-                "aria-hidden": "true",
-                fill: "none",
-                stroke: "currentColor",
-                strokeWidth: "1.4",
-                strokeLinecap: "round",
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "8", cy: "8", r: "6.5" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M8 7v4.2M8 4.9v.2" })
-                ]
-              }
-            )
-          }
-        ),
-        shown && at && typeof document !== "undefined" && (0, import_react_dom.createPortal)(
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "span",
-            {
-              role: "tooltip",
-              className: boxClassName,
-              onClick: (e) => e.stopPropagation(),
-              onMouseEnter: () => setHover(true),
-              onMouseLeave: () => setHover(false),
-              style: {
-                position: "fixed",
-                top: at.top,
-                left: at.left,
-                zIndex: 1e3,
-                width: 260,
-                cursor: "auto",
-                userSelect: "text",
-                ...boxClassName ? {} : {
-                  padding: "8px 10px",
-                  background: "#fff",
-                  border: "1px solid #999",
-                  fontSize: 12,
-                  lineHeight: 1.4,
-                  color: "#222",
-                  boxShadow: "0 2px 8px rgba(0,0,0,.12)"
-                }
-              },
-              children: text
-            }
-          ),
-          document.body
-        )
-      ]
-    }
-  );
-}
-function AccordionHandle({ onStart, onDrag, className }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-    "div",
-    {
-      className,
-      onPointerDown: (e) => {
-        e.preventDefault();
-        const from = e.clientY;
-        const start = onStart();
-        const move = (m) => onDrag(m.clientY - from, start);
-        const up = () => {
-          window.removeEventListener("pointermove", move);
-          window.removeEventListener("pointerup", up);
-        };
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", up);
-      },
-      style: {
-        position: "relative",
-        zIndex: 1,
-        flexShrink: 0,
-        height: 7,
-        marginTop: -4,
-        marginBottom: -3,
-        cursor: "row-resize",
-        touchAction: "none"
-      }
-    }
-  );
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  AccordionColumn,
-  InfoHint,
-  InspectorPanel,
-  ParamPanel,
-  TektoApp,
-  Toolbar,
-  useParams,
-  useScene,
-  useSceneObjects,
-  useSelection
-});

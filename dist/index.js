@@ -39,7 +39,6 @@ __export(index_exports, {
   Callouts: () => Callouts,
   Capsule2D: () => Capsule2D,
   CltConstruction: () => CltConstruction,
-  ConnectedMesh: () => ConnectedMesh,
   ControlPanel: () => ControlPanel,
   CubicBezierCurve: () => CubicBezierCurve,
   Curvature: () => Curvature,
@@ -49,8 +48,6 @@ __export(index_exports, {
   DistanceTransform: () => DistanceTransform,
   DxfExporter: () => DxfExporter,
   ExtrudedRibbon: () => ExtrudedRibbon,
-  FlatMesh: () => Mesh,
-  FlatMeshGen: () => FlatMeshGen,
   FloodFill: () => FloodFill,
   Graph: () => Graph,
   GridGraph: () => GridGraph,
@@ -71,11 +68,10 @@ __export(index_exports, {
   MarchingSquares: () => MarchingSquares,
   Mat4: () => Mat4,
   MathUtils: () => MathUtils,
-  Mesh: () => ConnectedMesh,
+  Mesh: () => Mesh,
   MeshAnalysis: () => MeshAnalysis,
   MeshCleanup: () => MeshCleanup,
   MeshFactory: () => MeshFactory,
-  MeshGen: () => MeshFactory,
   MeshSubdivide: () => MeshSubdivide,
   MeshTransform: () => MeshTransform,
   NavGizmo: () => NavGizmo,
@@ -98,7 +94,6 @@ __export(index_exports, {
   PolygonBool: () => PolygonBool,
   PolylineCurve: () => PolylineCurve,
   Ray: () => Ray,
-  RenderMesh: () => Mesh,
   RibbonEndTrim: () => RibbonEndTrim,
   RibbonFrame: () => RibbonFrame,
   RibbonJoint: () => RibbonJoint,
@@ -3209,410 +3204,1132 @@ function edgeOutwardVisibility(ring, i, obstacles, maxDist) {
   return perpVisibilityOfPolys(a, b, obstacles, maxDist, [p, q]);
 }
 
-// src/core/geometry/mesh/ConnectedMesh.ts
-var ConnectedMesh = class _ConnectedMesh {
-  constructor() {
-    this._nodes = /* @__PURE__ */ new Map();
-    this._edges = /* @__PURE__ */ new Map();
-    this._faces = /* @__PURE__ */ new Map();
-    this._nextNodeId = 0;
-    this._nextEdgeId = 0;
-    this._nextFaceId = 0;
+// src/core/geometry/mesh/Mesh.ts
+var NodeView = class {
+  constructor(m, id) {
+    this.m = m;
+    this.id = id;
+  }
+  get position() {
+    return this.m.getPosition(this.id);
+  }
+  set position(p) {
+    this.m.setPosition(this.id, p);
+  }
+  get edges() {
+    return this.m.nodeEdges(this.id);
+  }
+  get faces() {
+    return this.m.nodeFaces(this.id);
+  }
+  get normal() {
+    return this.m.nodeNormal(this.id);
+  }
+  set normal(n) {
+    if (n) this.m.setNormal(this.id, n);
+  }
+  get data() {
+    return this.m.nodeData(this.id);
+  }
+};
+var EdgeView = class {
+  constructor(m, id) {
+    this.m = m;
+    this.id = id;
+  }
+  get nodes() {
+    return this.m.edgeNodes(this.id);
+  }
+  get faces() {
+    return this.m.edgeFaces(this.id);
+  }
+  get data() {
+    return this.m.edgeData(this.id);
+  }
+};
+var FaceView = class {
+  constructor(m, id) {
+    this.m = m;
+    this.id = id;
+  }
+  get nodes() {
+    return this.m.faceNodes(this.id);
+  }
+  get edges() {
+    return this.m.faceEdges(this.id);
+  }
+  get normal() {
+    return this.m.faceNormal(this.id);
+  }
+  set normal(n) {
+    if (n) this.m.setFaceNormal(this.id, n);
+  }
+  get data() {
+    return this.m.faceData(this.id);
+  }
+};
+function grow(a, len, fill = 0) {
+  const b = new a.constructor(len);
+  b.set(a);
+  if (fill !== 0) b.fill(fill, a.length);
+  return b;
+}
+var NONE = -1;
+var Mesh = class _Mesh {
+  /**
+   * `new Mesh()` is empty. `new Mesh(positions, indices, normals?, uvs?, colors?)`
+   * loads flat triangle arrays (the former flat-mesh constructor).
+   */
+  constructor(positions, indices, normals, uvs, colors) {
+    // nodes — a slot per id; `_nodeN` slots used, `_nodeLive` of them alive
+    this._pos = new Float64Array(16 * 3);
+    this._nrm = null;
+    // vertex normals, valid for ids < _nrmN
+    this._nrmN = 0;
+    this._uv = null;
+    // 2 per slot
+    this._col = null;
+    // 4 per slot (RGBA)
+    this._nodeAlive = new Uint8Array(16);
+    this._nodeFirstEdge = new Int32Array(16).fill(NONE);
+    this._nodeFirstCorner = new Int32Array(16).fill(NONE);
+    this._nodeN = 0;
+    this._nodeLive = 0;
+    // edges — endpoints plus two "next" pointers, one for each endpoint's list
+    this._edgeA = new Uint32Array(32);
+    this._edgeB = new Uint32Array(32);
+    this._edgeNext = new Int32Array(64).fill(NONE);
+    // [2e] next in A's list, [2e+1] in B's
+    this._edgeFirstCorner = new Int32Array(32).fill(NONE);
+    this._edgeAlive = new Uint8Array(32);
+    this._edgeN = 0;
+    this._edgeLive = 0;
+    // faces — a corner range each; corners carry the node, the outgoing edge and two list links
+    this._faceStart = new Uint32Array(17);
+    // _faceN + 1 entries
+    this._faceAlive = new Uint8Array(16);
+    this._faceNrm = null;
+    // valid for ids < _faceNrmN
+    this._faceNrmN = 0;
+    this._faceN = 0;
+    this._faceLive = 0;
+    this._cVert = new Uint32Array(64);
+    this._cFace = new Uint32Array(64);
+    this._cEdge = new Int32Array(64);
+    this._cNextInNode = new Int32Array(64);
+    this._cNextInEdge = new Int32Array(64);
+    this._cornerN = 0;
+    this._triCount = 0;
+    // live triangles after fan-triangulation
+    // side tables, allocated on first use
+    this._nodeData = null;
+    this._edgeData = null;
+    this._faceData = null;
+    // caches
+    this._bounds = null;
+    this._tri = null;
+    if (positions) this._load(positions, indices ?? [], normals, uvs, colors);
+  }
+  // ── Counts ──
+  /** Live nodes. */
+  get nodeCount() {
+    return this._nodeLive;
+  }
+  /** Live edges. */
+  get edgeCount() {
+    return this._edgeLive;
+  }
+  /** Live faces (polygons). */
+  get faceCount() {
+    return this._faceLive;
+  }
+  /** Vertex slots — `positions.length / 3`. Equals `nodeCount` unless nodes were removed. */
+  get vertexCount() {
+    return this._nodeN;
+  }
+  /** Triangles after fan-triangulating the live faces. */
+  get triangleCount() {
+    return this._triCount;
+  }
+  /** True if any element was removed and not yet compacted. */
+  get hasTombstones() {
+    return this._nodeLive !== this._nodeN || this._edgeLive !== this._edgeN || this._faceLive !== this._faceN;
+  }
+  // ── Flat views (the GPU side) ──
+  /** xyz per vertex slot. A view into the mesh: edits are live, but call
+   *  `markPositionsChanged()` afterwards so normals and bounds are recomputed. */
+  get positions() {
+    return this._pos.subarray(0, this._nodeN * 3);
+  }
+  /** Vertex normals, computed on first use. */
+  get normals() {
+    if (!this._nrm || this._nrmN !== this._nodeN) this.computeVertexNormals();
+    return this._nrm.subarray(0, this._nodeN * 3);
+  }
+  /** Triangle index over the live faces (fan-triangulated). Cached; a plain view of
+   *  the corner array when the mesh is all triangles with nothing removed. */
+  get indices() {
+    if (this._tri) return this._tri;
+    if (this._faceLive === this._faceN && this._triCount * 3 === this._cornerN) {
+      return this._tri = this._cVert.subarray(0, this._cornerN);
+    }
+    const out = new Uint32Array(this._triCount * 3);
+    let k = 0;
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const s = this._faceStart[f2], e = this._faceStart[f2 + 1];
+      for (let c = s + 1; c + 1 < e; c++) {
+        out[k++] = this._cVert[s];
+        out[k++] = this._cVert[c];
+        out[k++] = this._cVert[c + 1];
+      }
+    }
+    return this._tri = out;
+  }
+  get uvs() {
+    return this._uv ? this._uv.subarray(0, this._nodeN * 2) : null;
+  }
+  get colors() {
+    return this._col ? this._col.subarray(0, this._nodeN * 4) : null;
+  }
+  /** Attach per-vertex uvs (2 floats per slot). */
+  setUVs(uvs) {
+    if (!uvs) {
+      this._uv = null;
+      return;
+    }
+    this._uv = new Float32Array(this._nodeAlive.length * 2);
+    this._uv.set(uvs);
+  }
+  /** Attach per-vertex colours (4 floats per slot, RGBA). */
+  setColors(colors) {
+    if (!colors) {
+      this._col = null;
+      return;
+    }
+    this._col = new Float32Array(this._nodeAlive.length * 4);
+    this._col.set(colors);
+  }
+  /** Call after writing into `positions` directly. */
+  markPositionsChanged() {
+    this._bounds = null;
+    this._nrmN = 0;
+    this._faceNrmN = 0;
+  }
+  // ── Nodes ──
+  getPosition(id) {
+    const o = id * 3;
+    return new Vec3(this._pos[o], this._pos[o + 1], this._pos[o + 2]);
+  }
+  setPosition(id, p) {
+    const o = id * 3;
+    this._pos[o] = p.x;
+    this._pos[o + 1] = p.y;
+    this._pos[o + 2] = p.z;
     this._bounds = null;
   }
-  // ── Accessors ──
-  get nodeCount() {
-    return this._nodes.size;
+  /** Vertex normal, computing all of them if they are stale. */
+  getNormal(id) {
+    if (!this._nrm || this._nrmN !== this._nodeN) this.computeVertexNormals();
+    const o = id * 3;
+    return new Vec3(this._nrm[o], this._nrm[o + 1], this._nrm[o + 2]);
   }
-  get edgeCount() {
-    return this._edges.size;
+  /** Vertex normal if `computeVertexNormals()` covered this node, else undefined. */
+  nodeNormal(id) {
+    if (!this._nrm || id >= this._nrmN) return void 0;
+    const o = id * 3;
+    return new Vec3(this._nrm[o], this._nrm[o + 1], this._nrm[o + 2]);
   }
-  get faceCount() {
-    return this._faces.size;
+  setNormal(id, n) {
+    if (!this._nrm) this._nrm = new Float32Array(this._nodeAlive.length * 3);
+    const o = id * 3;
+    this._nrm[o] = n.x;
+    this._nrm[o + 1] = n.y;
+    this._nrm[o + 2] = n.z;
+    if (this._nrmN <= id) this._nrmN = id + 1;
+  }
+  nodeData(id) {
+    if (!this._nodeData) this._nodeData = /* @__PURE__ */ new Map();
+    let d = this._nodeData.get(id);
+    if (!d) this._nodeData.set(id, d = {});
+    return d;
+  }
+  isNodeAlive(id) {
+    return id >= 0 && id < this._nodeN && this._nodeAlive[id] === 1;
   }
   node(id) {
-    return this._nodes.get(id);
+    return this.isNodeAlive(id) ? new NodeView(this, id) : void 0;
   }
-  edge(id) {
-    return this._edges.get(id);
-  }
-  face(id) {
-    return this._faces.get(id);
-  }
-  nodes() {
-    return this._nodes.values();
-  }
-  edges() {
-    return this._edges.values();
-  }
-  faces() {
-    return this._faces.values();
+  *nodes() {
+    for (let i = 0; i < this._nodeN; i++) if (this._nodeAlive[i]) yield new NodeView(this, i);
   }
   nodesArray() {
-    return [...this._nodes.values()];
+    return [...this.nodes()];
   }
-  edgesArray() {
-    return [...this._edges.values()];
+  /** Live node ids, in order. */
+  nodeIds() {
+    const out = [];
+    for (let i = 0; i < this._nodeN; i++) if (this._nodeAlive[i]) out.push(i);
+    return out;
   }
-  facesArray() {
-    return [...this._faces.values()];
-  }
-  // ── Topology Builders ──
-  addNode(position, data = {}) {
-    const id = this._nextNodeId++;
-    this._nodes.set(id, { id, position, edges: [], faces: [], data });
-    this._bounds = null;
+  addNode(position, data) {
+    const id = this._addNodeXYZ(position.x, position.y, position.z);
+    if (data) (this._nodeData ?? (this._nodeData = /* @__PURE__ */ new Map())).set(id, data);
     return id;
   }
   addNodes(positions) {
     return positions.map((p) => this.addNode(p));
   }
-  addEdge(nodeA, nodeB, data = {}) {
-    const existing = this.findEdge(nodeA, nodeB);
-    if (existing !== void 0) return existing;
-    const id = this._nextEdgeId++;
-    this._edges.set(id, { id, nodes: [nodeA, nodeB], faces: [], data });
-    this._nodes.get(nodeA).edges.push(id);
-    this._nodes.get(nodeB).edges.push(id);
+  _addNodeXYZ(x, y, z) {
+    const id = this._nodeN;
+    this._needNodes(id + 1);
+    const o = id * 3;
+    this._pos[o] = x;
+    this._pos[o + 1] = y;
+    this._pos[o + 2] = z;
+    this._nodeAlive[id] = 1;
+    this._nodeFirstEdge[id] = NONE;
+    this._nodeFirstCorner[id] = NONE;
+    this._nodeN++;
+    this._nodeLive++;
+    this._bounds = null;
     return id;
   }
-  addFace(nodeIds, data = {}) {
-    const id = this._nextFaceId++;
-    const edgeIds = [];
-    for (let i = 0; i < nodeIds.length; i++) {
-      const a = nodeIds[i];
-      const b = nodeIds[(i + 1) % nodeIds.length];
-      const eid = this.addEdge(a, b);
-      edgeIds.push(eid);
-      this._edges.get(eid).faces.push(id);
+  /** Incident edge ids. */
+  nodeEdges(id) {
+    const out = [];
+    for (let e = this._nodeFirstEdge[id]; e !== NONE; e = this._nextEdgeOf(e, id)) out.push(e);
+    return out;
+  }
+  /** Incident face ids. */
+  nodeFaces(id) {
+    const out = [];
+    for (let c = this._nodeFirstCorner[id]; c !== NONE; c = this._cNextInNode[c]) out.push(this._cFace[c]);
+    return out;
+  }
+  nodeNeighbors(id) {
+    if (!this.isNodeAlive(id)) return [];
+    const out = [];
+    for (let e = this._nodeFirstEdge[id]; e !== NONE; e = this._nextEdgeOf(e, id)) {
+      out.push(this._edgeA[e] === id ? this._edgeB[e] : this._edgeA[e]);
     }
-    for (const nid of nodeIds) {
-      this._nodes.get(nid).faces.push(id);
+    return out;
+  }
+  /** Neighbour ids as a typed array (the flat-mesh spelling of `nodeNeighbors`). */
+  neighbors(id) {
+    return Uint32Array.from(this.nodeNeighbors(id));
+  }
+  isBoundaryNode(id) {
+    if (!this.isNodeAlive(id)) return false;
+    for (let e = this._nodeFirstEdge[id]; e !== NONE; e = this._nextEdgeOf(e, id)) {
+      if (this._edgeCornerCount(e) < 2) return true;
     }
-    this._faces.set(id, { id, nodes: nodeIds, edges: edgeIds, data });
-    return id;
+    return false;
   }
-  addTriangle(a, b, c, data = {}) {
-    return this.addFace([a, b, c], data);
+  /** Flat-mesh spelling of `isBoundaryNode`. */
+  isBoundary(id) {
+    return this.isBoundaryNode(id);
   }
-  addQuad(a, b, c, d, data = {}) {
-    return this.addFace([a, b, c, d], data);
-  }
-  // ── Removal ──
   removeNode(id) {
-    const node = this._nodes.get(id);
-    if (!node) return;
-    for (const fid of [...node.faces]) this.removeFace(fid);
-    for (const eid of [...node.edges]) this.removeEdge(eid);
-    this._nodes.delete(id);
+    if (!this.isNodeAlive(id)) return;
+    for (const f2 of this.nodeFaces(id)) this.removeFace(f2);
+    for (const e of this.nodeEdges(id)) this.removeEdge(e);
+    this._nodeAlive[id] = 0;
+    this._nodeLive--;
+    this._nodeData?.delete(id);
     this._bounds = null;
   }
-  removeEdge(id) {
-    const edge = this._edges.get(id);
-    if (!edge) return;
-    for (const fid of [...edge.faces]) this.removeFace(fid);
-    for (const nid of edge.nodes) {
-      const node = this._nodes.get(nid);
-      if (node) node.edges = node.edges.filter((e) => e !== id);
-    }
-    this._edges.delete(id);
+  // ── Edges ──
+  edgeNodes(id) {
+    return [this._edgeA[id], this._edgeB[id]];
   }
-  removeFace(id) {
-    const face = this._faces.get(id);
-    if (!face) return;
-    for (const eid of face.edges) {
-      const edge = this._edges.get(eid);
-      if (edge) edge.faces = edge.faces.filter((f2) => f2 !== id);
-    }
-    for (const nid of face.nodes) {
-      const node = this._nodes.get(nid);
-      if (node) node.faces = node.faces.filter((f2) => f2 !== id);
-    }
-    this._faces.delete(id);
+  /** Incident face ids. */
+  edgeFaces(id) {
+    const out = [];
+    for (let c = this._edgeFirstCorner[id]; c !== NONE; c = this._cNextInEdge[c]) out.push(this._cFace[c]);
+    return out;
   }
-  clear() {
-    this._nodes.clear();
-    this._edges.clear();
-    this._faces.clear();
-    this._nextNodeId = 0;
-    this._nextEdgeId = 0;
-    this._nextFaceId = 0;
-    this._bounds = null;
+  edgeData(id) {
+    if (!this._edgeData) this._edgeData = /* @__PURE__ */ new Map();
+    let d = this._edgeData.get(id);
+    if (!d) this._edgeData.set(id, d = {});
+    return d;
   }
-  // ── Queries ──
-  findEdge(nodeA, nodeB) {
-    const na = this._nodes.get(nodeA);
-    if (!na) return void 0;
-    for (const eid of na.edges) {
-      const e = this._edges.get(eid);
-      if (e.nodes[0] === nodeA && e.nodes[1] === nodeB || e.nodes[0] === nodeB && e.nodes[1] === nodeA) {
-        return eid;
-      }
+  isEdgeAlive(id) {
+    return id >= 0 && id < this._edgeN && this._edgeAlive[id] === 1;
+  }
+  edge(id) {
+    return this.isEdgeAlive(id) ? new EdgeView(this, id) : void 0;
+  }
+  *edges() {
+    for (let i = 0; i < this._edgeN; i++) if (this._edgeAlive[i]) yield new EdgeView(this, i);
+  }
+  edgesArray() {
+    return [...this.edges()];
+  }
+  /** The edge joining two nodes, in either direction, or undefined. */
+  findEdge(a, b) {
+    if (!this.isNodeAlive(a)) return void 0;
+    for (let e = this._nodeFirstEdge[a]; e !== NONE; e = this._nextEdgeOf(e, a)) {
+      const ea = this._edgeA[e], eb = this._edgeB[e];
+      if (ea === a && eb === b || ea === b && eb === a) return e;
     }
     return void 0;
   }
-  nodeNeighbors(nodeId) {
-    const node = this._nodes.get(nodeId);
-    if (!node) return [];
-    const neighbors = [];
-    for (const eid of node.edges) {
-      const edge = this._edges.get(eid);
-      neighbors.push(edge.nodes[0] === nodeId ? edge.nodes[1] : edge.nodes[0]);
+  /** Adds an edge, or returns the existing one between the two nodes. */
+  addEdge(a, b, data) {
+    const existing = this.findEdge(a, b);
+    if (existing !== void 0) return existing;
+    const id = this._edgeN;
+    this._needEdges(id + 1);
+    this._edgeA[id] = a;
+    this._edgeB[id] = b;
+    this._edgeAlive[id] = 1;
+    this._edgeFirstCorner[id] = NONE;
+    this._edgeNext[2 * id] = this._nodeFirstEdge[a];
+    this._nodeFirstEdge[a] = id;
+    if (b !== a) {
+      this._edgeNext[2 * id + 1] = this._nodeFirstEdge[b];
+      this._nodeFirstEdge[b] = id;
+    } else {
+      this._edgeNext[2 * id + 1] = NONE;
     }
-    return neighbors;
-  }
-  edgeFaces(edgeId) {
-    const edge = this._edges.get(edgeId);
-    if (!edge) return [];
-    return edge.faces.map((fid) => this._faces.get(fid)).filter(Boolean);
-  }
-  isBoundaryEdge(edgeId) {
-    const edge = this._edges.get(edgeId);
-    return edge ? edge.faces.length < 2 : false;
-  }
-  isBoundaryNode(nodeId) {
-    const node = this._nodes.get(nodeId);
-    if (!node) return false;
-    return node.edges.some((eid) => this.isBoundaryEdge(eid));
-  }
-  boundaryEdges() {
-    return this.edgesArray().filter((e) => e.faces.length < 2);
+    this._edgeN++;
+    this._edgeLive++;
+    if (data) this._edgeData ? this._edgeData.set(id, data) : this._edgeData = /* @__PURE__ */ new Map([[id, data]]);
+    return id;
   }
   edgeOtherNode(edgeId, nodeId) {
-    const edge = this._edges.get(edgeId);
-    return edge.nodes[0] === nodeId ? edge.nodes[1] : edge.nodes[0];
+    return this._edgeA[edgeId] === nodeId ? this._edgeB[edgeId] : this._edgeA[edgeId];
   }
-  bounds() {
-    if (this._bounds) return this._bounds;
-    this._bounds = AABB.fromPoints(this.nodesArray().map((n) => n.position));
-    return this._bounds;
+  isBoundaryEdge(id) {
+    return this.isEdgeAlive(id) ? this._edgeCornerCount(id) < 2 : false;
   }
-  faceTriangle(faceId) {
-    const face = this._faces.get(faceId);
-    if (!face || face.nodes.length !== 3) return null;
+  boundaryEdges() {
+    const out = [];
+    for (let e = 0; e < this._edgeN; e++) {
+      if (this._edgeAlive[e] && this._edgeCornerCount(e) < 2) out.push(new EdgeView(this, e));
+    }
+    return out;
+  }
+  /** Removes the edge and every face that uses it. */
+  removeEdge(id) {
+    if (!this.isEdgeAlive(id)) return;
+    for (const f2 of this.edgeFaces(id)) this.removeFace(f2);
+    const a = this._edgeA[id], b = this._edgeB[id];
+    this._unlinkEdge(id, a);
+    if (b !== a) this._unlinkEdge(id, b);
+    this._edgeAlive[id] = 0;
+    this._edgeLive--;
+    this._edgeData?.delete(id);
+  }
+  _nextEdgeOf(e, node) {
+    return this._edgeA[e] === node ? this._edgeNext[2 * e] : this._edgeNext[2 * e + 1];
+  }
+  _edgeCornerCount(e) {
+    let n = 0;
+    for (let c = this._edgeFirstCorner[e]; c !== NONE; c = this._cNextInEdge[c]) n++;
+    return n;
+  }
+  _unlinkEdge(id, node) {
+    let prev = NONE;
+    for (let e = this._nodeFirstEdge[node]; e !== NONE; e = this._nextEdgeOf(e, node)) {
+      if (e === id) {
+        const next = this._nextEdgeOf(e, node);
+        if (prev === NONE) this._nodeFirstEdge[node] = next;
+        else if (this._edgeA[prev] === node) this._edgeNext[2 * prev] = next;
+        else this._edgeNext[2 * prev + 1] = next;
+        return;
+      }
+      prev = e;
+    }
+  }
+  // ── Faces ──
+  /** Node ids of a face as a view into the corner array — no copy, valid until the next edit. */
+  faceVerts(id) {
+    return this._cVert.subarray(this._faceStart[id], this._faceStart[id + 1]);
+  }
+  faceNodes(id) {
+    return Array.from(this.faceVerts(id));
+  }
+  faceEdges(id) {
+    return Array.from(this._cEdge.subarray(this._faceStart[id], this._faceStart[id + 1]));
+  }
+  faceSize(id) {
+    return this._faceStart[id + 1] - this._faceStart[id];
+  }
+  /** Face normal if `computeFaceNormals()` covered this face, else undefined. */
+  faceNormal(id) {
+    if (!this._faceNrm || id >= this._faceNrmN) return void 0;
+    const o = id * 3;
+    return new Vec3(this._faceNrm[o], this._faceNrm[o + 1], this._faceNrm[o + 2]);
+  }
+  setFaceNormal(id, n) {
+    if (!this._faceNrm) this._faceNrm = new Float32Array(this._faceAlive.length * 3);
+    const o = id * 3;
+    this._faceNrm[o] = n.x;
+    this._faceNrm[o + 1] = n.y;
+    this._faceNrm[o + 2] = n.z;
+    if (this._faceNrmN <= id) this._faceNrmN = id + 1;
+  }
+  faceData(id) {
+    if (!this._faceData) this._faceData = /* @__PURE__ */ new Map();
+    let d = this._faceData.get(id);
+    if (!d) this._faceData.set(id, d = {});
+    return d;
+  }
+  isFaceAlive(id) {
+    return id >= 0 && id < this._faceN && this._faceAlive[id] === 1;
+  }
+  face(id) {
+    return this.isFaceAlive(id) ? new FaceView(this, id) : void 0;
+  }
+  *faces() {
+    for (let i = 0; i < this._faceN; i++) if (this._faceAlive[i]) yield new FaceView(this, i);
+  }
+  facesArray() {
+    return [...this.faces()];
+  }
+  /** Live face ids, in order. */
+  faceIds() {
+    const out = [];
+    for (let i = 0; i < this._faceN; i++) if (this._faceAlive[i]) out.push(i);
+    return out;
+  }
+  addFace(nodeIds, data) {
+    const n = nodeIds.length;
+    const id = this._faceN;
+    this._needFaces(id + 1);
+    const start = this._cornerN;
+    this._needCorners(start + n);
+    for (let i = 0; i < n; i++) {
+      this._cVert[start + i] = nodeIds[i];
+      this._cFace[start + i] = id;
+    }
+    this._faceStart[id] = start;
+    this._faceStart[id + 1] = start + n;
+    this._cornerN = start + n;
+    this._faceAlive[id] = 1;
+    this._faceN++;
+    this._faceLive++;
+    this._triCount += Math.max(0, n - 2);
+    this._linkCorners(id);
+    this._tri = null;
+    if (data) this._faceData ? this._faceData.set(id, data) : this._faceData = /* @__PURE__ */ new Map([[id, data]]);
+    return id;
+  }
+  addTriangle(a, b, c, data) {
+    return this.addFace([a, b, c], data);
+  }
+  addQuad(a, b, c, d, data) {
+    return this.addFace([a, b, c, d], data);
+  }
+  /** Removes the face. Its edges stay (an edge is its own element). */
+  removeFace(id) {
+    if (!this.isFaceAlive(id)) return;
+    this._unlinkCorners(id);
+    this._faceAlive[id] = 0;
+    this._faceLive--;
+    this._triCount -= Math.max(0, this.faceSize(id) - 2);
+    this._faceData?.delete(id);
+    this._tri = null;
+  }
+  /** Reverses the winding of a face in place (what `face.nodes.reverse()` used to do). */
+  reverseFace(id) {
+    if (!this.isFaceAlive(id)) return;
+    this._unlinkCorners(id);
+    const v = this.faceVerts(id);
+    v.reverse();
+    this._linkCorners(id);
+    this._tri = null;
+  }
+  faceTriangle(id) {
+    if (!this.isFaceAlive(id) || this.faceSize(id) !== 3) return null;
+    const s = this._faceStart[id];
     return new Triangle(
-      this._nodes.get(face.nodes[0]).position,
-      this._nodes.get(face.nodes[1]).position,
-      this._nodes.get(face.nodes[2]).position
+      this.getPosition(this._cVert[s]),
+      this.getPosition(this._cVert[s + 1]),
+      this.getPosition(this._cVert[s + 2])
     );
   }
-  // ── Normals ──
-  computeFaceNormals() {
-    for (const face of this._faces.values()) {
-      if (face.nodes.length < 3) continue;
-      const a = this._nodes.get(face.nodes[0]).position;
-      const b = this._nodes.get(face.nodes[1]).position;
-      const c = this._nodes.get(face.nodes[2]).position;
-      face.normal = b.sub(a).cross(c.sub(a)).normalize();
+  /** Registers the face's corners with their edges and nodes (edges are created as needed). */
+  _linkCorners(id) {
+    const s = this._faceStart[id], e = this._faceStart[id + 1], n = e - s;
+    for (let i = 0; i < n; i++) {
+      const c = s + i;
+      const a = this._cVert[c], b = this._cVert[s + (i + 1) % n];
+      const edge = this.addEdge(a, b);
+      this._cEdge[c] = edge;
+      this._cNextInEdge[c] = this._edgeFirstCorner[edge];
+      this._edgeFirstCorner[edge] = c;
+      this._cNextInNode[c] = this._nodeFirstCorner[a];
+      this._nodeFirstCorner[a] = c;
     }
   }
+  _unlinkCorners(id) {
+    const s = this._faceStart[id], e = this._faceStart[id + 1];
+    for (let c = s; c < e; c++) {
+      const edge = this._cEdge[c];
+      let prev = NONE;
+      for (let k = this._edgeFirstCorner[edge]; k !== NONE; k = this._cNextInEdge[k]) {
+        if (k === c) {
+          if (prev === NONE) this._edgeFirstCorner[edge] = this._cNextInEdge[k];
+          else this._cNextInEdge[prev] = this._cNextInEdge[k];
+          break;
+        }
+        prev = k;
+      }
+      const node = this._cVert[c];
+      prev = NONE;
+      for (let k = this._nodeFirstCorner[node]; k !== NONE; k = this._cNextInNode[k]) {
+        if (k === c) {
+          if (prev === NONE) this._nodeFirstCorner[node] = this._cNextInNode[k];
+          else this._cNextInNode[prev] = this._cNextInNode[k];
+          break;
+        }
+        prev = k;
+      }
+    }
+  }
+  // ── Whole-mesh ──
+  clear() {
+    this._nodeN = this._nodeLive = 0;
+    this._edgeN = this._edgeLive = 0;
+    this._faceN = this._faceLive = 0;
+    this._cornerN = 0;
+    this._triCount = 0;
+    this._nrmN = 0;
+    this._faceNrmN = 0;
+    this._nodeData = this._edgeData = this._faceData = null;
+    this._bounds = null;
+    this._tri = null;
+  }
+  /**
+   * Drops removed elements and renumbers the rest densely, in order. Returns the
+   * old→new maps (−1 for removed). Every id held before this call is stale.
+   */
+  compact() {
+    const fresh = new _Mesh();
+    const maps = this._copyInto(fresh);
+    Object.assign(this, fresh);
+    return maps;
+  }
+  clone() {
+    const m = new _Mesh();
+    this._copyInto(m);
+    return m;
+  }
+  /** Copies the live elements into `m` (densely renumbered) and returns the id maps. */
+  _copyInto(m) {
+    const nodes = new Int32Array(this._nodeN).fill(NONE);
+    const edges = new Int32Array(this._edgeN).fill(NONE);
+    const faces = new Int32Array(this._faceN).fill(NONE);
+    m._needNodes(this._nodeLive);
+    const hasNrm = !!this._nrm && this._nrmN === this._nodeN;
+    if (hasNrm) m._nrm = new Float32Array(m._nodeAlive.length * 3);
+    if (this._uv) m._uv = new Float32Array(m._nodeAlive.length * 2);
+    if (this._col) m._col = new Float32Array(m._nodeAlive.length * 4);
+    for (let i = 0; i < this._nodeN; i++) {
+      if (!this._nodeAlive[i]) continue;
+      const j = m._addNodeXYZ(this._pos[i * 3], this._pos[i * 3 + 1], this._pos[i * 3 + 2]);
+      nodes[i] = j;
+      if (hasNrm) {
+        m._nrm[j * 3] = this._nrm[i * 3];
+        m._nrm[j * 3 + 1] = this._nrm[i * 3 + 1];
+        m._nrm[j * 3 + 2] = this._nrm[i * 3 + 2];
+      }
+      if (this._uv) {
+        m._uv[j * 2] = this._uv[i * 2];
+        m._uv[j * 2 + 1] = this._uv[i * 2 + 1];
+      }
+      if (this._col) for (let k = 0; k < 4; k++) m._col[j * 4 + k] = this._col[i * 4 + k];
+      const d = this._nodeData?.get(i);
+      if (d) (m._nodeData ?? (m._nodeData = /* @__PURE__ */ new Map())).set(j, d);
+    }
+    if (hasNrm) m._nrmN = m._nodeN;
+    for (let e = 0; e < this._edgeN; e++) {
+      if (!this._edgeAlive[e]) continue;
+      edges[e] = m.addEdge(nodes[this._edgeA[e]], nodes[this._edgeB[e]], this._edgeData?.get(e));
+    }
+    const buf = [];
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      buf.length = 0;
+      const s = this._faceStart[f2], e = this._faceStart[f2 + 1];
+      for (let c = s; c < e; c++) buf.push(nodes[this._cVert[c]]);
+      faces[f2] = m.addFace(buf, this._faceData?.get(f2));
+      if (this._faceNrm && f2 < this._faceNrmN) {
+        m.setFaceNormal(faces[f2], new Vec3(this._faceNrm[f2 * 3], this._faceNrm[f2 * 3 + 1], this._faceNrm[f2 * 3 + 2]));
+      }
+    }
+    return { nodes, edges, faces };
+  }
+  /** Appends another mesh (its live nodes, edges and faces) and returns the combined mesh. */
+  merge(other) {
+    const m = this.clone();
+    const nodes = new Int32Array(other._nodeN).fill(NONE);
+    if (!(m._uv && other._uv)) m._uv = null;
+    if (!(m._col && other._col)) m._col = null;
+    for (let i = 0; i < other._nodeN; i++) {
+      if (!other._nodeAlive[i]) continue;
+      const j = nodes[i] = m._addNodeXYZ(other._pos[i * 3], other._pos[i * 3 + 1], other._pos[i * 3 + 2]);
+      if (m._uv) {
+        m._uv[j * 2] = other._uv[i * 2];
+        m._uv[j * 2 + 1] = other._uv[i * 2 + 1];
+      }
+      if (m._col) for (let k = 0; k < 4; k++) m._col[j * 4 + k] = other._col[i * 4 + k];
+    }
+    for (let e = 0; e < other._edgeN; e++) {
+      if (other._edgeAlive[e]) m.addEdge(nodes[other._edgeA[e]], nodes[other._edgeB[e]]);
+    }
+    const buf = [];
+    for (let f2 = 0; f2 < other._faceN; f2++) {
+      if (!other._faceAlive[f2]) continue;
+      buf.length = 0;
+      const s = other._faceStart[f2], e = other._faceStart[f2 + 1];
+      for (let c = s; c < e; c++) buf.push(nodes[other._cVert[c]]);
+      m.addFace(buf, other._faceData?.get(f2));
+    }
+    m._nrmN = 0;
+    return m;
+  }
+  // ── Normals ──
+  /** Newell normal per live face (robust for non-planar quads). */
+  computeFaceNormals() {
+    if (!this._faceNrm || this._faceNrm.length < this._faceAlive.length * 3) {
+      this._faceNrm = new Float32Array(this._faceAlive.length * 3);
+    }
+    const pos = this._pos, fn = this._faceNrm, cv = this._cVert;
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const s = this._faceStart[f2], e = this._faceStart[f2 + 1], n = e - s;
+      let nx = 0, ny = 0, nz = 0;
+      for (let i = 0; i < n; i++) {
+        const a = cv[s + i] * 3, b = cv[s + (i + 1) % n] * 3;
+        nx += (pos[a + 1] - pos[b + 1]) * (pos[a + 2] + pos[b + 2]);
+        ny += (pos[a + 2] - pos[b + 2]) * (pos[a] + pos[b]);
+        nz += (pos[a] - pos[b]) * (pos[a + 1] + pos[b + 1]);
+      }
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const inv = len > 1e-12 ? 1 / len : 0;
+      fn[f2 * 3] = nx * inv;
+      fn[f2 * 3 + 1] = ny * inv;
+      fn[f2 * 3 + 2] = nz * inv;
+    }
+    this._faceNrmN = this._faceN;
+  }
+  /** Vertex normal = normalised sum of the unit normals of the faces around it. */
   computeVertexNormals() {
     this.computeFaceNormals();
-    for (const node of this._nodes.values()) {
-      let sum = Vec3.zero();
-      for (const fid of node.faces) {
-        const face = this._faces.get(fid);
-        if (face?.normal) sum = sum.add(face.normal);
-      }
-      node.normal = sum.normalize();
+    if (!this._nrm || this._nrm.length < this._nodeAlive.length * 3) {
+      this._nrm = new Float32Array(this._nodeAlive.length * 3);
     }
-  }
-  // ── Topology Operations ──
-  splitEdge(edgeId, t = 0.5) {
-    const edge = this._edges.get(edgeId);
-    if (!edge) return -1;
-    const nA = this._nodes.get(edge.nodes[0]);
-    const nB = this._nodes.get(edge.nodes[1]);
-    const midPos = nA.position.lerp(nB.position, t);
-    const midId = this.addNode(midPos);
-    const facesToSplit = [...edge.faces];
-    for (const fid of facesToSplit) {
-      const face = this._faces.get(fid);
-      const nodeList = face.nodes;
-      const idxA = nodeList.indexOf(edge.nodes[0]);
-      const idxB = nodeList.indexOf(edge.nodes[1]);
-      const newNodes = [...nodeList];
-      const insertAt = Math.max(idxA, idxB);
-      if (Math.abs(idxA - idxB) === 1) {
-        newNodes.splice(insertAt, 0, midId);
-      } else {
-        newNodes.push(midId);
+    const nrm = this._nrm, fn = this._faceNrm, cv = this._cVert;
+    nrm.fill(0, 0, this._nodeN * 3);
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const x = fn[f2 * 3], y = fn[f2 * 3 + 1], z = fn[f2 * 3 + 2];
+      for (let c = this._faceStart[f2], e = this._faceStart[f2 + 1]; c < e; c++) {
+        const o = cv[c] * 3;
+        nrm[o] += x;
+        nrm[o + 1] += y;
+        nrm[o + 2] += z;
       }
+    }
+    for (let i = 0; i < this._nodeN; i++) {
+      const o = i * 3;
+      const len = Math.sqrt(nrm[o] * nrm[o] + nrm[o + 1] * nrm[o + 1] + nrm[o + 2] * nrm[o + 2]);
+      if (len > 1e-12) {
+        nrm[o] /= len;
+        nrm[o + 1] /= len;
+        nrm[o + 2] /= len;
+      } else {
+        nrm[o] = 0;
+        nrm[o + 1] = 0;
+        nrm[o + 2] = 0;
+      }
+    }
+    this._nrmN = this._nodeN;
+  }
+  /** Flat-mesh spelling of `computeVertexNormals`. */
+  computeNormals() {
+    this.computeVertexNormals();
+  }
+  // ── Measures ──
+  bounds() {
+    if (this._bounds) return this._bounds;
+    const pos = this._pos;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < this._nodeN; i++) {
+      if (!this._nodeAlive[i]) continue;
+      const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
+    if (this._nodeLive === 0) minX = minY = minZ = maxX = maxY = maxZ = 0;
+    return this._bounds = new AABB(new Vec3(minX, minY, minZ), new Vec3(maxX, maxY, maxZ));
+  }
+  /** Signed-tetrahedra volume (closed, consistently wound meshes). */
+  volume() {
+    const pos = this._pos, idx = this.indices;
+    let vol = 0;
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      vol += (pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1]) + pos[a + 1] * (pos[b + 2] * pos[c] - pos[b] * pos[c + 2]) + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c])) / 6;
+    }
+    return Math.abs(vol);
+  }
+  surfaceArea() {
+    const pos = this._pos, idx = this.indices;
+    let area = 0;
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const abx = pos[b] - pos[a], aby = pos[b + 1] - pos[a + 1], abz = pos[b + 2] - pos[a + 2];
+      const acx = pos[c] - pos[a], acy = pos[c + 1] - pos[a + 1], acz = pos[c + 2] - pos[a + 2];
+      const cx = aby * acz - abz * acy, cy = abz * acx - abx * acz, cz = abx * acy - aby * acx;
+      area += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
+    }
+    return area;
+  }
+  /** Average of the live node positions. */
+  centroid() {
+    let sx = 0, sy = 0, sz = 0;
+    for (let i = 0; i < this._nodeN; i++) {
+      if (!this._nodeAlive[i]) continue;
+      sx += this._pos[i * 3];
+      sy += this._pos[i * 3 + 1];
+      sz += this._pos[i * 3 + 2];
+    }
+    const n = this._nodeLive || 1;
+    return new Vec3(sx / n, sy / n, sz / n);
+  }
+  /** V − E + F over the live elements. */
+  eulerCharacteristic() {
+    return this._nodeLive - this._edgeLive + this._faceLive;
+  }
+  // ── In-place geometry ──
+  translate(dx, dy, dz) {
+    const pos = this._pos;
+    for (let i = 0; i < this._nodeN * 3; i += 3) {
+      pos[i] += dx;
+      pos[i + 1] += dy;
+      pos[i + 2] += dz;
+    }
+    this._bounds = null;
+  }
+  scale(s) {
+    const pos = this._pos;
+    for (let i = 0; i < this._nodeN * 3; i++) pos[i] *= s;
+    this._bounds = null;
+  }
+  scaleXYZ(sx, sy, sz) {
+    const pos = this._pos;
+    for (let i = 0; i < this._nodeN * 3; i += 3) {
+      pos[i] *= sx;
+      pos[i + 1] *= sy;
+      pos[i + 2] *= sz;
+    }
+    this.markPositionsChanged();
+  }
+  mapPositions(fn) {
+    const pos = this._pos;
+    for (let i = 0; i < this._nodeN; i++) {
+      if (!this._nodeAlive[i]) continue;
+      const [x, y, z] = fn(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], i);
+      pos[i * 3] = x;
+      pos[i * 3 + 1] = y;
+      pos[i * 3 + 2] = z;
+    }
+    this.markPositionsChanged();
+  }
+  /** Laplacian smoothing: each interior node moves toward the mean of its neighbours. */
+  smooth(iterations = 1, factor = 0.5) {
+    const n = this._nodeN, pos = this._pos;
+    const tmp = new Float64Array(n * 3);
+    const boundary = new Uint8Array(n);
+    for (let i = 0; i < n; i++) if (this._nodeAlive[i] && this.isBoundaryNode(i)) boundary[i] = 1;
+    for (let it = 0; it < iterations; it++) {
+      tmp.set(pos.subarray(0, n * 3));
+      for (let v = 0; v < n; v++) {
+        if (!this._nodeAlive[v] || boundary[v]) continue;
+        let ax = 0, ay = 0, az = 0, k = 0;
+        for (let e = this._nodeFirstEdge[v]; e !== NONE; e = this._nextEdgeOf(e, v)) {
+          const o2 = (this._edgeA[e] === v ? this._edgeB[e] : this._edgeA[e]) * 3;
+          ax += tmp[o2];
+          ay += tmp[o2 + 1];
+          az += tmp[o2 + 2];
+          k++;
+        }
+        if (k === 0) continue;
+        const o = v * 3, inv = 1 / k;
+        pos[o] = tmp[o] + (ax * inv - tmp[o]) * factor;
+        pos[o + 1] = tmp[o + 1] + (ay * inv - tmp[o + 1]) * factor;
+        pos[o + 2] = tmp[o + 2] + (az * inv - tmp[o + 2]) * factor;
+      }
+    }
+    this.markPositionsChanged();
+    this.computeVertexNormals();
+  }
+  // ── Topology operations ──
+  /** Splits an edge at parameter `t`, splitting its faces; returns the new node id. */
+  splitEdge(edgeId, t = 0.5) {
+    if (!this.isEdgeAlive(edgeId)) return -1;
+    const [a, b] = this.edgeNodes(edgeId);
+    const midId = this.addNode(this.getPosition(a).lerp(this.getPosition(b), t));
+    for (const fid of this.edgeFaces(edgeId)) {
+      const nodeList = this.faceNodes(fid);
+      const data = this._faceData?.get(fid);
+      const idxA = nodeList.indexOf(a), idxB = nodeList.indexOf(b);
+      const newNodes = [...nodeList];
+      if (Math.abs(idxA - idxB) === 1) newNodes.splice(Math.max(idxA, idxB), 0, midId);
+      else newNodes.push(midId);
       this.removeFace(fid);
       if (nodeList.length === 3) {
-        const other = nodeList.find((n) => n !== edge.nodes[0] && n !== edge.nodes[1]);
-        this.addFace([edge.nodes[0], midId, other], face.data);
-        this.addFace([midId, edge.nodes[1], other], face.data);
+        const other = nodeList.find((n) => n !== a && n !== b);
+        this.addFace([a, midId, other], data);
+        this.addFace([midId, b, other], data);
       } else {
-        this.addFace(newNodes, face.data);
+        this.addFace(newNodes, data);
       }
     }
     this.removeEdge(edgeId);
     return midId;
   }
+  /** Collapses an edge to its midpoint; returns the surviving node id. */
   collapseEdge(edgeId) {
-    const edge = this._edges.get(edgeId);
-    if (!edge) return -1;
-    const [keepId, removeId] = edge.nodes;
-    const keepNode = this._nodes.get(keepId);
-    const removeNode = this._nodes.get(removeId);
-    keepNode.position = keepNode.position.lerp(removeNode.position, 0.5);
-    for (const fid of [...removeNode.faces]) {
-      const face = this._faces.get(fid);
-      if (!face) continue;
-      const newNodes = face.nodes.map((n) => n === removeId ? keepId : n);
-      const unique = [...new Set(newNodes)];
+    if (!this.isEdgeAlive(edgeId)) return -1;
+    const [keepId, removeId] = this.edgeNodes(edgeId);
+    this.setPosition(keepId, this.getPosition(keepId).lerp(this.getPosition(removeId), 0.5));
+    for (const fid of this.nodeFaces(removeId)) {
+      const data = this._faceData?.get(fid);
+      const unique = [...new Set(this.faceNodes(fid).map((n) => n === removeId ? keepId : n))];
       this.removeFace(fid);
-      if (unique.length >= 3) {
-        this.addFace(unique, face.data);
-      }
+      if (unique.length >= 3) this.addFace(unique, data);
     }
     this.removeNode(removeId);
-    this._bounds = null;
     return keepId;
   }
+  // ── Triangle access (flat API) ──
+  getTriangle(t) {
+    const idx = this.indices, o = t * 3;
+    return [idx[o], idx[o + 1], idx[o + 2]];
+  }
+  getTrianglePositions(t) {
+    const [a, b, c] = this.getTriangle(t);
+    return [this.getPosition(a), this.getPosition(b), this.getPosition(c)];
+  }
   // ── Conversion ──
+  /** Flat Float32 arrays for rendering/IO. Dense: removed nodes are dropped. */
+  toMeshData() {
+    const nrm = this.normals;
+    const idx = this.indices;
+    if (!this.hasTombstones || this._nodeLive === this._nodeN) {
+      const n = this._nodeN * 3;
+      const positions2 = new Float32Array(n);
+      for (let i = 0; i < n; i++) positions2[i] = this._pos[i];
+      return {
+        positions: positions2,
+        normals: new Float32Array(nrm),
+        indices: idx === this._tri && idx.buffer === this._cVert.buffer ? new Uint32Array(idx) : idx,
+        ...this._uv ? { uvs: new Float32Array(this.uvs) } : {},
+        ...this._col ? { colors: new Float32Array(this.colors) } : {}
+      };
+    }
+    const map = new Int32Array(this._nodeN).fill(NONE);
+    let k = 0;
+    for (let i = 0; i < this._nodeN; i++) if (this._nodeAlive[i]) map[i] = k++;
+    const positions = new Float32Array(k * 3), normals = new Float32Array(k * 3);
+    const uvs = this._uv ? new Float32Array(k * 2) : void 0;
+    const colors = this._col ? new Float32Array(k * 4) : void 0;
+    for (let i = 0; i < this._nodeN; i++) {
+      const j = map[i];
+      if (j === NONE) continue;
+      for (let d = 0; d < 3; d++) {
+        positions[j * 3 + d] = this._pos[i * 3 + d];
+        normals[j * 3 + d] = nrm[i * 3 + d];
+      }
+      if (uvs) {
+        uvs[j * 2] = this._uv[i * 2];
+        uvs[j * 2 + 1] = this._uv[i * 2 + 1];
+      }
+      if (colors) for (let d = 0; d < 4; d++) colors[j * 4 + d] = this._col[i * 4 + d];
+    }
+    const indices = new Uint32Array(idx.length);
+    for (let i = 0; i < idx.length; i++) indices[i] = map[idx[i]];
+    return { positions, normals, indices, ...uvs ? { uvs } : {}, ...colors ? { colors } : {} };
+  }
+  static fromMeshData(d) {
+    return new _Mesh(d.positions, d.indices, d.normals, d.uvs, d.colors);
+  }
+  static fromArrays(positions, indices, normals, uvs, colors) {
+    return new _Mesh(positions, indices, normals, uvs, colors);
+  }
   static fromIndexedTriangles(positions, indices, data) {
-    const mesh = new _ConnectedMesh();
-    const nodeIds = mesh.addNodes(positions);
+    const mesh = new _Mesh();
+    const ids = mesh.addNodes(positions);
     for (let i = 0; i < indices.length; i += 3) {
-      const faceData = data?.[i / 3] ?? {};
-      mesh.addTriangle(
-        nodeIds[indices[i]],
-        nodeIds[indices[i + 1]],
-        nodeIds[indices[i + 2]],
-        faceData
-      );
+      mesh.addTriangle(ids[indices[i]], ids[indices[i + 1]], ids[indices[i + 2]], data?.[i / 3]);
     }
     mesh.computeVertexNormals();
     return mesh;
   }
   static fromFaces(positions, faces) {
-    const mesh = new _ConnectedMesh();
-    const nodeIds = mesh.addNodes(positions);
-    for (const faceNodes of faces) {
-      mesh.addFace(faceNodes.map((i) => nodeIds[i]));
-    }
+    const mesh = new _Mesh();
+    const ids = mesh.addNodes(positions);
+    for (const f2 of faces) mesh.addFace(f2.map((i) => ids[i]));
     mesh.computeVertexNormals();
     return mesh;
   }
-  toIndexedTriangles() {
-    const nodeMap = /* @__PURE__ */ new Map();
-    const posArray = [];
-    const normArray = [];
-    let idx = 0;
-    for (const node of this._nodes.values()) {
-      nodeMap.set(node.id, idx++);
-      posArray.push(node.position.x, node.position.y, node.position.z);
-      const n = node.normal ?? Vec3.unitY();
-      normArray.push(n.x, n.y, n.z);
+  _load(positions, indices, normals, uvs, colors) {
+    const n = Math.floor(positions.length / 3);
+    this._needNodes(n);
+    for (let i = 0; i < n; i++) this._addNodeXYZ(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+    if (normals && normals.length >= n * 3) {
+      this._nrm = new Float32Array(this._nodeAlive.length * 3);
+      for (let i = 0; i < n * 3; i++) this._nrm[i] = normals[i];
+      this._nrmN = n;
     }
-    const indexArray = [];
-    for (const face of this._faces.values()) {
-      const nids = face.nodes.map((n) => nodeMap.get(n));
-      for (let i = 1; i < nids.length - 1; i++) {
-        indexArray.push(nids[0], nids[i], nids[i + 1]);
-      }
+    if (uvs) this.setUVs(uvs);
+    if (colors) this.setColors(colors);
+    this._needFaces(Math.floor(indices.length / 3));
+    this._needCorners(indices.length);
+    const tri = [0, 0, 0];
+    for (let i = 0; i + 2 < indices.length; i += 3) {
+      tri[0] = indices[i];
+      tri[1] = indices[i + 1];
+      tri[2] = indices[i + 2];
+      this.addFace(tri);
     }
-    return {
-      positions: new Float32Array(posArray),
-      indices: new Uint32Array(indexArray),
-      normals: new Float32Array(normArray)
-    };
   }
   // ── Serialization ──
   toJSON() {
-    return {
-      nodes: this.nodesArray().map((n) => ({
-        id: n.id,
-        position: n.position.toJSON(),
-        data: n.data
-      })),
-      faces: this.facesArray().map((f2) => ({
-        id: f2.id,
-        nodes: f2.nodes,
-        data: f2.data
-      }))
-    };
+    const map = new Int32Array(this._nodeN).fill(NONE);
+    const positions = [];
+    let k = 0;
+    for (let i = 0; i < this._nodeN; i++) {
+      if (!this._nodeAlive[i]) continue;
+      map[i] = k++;
+      positions.push(this._pos[i * 3], this._pos[i * 3 + 1], this._pos[i * 3 + 2]);
+    }
+    const faces = [];
+    const faceData = [];
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const d = this._faceData?.get(f2);
+      if (d && Object.keys(d).length) faceData.push([faces.length, d]);
+      faces.push(this.faceNodes(f2).map((n) => map[n]));
+    }
+    const nodeData = [];
+    if (this._nodeData) {
+      for (const [id, d] of this._nodeData) if (map[id] !== NONE && Object.keys(d).length) nodeData.push([map[id], d]);
+    }
+    const out = { positions, faces };
+    if (this._nrm && this._nrmN === this._nodeN) {
+      const normals = [];
+      for (let i = 0; i < this._nodeN; i++) if (map[i] !== NONE) normals.push(this._nrm[i * 3], this._nrm[i * 3 + 1], this._nrm[i * 3 + 2]);
+      out.normals = normals;
+    }
+    if (this._uv) {
+      const uvs = [];
+      for (let i = 0; i < this._nodeN; i++) if (map[i] !== NONE) uvs.push(this._uv[i * 2], this._uv[i * 2 + 1]);
+      out.uvs = uvs;
+    }
+    if (this._col) {
+      const colors = [];
+      for (let i = 0; i < this._nodeN; i++) if (map[i] !== NONE) colors.push(this._col[i * 4], this._col[i * 4 + 1], this._col[i * 4 + 2], this._col[i * 4 + 3]);
+      out.colors = colors;
+    }
+    if (nodeData.length) out.nodeData = nodeData;
+    if (faceData.length) out.faceData = faceData;
+    return out;
   }
+  /** Reads the current format and both legacy ones (`{nodes, faces}` and `{positions, indices}`). */
   static fromJSON(json) {
-    const mesh = new _ConnectedMesh();
-    const idMap = /* @__PURE__ */ new Map();
-    for (const nj of json.nodes) {
-      const newId = mesh.addNode(Vec3.fromJSON(nj.position), nj.data ?? {});
-      idMap.set(nj.id, newId);
+    if ("nodes" in json) {
+      const mesh2 = new _Mesh();
+      const idMap = /* @__PURE__ */ new Map();
+      for (const nj of json.nodes) idMap.set(nj.id, mesh2.addNode(Vec3.fromJSON(nj.position), nj.data && Object.keys(nj.data).length ? nj.data : void 0));
+      for (const fj of json.faces) mesh2.addFace(fj.nodes.map((n) => idMap.get(n)), fj.data && Object.keys(fj.data).length ? fj.data : void 0);
+      mesh2.computeVertexNormals();
+      return mesh2;
     }
-    for (const fj of json.faces) {
-      mesh.addFace(fj.nodes.map((n) => idMap.get(n)), fj.data ?? {});
-    }
-    mesh.computeVertexNormals();
+    if ("indices" in json) return new _Mesh(json.positions, json.indices, json.normals, json.uvs);
+    const mesh = new _Mesh(json.positions, [], json.normals, json.uvs, json.colors);
+    for (const f2 of json.faces) mesh.addFace(f2);
+    if (json.nodeData) for (const [id, d] of json.nodeData) mesh._nodeData ? mesh._nodeData.set(id, d) : mesh._nodeData = /* @__PURE__ */ new Map([[id, d]]);
+    if (json.faceData) for (const [id, d] of json.faceData) mesh._faceData ? mesh._faceData.set(id, d) : mesh._faceData = /* @__PURE__ */ new Map([[id, d]]);
     return mesh;
   }
-  clone() {
-    return _ConnectedMesh.fromJSON(this.toJSON());
+  // ── Capacity ──
+  _needNodes(n) {
+    let cap = this._nodeAlive.length;
+    if (n <= cap) return;
+    while (cap < n) cap *= 2;
+    this._pos = grow(this._pos, cap * 3);
+    if (this._nrm) this._nrm = grow(this._nrm, cap * 3);
+    if (this._uv) this._uv = grow(this._uv, cap * 2);
+    if (this._col) this._col = grow(this._col, cap * 4);
+    this._nodeAlive = grow(this._nodeAlive, cap);
+    this._nodeFirstEdge = grow(this._nodeFirstEdge, cap, NONE);
+    this._nodeFirstCorner = grow(this._nodeFirstCorner, cap, NONE);
+  }
+  _needEdges(n) {
+    let cap = this._edgeAlive.length;
+    if (n <= cap) return;
+    while (cap < n) cap *= 2;
+    this._edgeA = grow(this._edgeA, cap);
+    this._edgeB = grow(this._edgeB, cap);
+    this._edgeNext = grow(this._edgeNext, cap * 2, NONE);
+    this._edgeFirstCorner = grow(this._edgeFirstCorner, cap, NONE);
+    this._edgeAlive = grow(this._edgeAlive, cap);
+  }
+  _needFaces(n) {
+    let cap = this._faceAlive.length;
+    if (n <= cap) return;
+    while (cap < n) cap *= 2;
+    this._faceStart = grow(this._faceStart, cap + 1);
+    this._faceAlive = grow(this._faceAlive, cap);
+    if (this._faceNrm) this._faceNrm = grow(this._faceNrm, cap * 3);
+  }
+  _needCorners(n) {
+    let cap = this._cVert.length;
+    if (n <= cap) return;
+    while (cap < n) cap *= 2;
+    this._cVert = grow(this._cVert, cap);
+    this._cFace = grow(this._cFace, cap);
+    this._cEdge = grow(this._cEdge, cap, NONE);
+    this._cNextInNode = grow(this._cNextInNode, cap, NONE);
+    this._cNextInEdge = grow(this._cNextInEdge, cap, NONE);
   }
 };
 
 // src/core/geometry/mesh/MeshAnalysis.ts
 var MeshAnalysis = {
-  /** Compute mesh volume (for closed, consistent-winding triangle meshes) */
+  /** Mesh volume (closed, consistently wound; polygons are fan-triangulated). */
   meshVolume(mesh) {
-    let volume = 0;
-    for (const face of mesh.faces()) {
-      if (face.nodes.length !== 3) continue;
-      const a = mesh.node(face.nodes[0]).position;
-      const b = mesh.node(face.nodes[1]).position;
-      const c = mesh.node(face.nodes[2]).position;
-      volume += a.dot(b.cross(c)) / 6;
-    }
-    return Math.abs(volume);
+    return mesh.volume();
   },
-  /** Compute mesh surface area */
+  /** Mesh surface area. */
   meshSurfaceArea(mesh) {
-    let area = 0;
-    for (const face of mesh.faces()) {
-      if (face.nodes.length < 3) continue;
-      const positions = face.nodes.map((n) => mesh.node(n).position);
-      for (let i = 1; i < positions.length - 1; i++) {
-        area += positions[i].sub(positions[0]).cross(positions[i + 1].sub(positions[0])).len() * 0.5;
-      }
-    }
-    return area;
+    return mesh.surfaceArea();
   },
-  /** Mesh centroid (vertex average) */
+  /** Mesh centroid (vertex average). */
   meshCentroid(mesh) {
-    let sum = Vec3.zero();
-    let count = 0;
-    for (const node of mesh.nodes()) {
-      sum = sum.add(node.position);
-      count++;
-    }
-    return count > 0 ? sum.div(count) : Vec3.zero();
+    return mesh.centroid();
   },
-  /** Laplacian smooth (moves each vertex toward the average of its neighbors) */
+  /** Laplacian smooth (moves each interior vertex toward the average of its neighbors). */
   laplacianSmooth(mesh, iterations = 1, factor = 0.5) {
-    for (let iter = 0; iter < iterations; iter++) {
-      const newPositions = /* @__PURE__ */ new Map();
-      for (const node of mesh.nodes()) {
-        const neighbors = mesh.nodeNeighbors(node.id);
-        if (neighbors.length === 0 || mesh.isBoundaryNode(node.id)) {
-          newPositions.set(node.id, node.position);
-          continue;
-        }
-        const avg = neighbors.map((nid) => mesh.node(nid).position).reduce((s, p) => s.add(p), Vec3.zero()).div(neighbors.length);
-        newPositions.set(node.id, node.position.lerp(avg, factor));
-      }
-      for (const [id, pos] of newPositions) {
-        const node = mesh.node(id);
-        node.position = pos;
-      }
-    }
-    mesh.computeVertexNormals();
+    mesh.smooth(iterations, factor);
   },
-  /** 3D Convex hull — returns a ConnectedMesh */
+  /** 3D Convex hull — returns a Mesh */
   convexHull3D(points) {
-    if (points.length < 4) return new ConnectedMesh();
-    const mesh = new ConnectedMesh();
+    if (points.length < 4) return new Mesh();
+    const mesh = new Mesh();
     const ids = mesh.addNodes(points);
     let i0 = 0, i1 = 1, i2 = -1, i3 = -1;
     for (let i = 2; i < points.length; i++) {
@@ -4178,7 +4895,7 @@ var CurveUtils = {
 var MeshFactory = {
   // ── Parametric Surfaces ──
   grid(width, depth, divisionsX, divisionsZ, heightFn = () => 0) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let iz = 0; iz <= divisionsZ; iz++) {
       ids[iz] = [];
@@ -4194,11 +4911,23 @@ var MeshFactory = {
         mesh.addQuad(ids[iz][ix], ids[iz][ix + 1], ids[iz + 1][ix + 1], ids[iz + 1][ix]);
       }
     }
+    mesh.update = (hfn) => {
+      const pos = mesh.positions;
+      let vi = 1;
+      for (let iz = 0; iz <= divisionsZ; iz++) {
+        for (let ix = 0; ix <= divisionsX; ix++) {
+          pos[vi] = hfn((ix / divisionsX - 0.5) * width, (iz / divisionsZ - 0.5) * depth);
+          vi += 3;
+        }
+      }
+      mesh.markPositionsChanged();
+      mesh.computeVertexNormals();
+    };
     mesh.computeVertexNormals();
     return mesh;
   },
   extrude(polygon, direction, cap = true) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const n = polygon.length;
     const bottom = polygon.map((p) => mesh.addNode(p));
     const top = polygon.map((p) => mesh.addNode(p.add(direction)));
@@ -4214,7 +4943,7 @@ var MeshFactory = {
     return mesh;
   },
   revolve(profile, segments = 32, angleRange = Math.PI * 2) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const n = profile.length;
     const ids = [];
     const isClosed = Math.abs(angleRange - Math.PI * 2) < 1e-6;
@@ -4239,7 +4968,7 @@ var MeshFactory = {
     return mesh;
   },
   loft(profiles, closedProfile = true) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let p = 0; p < profiles.length; p++) {
       ids[p] = profiles[p].map((pos) => mesh.addNode(pos));
@@ -4260,7 +4989,7 @@ var MeshFactory = {
   // ── Primitives ──
   box(width = 1, height = 1, depth = 1) {
     const w = width / 2, h = height / 2, d = depth / 2;
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const v = [
       mesh.addNode(new Vec3(-w, -h, -d)),
       mesh.addNode(new Vec3(w, -h, -d)),
@@ -4281,7 +5010,7 @@ var MeshFactory = {
     return mesh;
   },
   sphere(radius = 1, segments = 24, rings = 16) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let r = 0; r <= rings; r++) {
       ids[r] = [];
@@ -4311,7 +5040,7 @@ var MeshFactory = {
     return mesh;
   },
   cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24, cap = true) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const h2 = height / 2;
     const bottomIds = [];
     const topIds = [];
@@ -4337,7 +5066,7 @@ var MeshFactory = {
     return mesh;
   },
   torus(majorRadius = 1, minorRadius = 0.3, segments = 32, sides = 16) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let s = 0; s <= segments; s++) {
       ids[s] = [];
@@ -4365,7 +5094,7 @@ var MeshFactory = {
    * Accepts uniform radius (number) or per-point varying radii (number[]).
    */
   pipe(path, radius, sides = 8) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const frames = CurveUtils.parallelTransportFrames(path);
     if (frames.length === 0) return mesh;
     const ids = [];
@@ -4400,7 +5129,7 @@ var MeshFactory = {
    * as creases in that mode. Without opts the classic behavior is unchanged.
    */
   subdivide(mesh, opts) {
-    const result = new ConnectedMesh();
+    const result = new Mesh();
     const facePoints = /* @__PURE__ */ new Map();
     const edgePoints = /* @__PURE__ */ new Map();
     const nodeMap = /* @__PURE__ */ new Map();
@@ -4525,707 +5254,37 @@ var MeshFactory = {
     }
     result.computeVertexNormals();
     return result;
-  }
-};
-
-// src/core/geometry/mesh/Mesh.ts
-var Mesh = class _Mesh {
-  constructor(positions, indices, normals, uvs, colors) {
-    this._adjacency = null;
-    this._bounds = null;
-    this.positions = positions;
-    this.indices = indices;
-    this.normals = normals ?? new Float32Array(positions.length);
-    this.uvs = uvs ?? null;
-    this.colors = colors ?? null;
-    if (!normals) this.computeNormals();
-  }
-  // ── Counts ──
-  get vertexCount() {
-    return this.positions.length / 3;
-  }
-  get triangleCount() {
-    return this.indices.length / 3;
-  }
-  get edgeCount() {
-    return this.adjacency.edges.length / 2;
-  }
-  // ── Vertex Access ──
-  getPosition(i) {
-    const o = i * 3;
-    return new Vec3(this.positions[o], this.positions[o + 1], this.positions[o + 2]);
-  }
-  setPosition(i, p) {
-    const o = i * 3;
-    this.positions[o] = p.x;
-    this.positions[o + 1] = p.y;
-    this.positions[o + 2] = p.z;
-    this._bounds = null;
-  }
-  getNormal(i) {
-    const o = i * 3;
-    return new Vec3(this.normals[o], this.normals[o + 1], this.normals[o + 2]);
-  }
-  getTriangle(triIdx) {
-    const o = triIdx * 3;
-    return [this.indices[o], this.indices[o + 1], this.indices[o + 2]];
-  }
-  getTrianglePositions(triIdx) {
-    const [a, b, c] = this.getTriangle(triIdx);
-    return [this.getPosition(a), this.getPosition(b), this.getPosition(c)];
-  }
-  // ── Normals ──
-  computeNormals() {
-    const pos = this.positions, nrm = this.normals, idx = this.indices;
-    nrm.fill(0);
-    for (let t = 0; t < idx.length; t += 3) {
-      const ai = idx[t] * 3, bi = idx[t + 1] * 3, ci = idx[t + 2] * 3;
-      const abx = pos[bi] - pos[ai], aby = pos[bi + 1] - pos[ai + 1], abz = pos[bi + 2] - pos[ai + 2];
-      const acx = pos[ci] - pos[ai], acy = pos[ci + 1] - pos[ai + 1], acz = pos[ci + 2] - pos[ai + 2];
-      const nx = aby * acz - abz * acy;
-      const ny = abz * acx - abx * acz;
-      const nz = abx * acy - aby * acx;
-      nrm[ai] += nx;
-      nrm[ai + 1] += ny;
-      nrm[ai + 2] += nz;
-      nrm[bi] += nx;
-      nrm[bi + 1] += ny;
-      nrm[bi + 2] += nz;
-      nrm[ci] += nx;
-      nrm[ci + 1] += ny;
-      nrm[ci + 2] += nz;
-    }
-    for (let i = 0; i < nrm.length; i += 3) {
-      const x = nrm[i], y = nrm[i + 1], z = nrm[i + 2];
-      const len = Math.sqrt(x * x + y * y + z * z);
-      if (len > 1e-12) {
-        const inv = 1 / len;
-        nrm[i] *= inv;
-        nrm[i + 1] *= inv;
-        nrm[i + 2] *= inv;
-      } else {
-        nrm[i] = 0;
-        nrm[i + 1] = 1;
-        nrm[i + 2] = 0;
-      }
-    }
-  }
-  // ── Lazy Adjacency ──
-  get adjacency() {
-    if (!this._adjacency) this._adjacency = this._buildAdjacency();
-    return this._adjacency;
-  }
-  invalidateAdjacency() {
-    this._adjacency = null;
-  }
-  _buildAdjacency() {
-    const vc = this.vertexCount;
-    const idx = this.indices;
-    const tc = this.triangleCount;
-    const vtCounts = new Uint32Array(vc);
-    for (let i = 0; i < idx.length; i++) vtCounts[idx[i]]++;
-    const vertexTriangles = new Array(vc);
-    const vtOffsets = new Uint32Array(vc);
-    for (let v = 0; v < vc; v++) vertexTriangles[v] = new Uint32Array(vtCounts[v]);
-    for (let t = 0; t < tc; t++) {
-      const o = t * 3;
-      for (let j = 0; j < 3; j++) {
-        const v = idx[o + j];
-        vertexTriangles[v][vtOffsets[v]++] = t;
-      }
-    }
-    const edgeSet = /* @__PURE__ */ new Map();
-    const edgeTris = /* @__PURE__ */ new Map();
-    const neighborSets = new Array(vc);
-    for (let v = 0; v < vc; v++) neighborSets[v] = /* @__PURE__ */ new Set();
-    for (let t = 0; t < tc; t++) {
-      const o = t * 3;
-      for (let j = 0; j < 3; j++) {
-        const a = idx[o + j], b = idx[o + (j + 1) % 3];
-        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-        if (!edgeSet.has(key)) edgeSet.set(key, [Math.min(a, b), Math.max(a, b)]);
-        if (!edgeTris.has(key)) edgeTris.set(key, []);
-        edgeTris.get(key).push(t);
-        neighborSets[a].add(b);
-        neighborSets[b].add(a);
-      }
-    }
-    const neighbors = neighborSets.map((s) => new Uint32Array(s));
-    const edges = new Uint32Array(edgeSet.size * 2);
-    let ei = 0;
-    for (const [a, b] of edgeSet.values()) {
-      edges[ei++] = a;
-      edges[ei++] = b;
-    }
-    const boundary = new Uint8Array(vc);
-    for (const [key, tris] of edgeTris) {
-      if (tris.length < 2) {
-        const [a, b] = key.split(":").map(Number);
-        boundary[a] = 1;
-        boundary[b] = 1;
-      }
-    }
-    return { neighbors, edges, vertexTriangles, edgeTriangles: edgeTris, boundary };
-  }
-  // ── Queries ──
-  neighbors(i) {
-    return this.adjacency.neighbors[i];
-  }
-  isBoundary(i) {
-    return this.adjacency.boundary[i] === 1;
-  }
-  bounds() {
-    if (this._bounds) return this._bounds;
-    const pos = this.positions;
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < pos.length; i += 3) {
-      const x = pos[i], y = pos[i + 1], z = pos[i + 2];
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-      if (z < minZ) minZ = z;
-      if (z > maxZ) maxZ = z;
-    }
-    this._bounds = new AABB(new Vec3(minX, minY, minZ), new Vec3(maxX, maxY, maxZ));
-    return this._bounds;
-  }
-  volume() {
-    const pos = this.positions, idx = this.indices;
-    let vol = 0;
-    for (let t = 0; t < idx.length; t += 3) {
-      const ai = idx[t] * 3, bi = idx[t + 1] * 3, ci = idx[t + 2] * 3;
-      vol += (pos[ai] * (pos[bi + 1] * pos[ci + 2] - pos[bi + 2] * pos[ci + 1]) + pos[ai + 1] * (pos[bi + 2] * pos[ci] - pos[bi] * pos[ci + 2]) + pos[ai + 2] * (pos[bi] * pos[ci + 1] - pos[bi + 1] * pos[ci])) / 6;
-    }
-    return Math.abs(vol);
-  }
-  surfaceArea() {
-    const pos = this.positions, idx = this.indices;
-    let area = 0;
-    for (let t = 0; t < idx.length; t += 3) {
-      const ai = idx[t] * 3, bi = idx[t + 1] * 3, ci = idx[t + 2] * 3;
-      const abx = pos[bi] - pos[ai], aby = pos[bi + 1] - pos[ai + 1], abz = pos[bi + 2] - pos[ai + 2];
-      const acx = pos[ci] - pos[ai], acy = pos[ci + 1] - pos[ai + 1], acz = pos[ci + 2] - pos[ai + 2];
-      const cx = aby * acz - abz * acy, cy = abz * acx - abx * acz, cz = abx * acy - aby * acx;
-      area += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
-    }
-    return area;
-  }
-  centroid() {
-    const pos = this.positions;
-    let sx = 0, sy = 0, sz = 0;
-    const n = this.vertexCount;
-    for (let i = 0; i < pos.length; i += 3) {
-      sx += pos[i];
-      sy += pos[i + 1];
-      sz += pos[i + 2];
-    }
-    return new Vec3(sx / n, sy / n, sz / n);
-  }
-  eulerCharacteristic() {
-    return this.vertexCount - this.edgeCount + this.triangleCount;
-  }
-  // ── Modification ──
-  smooth(iterations = 1, factor = 0.5) {
-    const vc = this.vertexCount;
-    const pos = this.positions;
-    const adj = this.adjacency;
-    const tmp = new Float32Array(pos.length);
-    for (let iter = 0; iter < iterations; iter++) {
-      tmp.set(pos);
-      for (let v = 0; v < vc; v++) {
-        if (adj.boundary[v]) continue;
-        const nb = adj.neighbors[v];
-        if (nb.length === 0) continue;
-        const o = v * 3;
-        let ax = 0, ay = 0, az = 0;
-        for (let j = 0; j < nb.length; j++) {
-          const no = nb[j] * 3;
-          ax += tmp[no];
-          ay += tmp[no + 1];
-          az += tmp[no + 2];
-        }
-        const inv = 1 / nb.length;
-        pos[o] = tmp[o] + (ax * inv - tmp[o]) * factor;
-        pos[o + 1] = tmp[o + 1] + (ay * inv - tmp[o + 1]) * factor;
-        pos[o + 2] = tmp[o + 2] + (az * inv - tmp[o + 2]) * factor;
-      }
-    }
-    this.computeNormals();
-    this._bounds = null;
-  }
-  translate(dx, dy, dz) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i += 3) {
-      pos[i] += dx;
-      pos[i + 1] += dy;
-      pos[i + 2] += dz;
-    }
-    this._bounds = null;
-  }
-  scale(s) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i++) pos[i] *= s;
-    this._bounds = null;
-  }
-  scaleXYZ(sx, sy, sz) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i += 3) {
-      pos[i] *= sx;
-      pos[i + 1] *= sy;
-      pos[i + 2] *= sz;
-    }
-    this.computeNormals();
-    this._bounds = null;
-  }
-  mapPositions(fn) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i += 3) {
-      const [x, y, z] = fn(pos[i], pos[i + 1], pos[i + 2], i / 3);
-      pos[i] = x;
-      pos[i + 1] = y;
-      pos[i + 2] = z;
-    }
-    this.computeNormals();
-    this._bounds = null;
-  }
-  // ── Merge ──
-  merge(other) {
-    const vc = this.vertexCount;
-    const newPos = new Float32Array(this.positions.length + other.positions.length);
-    newPos.set(this.positions);
-    newPos.set(other.positions, this.positions.length);
-    const newNrm = new Float32Array(this.normals.length + other.normals.length);
-    newNrm.set(this.normals);
-    newNrm.set(other.normals, this.normals.length);
-    const newIdx = new Uint32Array(this.indices.length + other.indices.length);
-    newIdx.set(this.indices);
-    for (let i = 0; i < other.indices.length; i++) {
-      newIdx[this.indices.length + i] = other.indices[i] + vc;
-    }
-    return new _Mesh(newPos, newIdx, newNrm);
-  }
-  // ── Clone ──
-  clone() {
-    return new _Mesh(
-      new Float32Array(this.positions),
-      new Uint32Array(this.indices),
-      new Float32Array(this.normals),
-      this.uvs ? new Float32Array(this.uvs) : void 0,
-      this.colors ? new Float32Array(this.colors) : void 0
-    );
-  }
-  // ── Serialization ──
-  toJSON() {
-    return {
-      positions: Array.from(this.positions),
-      indices: Array.from(this.indices),
-      normals: Array.from(this.normals),
-      uvs: this.uvs ? Array.from(this.uvs) : void 0
-    };
-  }
-  static fromJSON(json) {
-    return new _Mesh(
-      new Float32Array(json.positions),
-      new Uint32Array(json.indices),
-      json.normals ? new Float32Array(json.normals) : void 0,
-      json.uvs ? new Float32Array(json.uvs) : void 0
-    );
-  }
-  // ── Conversion: ConnectedMesh <-> Mesh ──
-  static fromConnectedMesh(mesh) {
-    const data = mesh.toIndexedTriangles();
-    return new _Mesh(data.positions, data.indices, data.normals);
-  }
-  toConnectedMesh() {
-    const positions = [];
-    for (let i = 0; i < this.positions.length; i += 3) {
-      positions.push(new Vec3(this.positions[i], this.positions[i + 1], this.positions[i + 2]));
-    }
-    const indices = Array.from(this.indices);
-    return ConnectedMesh.fromIndexedTriangles(positions, indices);
-  }
-  static fromArrays(positions, indices, normals) {
-    return new _Mesh(
-      positions instanceof Float32Array ? positions : new Float32Array(positions),
-      indices instanceof Uint32Array ? indices : new Uint32Array(indices),
-      normals ? normals instanceof Float32Array ? normals : new Float32Array(normals) : void 0
-    );
-  }
-};
-
-// src/core/mesh/FlatMesh.ts
-var FlatMeshGen = {
-  grid(width, depth, divsX, divsZ, heightFn = () => 0) {
-    const vx = divsX + 1, vz = divsZ + 1, vc = vx * vz;
-    const pos = new Float32Array(vc * 3);
-    const nrm = new Float32Array(vc * 3);
-    const idx = new Uint32Array(divsX * divsZ * 6);
-    let ii = 0;
-    for (let iz = 0; iz < divsZ; iz++) {
-      for (let ix = 0; ix < divsX; ix++) {
-        const a = iz * vx + ix, b = a + 1, c = a + vx, d = c + 1;
-        idx[ii++] = a;
-        idx[ii++] = b;
-        idx[ii++] = d;
-        idx[ii++] = a;
-        idx[ii++] = d;
-        idx[ii++] = c;
-      }
-    }
-    let vi = 0;
-    for (let iz = 0; iz <= divsZ; iz++) {
-      for (let ix = 0; ix <= divsX; ix++) {
-        const x = (ix / divsX - 0.5) * width;
-        const z = (iz / divsZ - 0.5) * depth;
-        pos[vi] = x;
-        pos[vi + 1] = heightFn(x, z);
-        pos[vi + 2] = z;
-        vi += 3;
-      }
-    }
-    const fm = new Mesh(pos, idx, nrm);
-    fm.update = function(hfn) {
-      let vi2 = 0;
-      for (let iz = 0; iz <= divsZ; iz++) {
-        for (let ix = 0; ix <= divsX; ix++) {
-          const x = (ix / divsX - 0.5) * width;
-          const z = (iz / divsZ - 0.5) * depth;
-          pos[vi2 + 1] = hfn(x, z);
-          vi2 += 3;
-        }
-      }
-      for (let iz = 0; iz <= divsZ; iz++) {
-        for (let ix = 0; ix <= divsX; ix++) {
-          const i3 = (iz * vx + ix) * 3;
-          const il = ix > 0 ? i3 - 3 : i3;
-          const ir = ix < divsX ? i3 + 3 : i3;
-          const iu = iz > 0 ? i3 - vx * 3 : i3;
-          const id = iz < divsZ ? i3 + vx * 3 : i3;
-          const dx = pos[ir + 1] - pos[il + 1];
-          const dz = pos[id + 1] - pos[iu + 1];
-          const len = Math.sqrt(dx * dx + 1 + dz * dz);
-          nrm[i3] = -dx / len;
-          nrm[i3 + 1] = 1 / len;
-          nrm[i3 + 2] = -dz / len;
-        }
-      }
-    };
-    fm.computeNormals();
-    return fm;
   },
-  sphere(radius = 1, segments = 24, rings = 16) {
-    const vc = (rings + 1) * (segments + 1);
-    const tc = rings * segments * 2;
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array(tc * 3);
-    let vi = 0;
-    for (let r = 0; r <= rings; r++) {
-      const phi = r / rings * Math.PI;
-      const sp = Math.sin(phi), cp = Math.cos(phi);
-      for (let s = 0; s <= segments; s++) {
-        const theta = s / segments * Math.PI * 2;
-        pos[vi++] = radius * sp * Math.cos(theta);
-        pos[vi++] = radius * cp;
-        pos[vi++] = radius * sp * Math.sin(theta);
-      }
-    }
-    let ii = 0;
-    const w = segments + 1;
-    for (let r = 0; r < rings; r++) {
-      for (let s = 0; s < segments; s++) {
-        const a = r * w + s, b = a + 1, c = a + w, d = c + 1;
-        if (r > 0) {
-          idx[ii++] = a;
-          idx[ii++] = b;
-          idx[ii++] = d;
-        }
-        if (r < rings - 1) {
-          idx[ii++] = a;
-          idx[ii++] = d;
-          idx[ii++] = c;
-        }
-      }
-    }
-    return new Mesh(pos, idx.subarray(0, ii));
-  },
-  box(width = 1, height = 1, depth = 1) {
-    const w = width / 2, h = height / 2, d = depth / 2;
-    const pos = new Float32Array([
-      -w,
-      -h,
-      -d,
-      w,
-      -h,
-      -d,
-      w,
-      h,
-      -d,
-      -w,
-      h,
-      -d,
-      -w,
-      -h,
-      d,
-      w,
-      -h,
-      d,
-      w,
-      h,
-      d,
-      -w,
-      h,
-      d,
-      -w,
-      h,
-      -d,
-      w,
-      h,
-      -d,
-      w,
-      h,
-      d,
-      -w,
-      h,
-      d,
-      -w,
-      -h,
-      -d,
-      w,
-      -h,
-      -d,
-      w,
-      -h,
-      d,
-      -w,
-      -h,
-      d,
-      w,
-      -h,
-      -d,
-      w,
-      h,
-      -d,
-      w,
-      h,
-      d,
-      w,
-      -h,
-      d,
-      -w,
-      -h,
-      -d,
-      -w,
-      h,
-      -d,
-      -w,
-      h,
-      d,
-      -w,
-      -h,
-      d
-    ]);
-    const idx = new Uint32Array([
-      0,
-      1,
-      2,
-      0,
-      2,
-      3,
-      4,
-      6,
-      5,
-      4,
-      7,
-      6,
-      8,
-      9,
-      10,
-      8,
-      10,
-      11,
-      12,
-      14,
-      13,
-      12,
-      15,
-      14,
-      16,
-      17,
-      18,
-      16,
-      18,
-      19,
-      20,
-      22,
-      21,
-      20,
-      23,
-      22
-    ]);
-    return new Mesh(pos, idx);
-  },
-  torus(majorR = 1, minorR = 0.3, segments = 32, sides = 16) {
-    const vc = (segments + 1) * (sides + 1);
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array(segments * sides * 6);
-    let vi = 0;
-    for (let s = 0; s <= segments; s++) {
-      const th = s / segments * Math.PI * 2;
-      const ct = Math.cos(th), st = Math.sin(th);
-      for (let r = 0; r <= sides; r++) {
-        const ph = r / sides * Math.PI * 2;
-        pos[vi++] = (majorR + minorR * Math.cos(ph)) * ct;
-        pos[vi++] = minorR * Math.sin(ph);
-        pos[vi++] = (majorR + minorR * Math.cos(ph)) * st;
-      }
-    }
-    let ii = 0;
-    const w = sides + 1;
-    for (let s = 0; s < segments; s++) {
-      for (let r = 0; r < sides; r++) {
-        const a = s * w + r, b = a + 1, c = a + w, d = c + 1;
-        idx[ii++] = a;
-        idx[ii++] = b;
-        idx[ii++] = d;
-        idx[ii++] = a;
-        idx[ii++] = d;
-        idx[ii++] = c;
-      }
-    }
-    return new Mesh(pos, idx);
-  },
-  cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24) {
-    const h2 = height / 2;
-    const sideVerts = (segments + 1) * 2;
-    const capVerts = (segments + 1) * 2 + 2;
-    const vc = sideVerts + capVerts;
-    const sideTris = segments * 2;
-    const capTris = segments * 2;
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array((sideTris + capTris) * 3);
-    let vi = 0, ii = 0, vOff = 0;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      const c = Math.cos(a), sn = Math.sin(a);
-      pos[vi++] = radiusBottom * c;
-      pos[vi++] = -h2;
-      pos[vi++] = radiusBottom * sn;
-      pos[vi++] = radiusTop * c;
-      pos[vi++] = h2;
-      pos[vi++] = radiusTop * sn;
-    }
-    for (let s = 0; s < segments; s++) {
-      const a = s * 2, b = a + 1, c = a + 2, d = a + 3;
-      idx[ii++] = a;
-      idx[ii++] = c;
-      idx[ii++] = b;
-      idx[ii++] = b;
-      idx[ii++] = c;
-      idx[ii++] = d;
-    }
-    vOff = (segments + 1) * 2;
-    const bc = vOff;
-    pos[vi++] = 0;
-    pos[vi++] = -h2;
-    pos[vi++] = 0;
-    vOff++;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      pos[vi++] = radiusBottom * Math.cos(a);
-      pos[vi++] = -h2;
-      pos[vi++] = radiusBottom * Math.sin(a);
-    }
-    for (let s = 0; s < segments; s++) {
-      idx[ii++] = bc;
-      idx[ii++] = vOff + s + 1;
-      idx[ii++] = vOff + s;
-    }
-    vOff += segments + 1;
-    const tc = vOff;
-    pos[vi++] = 0;
-    pos[vi++] = h2;
-    pos[vi++] = 0;
-    vOff++;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      pos[vi++] = radiusTop * Math.cos(a);
-      pos[vi++] = h2;
-      pos[vi++] = radiusTop * Math.sin(a);
-    }
-    for (let s = 0; s < segments; s++) {
-      idx[ii++] = tc;
-      idx[ii++] = vOff + s;
-      idx[ii++] = vOff + s + 1;
-    }
-    return new Mesh(pos.subarray(0, vi), idx.subarray(0, ii));
-  },
-  revolve(profile, segments = 32) {
-    const n = profile.length;
-    const vc = (segments + 1) * n;
-    const tc = segments * (n - 1) * 2;
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array(tc * 3);
-    let vi = 0;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      for (let i = 0; i < n; i++) {
-        const p = profile[i];
-        pos[vi++] = p.x * ca;
-        pos[vi++] = p.y;
-        pos[vi++] = p.x * sa;
-      }
-    }
-    let ii = 0;
-    for (let s = 0; s < segments; s++) {
-      for (let i = 0; i < n - 1; i++) {
-        const a = s * n + i, b = a + 1, c = a + n, d = c + 1;
-        idx[ii++] = a;
-        idx[ii++] = b;
-        idx[ii++] = d;
-        idx[ii++] = a;
-        idx[ii++] = d;
-        idx[ii++] = c;
-      }
-    }
-    return new Mesh(pos, idx);
-  },
-  subdivide(fm) {
-    const pos = fm.positions, idx = fm.indices;
-    const vc = fm.vertexCount, tc = fm.triangleCount;
-    const edgeMidpoints = /* @__PURE__ */ new Map();
+  /**
+   * Midpoint (1→4) subdivision of the triangulated mesh: every triangle becomes
+   * four, vertices stay where they are. Linear — no smoothing; for the smooth
+   * limit surface use `subdivide` (Catmull-Clark).
+   */
+  midpointSubdivide(mesh) {
+    const pos = mesh.positions, idx = mesh.indices;
+    const vc = mesh.vertexCount, tc = idx.length / 3;
+    const key = (a, b) => a < b ? a * 4294967296 + b : b * 4294967296 + a;
+    const mid = /* @__PURE__ */ new Map();
     let newVc = vc;
     for (let t = 0; t < idx.length; t += 3) {
       for (let j = 0; j < 3; j++) {
-        const a = idx[t + j], b = idx[t + (j + 1) % 3];
-        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-        if (!edgeMidpoints.has(key)) {
-          edgeMidpoints.set(key, newVc++);
-        }
+        const k = key(idx[t + j], idx[t + (j + 1) % 3]);
+        if (!mid.has(k)) mid.set(k, newVc++);
       }
     }
-    const newPos = new Float32Array(newVc * 3);
-    const newIdx = new Uint32Array(tc * 4 * 3);
+    const newPos = new Float64Array(newVc * 3);
     newPos.set(pos);
-    for (const [key, mid] of edgeMidpoints) {
-      const [as, bs] = key.split(":");
-      const a = parseInt(as) * 3, b = parseInt(bs) * 3;
-      const o = mid * 3;
+    for (const [k, m] of mid) {
+      const a = Math.floor(k / 4294967296) * 3, b = k % 4294967296 * 3, o = m * 3;
       newPos[o] = (pos[a] + pos[b]) * 0.5;
       newPos[o + 1] = (pos[a + 1] + pos[b + 1]) * 0.5;
       newPos[o + 2] = (pos[a + 2] + pos[b + 2]) * 0.5;
     }
+    const newIdx = new Uint32Array(tc * 12);
     let ii = 0;
     for (let t = 0; t < idx.length; t += 3) {
       const v0 = idx[t], v1 = idx[t + 1], v2 = idx[t + 2];
-      const k01 = v0 < v1 ? `${v0}:${v1}` : `${v1}:${v0}`;
-      const k12 = v1 < v2 ? `${v1}:${v2}` : `${v2}:${v1}`;
-      const k20 = v2 < v0 ? `${v2}:${v0}` : `${v0}:${v2}`;
-      const m01 = edgeMidpoints.get(k01);
-      const m12 = edgeMidpoints.get(k12);
-      const m20 = edgeMidpoints.get(k20);
+      const m01 = mid.get(key(v0, v1)), m12 = mid.get(key(v1, v2)), m20 = mid.get(key(v2, v0));
       newIdx[ii++] = v0;
       newIdx[ii++] = m01;
       newIdx[ii++] = m20;
@@ -5377,9 +5436,7 @@ var MeshTransform = {
   // ================================================================
   /** Reverses the winding order of all faces (flips normals). */
   flipFaces(mesh) {
-    for (const face of mesh.faces()) {
-      face.nodes.reverse();
-    }
+    for (const id of mesh.faceIds()) mesh.reverseFace(id);
     mesh.computeVertexNormals();
   },
   /**
@@ -5410,10 +5467,7 @@ var MeshTransform = {
         for (const nbId of neighborIds) {
           if (checked.has(nbId)) continue;
           checked.add(nbId);
-          if (!hasSameOrientation(mesh, fId, nbId)) {
-            const nb = mesh.face(nbId);
-            nb.nodes.reverse();
-          }
+          if (!hasSameOrientation(mesh, fId, nbId)) mesh.reverseFace(nbId);
           queue.push(nbId);
         }
       }
@@ -6671,11 +6725,11 @@ var NurbsSurface = class _NurbsSurface {
     return du.cross(dv).normalize();
   }
   /**
-   * Tessellate the surface into a ConnectedMesh by sampling on a (uDivs × vDivs) grid.
+   * Tessellate the surface into a Mesh by sampling on a (uDivs × vDivs) grid.
    * `closedU` / `closedV` merge the seam (use closedU=true for surfaces from `revolve`).
    */
   toMesh(uDivs = 32, vDivs = 32, closedU = false, closedV = false) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const uSteps = closedU ? uDivs : uDivs + 1;
     const vSteps = closedV ? vDivs : vDivs + 1;
     const ids = [];
@@ -8660,7 +8714,7 @@ var MarchingCubes = {
         }
       }
     }
-    return ConnectedMesh.fromIndexedTriangles(positions, indices);
+    return Mesh.fromIndexedTriangles(positions, indices);
   }
 };
 function mcInterp(v1, v2, iso) {
@@ -20001,7 +20055,7 @@ var Scene3 = class _Scene {
         vertices: obj.vertices?.map((v) => Vec3.fromJSON(v)),
         center: obj.center ? Vec3.fromJSON(obj.center) : void 0,
         normal: obj.normal ? Vec3.fromJSON(obj.normal) : void 0,
-        mesh: obj.mesh ? ConnectedMesh.fromJSON(obj.mesh) : void 0
+        mesh: obj.mesh ? Mesh.fromJSON(obj.mesh) : void 0
       };
       scene.objects.set(sceneObj.id, sceneObj);
       const match = sceneObj.id.match(/_(\d+)$/);
@@ -21464,7 +21518,7 @@ var ThreeRenderer = class {
   }
   /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
   convertMesh(gmesh, s) {
-    const data = gmesh.toIndexedTriangles();
+    const data = gmesh.toMeshData();
     const geo = new THREE3.BufferGeometry();
     geo.setAttribute("position", new THREE3.BufferAttribute(data.positions, 3));
     geo.setAttribute("normal", new THREE3.BufferAttribute(data.normals, 3));
@@ -25129,7 +25183,7 @@ var SketchInstance = class {
       },
       // ── Algorithms ──
       algo: Algo,
-      MeshGen: MeshFactory,
+      MeshFactory,
       // ── Scene Control ──
       clear() {
         self.scene.clear();
@@ -25425,7 +25479,7 @@ var SketchInstance = class {
           };
           return compound;
         }
-        const mesh = new ConnectedMesh();
+        const mesh = new Mesh();
         const nodeIds = verts.map((v) => mesh.addNode(v));
         if (mode === "triangles") {
           for (let i = 0; i + 2 < nodeIds.length; i += 3) {
@@ -25606,7 +25660,7 @@ var SketchInstance = class {
       get mesh() {
         return null;
       },
-      // no ConnectedMesh backing
+      // flat data has no Mesh object behind it
       color(c) {
         self.scene.setStyle(obj.id, { color: c });
         return handle;
@@ -26829,7 +26883,6 @@ var Sketch2DInstance = class {
   Callouts,
   Capsule2D,
   CltConstruction,
-  ConnectedMesh,
   ControlPanel,
   CubicBezierCurve,
   Curvature,
@@ -26839,8 +26892,6 @@ var Sketch2DInstance = class {
   DistanceTransform,
   DxfExporter,
   ExtrudedRibbon,
-  FlatMesh,
-  FlatMeshGen,
   FloodFill,
   Graph,
   GridGraph,
@@ -26865,7 +26916,6 @@ var Sketch2DInstance = class {
   MeshAnalysis,
   MeshCleanup,
   MeshFactory,
-  MeshGen,
   MeshSubdivide,
   MeshTransform,
   NavGizmo,
@@ -26888,7 +26938,6 @@ var Sketch2DInstance = class {
   PolygonBool,
   PolylineCurve,
   Ray,
-  RenderMesh,
   RibbonEndTrim,
   RibbonFrame,
   RibbonJoint,
