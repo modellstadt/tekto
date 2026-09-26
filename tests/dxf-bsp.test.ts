@@ -4,7 +4,7 @@ import { BspTree } from "../src/core/algo/BspTree";
 import { DxfExporter } from "../src/io/DxfExporter";
 import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 
-/** Helper: convert ConnectedMesh → flat arrays */
+/** Helper: convert Mesh → flat arrays */
 function meshToFlat(mesh: ReturnType<typeof MeshFactory.box>) {
   const idMap = new Map<number, number>();
   const positions: number[] = [];

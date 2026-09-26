@@ -12,8 +12,7 @@ Tekto is designed so that people and AI agents work on the same model:
 
 Underneath is a full computational geometry toolkit: meshes, curves & **NURBS** surfaces, **SDF** fields, voxels, graphs (incl. planar/Delaunay), 2D polygon booleans and nesting, **BIM** timber framing + **IFC** export, solar and physics, plus analysis (curvature, mesh metrics, convex hull) and renderers. Built for teaching and research.
 
-**Mesh** (adjacency-tracked) → for editing, subdivision, topology queries  
-**FlatMesh** (typed arrays) → for rendering, animation, large meshes (500K+ tris)  
+**Mesh** → one class for editing, subdivision, topology queries *and* rendering — typed arrays underneath, connectivity kept by every edit, a million triangles in tens of MB  
 **Sketch API** → one function = a full interactive app with GUI
 
 > **For students:** if you got this repo to embed in your own project, skip ahead to **[Using tekto in your own project](#using-tekto-in-your-own-project)**. The rest of the README is for people working *on* the library itself.
@@ -81,27 +80,28 @@ this whole 2D surface end to end. Run `npm run playground` and pick *Pointer Inp
 ### Core library
 
 ```ts
-import { Mesh, MeshGen, FlatMesh, FlatMeshGen, Vec3 } from "tekto";
+import { Mesh, MeshFactory, Vec3 } from "tekto";
 
-// Adjacency-tracked mesh (for editing)
+// Build by id — every edit keeps the connectivity up to date
 const mesh = new Mesh();
 const a = mesh.addNode(new Vec3(0, 0, 0));
 const b = mesh.addNode(new Vec3(1, 0, 0));
 const c = mesh.addNode(new Vec3(0.5, 1, 0));
 mesh.addTriangle(a, b, c);
-mesh.computeVertexNormals();
+mesh.nodeNeighbors(a);              // [b, c]
+mesh.splitEdge(mesh.findEdge(a, b)!);
 
 // Procedural generation
-const terrain = MeshGen.grid(10, 10, 32, 32, (x, z) =>
+const terrain = MeshFactory.grid(10, 10, 32, 32, (x, z) =>
   Math.sin(x * 0.8) * Math.cos(z * 0.6) * 0.5
 );
-const vase = MeshGen.revolve(profile, 32);
-const smooth = MeshGen.subdivide(box);
+const vase = MeshFactory.revolve(profile, 32);
+const smooth = MeshFactory.subdivide(box);   // Catmull-Clark
 
-// High-performance flat mesh (for large data)
-const bigTerrain = FlatMeshGen.grid(100, 100, 500, 500);
-bigTerrain.smooth(3, 0.5);         // in-place
-console.log(bigTerrain.volume());   // instant
+// Large data: load arrays straight in, same class, same API
+const scan = new Mesh(positions, indices);   // 1M triangles in ~80 ms
+scan.smooth(3, 0.5);                         // in place, on the arrays
+scan.toMeshData();                           // Float32 arrays for the GPU / OBJ
 ```
 
 ## Architecture
@@ -110,8 +110,7 @@ console.log(bigTerrain.volume());   // instant
 src/
 ├── core/               ← Pure geometry, zero dependencies
 │   ├── math/           ← Vec2, Vec3, Vec4, Mat4
-│   ├── geometry/       ← Ray, Plane, Triangle, AABB, Sphere, polygons, curves, surfaces, meshes
-│   ├── mesh/           ← FlatMeshGen generators
+│   ├── geometry/       ← Ray, Plane, Triangle, AABB, Sphere, polygons, curves, surfaces, mesh/ (Mesh + MeshFactory + ops)
 │   └── algo/           ← Convex hull, triangulation, analysis
 ├── scene/              ← Scene graph with visual properties
 ├── render/             ← Three.js + SVG renderers
@@ -120,18 +119,23 @@ src/
 └── react/              ← React components + hooks
 ```
 
-### Mesh vs FlatMesh
+### One mesh
 
-| | **Mesh** | **FlatMesh** |
-|---|---|---|
-| Storage | Map per node/edge/face | Float32Array + Uint32Array |
-| Memory | ~1KB per vertex | ~24 bytes per vertex |
-| Adjacency | Always available | Lazy, built on first query |
-| Editing | Add/remove nodes/edges/faces | Append only |
-| 10K verts | 50ms build, 10MB | 2ms build, 0.2MB |
-| 100K verts | 800ms build, 100MB | 8ms build, 2.4MB |
-| Best for | Subdivision, topology, teaching | Rendering, animation, large data |
-| Conversion | `FlatMesh.fromConnectedMesh(m)` | `flat.toConnectedMesh()` |
+There used to be two classes — a Map-per-element `ConnectedMesh` for editing and a typed-array
+`FlatMesh` for rendering — and every API had to pick one. Now there is `Mesh`: typed arrays
+underneath, polygon faces, and the connectivity (edges, node↔edge↔face) kept as typed-array linked
+lists that every edit maintains incrementally. Both old APIs live on it.
+
+| | |
+|---|---|
+| Edit by id | `addNode` / `addEdge` / `addFace` / `removeFace` / `splitEdge` / `collapseEdge` / `reverseFace`; `node(id)`, `edge(id)`, `face(id)` are views that read and write through (`node.position = p`) |
+| Query | `nodeNeighbors`, `findEdge`, `isBoundaryEdge`, `boundaryEdges`, `faceVerts(id)` (zero-copy) |
+| Arrays | `positions` (Float64), `normals`, `indices` (fan-triangulated, cached), `toMeshData()` (Float32 for the GPU / IO), `new Mesh(positions, indices)` |
+| Ids | are indices and stay valid across other edits; removal leaves a tombstone, `compact()` renumbers |
+| Cost | 200k triangles: 31 ms to build with edges, ~45 MB; 1M triangles from arrays: 83 ms, ~72 MB. Catmull-Clark on 40k quads: 0.33 s. 5,000 edge splits: 9 ms |
+| Watch out | `face.nodes` / `node.edges` are snapshots (reverse a face with `reverseFace`); in hot loops read `positions`/`faceVerts`, not views |
+
+`ConnectedMesh` and `FlatMesh` remain as deprecated aliases for one release.
 
 ### Three access levels
 
@@ -187,15 +191,14 @@ stay with the rebuilt one; it is far less code.
 | `torus(majorR, minorR, segments, sides)` | Torus |
 | `grid(w, d, divsX, divsZ, heightFn?)` | Height-mapped grid |
 | `revolve(profile, segments)` | Revolution surface from 2D profile |
-| `extrude(polygon, direction)` | Extrude polygon along vector — **`MeshGen` only** |
-| `loft(profiles)` | Loft between cross-sections — **`MeshGen` only** |
-| `subdivide(mesh)` | Catmull-Clark subdivision |
-| `triangulate(mesh)` | Fan triangulation — **`MeshGen` only** |
-| `pipe(path, radius, sides)` | Tube swept along a 3D polyline — **`MeshGen` only** |
+| `extrude(polygon, direction)` | Extrude polygon along vector |
+| `loft(profiles)` | Loft between cross-sections |
+| `subdivide(mesh)` | Catmull-Clark subdivision (creases, pinned vertices) |
+| `midpointSubdivide(mesh)` | Linear 1→4 triangle refinement |
+| `triangulate(mesh)` | Fan triangulation |
+| `pipe(path, radius, sides)` | Tube swept along a 3D polyline |
 
-`MeshGen` (→ Mesh) implements all eleven. `FlatMeshGen` (→ FlatMesh) implements the seven that
-don't need adjacency — `box`, `sphere`, `cylinder`, `torus`, `grid`, `revolve`, `subdivide` — but
-not `extrude`, `loft`, `triangulate`, or `pipe`.
+All of them return a `Mesh`. `grid(...)` also has `.update(heightFn)` for rewriting heights in place.
 
 ## Algorithms
 
@@ -438,7 +441,7 @@ console.log(Object.keys(G).sort());
 Or use IDE autocomplete on the import line — every export is typed and has JSDoc. The big buckets:
 
 - **Math + primitives**: `Vec2`, `Vec3`, `Vec4`, `Mat4`, `MathUtils`, `Ray`, `Plane`, `Triangle`, `AABB`, `Sphere`, `Polygon2D`, `Intersections`.
-- **Meshes**: `Mesh` / `ConnectedMesh` (adjacency), `FlatMesh` / `RenderMesh` (typed arrays), `MeshFactory` / `MeshGen` (primitives + extrude + revolve + loft + subdivide), `FlatMeshGen`, `MeshAnalysis`.
+- **Meshes**: `Mesh` (the one class: id-based editing, connectivity, typed arrays), `MeshFactory` (primitives + extrude + revolve + loft + pipe + subdivide), `MeshTransform`, `MeshSubdivide`, `MeshCleanup`, `MeshAnalysis`. (`ConnectedMesh`, `FlatMesh`: deprecated aliases of `Mesh`.)
 - **Curves + surfaces**: `LineCurve`, `ArcCurve`, `HelixCurve`, `NurbsCurve`, `CubicBezierCurve`, `NurbsSurface`.
 - **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `PolygonBool` (boolean ops with holes), `NoFitPolygon` (Minkowski / NFP / inner-fit for nesting), `perpVisibility` (collimated edge-visibility polygons), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
 - **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.

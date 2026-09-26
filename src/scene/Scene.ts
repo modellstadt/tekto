@@ -9,7 +9,7 @@
  */
 
 import { Vec3 } from "../core/math/vectors";
-import { ConnectedMesh as Mesh } from "../core/geometry/mesh/ConnectedMesh";
+import { Mesh } from "../core/geometry/mesh/Mesh";
 import type { MeshData } from "../io";
 import type { MeshData as RenderMeshData } from "../core/geometry/mesh/Mesh";
 
@@ -106,7 +106,7 @@ export interface SceneObject {
   radius?: number;          // circle
   normal?: Vec3;            // plane
   distance?: number;        // plane
-  mesh?: Mesh;              // mesh (ConnectedMesh)
+  mesh?: Mesh;
   flatMeshData?: FlatMeshData; // mesh (flat arrays with optional per-vertex colors)
   children?: string[];      // group
 
@@ -395,7 +395,7 @@ export class Scene {
       if (obj.style.noExport) continue;
 
       if (obj.mesh) {
-        // ConnectedMesh: remap node IDs → sequential indices
+        // Mesh: remap node IDs → sequential indices
         const nodeMap = new Map<number, number>();
         const offset = positions.length;
         for (const node of obj.mesh.nodesArray()) {

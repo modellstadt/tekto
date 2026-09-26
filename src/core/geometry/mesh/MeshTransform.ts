@@ -1,11 +1,11 @@
 /**
- * Tekto MeshTransform — Geometric transformations on ConnectedMesh.
+ * Tekto MeshTransform — Geometric transformations on Mesh.
  *
  * Mirrors HDGEO.Core.MeshTransform.
  */
 
 import { Vec3, Mat4 } from "../../math/vectors";
-import type { ConnectedMesh } from "./ConnectedMesh";
+import type { Mesh } from "./Mesh";
 
 export type Axis = "x" | "y" | "z";
 
@@ -16,7 +16,7 @@ export const MeshTransform = {
   // ================================================================
 
   /** Applies an arbitrary 4x4 matrix to all vertex positions. */
-  transform(mesh: ConnectedMesh, matrix: Mat4): void {
+  transform(mesh: Mesh, matrix: Mat4): void {
     for (const node of mesh.nodes()) {
       node.position = matrix.transformPoint(node.position);
     }
@@ -24,21 +24,21 @@ export const MeshTransform = {
   },
 
   /** Translates all vertices by an offset vector. */
-  translate(mesh: ConnectedMesh, offset: Vec3): void {
+  translate(mesh: Mesh, offset: Vec3): void {
     for (const node of mesh.nodes()) {
       node.position = node.position.add(offset);
     }
   },
 
   /** Uniform scale around origin. */
-  scale(mesh: ConnectedMesh, factor: number): void {
+  scale(mesh: Mesh, factor: number): void {
     for (const node of mesh.nodes()) {
       node.position = node.position.mul(factor);
     }
   },
 
   /** Non-uniform scale around origin. */
-  scaleXYZ(mesh: ConnectedMesh, sx: number, sy: number, sz: number): void {
+  scaleXYZ(mesh: Mesh, sx: number, sy: number, sz: number): void {
     for (const node of mesh.nodes()) {
       const p = node.position;
       node.position = new Vec3(p.x * sx, p.y * sy, p.z * sz);
@@ -47,7 +47,7 @@ export const MeshTransform = {
   },
 
   /** Non-uniform scale around a center point. */
-  scaleAbout(mesh: ConnectedMesh, sx: number, sy: number, sz: number, center: Vec3): void {
+  scaleAbout(mesh: Mesh, sx: number, sy: number, sz: number, center: Vec3): void {
     for (const node of mesh.nodes()) {
       const p = node.position.sub(center);
       node.position = new Vec3(p.x * sx, p.y * sy, p.z * sz).add(center);
@@ -56,7 +56,7 @@ export const MeshTransform = {
   },
 
   /** Rotates the mesh around an axis through the origin. */
-  rotate(mesh: ConnectedMesh, axis: Vec3, angleRadians: number): void {
+  rotate(mesh: Mesh, axis: Vec3, angleRadians: number): void {
     const a = axis.normalize();
     const c = Math.cos(angleRadians), s = Math.sin(angleRadians), t = 1 - c;
     const { x, y, z } = a;
@@ -73,7 +73,7 @@ export const MeshTransform = {
   },
 
   /** Rotates the mesh around an axis through a center point. */
-  rotateAbout(mesh: ConnectedMesh, axis: Vec3, angleRadians: number, center: Vec3): void {
+  rotateAbout(mesh: Mesh, axis: Vec3, angleRadians: number, center: Vec3): void {
     const a = axis.normalize();
     const c = Math.cos(angleRadians), s = Math.sin(angleRadians), t = 1 - c;
     const { x, y, z } = a;
@@ -94,7 +94,7 @@ export const MeshTransform = {
   // ================================================================
 
   /** Swaps two coordinate axes (e.g. Y↔Z for Z-up to Y-up conversion). */
-  swapAxes(mesh: ConnectedMesh, a: Axis, b: Axis): void {
+  swapAxes(mesh: Mesh, a: Axis, b: Axis): void {
     if (a === b) return;
     for (const node of mesh.nodes()) {
       const p = node.position;
@@ -106,7 +106,7 @@ export const MeshTransform = {
   },
 
   /** Mirrors the mesh across a plane through the origin. */
-  mirror(mesh: ConnectedMesh, axis: Axis): void {
+  mirror(mesh: Mesh, axis: Axis): void {
     for (const node of mesh.nodes()) {
       const p = node.position;
       switch (axis) {
@@ -124,10 +124,8 @@ export const MeshTransform = {
   // ================================================================
 
   /** Reverses the winding order of all faces (flips normals). */
-  flipFaces(mesh: ConnectedMesh): void {
-    for (const face of mesh.faces()) {
-      face.nodes.reverse();
-    }
+  flipFaces(mesh: Mesh): void {
+    for (const id of mesh.faceIds()) mesh.reverseFace(id);
     mesh.computeVertexNormals();
   },
 
@@ -135,7 +133,7 @@ export const MeshTransform = {
    * Makes all face normals consistent using BFS flood-fill.
    * Picks an initial face and propagates its orientation to neighbors.
    */
-  reorientFaces(mesh: ConnectedMesh): void {
+  reorientFaces(mesh: Mesh): void {
     const allFaces = mesh.facesArray();
     const faceCount = allFaces.length;
     if (faceCount === 0) return;
@@ -166,10 +164,7 @@ export const MeshTransform = {
           if (checked.has(nbId)) continue;
           checked.add(nbId);
 
-          if (!hasSameOrientation(mesh, fId, nbId)) {
-            const nb = mesh.face(nbId)!;
-            nb.nodes.reverse();
-          }
+          if (!hasSameOrientation(mesh, fId, nbId)) mesh.reverseFace(nbId);
 
           queue.push(nbId);
         }
@@ -184,7 +179,7 @@ export const MeshTransform = {
   // ================================================================
 
   /** Moves the mesh so its bounding box center is at the origin. */
-  centerAtOrigin(mesh: ConnectedMesh): void {
+  centerAtOrigin(mesh: Mesh): void {
     const allNodes = mesh.nodesArray();
     if (allNodes.length === 0) return;
     let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -200,7 +195,7 @@ export const MeshTransform = {
   },
 
   /** Moves the mesh so its centroid (average of vertices) is at the origin. */
-  centerAtCentroid(mesh: ConnectedMesh): void {
+  centerAtCentroid(mesh: Mesh): void {
     const allNodes = mesh.nodesArray();
     if (allNodes.length === 0) return;
     let sx = 0, sy = 0, sz = 0;
@@ -230,7 +225,7 @@ function setCoord(v: Vec3, axis: Axis, val: number): Vec3 {
   }
 }
 
-function hasSameOrientation(mesh: ConnectedMesh, fId1: number, fId2: number): boolean {
+function hasSameOrientation(mesh: Mesh, fId1: number, fId2: number): boolean {
   const f1 = mesh.face(fId1)!;
   const f2 = mesh.face(fId2)!;
   const v1 = f1.nodes;

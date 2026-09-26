@@ -11,7 +11,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 // @ts-ignore — TransformControls typings vary across Three.js versions
 import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import { Scene as GScene, SceneObject, SceneEvent } from "../scene/Scene";
-import { ConnectedMesh as GMesh } from "../core/geometry/mesh/ConnectedMesh";
+import { Mesh as GMesh } from "../core/geometry/mesh/Mesh";
 import { Vec3 } from "../core/math/vectors";
 
 export type GizmoMode = "translate" | "rotate" | "scale" | "none";
@@ -853,14 +853,14 @@ export class ThreeRenderer {
 
   /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
   private convertMesh(gmesh: GMesh, s: SceneObject["style"]): THREE.Group {
-    const data = gmesh.toIndexedTriangles();
+    const data = gmesh.toMeshData();
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geo.setAttribute("normal", new THREE.BufferAttribute(data.normals, 3));
     geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
 
     // Pipe UVs (tube meshes tag themselves with __pipeUV = { sides, vAtRing }): vertices are
-    // ring-major (toIndexedTriangles preserves node insertion order), so vertex k sits on ring
+    // ring-major (toMeshData keeps node order), so vertex k sits on ring
     // floor(k/sides). U = fraction around the section, V = centreline length in METRES — print-layer
     // striping (style.printLayerH) repeats a texture along V at true physical scale.
     const pipeUV = (gmesh as unknown as { __pipeUV?: { sides: number; vAtRing: number[] } }).__pipeUV;

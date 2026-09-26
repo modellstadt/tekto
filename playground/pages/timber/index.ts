@@ -260,7 +260,7 @@ export default function (container: HTMLElement): SketchInstance {
         : 0.001;
       const color   = isPicked ? "#38d9a9" : "#cfd8dc";
       const opacity = isPicked ? Math.max(baseOpacity, 0.35) : baseOpacity;
-      lab.flatMesh({ positions: m.positions, normals: m.normals, indices: m.indices })
+      lab.flatMesh(m.toMeshData())
         .color(color).opacity(opacity).label(`wall:${w.name}`);
     }
 
@@ -272,7 +272,7 @@ export default function (container: HTMLElement): SketchInstance {
         for (const p of r.parts) {
           // Label = `wall:<name>:<part>` so picking any framing piece still
           // identifies the parent wall in framing-only mode.
-          lab.flatMesh({ positions: p.mesh.positions, normals: p.mesh.normals, indices: p.mesh.indices })
+          lab.flatMesh(p.mesh.toMeshData())
             .color(colorForRole(p.role)).label(`wall:${wallName}:${p.name}`);
         }
         cutList = cutList.concat(buildCutList(r.parts));
@@ -324,7 +324,7 @@ export default function (container: HTMLElement): SketchInstance {
 
       const parts = slabType.construction!(slab, { joistDirection: joistDir, supports });
       for (const p of parts) {
-        lab.flatMesh({ positions: p.mesh.positions, normals: p.mesh.normals, indices: p.mesh.indices })
+        lab.flatMesh(p.mesh.toMeshData())
           .color(colorForSlabRole(p.role))
           .label(`slab:${name}:${p.name}`);
       }
@@ -368,7 +368,7 @@ export default function (container: HTMLElement): SketchInstance {
         const baseOpacity = showEnvelope.value
           ? (showFraming.value ? 0.18 : 1.0)
           : 0.001;
-        lab.flatMesh({ positions: m.positions, normals: m.normals, indices: m.indices })
+        lab.flatMesh(m.toMeshData())
           .color("#cfd8dc").opacity(baseOpacity).label(`wall:${w.name}`);
       }
 
@@ -378,7 +378,7 @@ export default function (container: HTMLElement): SketchInstance {
         for (const r of realised) {
           const wallName = r.wall.name ?? "?";
           for (const p of r.parts) {
-            lab.flatMesh({ positions: p.mesh.positions, normals: p.mesh.normals, indices: p.mesh.indices })
+            lab.flatMesh(p.mesh.toMeshData())
               .color(colorForRole(p.role)).label(`wall:${wallName}:${p.name}`);
           }
         }

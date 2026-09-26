@@ -20,7 +20,7 @@
  */
 import * as THREE from "three";
 import { Vec3 } from "../core/math/vectors";
-import type { ConnectedMesh } from "../core/geometry/mesh/ConnectedMesh";
+import type { Mesh } from "../core/geometry/mesh/Mesh";
 
 export interface VisibilityView {
   /** View direction (camera-to-target). The unit vector is fine. */
@@ -91,7 +91,7 @@ const FS = /* glsl */ `
 // ─── Public API ───────────────────────────────
 
 export function extractVisiblePolylines(
-  mesh: ConnectedMesh,
+  mesh: Mesh,
   polylines: Vec3[][],
   view: VisibilityView,
   options?: VisibilityOptions,

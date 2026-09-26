@@ -1,12 +1,15 @@
 /**
- * Tekto MeshFactory — Factory functions that produce ConnectedMesh instances.
+ * Tekto MeshFactory — Factory functions that produce Mesh instances.
  *
  * Mirrors HDGEO.Core.MeshFactory.
  */
 
 import { Vec2, Vec3 } from "../../math/vectors";
-import { ConnectedMesh } from "./ConnectedMesh";
+import { Mesh } from "./Mesh";
 import { CurveUtils } from "../curves";
+
+/** A grid whose heights can be rewritten in place (animation) without rebuilding topology. */
+export type GridMesh = Mesh & { update(heightFn: (x: number, z: number) => number): void };
 
 export const MeshFactory = {
 
@@ -18,8 +21,8 @@ export const MeshFactory = {
     divisionsX: number,
     divisionsZ: number,
     heightFn: (x: number, z: number) => number = () => 0
-  ): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  ): GridMesh {
+    const mesh = new Mesh() as GridMesh;
     const ids: number[][] = [];
 
     for (let iz = 0; iz <= divisionsZ; iz++) {
@@ -38,12 +41,26 @@ export const MeshFactory = {
       }
     }
 
+    // Nodes are row-major, so a height rewrite is a straight pass over `positions`.
+    mesh.update = (hfn) => {
+      const pos = mesh.positions;
+      let vi = 1;
+      for (let iz = 0; iz <= divisionsZ; iz++) {
+        for (let ix = 0; ix <= divisionsX; ix++) {
+          pos[vi] = hfn((ix / divisionsX - 0.5) * width, (iz / divisionsZ - 0.5) * depth);
+          vi += 3;
+        }
+      }
+      mesh.markPositionsChanged();
+      mesh.computeVertexNormals();
+    };
+
     mesh.computeVertexNormals();
     return mesh;
   },
 
-  extrude(polygon: Vec3[], direction: Vec3, cap = true): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  extrude(polygon: Vec3[], direction: Vec3, cap = true): Mesh {
+    const mesh = new Mesh();
     const n = polygon.length;
 
     const bottom = polygon.map(p => mesh.addNode(p));
@@ -63,8 +80,8 @@ export const MeshFactory = {
     return mesh;
   },
 
-  revolve(profile: Vec2[], segments: number = 32, angleRange = Math.PI * 2): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  revolve(profile: Vec2[], segments: number = 32, angleRange = Math.PI * 2): Mesh {
+    const mesh = new Mesh();
     const n = profile.length;
     const ids: number[][] = [];
     const isClosed = Math.abs(angleRange - Math.PI * 2) < 1e-6;
@@ -92,8 +109,8 @@ export const MeshFactory = {
     return mesh;
   },
 
-  loft(profiles: Vec3[][], closedProfile = true): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  loft(profiles: Vec3[][], closedProfile = true): Mesh {
+    const mesh = new Mesh();
     const ids: number[][] = [];
 
     for (let p = 0; p < profiles.length; p++) {
@@ -117,9 +134,9 @@ export const MeshFactory = {
 
   // ── Primitives ──
 
-  box(width = 1, height = 1, depth = 1): ConnectedMesh {
+  box(width = 1, height = 1, depth = 1): Mesh {
     const w = width / 2, h = height / 2, d = depth / 2;
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
 
     const v = [
       mesh.addNode(new Vec3(-w, -h, -d)),
@@ -143,8 +160,8 @@ export const MeshFactory = {
     return mesh;
   },
 
-  sphere(radius = 1, segments = 24, rings = 16): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  sphere(radius = 1, segments = 24, rings = 16): Mesh {
+    const mesh = new Mesh();
     const ids: number[][] = [];
 
     for (let r = 0; r <= rings; r++) {
@@ -177,8 +194,8 @@ export const MeshFactory = {
     return mesh;
   },
 
-  cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24, cap = true): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24, cap = true): Mesh {
+    const mesh = new Mesh();
     const h2 = height / 2;
     const bottomIds: number[] = [];
     const topIds: number[] = [];
@@ -208,8 +225,8 @@ export const MeshFactory = {
     return mesh;
   },
 
-  torus(majorRadius = 1, minorRadius = 0.3, segments = 32, sides = 16): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  torus(majorRadius = 1, minorRadius = 0.3, segments = 32, sides = 16): Mesh {
+    const mesh = new Mesh();
     const ids: number[][] = [];
 
     for (let s = 0; s <= segments; s++) {
@@ -240,8 +257,8 @@ export const MeshFactory = {
    * Create a tube mesh by sweeping a circular cross-section along a path.
    * Accepts uniform radius (number) or per-point varying radii (number[]).
    */
-  pipe(path: Vec3[], radius: number | number[], sides = 8): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  pipe(path: Vec3[], radius: number | number[], sides = 8): Mesh {
+    const mesh = new Mesh();
     const frames = CurveUtils.parallelTransportFrames(path);
     if (frames.length === 0) return mesh;
 
@@ -281,7 +298,7 @@ export const MeshFactory = {
    * three or more crease edges pin the vertex). Boundary edges always count
    * as creases in that mode. Without opts the classic behavior is unchanged.
    */
-  subdivide(mesh: ConnectedMesh, opts?: {
+  subdivide(mesh: Mesh, opts?: {
     creaseAngleDeg?: number;
     /** Extra crease test by edge endpoint positions — flagged edges follow the
      *  sharp rules regardless of the dihedral angle. */
@@ -289,8 +306,8 @@ export const MeshFactory = {
     /** Vertices matching this predicate keep their EXACT position (pinned) —
      *  e.g. column feet that must stay on the ground through every level. */
     pinVertex?: (p: Vec3) => boolean;
-  }): ConnectedMesh {
-    const result = new ConnectedMesh();
+  }): Mesh {
+    const result = new Mesh();
     const facePoints = new Map<number, number>();
     const edgePoints = new Map<number, number>();
     const nodeMap = new Map<number, number>();
@@ -420,7 +437,7 @@ export const MeshFactory = {
     return result;
   },
 
-  triangulate(mesh: ConnectedMesh): ConnectedMesh {
+  triangulate(mesh: Mesh): Mesh {
     const result = mesh.clone();
     for (const face of [...result.faces()]) {
       if (face.nodes.length <= 3) continue;
@@ -433,7 +450,42 @@ export const MeshFactory = {
     result.computeVertexNormals();
     return result;
   },
-};
 
-/** Backward-compat alias */
-export { MeshFactory as MeshGen };
+  /**
+   * Midpoint (1→4) subdivision of the triangulated mesh: every triangle becomes
+   * four, vertices stay where they are. Linear — no smoothing; for the smooth
+   * limit surface use `subdivide` (Catmull-Clark).
+   */
+  midpointSubdivide(mesh: Mesh): Mesh {
+    const pos = mesh.positions, idx = mesh.indices;
+    const vc = mesh.vertexCount, tc = idx.length / 3;
+    const key = (a: number, b: number) => (a < b ? a * 4294967296 + b : b * 4294967296 + a);
+    const mid = new Map<number, number>();
+    let newVc = vc;
+    for (let t = 0; t < idx.length; t += 3) {
+      for (let j = 0; j < 3; j++) {
+        const k = key(idx[t + j], idx[t + (j + 1) % 3]);
+        if (!mid.has(k)) mid.set(k, newVc++);
+      }
+    }
+    const newPos = new Float64Array(newVc * 3);
+    newPos.set(pos);
+    for (const [k, m] of mid) {
+      const a = Math.floor(k / 4294967296) * 3, b = (k % 4294967296) * 3, o = m * 3;
+      newPos[o] = (pos[a] + pos[b]) * 0.5;
+      newPos[o + 1] = (pos[a + 1] + pos[b + 1]) * 0.5;
+      newPos[o + 2] = (pos[a + 2] + pos[b + 2]) * 0.5;
+    }
+    const newIdx = new Uint32Array(tc * 12);
+    let ii = 0;
+    for (let t = 0; t < idx.length; t += 3) {
+      const v0 = idx[t], v1 = idx[t + 1], v2 = idx[t + 2];
+      const m01 = mid.get(key(v0, v1))!, m12 = mid.get(key(v1, v2))!, m20 = mid.get(key(v2, v0))!;
+      newIdx[ii++] = v0;  newIdx[ii++] = m01; newIdx[ii++] = m20;
+      newIdx[ii++] = m01; newIdx[ii++] = v1;  newIdx[ii++] = m12;
+      newIdx[ii++] = m20; newIdx[ii++] = m12; newIdx[ii++] = v2;
+      newIdx[ii++] = m01; newIdx[ii++] = m12; newIdx[ii++] = m20;
+    }
+    return new Mesh(newPos, newIdx);
+  },
+};

@@ -60,7 +60,7 @@ export default function (container: HTMLElement): SketchInstance {
       MeshSubdivide.dooSabin(dsCube);
     lab.mesh(dsCube).color(lab.rgb(230, 75, 150)).translate(sp * 2, 0, 0);
 
-    lab.info("ConnectedMesh operations:");
+    lab.info("Mesh operations:");
     lab.log("Selected", subLabel);
     lab.log("Sub verts", sub.nodeCount);
     lab.log("Sub faces", sub.faceCount);

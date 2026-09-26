@@ -31,13 +31,11 @@ export { perpVisibility, perpVisibilityOfPolys, edgeOutwardVisibility } from "./
 export type { PerpSegment } from "./core/geometry/PerpVisibility";
 export { MeshAnalysis } from "./core/geometry/mesh/MeshAnalysis";
 
-// Mesh (new canonical names + backward-compat aliases)
-export { ConnectedMesh, ConnectedMesh as Mesh } from "./core/geometry/mesh/ConnectedMesh";
-export type { MeshNode, MeshEdge, MeshFace, MeshJSON } from "./core/geometry/mesh/ConnectedMesh";
-export { MeshFactory, MeshFactory as MeshGen } from "./core/geometry/mesh/MeshFactory";
-export { Mesh as RenderMesh, Mesh as FlatMesh } from "./core/geometry/mesh/Mesh";
-export type { MeshData as FlatMeshData, MeshJSON as FlatMeshJSON } from "./core/geometry/mesh/Mesh";
-export { FlatMeshGen } from "./core/mesh/FlatMesh";
+// Mesh — one class: id-based editing + typed-array storage + connectivity.
+// `ConnectedMesh` / `FlatMesh` are deprecated aliases of it, gone in the next minor.
+export { Mesh, ConnectedMesh, FlatMesh } from "./core/geometry/mesh/Mesh";
+export type { MeshNode, MeshEdge, MeshFace, MeshJSON, LegacyMeshJSON, MeshData as FlatMeshData } from "./core/geometry/mesh/Mesh";
+export { MeshFactory } from "./core/geometry/mesh/MeshFactory";
 export { MeshTransform } from "./core/geometry/mesh/MeshTransform";
 export type { Axis } from "./core/geometry/mesh/MeshTransform";
 export { MeshSubdivide } from "./core/geometry/mesh/MeshSubdivide";

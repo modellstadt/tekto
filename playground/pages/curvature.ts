@@ -14,12 +14,12 @@ import {
   MeshFactory, MeshAnalysis, MeshCleanup, Curvature,
   Vec3,
 } from "../../src";
-import type { ConnectedMesh } from "../../src";
+import type { Mesh } from "../../src";
 
 type ShapeName = "sphere" | "torus" | "subdivided box" | "wavy grid";
 
-function buildMesh(shape: ShapeName, detail: number): ConnectedMesh {
-  let m: ConnectedMesh;
+function buildMesh(shape: ShapeName, detail: number): Mesh {
+  let m: Mesh;
   switch (shape) {
     case "sphere":
       m = MeshFactory.sphere(1, 8 + detail * 4, 6 + detail * 3);

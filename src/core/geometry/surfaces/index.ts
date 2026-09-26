@@ -12,7 +12,7 @@
 import { Vec3 } from "../../math/vectors";
 import { HMath } from "../../math/HMath";
 import { NurbsCurve } from "../curves";
-import { ConnectedMesh } from "../mesh/ConnectedMesh";
+import { Mesh } from "../mesh/Mesh";
 
 // ─── Helpers ─────────────────────────────────
 
@@ -129,11 +129,11 @@ export class NurbsSurface {
   }
 
   /**
-   * Tessellate the surface into a ConnectedMesh by sampling on a (uDivs × vDivs) grid.
+   * Tessellate the surface into a Mesh by sampling on a (uDivs × vDivs) grid.
    * `closedU` / `closedV` merge the seam (use closedU=true for surfaces from `revolve`).
    */
-  toMesh(uDivs = 32, vDivs = 32, closedU = false, closedV = false): ConnectedMesh {
-    const mesh = new ConnectedMesh();
+  toMesh(uDivs = 32, vDivs = 32, closedU = false, closedV = false): Mesh {
+    const mesh = new Mesh();
     const uSteps = closedU ? uDivs : uDivs + 1;
     const vSteps = closedV ? vDivs : vDivs + 1;
     const ids: number[][] = [];

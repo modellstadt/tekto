@@ -88,7 +88,7 @@ export default function (container: HTMLElement): { dispose(): void } {
       const role = String(part.role);
       const colour = ROLE_COLOUR[role] ?? 0xd9dde3;
       const sheet = SHEET.has(role);
-      const mesh = Viewport.meshFrom(part.mesh, new THREE.MeshStandardMaterial({
+      const mesh = Viewport.meshFrom(part.mesh.toMeshData(), new THREE.MeshStandardMaterial({
         color: colour, roughness: 0.85, side: THREE.DoubleSide,
         transparent: sheet, opacity: sheet ? 0.35 : 1, depthWrite: !sheet,
       }));
