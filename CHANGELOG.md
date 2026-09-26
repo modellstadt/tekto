@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.4.0 — 2026-09-26
+
 - **Breaking — one `Mesh` class.** `ConnectedMesh` (Map per element) and the flat
   `Mesh`/`FlatMesh` (typed arrays, triangles only) are now a single `Mesh`: typed-array
   storage, polygon faces, and full connectivity (edges, node↔edge↔face links) kept

@@ -1,10 +1,10 @@
 import {
   AABB,
-  ConnectedMesh,
   HMath,
   HPlane,
   Mat4,
   MathUtils,
+  Mesh,
   Scene,
   Segment,
   Triangle,
@@ -14,7 +14,7 @@ import {
   VecMath,
   closestPointOnSegment,
   segmentSegmentClosest
-} from "./chunk-KSHZOMZ3.mjs";
+} from "./chunk-L76BR4GT.mjs";
 
 // src/core/math/noise.ts
 var P = [
@@ -1858,64 +1858,26 @@ function edgeOutwardVisibility(ring, i, obstacles, maxDist) {
 
 // src/core/geometry/mesh/MeshAnalysis.ts
 var MeshAnalysis = {
-  /** Compute mesh volume (for closed, consistent-winding triangle meshes) */
+  /** Mesh volume (closed, consistently wound; polygons are fan-triangulated). */
   meshVolume(mesh) {
-    let volume = 0;
-    for (const face of mesh.faces()) {
-      if (face.nodes.length !== 3) continue;
-      const a = mesh.node(face.nodes[0]).position;
-      const b = mesh.node(face.nodes[1]).position;
-      const c = mesh.node(face.nodes[2]).position;
-      volume += a.dot(b.cross(c)) / 6;
-    }
-    return Math.abs(volume);
+    return mesh.volume();
   },
-  /** Compute mesh surface area */
+  /** Mesh surface area. */
   meshSurfaceArea(mesh) {
-    let area = 0;
-    for (const face of mesh.faces()) {
-      if (face.nodes.length < 3) continue;
-      const positions = face.nodes.map((n) => mesh.node(n).position);
-      for (let i = 1; i < positions.length - 1; i++) {
-        area += positions[i].sub(positions[0]).cross(positions[i + 1].sub(positions[0])).len() * 0.5;
-      }
-    }
-    return area;
+    return mesh.surfaceArea();
   },
-  /** Mesh centroid (vertex average) */
+  /** Mesh centroid (vertex average). */
   meshCentroid(mesh) {
-    let sum = Vec3.zero();
-    let count = 0;
-    for (const node of mesh.nodes()) {
-      sum = sum.add(node.position);
-      count++;
-    }
-    return count > 0 ? sum.div(count) : Vec3.zero();
+    return mesh.centroid();
   },
-  /** Laplacian smooth (moves each vertex toward the average of its neighbors) */
+  /** Laplacian smooth (moves each interior vertex toward the average of its neighbors). */
   laplacianSmooth(mesh, iterations = 1, factor = 0.5) {
-    for (let iter = 0; iter < iterations; iter++) {
-      const newPositions = /* @__PURE__ */ new Map();
-      for (const node of mesh.nodes()) {
-        const neighbors = mesh.nodeNeighbors(node.id);
-        if (neighbors.length === 0 || mesh.isBoundaryNode(node.id)) {
-          newPositions.set(node.id, node.position);
-          continue;
-        }
-        const avg = neighbors.map((nid) => mesh.node(nid).position).reduce((s, p) => s.add(p), Vec3.zero()).div(neighbors.length);
-        newPositions.set(node.id, node.position.lerp(avg, factor));
-      }
-      for (const [id, pos] of newPositions) {
-        const node = mesh.node(id);
-        node.position = pos;
-      }
-    }
-    mesh.computeVertexNormals();
+    mesh.smooth(iterations, factor);
   },
-  /** 3D Convex hull — returns a ConnectedMesh */
+  /** 3D Convex hull — returns a Mesh */
   convexHull3D(points) {
-    if (points.length < 4) return new ConnectedMesh();
-    const mesh = new ConnectedMesh();
+    if (points.length < 4) return new Mesh();
+    const mesh = new Mesh();
     const ids = mesh.addNodes(points);
     let i0 = 0, i1 = 1, i2 = -1, i3 = -1;
     for (let i = 2; i < points.length; i++) {
@@ -2481,7 +2443,7 @@ var CurveUtils = {
 var MeshFactory = {
   // ── Parametric Surfaces ──
   grid(width, depth, divisionsX, divisionsZ, heightFn = () => 0) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let iz = 0; iz <= divisionsZ; iz++) {
       ids[iz] = [];
@@ -2497,11 +2459,23 @@ var MeshFactory = {
         mesh.addQuad(ids[iz][ix], ids[iz][ix + 1], ids[iz + 1][ix + 1], ids[iz + 1][ix]);
       }
     }
+    mesh.update = (hfn) => {
+      const pos = mesh.positions;
+      let vi = 1;
+      for (let iz = 0; iz <= divisionsZ; iz++) {
+        for (let ix = 0; ix <= divisionsX; ix++) {
+          pos[vi] = hfn((ix / divisionsX - 0.5) * width, (iz / divisionsZ - 0.5) * depth);
+          vi += 3;
+        }
+      }
+      mesh.markPositionsChanged();
+      mesh.computeVertexNormals();
+    };
     mesh.computeVertexNormals();
     return mesh;
   },
   extrude(polygon, direction, cap = true) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const n = polygon.length;
     const bottom = polygon.map((p) => mesh.addNode(p));
     const top = polygon.map((p) => mesh.addNode(p.add(direction)));
@@ -2517,7 +2491,7 @@ var MeshFactory = {
     return mesh;
   },
   revolve(profile, segments = 32, angleRange = Math.PI * 2) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const n = profile.length;
     const ids = [];
     const isClosed = Math.abs(angleRange - Math.PI * 2) < 1e-6;
@@ -2542,7 +2516,7 @@ var MeshFactory = {
     return mesh;
   },
   loft(profiles, closedProfile = true) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let p = 0; p < profiles.length; p++) {
       ids[p] = profiles[p].map((pos) => mesh.addNode(pos));
@@ -2563,7 +2537,7 @@ var MeshFactory = {
   // ── Primitives ──
   box(width = 1, height = 1, depth = 1) {
     const w = width / 2, h = height / 2, d = depth / 2;
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const v = [
       mesh.addNode(new Vec3(-w, -h, -d)),
       mesh.addNode(new Vec3(w, -h, -d)),
@@ -2584,7 +2558,7 @@ var MeshFactory = {
     return mesh;
   },
   sphere(radius = 1, segments = 24, rings = 16) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let r = 0; r <= rings; r++) {
       ids[r] = [];
@@ -2614,7 +2588,7 @@ var MeshFactory = {
     return mesh;
   },
   cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24, cap = true) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const h2 = height / 2;
     const bottomIds = [];
     const topIds = [];
@@ -2640,7 +2614,7 @@ var MeshFactory = {
     return mesh;
   },
   torus(majorRadius = 1, minorRadius = 0.3, segments = 32, sides = 16) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const ids = [];
     for (let s = 0; s <= segments; s++) {
       ids[s] = [];
@@ -2668,7 +2642,7 @@ var MeshFactory = {
    * Accepts uniform radius (number) or per-point varying radii (number[]).
    */
   pipe(path, radius, sides = 8) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const frames = CurveUtils.parallelTransportFrames(path);
     if (frames.length === 0) return mesh;
     const ids = [];
@@ -2703,7 +2677,7 @@ var MeshFactory = {
    * as creases in that mode. Without opts the classic behavior is unchanged.
    */
   subdivide(mesh, opts) {
-    const result = new ConnectedMesh();
+    const result = new Mesh();
     const facePoints = /* @__PURE__ */ new Map();
     const edgePoints = /* @__PURE__ */ new Map();
     const nodeMap = /* @__PURE__ */ new Map();
@@ -2828,707 +2802,37 @@ var MeshFactory = {
     }
     result.computeVertexNormals();
     return result;
-  }
-};
-
-// src/core/geometry/mesh/Mesh.ts
-var Mesh = class _Mesh {
-  constructor(positions, indices, normals, uvs, colors) {
-    this._adjacency = null;
-    this._bounds = null;
-    this.positions = positions;
-    this.indices = indices;
-    this.normals = normals ?? new Float32Array(positions.length);
-    this.uvs = uvs ?? null;
-    this.colors = colors ?? null;
-    if (!normals) this.computeNormals();
-  }
-  // ── Counts ──
-  get vertexCount() {
-    return this.positions.length / 3;
-  }
-  get triangleCount() {
-    return this.indices.length / 3;
-  }
-  get edgeCount() {
-    return this.adjacency.edges.length / 2;
-  }
-  // ── Vertex Access ──
-  getPosition(i) {
-    const o = i * 3;
-    return new Vec3(this.positions[o], this.positions[o + 1], this.positions[o + 2]);
-  }
-  setPosition(i, p) {
-    const o = i * 3;
-    this.positions[o] = p.x;
-    this.positions[o + 1] = p.y;
-    this.positions[o + 2] = p.z;
-    this._bounds = null;
-  }
-  getNormal(i) {
-    const o = i * 3;
-    return new Vec3(this.normals[o], this.normals[o + 1], this.normals[o + 2]);
-  }
-  getTriangle(triIdx) {
-    const o = triIdx * 3;
-    return [this.indices[o], this.indices[o + 1], this.indices[o + 2]];
-  }
-  getTrianglePositions(triIdx) {
-    const [a, b, c] = this.getTriangle(triIdx);
-    return [this.getPosition(a), this.getPosition(b), this.getPosition(c)];
-  }
-  // ── Normals ──
-  computeNormals() {
-    const pos = this.positions, nrm = this.normals, idx = this.indices;
-    nrm.fill(0);
-    for (let t = 0; t < idx.length; t += 3) {
-      const ai = idx[t] * 3, bi = idx[t + 1] * 3, ci = idx[t + 2] * 3;
-      const abx = pos[bi] - pos[ai], aby = pos[bi + 1] - pos[ai + 1], abz = pos[bi + 2] - pos[ai + 2];
-      const acx = pos[ci] - pos[ai], acy = pos[ci + 1] - pos[ai + 1], acz = pos[ci + 2] - pos[ai + 2];
-      const nx = aby * acz - abz * acy;
-      const ny = abz * acx - abx * acz;
-      const nz = abx * acy - aby * acx;
-      nrm[ai] += nx;
-      nrm[ai + 1] += ny;
-      nrm[ai + 2] += nz;
-      nrm[bi] += nx;
-      nrm[bi + 1] += ny;
-      nrm[bi + 2] += nz;
-      nrm[ci] += nx;
-      nrm[ci + 1] += ny;
-      nrm[ci + 2] += nz;
-    }
-    for (let i = 0; i < nrm.length; i += 3) {
-      const x = nrm[i], y = nrm[i + 1], z = nrm[i + 2];
-      const len = Math.sqrt(x * x + y * y + z * z);
-      if (len > 1e-12) {
-        const inv = 1 / len;
-        nrm[i] *= inv;
-        nrm[i + 1] *= inv;
-        nrm[i + 2] *= inv;
-      } else {
-        nrm[i] = 0;
-        nrm[i + 1] = 1;
-        nrm[i + 2] = 0;
-      }
-    }
-  }
-  // ── Lazy Adjacency ──
-  get adjacency() {
-    if (!this._adjacency) this._adjacency = this._buildAdjacency();
-    return this._adjacency;
-  }
-  invalidateAdjacency() {
-    this._adjacency = null;
-  }
-  _buildAdjacency() {
-    const vc = this.vertexCount;
-    const idx = this.indices;
-    const tc = this.triangleCount;
-    const vtCounts = new Uint32Array(vc);
-    for (let i = 0; i < idx.length; i++) vtCounts[idx[i]]++;
-    const vertexTriangles = new Array(vc);
-    const vtOffsets = new Uint32Array(vc);
-    for (let v = 0; v < vc; v++) vertexTriangles[v] = new Uint32Array(vtCounts[v]);
-    for (let t = 0; t < tc; t++) {
-      const o = t * 3;
-      for (let j = 0; j < 3; j++) {
-        const v = idx[o + j];
-        vertexTriangles[v][vtOffsets[v]++] = t;
-      }
-    }
-    const edgeSet = /* @__PURE__ */ new Map();
-    const edgeTris = /* @__PURE__ */ new Map();
-    const neighborSets = new Array(vc);
-    for (let v = 0; v < vc; v++) neighborSets[v] = /* @__PURE__ */ new Set();
-    for (let t = 0; t < tc; t++) {
-      const o = t * 3;
-      for (let j = 0; j < 3; j++) {
-        const a = idx[o + j], b = idx[o + (j + 1) % 3];
-        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-        if (!edgeSet.has(key)) edgeSet.set(key, [Math.min(a, b), Math.max(a, b)]);
-        if (!edgeTris.has(key)) edgeTris.set(key, []);
-        edgeTris.get(key).push(t);
-        neighborSets[a].add(b);
-        neighborSets[b].add(a);
-      }
-    }
-    const neighbors = neighborSets.map((s) => new Uint32Array(s));
-    const edges = new Uint32Array(edgeSet.size * 2);
-    let ei = 0;
-    for (const [a, b] of edgeSet.values()) {
-      edges[ei++] = a;
-      edges[ei++] = b;
-    }
-    const boundary = new Uint8Array(vc);
-    for (const [key, tris] of edgeTris) {
-      if (tris.length < 2) {
-        const [a, b] = key.split(":").map(Number);
-        boundary[a] = 1;
-        boundary[b] = 1;
-      }
-    }
-    return { neighbors, edges, vertexTriangles, edgeTriangles: edgeTris, boundary };
-  }
-  // ── Queries ──
-  neighbors(i) {
-    return this.adjacency.neighbors[i];
-  }
-  isBoundary(i) {
-    return this.adjacency.boundary[i] === 1;
-  }
-  bounds() {
-    if (this._bounds) return this._bounds;
-    const pos = this.positions;
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < pos.length; i += 3) {
-      const x = pos[i], y = pos[i + 1], z = pos[i + 2];
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-      if (z < minZ) minZ = z;
-      if (z > maxZ) maxZ = z;
-    }
-    this._bounds = new AABB(new Vec3(minX, minY, minZ), new Vec3(maxX, maxY, maxZ));
-    return this._bounds;
-  }
-  volume() {
-    const pos = this.positions, idx = this.indices;
-    let vol = 0;
-    for (let t = 0; t < idx.length; t += 3) {
-      const ai = idx[t] * 3, bi = idx[t + 1] * 3, ci = idx[t + 2] * 3;
-      vol += (pos[ai] * (pos[bi + 1] * pos[ci + 2] - pos[bi + 2] * pos[ci + 1]) + pos[ai + 1] * (pos[bi + 2] * pos[ci] - pos[bi] * pos[ci + 2]) + pos[ai + 2] * (pos[bi] * pos[ci + 1] - pos[bi + 1] * pos[ci])) / 6;
-    }
-    return Math.abs(vol);
-  }
-  surfaceArea() {
-    const pos = this.positions, idx = this.indices;
-    let area = 0;
-    for (let t = 0; t < idx.length; t += 3) {
-      const ai = idx[t] * 3, bi = idx[t + 1] * 3, ci = idx[t + 2] * 3;
-      const abx = pos[bi] - pos[ai], aby = pos[bi + 1] - pos[ai + 1], abz = pos[bi + 2] - pos[ai + 2];
-      const acx = pos[ci] - pos[ai], acy = pos[ci + 1] - pos[ai + 1], acz = pos[ci + 2] - pos[ai + 2];
-      const cx = aby * acz - abz * acy, cy = abz * acx - abx * acz, cz = abx * acy - aby * acx;
-      area += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
-    }
-    return area;
-  }
-  centroid() {
-    const pos = this.positions;
-    let sx = 0, sy = 0, sz = 0;
-    const n = this.vertexCount;
-    for (let i = 0; i < pos.length; i += 3) {
-      sx += pos[i];
-      sy += pos[i + 1];
-      sz += pos[i + 2];
-    }
-    return new Vec3(sx / n, sy / n, sz / n);
-  }
-  eulerCharacteristic() {
-    return this.vertexCount - this.edgeCount + this.triangleCount;
-  }
-  // ── Modification ──
-  smooth(iterations = 1, factor = 0.5) {
-    const vc = this.vertexCount;
-    const pos = this.positions;
-    const adj = this.adjacency;
-    const tmp = new Float32Array(pos.length);
-    for (let iter = 0; iter < iterations; iter++) {
-      tmp.set(pos);
-      for (let v = 0; v < vc; v++) {
-        if (adj.boundary[v]) continue;
-        const nb = adj.neighbors[v];
-        if (nb.length === 0) continue;
-        const o = v * 3;
-        let ax = 0, ay = 0, az = 0;
-        for (let j = 0; j < nb.length; j++) {
-          const no = nb[j] * 3;
-          ax += tmp[no];
-          ay += tmp[no + 1];
-          az += tmp[no + 2];
-        }
-        const inv = 1 / nb.length;
-        pos[o] = tmp[o] + (ax * inv - tmp[o]) * factor;
-        pos[o + 1] = tmp[o + 1] + (ay * inv - tmp[o + 1]) * factor;
-        pos[o + 2] = tmp[o + 2] + (az * inv - tmp[o + 2]) * factor;
-      }
-    }
-    this.computeNormals();
-    this._bounds = null;
-  }
-  translate(dx, dy, dz) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i += 3) {
-      pos[i] += dx;
-      pos[i + 1] += dy;
-      pos[i + 2] += dz;
-    }
-    this._bounds = null;
-  }
-  scale(s) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i++) pos[i] *= s;
-    this._bounds = null;
-  }
-  scaleXYZ(sx, sy, sz) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i += 3) {
-      pos[i] *= sx;
-      pos[i + 1] *= sy;
-      pos[i + 2] *= sz;
-    }
-    this.computeNormals();
-    this._bounds = null;
-  }
-  mapPositions(fn) {
-    const pos = this.positions;
-    for (let i = 0; i < pos.length; i += 3) {
-      const [x, y, z] = fn(pos[i], pos[i + 1], pos[i + 2], i / 3);
-      pos[i] = x;
-      pos[i + 1] = y;
-      pos[i + 2] = z;
-    }
-    this.computeNormals();
-    this._bounds = null;
-  }
-  // ── Merge ──
-  merge(other) {
-    const vc = this.vertexCount;
-    const newPos = new Float32Array(this.positions.length + other.positions.length);
-    newPos.set(this.positions);
-    newPos.set(other.positions, this.positions.length);
-    const newNrm = new Float32Array(this.normals.length + other.normals.length);
-    newNrm.set(this.normals);
-    newNrm.set(other.normals, this.normals.length);
-    const newIdx = new Uint32Array(this.indices.length + other.indices.length);
-    newIdx.set(this.indices);
-    for (let i = 0; i < other.indices.length; i++) {
-      newIdx[this.indices.length + i] = other.indices[i] + vc;
-    }
-    return new _Mesh(newPos, newIdx, newNrm);
-  }
-  // ── Clone ──
-  clone() {
-    return new _Mesh(
-      new Float32Array(this.positions),
-      new Uint32Array(this.indices),
-      new Float32Array(this.normals),
-      this.uvs ? new Float32Array(this.uvs) : void 0,
-      this.colors ? new Float32Array(this.colors) : void 0
-    );
-  }
-  // ── Serialization ──
-  toJSON() {
-    return {
-      positions: Array.from(this.positions),
-      indices: Array.from(this.indices),
-      normals: Array.from(this.normals),
-      uvs: this.uvs ? Array.from(this.uvs) : void 0
-    };
-  }
-  static fromJSON(json) {
-    return new _Mesh(
-      new Float32Array(json.positions),
-      new Uint32Array(json.indices),
-      json.normals ? new Float32Array(json.normals) : void 0,
-      json.uvs ? new Float32Array(json.uvs) : void 0
-    );
-  }
-  // ── Conversion: ConnectedMesh <-> Mesh ──
-  static fromConnectedMesh(mesh) {
-    const data = mesh.toIndexedTriangles();
-    return new _Mesh(data.positions, data.indices, data.normals);
-  }
-  toConnectedMesh() {
-    const positions = [];
-    for (let i = 0; i < this.positions.length; i += 3) {
-      positions.push(new Vec3(this.positions[i], this.positions[i + 1], this.positions[i + 2]));
-    }
-    const indices = Array.from(this.indices);
-    return ConnectedMesh.fromIndexedTriangles(positions, indices);
-  }
-  static fromArrays(positions, indices, normals) {
-    return new _Mesh(
-      positions instanceof Float32Array ? positions : new Float32Array(positions),
-      indices instanceof Uint32Array ? indices : new Uint32Array(indices),
-      normals ? normals instanceof Float32Array ? normals : new Float32Array(normals) : void 0
-    );
-  }
-};
-
-// src/core/mesh/FlatMesh.ts
-var FlatMeshGen = {
-  grid(width, depth, divsX, divsZ, heightFn = () => 0) {
-    const vx = divsX + 1, vz = divsZ + 1, vc = vx * vz;
-    const pos = new Float32Array(vc * 3);
-    const nrm = new Float32Array(vc * 3);
-    const idx = new Uint32Array(divsX * divsZ * 6);
-    let ii = 0;
-    for (let iz = 0; iz < divsZ; iz++) {
-      for (let ix = 0; ix < divsX; ix++) {
-        const a = iz * vx + ix, b = a + 1, c = a + vx, d = c + 1;
-        idx[ii++] = a;
-        idx[ii++] = b;
-        idx[ii++] = d;
-        idx[ii++] = a;
-        idx[ii++] = d;
-        idx[ii++] = c;
-      }
-    }
-    let vi = 0;
-    for (let iz = 0; iz <= divsZ; iz++) {
-      for (let ix = 0; ix <= divsX; ix++) {
-        const x = (ix / divsX - 0.5) * width;
-        const z = (iz / divsZ - 0.5) * depth;
-        pos[vi] = x;
-        pos[vi + 1] = heightFn(x, z);
-        pos[vi + 2] = z;
-        vi += 3;
-      }
-    }
-    const fm = new Mesh(pos, idx, nrm);
-    fm.update = function(hfn) {
-      let vi2 = 0;
-      for (let iz = 0; iz <= divsZ; iz++) {
-        for (let ix = 0; ix <= divsX; ix++) {
-          const x = (ix / divsX - 0.5) * width;
-          const z = (iz / divsZ - 0.5) * depth;
-          pos[vi2 + 1] = hfn(x, z);
-          vi2 += 3;
-        }
-      }
-      for (let iz = 0; iz <= divsZ; iz++) {
-        for (let ix = 0; ix <= divsX; ix++) {
-          const i3 = (iz * vx + ix) * 3;
-          const il = ix > 0 ? i3 - 3 : i3;
-          const ir = ix < divsX ? i3 + 3 : i3;
-          const iu = iz > 0 ? i3 - vx * 3 : i3;
-          const id = iz < divsZ ? i3 + vx * 3 : i3;
-          const dx = pos[ir + 1] - pos[il + 1];
-          const dz = pos[id + 1] - pos[iu + 1];
-          const len = Math.sqrt(dx * dx + 1 + dz * dz);
-          nrm[i3] = -dx / len;
-          nrm[i3 + 1] = 1 / len;
-          nrm[i3 + 2] = -dz / len;
-        }
-      }
-    };
-    fm.computeNormals();
-    return fm;
   },
-  sphere(radius = 1, segments = 24, rings = 16) {
-    const vc = (rings + 1) * (segments + 1);
-    const tc = rings * segments * 2;
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array(tc * 3);
-    let vi = 0;
-    for (let r = 0; r <= rings; r++) {
-      const phi = r / rings * Math.PI;
-      const sp = Math.sin(phi), cp = Math.cos(phi);
-      for (let s = 0; s <= segments; s++) {
-        const theta = s / segments * Math.PI * 2;
-        pos[vi++] = radius * sp * Math.cos(theta);
-        pos[vi++] = radius * cp;
-        pos[vi++] = radius * sp * Math.sin(theta);
-      }
-    }
-    let ii = 0;
-    const w = segments + 1;
-    for (let r = 0; r < rings; r++) {
-      for (let s = 0; s < segments; s++) {
-        const a = r * w + s, b = a + 1, c = a + w, d = c + 1;
-        if (r > 0) {
-          idx[ii++] = a;
-          idx[ii++] = b;
-          idx[ii++] = d;
-        }
-        if (r < rings - 1) {
-          idx[ii++] = a;
-          idx[ii++] = d;
-          idx[ii++] = c;
-        }
-      }
-    }
-    return new Mesh(pos, idx.subarray(0, ii));
-  },
-  box(width = 1, height = 1, depth = 1) {
-    const w = width / 2, h = height / 2, d = depth / 2;
-    const pos = new Float32Array([
-      -w,
-      -h,
-      -d,
-      w,
-      -h,
-      -d,
-      w,
-      h,
-      -d,
-      -w,
-      h,
-      -d,
-      -w,
-      -h,
-      d,
-      w,
-      -h,
-      d,
-      w,
-      h,
-      d,
-      -w,
-      h,
-      d,
-      -w,
-      h,
-      -d,
-      w,
-      h,
-      -d,
-      w,
-      h,
-      d,
-      -w,
-      h,
-      d,
-      -w,
-      -h,
-      -d,
-      w,
-      -h,
-      -d,
-      w,
-      -h,
-      d,
-      -w,
-      -h,
-      d,
-      w,
-      -h,
-      -d,
-      w,
-      h,
-      -d,
-      w,
-      h,
-      d,
-      w,
-      -h,
-      d,
-      -w,
-      -h,
-      -d,
-      -w,
-      h,
-      -d,
-      -w,
-      h,
-      d,
-      -w,
-      -h,
-      d
-    ]);
-    const idx = new Uint32Array([
-      0,
-      1,
-      2,
-      0,
-      2,
-      3,
-      4,
-      6,
-      5,
-      4,
-      7,
-      6,
-      8,
-      9,
-      10,
-      8,
-      10,
-      11,
-      12,
-      14,
-      13,
-      12,
-      15,
-      14,
-      16,
-      17,
-      18,
-      16,
-      18,
-      19,
-      20,
-      22,
-      21,
-      20,
-      23,
-      22
-    ]);
-    return new Mesh(pos, idx);
-  },
-  torus(majorR = 1, minorR = 0.3, segments = 32, sides = 16) {
-    const vc = (segments + 1) * (sides + 1);
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array(segments * sides * 6);
-    let vi = 0;
-    for (let s = 0; s <= segments; s++) {
-      const th = s / segments * Math.PI * 2;
-      const ct = Math.cos(th), st = Math.sin(th);
-      for (let r = 0; r <= sides; r++) {
-        const ph = r / sides * Math.PI * 2;
-        pos[vi++] = (majorR + minorR * Math.cos(ph)) * ct;
-        pos[vi++] = minorR * Math.sin(ph);
-        pos[vi++] = (majorR + minorR * Math.cos(ph)) * st;
-      }
-    }
-    let ii = 0;
-    const w = sides + 1;
-    for (let s = 0; s < segments; s++) {
-      for (let r = 0; r < sides; r++) {
-        const a = s * w + r, b = a + 1, c = a + w, d = c + 1;
-        idx[ii++] = a;
-        idx[ii++] = b;
-        idx[ii++] = d;
-        idx[ii++] = a;
-        idx[ii++] = d;
-        idx[ii++] = c;
-      }
-    }
-    return new Mesh(pos, idx);
-  },
-  cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24) {
-    const h2 = height / 2;
-    const sideVerts = (segments + 1) * 2;
-    const capVerts = (segments + 1) * 2 + 2;
-    const vc = sideVerts + capVerts;
-    const sideTris = segments * 2;
-    const capTris = segments * 2;
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array((sideTris + capTris) * 3);
-    let vi = 0, ii = 0, vOff = 0;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      const c = Math.cos(a), sn = Math.sin(a);
-      pos[vi++] = radiusBottom * c;
-      pos[vi++] = -h2;
-      pos[vi++] = radiusBottom * sn;
-      pos[vi++] = radiusTop * c;
-      pos[vi++] = h2;
-      pos[vi++] = radiusTop * sn;
-    }
-    for (let s = 0; s < segments; s++) {
-      const a = s * 2, b = a + 1, c = a + 2, d = a + 3;
-      idx[ii++] = a;
-      idx[ii++] = c;
-      idx[ii++] = b;
-      idx[ii++] = b;
-      idx[ii++] = c;
-      idx[ii++] = d;
-    }
-    vOff = (segments + 1) * 2;
-    const bc = vOff;
-    pos[vi++] = 0;
-    pos[vi++] = -h2;
-    pos[vi++] = 0;
-    vOff++;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      pos[vi++] = radiusBottom * Math.cos(a);
-      pos[vi++] = -h2;
-      pos[vi++] = radiusBottom * Math.sin(a);
-    }
-    for (let s = 0; s < segments; s++) {
-      idx[ii++] = bc;
-      idx[ii++] = vOff + s + 1;
-      idx[ii++] = vOff + s;
-    }
-    vOff += segments + 1;
-    const tc = vOff;
-    pos[vi++] = 0;
-    pos[vi++] = h2;
-    pos[vi++] = 0;
-    vOff++;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      pos[vi++] = radiusTop * Math.cos(a);
-      pos[vi++] = h2;
-      pos[vi++] = radiusTop * Math.sin(a);
-    }
-    for (let s = 0; s < segments; s++) {
-      idx[ii++] = tc;
-      idx[ii++] = vOff + s;
-      idx[ii++] = vOff + s + 1;
-    }
-    return new Mesh(pos.subarray(0, vi), idx.subarray(0, ii));
-  },
-  revolve(profile, segments = 32) {
-    const n = profile.length;
-    const vc = (segments + 1) * n;
-    const tc = segments * (n - 1) * 2;
-    const pos = new Float32Array(vc * 3);
-    const idx = new Uint32Array(tc * 3);
-    let vi = 0;
-    for (let s = 0; s <= segments; s++) {
-      const a = s / segments * Math.PI * 2;
-      const ca = Math.cos(a), sa = Math.sin(a);
-      for (let i = 0; i < n; i++) {
-        const p = profile[i];
-        pos[vi++] = p.x * ca;
-        pos[vi++] = p.y;
-        pos[vi++] = p.x * sa;
-      }
-    }
-    let ii = 0;
-    for (let s = 0; s < segments; s++) {
-      for (let i = 0; i < n - 1; i++) {
-        const a = s * n + i, b = a + 1, c = a + n, d = c + 1;
-        idx[ii++] = a;
-        idx[ii++] = b;
-        idx[ii++] = d;
-        idx[ii++] = a;
-        idx[ii++] = d;
-        idx[ii++] = c;
-      }
-    }
-    return new Mesh(pos, idx);
-  },
-  subdivide(fm) {
-    const pos = fm.positions, idx = fm.indices;
-    const vc = fm.vertexCount, tc = fm.triangleCount;
-    const edgeMidpoints = /* @__PURE__ */ new Map();
+  /**
+   * Midpoint (1→4) subdivision of the triangulated mesh: every triangle becomes
+   * four, vertices stay where they are. Linear — no smoothing; for the smooth
+   * limit surface use `subdivide` (Catmull-Clark).
+   */
+  midpointSubdivide(mesh) {
+    const pos = mesh.positions, idx = mesh.indices;
+    const vc = mesh.vertexCount, tc = idx.length / 3;
+    const key = (a, b) => a < b ? a * 4294967296 + b : b * 4294967296 + a;
+    const mid = /* @__PURE__ */ new Map();
     let newVc = vc;
     for (let t = 0; t < idx.length; t += 3) {
       for (let j = 0; j < 3; j++) {
-        const a = idx[t + j], b = idx[t + (j + 1) % 3];
-        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-        if (!edgeMidpoints.has(key)) {
-          edgeMidpoints.set(key, newVc++);
-        }
+        const k = key(idx[t + j], idx[t + (j + 1) % 3]);
+        if (!mid.has(k)) mid.set(k, newVc++);
       }
     }
-    const newPos = new Float32Array(newVc * 3);
-    const newIdx = new Uint32Array(tc * 4 * 3);
+    const newPos = new Float64Array(newVc * 3);
     newPos.set(pos);
-    for (const [key, mid] of edgeMidpoints) {
-      const [as, bs] = key.split(":");
-      const a = parseInt(as) * 3, b = parseInt(bs) * 3;
-      const o = mid * 3;
+    for (const [k, m] of mid) {
+      const a = Math.floor(k / 4294967296) * 3, b = k % 4294967296 * 3, o = m * 3;
       newPos[o] = (pos[a] + pos[b]) * 0.5;
       newPos[o + 1] = (pos[a + 1] + pos[b + 1]) * 0.5;
       newPos[o + 2] = (pos[a + 2] + pos[b + 2]) * 0.5;
     }
+    const newIdx = new Uint32Array(tc * 12);
     let ii = 0;
     for (let t = 0; t < idx.length; t += 3) {
       const v0 = idx[t], v1 = idx[t + 1], v2 = idx[t + 2];
-      const k01 = v0 < v1 ? `${v0}:${v1}` : `${v1}:${v0}`;
-      const k12 = v1 < v2 ? `${v1}:${v2}` : `${v2}:${v1}`;
-      const k20 = v2 < v0 ? `${v2}:${v0}` : `${v0}:${v2}`;
-      const m01 = edgeMidpoints.get(k01);
-      const m12 = edgeMidpoints.get(k12);
-      const m20 = edgeMidpoints.get(k20);
+      const m01 = mid.get(key(v0, v1)), m12 = mid.get(key(v1, v2)), m20 = mid.get(key(v2, v0));
       newIdx[ii++] = v0;
       newIdx[ii++] = m01;
       newIdx[ii++] = m20;
@@ -3680,9 +2984,7 @@ var MeshTransform = {
   // ================================================================
   /** Reverses the winding order of all faces (flips normals). */
   flipFaces(mesh) {
-    for (const face of mesh.faces()) {
-      face.nodes.reverse();
-    }
+    for (const id of mesh.faceIds()) mesh.reverseFace(id);
     mesh.computeVertexNormals();
   },
   /**
@@ -3713,10 +3015,7 @@ var MeshTransform = {
         for (const nbId of neighborIds) {
           if (checked.has(nbId)) continue;
           checked.add(nbId);
-          if (!hasSameOrientation(mesh, fId, nbId)) {
-            const nb = mesh.face(nbId);
-            nb.nodes.reverse();
-          }
+          if (!hasSameOrientation(mesh, fId, nbId)) mesh.reverseFace(nbId);
           queue.push(nbId);
         }
       }
@@ -4974,11 +4273,11 @@ var NurbsSurface = class _NurbsSurface {
     return du.cross(dv).normalize();
   }
   /**
-   * Tessellate the surface into a ConnectedMesh by sampling on a (uDivs × vDivs) grid.
+   * Tessellate the surface into a Mesh by sampling on a (uDivs × vDivs) grid.
    * `closedU` / `closedV` merge the seam (use closedU=true for surfaces from `revolve`).
    */
   toMesh(uDivs = 32, vDivs = 32, closedU = false, closedV = false) {
-    const mesh = new ConnectedMesh();
+    const mesh = new Mesh();
     const uSteps = closedU ? uDivs : uDivs + 1;
     const vSteps = closedV ? vDivs : vDivs + 1;
     const ids = [];
@@ -6963,7 +6262,7 @@ var MarchingCubes = {
         }
       }
     }
-    return ConnectedMesh.fromIndexedTriangles(positions, indices);
+    return Mesh.fromIndexedTriangles(positions, indices);
   }
 };
 function mcInterp(v1, v2, iso) {
@@ -19415,7 +18714,7 @@ var ThreeRenderer = class {
   }
   /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
   convertMesh(gmesh, s) {
-    const data = gmesh.toIndexedTriangles();
+    const data = gmesh.toMeshData();
     const geo = new THREE3.BufferGeometry();
     geo.setAttribute("position", new THREE3.BufferAttribute(data.positions, 3));
     geo.setAttribute("normal", new THREE3.BufferAttribute(data.normals, 3));
@@ -23080,7 +22379,7 @@ var SketchInstance = class {
       },
       // ── Algorithms ──
       algo: Algo,
-      MeshGen: MeshFactory,
+      MeshFactory,
       // ── Scene Control ──
       clear() {
         self.scene.clear();
@@ -23376,7 +22675,7 @@ var SketchInstance = class {
           };
           return compound;
         }
-        const mesh = new ConnectedMesh();
+        const mesh = new Mesh();
         const nodeIds = verts.map((v) => mesh.addNode(v));
         if (mode === "triangles") {
           for (let i = 0; i + 2 < nodeIds.length; i += 3) {
@@ -23557,7 +22856,7 @@ var SketchInstance = class {
       get mesh() {
         return null;
       },
-      // no ConnectedMesh backing
+      // flat data has no Mesh object behind it
       color(c) {
         self.scene.setStyle(obj.id, { color: c });
         return handle;
@@ -24779,7 +24078,6 @@ export {
   Callouts,
   Capsule2D,
   CltConstruction,
-  ConnectedMesh,
   ControlPanel,
   CubicBezierCurve,
   Curvature,
@@ -24789,8 +24087,6 @@ export {
   DistanceTransform,
   DxfExporter,
   ExtrudedRibbon,
-  Mesh as FlatMesh,
-  FlatMeshGen,
   FloodFill,
   Graph,
   GridGraph,
@@ -24811,11 +24107,10 @@ export {
   MarchingSquares,
   Mat4,
   MathUtils,
-  ConnectedMesh as Mesh,
+  Mesh,
   MeshAnalysis,
   MeshCleanup,
   MeshFactory,
-  MeshFactory as MeshGen,
   MeshSubdivide,
   MeshTransform,
   NavGizmo,
@@ -24838,7 +24133,6 @@ export {
   PolygonBool,
   PolylineCurve,
   Ray,
-  Mesh as RenderMesh,
   RibbonEndTrim,
   RibbonFrame,
   RibbonJoint,

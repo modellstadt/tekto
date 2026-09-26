@@ -1,5 +1,5 @@
-import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, C as ConnectedMesh, b as Mesh, c as MeshData, P as ParamStore, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode, e as ParamSchema } from './Params-BikZAeLh.js';
-export { B as BoolParam, f as ButtonParam, g as ColorParam, h as FlatMeshJSON, i as FloatParam, I as IntParam, j as MeshEdge, k as MeshFace, l as MeshJSON, m as MeshNode, O as ObjFile, n as ObjMeshData, o as ParamDef, p as ParamFolder, q as ParamLayout, r as SceneEvent, s as SceneEventListener, t as SceneJSON, u as SceneObject, v as SceneObjectType, w as SelectParam, x as StringParam, y as Vec3Param, z as Vec4, D as createLayout, E as createParams } from './Params-BikZAeLh.js';
+import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, b as Mesh, c as MeshData, P as ParamStore, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode, e as ParamSchema } from './Params-DgIHJ6Bm.js';
+export { B as BoolParam, f as ButtonParam, C as ColorParam, g as FloatParam, I as IntParam, h as LegacyMeshJSON, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, n as ParamDef, o as ParamFolder, p as ParamLayout, q as SceneEvent, r as SceneEventListener, s as SceneJSON, t as SceneObject, u as SceneObjectType, v as SelectParam, w as StringParam, x as Vec3Param, y as Vec4, z as createLayout, D as createParams } from './Params-DgIHJ6Bm.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
@@ -756,38 +756,42 @@ declare function edgeOutwardVisibility(ring: Ring2, i: number, obstacles: readon
  */
 
 declare const MeshAnalysis: {
-    /** Compute mesh volume (for closed, consistent-winding triangle meshes) */
-    meshVolume(mesh: ConnectedMesh): number;
-    /** Compute mesh surface area */
-    meshSurfaceArea(mesh: ConnectedMesh): number;
-    /** Mesh centroid (vertex average) */
-    meshCentroid(mesh: ConnectedMesh): Vec3;
-    /** Laplacian smooth (moves each vertex toward the average of its neighbors) */
-    laplacianSmooth(mesh: ConnectedMesh, iterations?: number, factor?: number): void;
-    /** 3D Convex hull — returns a ConnectedMesh */
-    convexHull3D(points: Vec3[]): ConnectedMesh;
+    /** Mesh volume (closed, consistently wound; polygons are fan-triangulated). */
+    meshVolume(mesh: Mesh): number;
+    /** Mesh surface area. */
+    meshSurfaceArea(mesh: Mesh): number;
+    /** Mesh centroid (vertex average). */
+    meshCentroid(mesh: Mesh): Vec3;
+    /** Laplacian smooth (moves each interior vertex toward the average of its neighbors). */
+    laplacianSmooth(mesh: Mesh, iterations?: number, factor?: number): void;
+    /** 3D Convex hull — returns a Mesh */
+    convexHull3D(points: Vec3[]): Mesh;
 };
 
 /**
- * Tekto MeshFactory — Factory functions that produce ConnectedMesh instances.
+ * Tekto MeshFactory — Factory functions that produce Mesh instances.
  *
  * Mirrors HDGEO.Core.MeshFactory.
  */
 
+/** A grid whose heights can be rewritten in place (animation) without rebuilding topology. */
+type GridMesh = Mesh & {
+    update(heightFn: (x: number, z: number) => number): void;
+};
 declare const MeshFactory: {
-    grid(width: number, depth: number, divisionsX: number, divisionsZ: number, heightFn?: (x: number, z: number) => number): ConnectedMesh;
-    extrude(polygon: Vec3[], direction: Vec3, cap?: boolean): ConnectedMesh;
-    revolve(profile: Vec2[], segments?: number, angleRange?: number): ConnectedMesh;
-    loft(profiles: Vec3[][], closedProfile?: boolean): ConnectedMesh;
-    box(width?: number, height?: number, depth?: number): ConnectedMesh;
-    sphere(radius?: number, segments?: number, rings?: number): ConnectedMesh;
-    cylinder(radiusTop?: number, radiusBottom?: number, height?: number, segments?: number, cap?: boolean): ConnectedMesh;
-    torus(majorRadius?: number, minorRadius?: number, segments?: number, sides?: number): ConnectedMesh;
+    grid(width: number, depth: number, divisionsX: number, divisionsZ: number, heightFn?: (x: number, z: number) => number): GridMesh;
+    extrude(polygon: Vec3[], direction: Vec3, cap?: boolean): Mesh;
+    revolve(profile: Vec2[], segments?: number, angleRange?: number): Mesh;
+    loft(profiles: Vec3[][], closedProfile?: boolean): Mesh;
+    box(width?: number, height?: number, depth?: number): Mesh;
+    sphere(radius?: number, segments?: number, rings?: number): Mesh;
+    cylinder(radiusTop?: number, radiusBottom?: number, height?: number, segments?: number, cap?: boolean): Mesh;
+    torus(majorRadius?: number, minorRadius?: number, segments?: number, sides?: number): Mesh;
     /**
      * Create a tube mesh by sweeping a circular cross-section along a path.
      * Accepts uniform radius (number) or per-point varying radii (number[]).
      */
-    pipe(path: Vec3[], radius: number | number[], sides?: number): ConnectedMesh;
+    pipe(path: Vec3[], radius: number | number[], sides?: number): Mesh;
     /**
      * Catmull-Clark subdivision. With `opts.creaseAngleDeg`, edges whose
      * adjacent faces meet at a dihedral angle sharper than the threshold are
@@ -796,7 +800,7 @@ declare const MeshFactory: {
      * three or more crease edges pin the vertex). Boundary edges always count
      * as creases in that mode. Without opts the classic behavior is unchanged.
      */
-    subdivide(mesh: ConnectedMesh, opts?: {
+    subdivide(mesh: Mesh, opts?: {
         creaseAngleDeg?: number;
         /** Extra crease test by edge endpoint positions — flagged edges follow the
          *  sharp rules regardless of the dihedral angle. */
@@ -804,38 +808,18 @@ declare const MeshFactory: {
         /** Vertices matching this predicate keep their EXACT position (pinned) —
          *  e.g. column feet that must stay on the ground through every level. */
         pinVertex?: (p: Vec3) => boolean;
-    }): ConnectedMesh;
-    triangulate(mesh: ConnectedMesh): ConnectedMesh;
+    }): Mesh;
+    triangulate(mesh: Mesh): Mesh;
+    /**
+     * Midpoint (1→4) subdivision of the triangulated mesh: every triangle becomes
+     * four, vertices stay where they are. Linear — no smoothing; for the smooth
+     * limit surface use `subdivide` (Catmull-Clark).
+     */
+    midpointSubdivide(mesh: Mesh): Mesh;
 };
 
 /**
- * FlatMeshGen — procedural generators for `Mesh` (typed-array flat
- * mesh). The flat-mesh CLASS lives at `src/core/geometry/mesh/Mesh.ts`;
- * this file only holds the generators that haven't been ported into
- * `MeshFactory` yet.
- *
- * Public names in `src/index.ts`:
- *   FlatMeshGen      — generators (here)
- *   FlatMesh, RenderMesh — aliases of the `Mesh` class from `core/geometry/mesh/Mesh`
- */
-
-declare const FlatMeshGen: {
-    grid(width: number, depth: number, divsX: number, divsZ: number, heightFn?: (x: number, z: number) => number): Mesh & {
-        update(hfn: (x: number, z: number) => number): void;
-    };
-    sphere(radius?: number, segments?: number, rings?: number): Mesh;
-    box(width?: number, height?: number, depth?: number): Mesh;
-    torus(majorR?: number, minorR?: number, segments?: number, sides?: number): Mesh;
-    cylinder(radiusTop?: number, radiusBottom?: number, height?: number, segments?: number): Mesh;
-    revolve(profile: Vec2[] | {
-        x: number;
-        y: number;
-    }[], segments?: number): Mesh;
-    subdivide(fm: Mesh): Mesh;
-};
-
-/**
- * Tekto MeshTransform — Geometric transformations on ConnectedMesh.
+ * Tekto MeshTransform — Geometric transformations on Mesh.
  *
  * Mirrors HDGEO.Core.MeshTransform.
  */
@@ -843,38 +827,38 @@ declare const FlatMeshGen: {
 type Axis = "x" | "y" | "z";
 declare const MeshTransform: {
     /** Applies an arbitrary 4x4 matrix to all vertex positions. */
-    transform(mesh: ConnectedMesh, matrix: Mat4): void;
+    transform(mesh: Mesh, matrix: Mat4): void;
     /** Translates all vertices by an offset vector. */
-    translate(mesh: ConnectedMesh, offset: Vec3): void;
+    translate(mesh: Mesh, offset: Vec3): void;
     /** Uniform scale around origin. */
-    scale(mesh: ConnectedMesh, factor: number): void;
+    scale(mesh: Mesh, factor: number): void;
     /** Non-uniform scale around origin. */
-    scaleXYZ(mesh: ConnectedMesh, sx: number, sy: number, sz: number): void;
+    scaleXYZ(mesh: Mesh, sx: number, sy: number, sz: number): void;
     /** Non-uniform scale around a center point. */
-    scaleAbout(mesh: ConnectedMesh, sx: number, sy: number, sz: number, center: Vec3): void;
+    scaleAbout(mesh: Mesh, sx: number, sy: number, sz: number, center: Vec3): void;
     /** Rotates the mesh around an axis through the origin. */
-    rotate(mesh: ConnectedMesh, axis: Vec3, angleRadians: number): void;
+    rotate(mesh: Mesh, axis: Vec3, angleRadians: number): void;
     /** Rotates the mesh around an axis through a center point. */
-    rotateAbout(mesh: ConnectedMesh, axis: Vec3, angleRadians: number, center: Vec3): void;
+    rotateAbout(mesh: Mesh, axis: Vec3, angleRadians: number, center: Vec3): void;
     /** Swaps two coordinate axes (e.g. Y↔Z for Z-up to Y-up conversion). */
-    swapAxes(mesh: ConnectedMesh, a: Axis, b: Axis): void;
+    swapAxes(mesh: Mesh, a: Axis, b: Axis): void;
     /** Mirrors the mesh across a plane through the origin. */
-    mirror(mesh: ConnectedMesh, axis: Axis): void;
+    mirror(mesh: Mesh, axis: Axis): void;
     /** Reverses the winding order of all faces (flips normals). */
-    flipFaces(mesh: ConnectedMesh): void;
+    flipFaces(mesh: Mesh): void;
     /**
      * Makes all face normals consistent using BFS flood-fill.
      * Picks an initial face and propagates its orientation to neighbors.
      */
-    reorientFaces(mesh: ConnectedMesh): void;
+    reorientFaces(mesh: Mesh): void;
     /** Moves the mesh so its bounding box center is at the origin. */
-    centerAtOrigin(mesh: ConnectedMesh): void;
+    centerAtOrigin(mesh: Mesh): void;
     /** Moves the mesh so its centroid (average of vertices) is at the origin. */
-    centerAtCentroid(mesh: ConnectedMesh): void;
+    centerAtCentroid(mesh: Mesh): void;
 };
 
 /**
- * Tekto MeshSubdivide — Subdivision and refinement operations on ConnectedMesh.
+ * Tekto MeshSubdivide — Subdivision and refinement operations on Mesh.
  *
  * Mirrors HDGEO.Core.MeshSubdivide.
  * Note: CatmullClark is in MeshFactory.subdivide().
@@ -882,29 +866,29 @@ declare const MeshTransform: {
 
 declare const MeshSubdivide: {
     /** Splits all edges longer than maxLength in a single pass. */
-    splitLongEdges(mesh: ConnectedMesh, maxLength: number): void;
+    splitLongEdges(mesh: Mesh, maxLength: number): void;
     /**
      * Iteratively subdivides the mesh until all edges are shorter than targetLength.
      */
-    refineByEdgeLength(mesh: ConnectedMesh, targetLength: number, maxIterations?: number): void;
+    refineByEdgeLength(mesh: Mesh, targetLength: number, maxIterations?: number): void;
     /**
      * Doo-Sabin subdivision: each face shrinks toward its centroid, creating
      * new F-faces, E-faces (edge quads), and V-faces (vertex n-gons).
      */
-    dooSabin(mesh: ConnectedMesh): void;
+    dooSabin(mesh: Mesh): void;
 };
 
 /**
- * Tekto MeshCleanup — Vertex merging and welding on ConnectedMesh.
+ * Tekto MeshCleanup — Vertex merging and welding on Mesh.
  *
  * Mirrors HDGEO.Core.MeshCleanup.
  */
 
 declare const MeshCleanup: {
     /** Merges vertices that have the exact same position (binary equality). */
-    mergeIdenticalVertices(mesh: ConnectedMesh): void;
+    mergeIdenticalVertices(mesh: Mesh): void;
     /** Merges vertices that are within a certain distance of each other. */
-    weldVertices(mesh: ConnectedMesh, threshold: number): void;
+    weldVertices(mesh: Mesh, threshold: number): void;
 };
 
 /**
@@ -915,11 +899,11 @@ declare const MeshCleanup: {
  * Import from the new locations for new code.
  */
 declare const Algo: {
-    meshVolume(mesh: ConnectedMesh): number;
-    meshSurfaceArea(mesh: ConnectedMesh): number;
-    meshCentroid(mesh: ConnectedMesh): Vec3;
-    laplacianSmooth(mesh: ConnectedMesh, iterations?: number, factor?: number): void;
-    convexHull3D(points: Vec3[]): ConnectedMesh;
+    meshVolume(mesh: Mesh): number;
+    meshSurfaceArea(mesh: Mesh): number;
+    meshCentroid(mesh: Mesh): Vec3;
+    laplacianSmooth(mesh: Mesh, iterations?: number, factor?: number): void;
+    convexHull3D(points: Vec3[]): Mesh;
     cross2D(o: Vec2, a: Vec2, b: Vec2): number;
     signedArea(polygon: Vec2[]): number;
     area(polygon: Vec2[]): number;
@@ -1015,7 +999,7 @@ declare const Curvature: {
      * zero curvature and an arbitrary (but unit) direction pair; check
      * `result.isBoundary` to filter them out.
      */
-    taubin(mesh: ConnectedMesh): Map<number, VertexCurvature>;
+    taubin(mesh: Mesh): Map<number, VertexCurvature>;
     /**
      * Build a per-face direction field by averaging the vertex principal
      * directions around each face. Use `which: "max" | "min"` to pick which
@@ -1026,7 +1010,7 @@ declare const Curvature: {
      * Run `combDirections` first — otherwise face-averaged vectors will cancel
      * each other out wherever two adjacent vertices have opposite sign.
      */
-    facePrincipalField(mesh: ConnectedMesh, curvatures: Map<number, VertexCurvature>, which: "max" | "min"): Map<number, Vec3>;
+    facePrincipalField(mesh: Mesh, curvatures: Map<number, VertexCurvature>, which: "max" | "min"): Map<number, Vec3>;
     /**
      * Make the principal direction field sign-consistent across the mesh by greedy
      * BFS. For each visited vertex, flip both `dirMax` and `dirMin` if their dot
@@ -1035,7 +1019,7 @@ declare const Curvature: {
      * Not globally optimal — seams will appear near umbilic / singular points.
      * Mutates `curvatures` in place.
      */
-    combDirections(mesh: ConnectedMesh, curvatures: Map<number, VertexCurvature>): void;
+    combDirections(mesh: Mesh, curvatures: Map<number, VertexCurvature>): void;
 };
 
 /**
@@ -1091,7 +1075,7 @@ declare const StreamlineTracer: {
      * @param options        tracing parameters
      * @returns              array of polylines (each polyline is Vec3[])
      */
-    trace(mesh: ConnectedMesh, field: Map<number, Vec3>, options?: StreamlineOptions): Vec3[][];
+    trace(mesh: Mesh, field: Map<number, Vec3>, options?: StreamlineOptions): Vec3[][];
 };
 
 /**
@@ -1335,10 +1319,10 @@ declare class NurbsSurface {
     /** Outward normal at (u, v) via finite differences in parameter space. */
     getNormal(u: number, v: number): Vec3;
     /**
-     * Tessellate the surface into a ConnectedMesh by sampling on a (uDivs × vDivs) grid.
+     * Tessellate the surface into a Mesh by sampling on a (uDivs × vDivs) grid.
      * `closedU` / `closedV` merge the seam (use closedU=true for surfaces from `revolve`).
      */
-    toMesh(uDivs?: number, vDivs?: number, closedU?: boolean, closedV?: boolean): ConnectedMesh;
+    toMesh(uDivs?: number, vDivs?: number, closedU?: boolean, closedV?: boolean): Mesh;
     /**
      * Skinned NURBS surface through a set of compatible cross-section curves.
      *
@@ -1660,7 +1644,7 @@ declare const MarchingSquares: {
     }[];
 };
 declare const MarchingCubes: {
-    extract(grid: VoxelGrid, iso?: number): ConnectedMesh;
+    extract(grid: VoxelGrid, iso?: number): Mesh;
 };
 declare const FloodFill: {
     fill2D(grid: VoxelGrid2D, seeds: {
@@ -2022,7 +2006,7 @@ declare class SpringSystem3D {
     stiffnessShear: number;
     stiffnessHinge: number;
     maxForce: number;
-    initFromMesh(mesh: ConnectedMesh, trussThickness?: number, useHinges?: boolean): void;
+    initFromMesh(mesh: Mesh, trussThickness?: number, useHinges?: boolean): void;
     private computeSmoothNormals;
     private addBendingSprings;
     private getOppositeVertex;
@@ -2030,7 +2014,7 @@ declare class SpringSystem3D {
     pin(index: number): void;
     unpin(index: number): void;
     step(dt: number, substeps?: number): void;
-    updateMesh(mesh: ConnectedMesh): void;
+    updateMesh(mesh: Mesh): void;
 }
 
 /**
@@ -2432,7 +2416,7 @@ interface VisibilityResult {
         maxV: number;
     };
 }
-declare function extractVisiblePolylines(mesh: ConnectedMesh, polylines: Vec3[][], view: VisibilityView, options?: VisibilityOptions): VisibilityResult;
+declare function extractVisiblePolylines(mesh: Mesh, polylines: Vec3[][], view: VisibilityView, options?: VisibilityOptions): VisibilityResult;
 interface SVGOptions {
     /** Stroke width in SVG user units. Default 0.5. */
     strokeWidth?: number;
@@ -5603,7 +5587,7 @@ interface SelectOpts {
 /** A handle to a mesh in the scene — fluent chainable API */
 interface MeshHandle {
     readonly id: string;
-    readonly mesh: ConnectedMesh;
+    readonly mesh: Mesh;
     color(c: string): MeshHandle;
     opacity(o: number): MeshHandle;
     wireframe(w?: boolean): MeshHandle;
@@ -5802,7 +5786,7 @@ interface Lab {
         accept?: string;
         handler: (file: File) => void | Promise<void>;
     }): void;
-    mesh(m: ConnectedMesh, style?: Partial<VisualStyle>): MeshHandle;
+    mesh(m: Mesh, style?: Partial<VisualStyle>): MeshHandle;
     flatMesh(data: FlatMeshData, style?: Partial<VisualStyle>): MeshHandle;
     sphere(radius?: number, segments?: number, rings?: number): MeshHandle;
     box(width?: number, height?: number, depth?: number): MeshHandle;
@@ -5824,7 +5808,7 @@ interface Lab {
     polygon(vertices: Vec3[], style?: Partial<VisualStyle>): ShapeHandle;
     circle(cx: number, cy: number, cz: number, radius: number): ShapeHandle;
     algo: typeof Algo;
-    MeshGen: typeof MeshFactory;
+    MeshFactory: typeof MeshFactory;
     clear(): void;
     background(color: number): void;
     camera(x: number, y: number, z: number): void;
@@ -6562,4 +6546,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, ConnectedMesh, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, Mesh as FlatMesh, MeshData as FlatMeshData, FlatMeshGen, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mat4, type MaterialLayer, MathUtils, ConnectedMesh as Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, MeshFactory as MeshGen, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, Mesh as RenderMesh, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, sectionAppearance, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HMath, HPlane, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mat4, type MaterialLayer, MathUtils, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, HPlane as Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, sectionAppearance, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
