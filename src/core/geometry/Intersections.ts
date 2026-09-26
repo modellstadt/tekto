@@ -6,7 +6,7 @@
 
 import { Vec2, Vec3 } from "../math/vectors";
 import { HMath } from "../math/HMath";
-import { HPlane } from "./HPlane";
+import { Plane } from "./Plane";
 import { Ray } from "./Ray";
 import { Sphere } from "./Sphere";
 import { AABB } from "./AABB";
@@ -120,7 +120,7 @@ export const Intersections = {
   // ================================================================
 
   /** Intersects a ray with a plane. Returns { t, point } or null. */
-  rayPlane(ray: Ray, plane: HPlane): { t: number; point: Vec3 } | null {
+  rayPlane(ray: Ray, plane: Plane): { t: number; point: Vec3 } | null {
     const denom = ray.direction.dot(plane.normal);
     if (Math.abs(denom) < HMath.EPSILON) return null;
     const t = -(ray.origin.dot(plane.normal) + plane.d) / denom;
@@ -341,7 +341,7 @@ export const Intersections = {
   // ================================================================
 
   /** Intersects a line segment with a plane. Returns the hit point or null. */
-  segmentPlane(a: Vec3, b: Vec3, plane: HPlane): Vec3 | null {
+  segmentPlane(a: Vec3, b: Vec3, plane: Plane): Vec3 | null {
     const dA = plane.distToPoint(a);
     const dB = plane.distToPoint(b);
     if (dA * dB > 0) return null; // both on same side
@@ -354,7 +354,7 @@ export const Intersections = {
   },
 
   /** Intersects an infinite line with a plane. Returns the hit point or null. */
-  linePlane(a: Vec3, b: Vec3, plane: HPlane): Vec3 | null {
+  linePlane(a: Vec3, b: Vec3, plane: Plane): Vec3 | null {
     const dir = b.sub(a);
     const denom = dir.dot(plane.normal);
     if (Math.abs(denom) < HMath.EPSILON) return null;
@@ -363,7 +363,7 @@ export const Intersections = {
   },
 
   /** Intersects two planes. Returns { point, direction } of the line, or null if parallel. */
-  planePlane(p1: HPlane, p2: HPlane): { point: Vec3; direction: Vec3 } | null {
+  planePlane(p1: Plane, p2: Plane): { point: Vec3; direction: Vec3 } | null {
     const dir = p1.normal.cross(p2.normal);
     if (dir.lenSq() < HMath.EPSILON) return null;
 
@@ -410,7 +410,7 @@ function setCoord(x: number, y: number, z: number, i: number, val: number): Vec3
   return new Vec3(x, y, val);
 }
 
-function solvePlanePair(_zeroCoord: number, coordA: number, coordB: number, p1: HPlane, p2: HPlane): Vec3 {
+function solvePlanePair(_zeroCoord: number, coordA: number, coordB: number, p1: Plane, p2: Plane): Vec3 {
   const a1 = coord(p1.normal, coordA);
   const b1 = coord(p1.normal, coordB);
   const d1 = -p1.d;

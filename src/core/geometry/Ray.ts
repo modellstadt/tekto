@@ -6,7 +6,7 @@
 
 import { Vec3 } from "../math/vectors";
 import { HMath } from "../math/HMath";
-import { HPlane } from "./HPlane";
+import { Plane } from "./Plane";
 import { Triangle } from "./Triangle";
 import { Sphere } from "./Sphere";
 import { AABB } from "./AABB";
@@ -30,7 +30,7 @@ export class Ray {
     return this.closestPointTo(point).distTo(point);
   }
 
-  intersectPlane(plane: HPlane): { t: number; point: Vec3 } | null {
+  intersectPlane(plane: Plane): { t: number; point: Vec3 } | null {
     const denom = this.direction.dot(plane.normal);
     if (Math.abs(denom) < HMath.EPSILON) return null;
     const t = -(this.origin.dot(plane.normal) + plane.d) / denom;

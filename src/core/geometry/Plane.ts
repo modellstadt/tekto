@@ -1,33 +1,32 @@
 /**
- * Tekto HPlane — Infinite plane (ax + by + cz + d = 0).
+ * Tekto Plane — Infinite plane (ax + by + cz + d = 0).
  *
- * Renamed from `Plane` to avoid conflict with DOM Plane.
- * Mirrors HDGEO.Core.HPlane.
+ * Mirrors HDGEO.Core.Plane.
  */
 
 import { Vec3 } from "../math/vectors";
 import { HMath } from "../math/HMath";
 
-export class HPlane {
+export class Plane {
   /** ax + by + cz + d = 0 */
   constructor(
     public readonly normal: Vec3,
     public readonly d: number
   ) {}
 
-  static fromPointNormal(point: Vec3, normal: Vec3): HPlane {
+  static fromPointNormal(point: Vec3, normal: Vec3): Plane {
     const n = normal.normalize();
-    return new HPlane(n, -n.dot(point));
+    return new Plane(n, -n.dot(point));
   }
 
-  static fromThreePoints(a: Vec3, b: Vec3, c: Vec3): HPlane {
+  static fromThreePoints(a: Vec3, b: Vec3, c: Vec3): Plane {
     const n = b.sub(a).cross(c.sub(a)).normalize();
-    return new HPlane(n, -n.dot(a));
+    return new Plane(n, -n.dot(a));
   }
 
-  static XY(): HPlane { return new HPlane(Vec3.unitZ(), 0); }
-  static XZ(): HPlane { return new HPlane(Vec3.unitY(), 0); }
-  static YZ(): HPlane { return new HPlane(Vec3.unitX(), 0); }
+  static XY(): Plane { return new Plane(Vec3.unitZ(), 0); }
+  static XZ(): Plane { return new Plane(Vec3.unitY(), 0); }
+  static YZ(): Plane { return new Plane(Vec3.unitX(), 0); }
 
   distToPoint(point: Vec3): number {
     return this.normal.dot(point) + this.d;
@@ -56,12 +55,9 @@ export class HPlane {
   }
 
   /** Returns a new plane with the normal flipped. */
-  flipped(): HPlane {
-    return new HPlane(this.normal.neg(), -this.d);
+  flipped(): Plane {
+    return new Plane(this.normal.neg(), -this.d);
   }
 
   toJSON() { return { normal: this.normal.toJSON(), d: this.d }; }
 }
-
-/** Backward-compat alias */
-export { HPlane as Plane };

@@ -7,7 +7,7 @@
 
 import { Vec3 } from "../math/vectors";
 import { Mesh } from "../geometry/mesh/Mesh";
-import { HPlane } from "../geometry/HPlane";
+import { Plane } from "../geometry/Plane";
 
 // ─── Spring ──────────────────────────────────
 
@@ -28,7 +28,7 @@ export class SpringSystem3D {
 
   // Settings
   gravity = new Vec3(0, -9.81, 0);
-  floorPlane = new HPlane(new Vec3(0, 0, 1), -10);
+  floorPlane = new Plane(new Vec3(0, 0, 1), -10);
   globalVelDamping = 0.02;
 
   useGlobalStiffness = true;
