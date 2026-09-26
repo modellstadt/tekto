@@ -1028,9 +1028,6 @@ export class Mesh {
     return { positions, normals, indices, ...(uvs ? { uvs } : {}), ...(colors ? { colors } : {}) };
   }
 
-  /** @deprecated use `toMeshData()` */
-  toIndexedTriangles(): MeshData { return this.toMeshData(); }
-
   static fromMeshData(d: MeshData): Mesh {
     return new Mesh(d.positions, d.indices, d.normals, d.uvs, d.colors);
   }
@@ -1062,11 +1059,6 @@ export class Mesh {
     mesh.computeVertexNormals();
     return mesh;
   }
-
-  /** @deprecated there is one mesh class now; returns the mesh itself. */
-  static fromConnectedMesh(mesh: Mesh): Mesh { return mesh; }
-  /** @deprecated there is one mesh class now; returns the mesh itself. */
-  toConnectedMesh(): Mesh { return this; }
 
   private _load(
     positions: ArrayLike<number>, indices: ArrayLike<number>,
@@ -1189,8 +1181,3 @@ export class Mesh {
     this._cNextInEdge = grow(this._cNextInEdge, cap, NONE);
   }
 }
-
-/** @deprecated `ConnectedMesh` is `Mesh` now (one class). Removed in the next minor. */
-export { Mesh as ConnectedMesh };
-/** @deprecated `FlatMesh` is `Mesh` now (one class). Removed in the next minor. */
-export { Mesh as FlatMesh };

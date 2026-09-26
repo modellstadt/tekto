@@ -13,15 +13,15 @@ before 1.0, breaking changes bump the minor version. See
   `node(id)`/`splitEdge`… and `positions`/`indices`/`normals`/`smooth`… — so most code
   compiles unchanged. Same 200k-triangle grid: 31 ms / 45 MB instead of 238 ms / 232 MB;
   1M triangles load from arrays in 83 ms. Migration:
-  - `ConnectedMesh` and `FlatMesh` still exist as deprecated aliases of `Mesh`; they go in
-    the next minor. `RenderMesh`, `MeshGen`, `FlatMeshGen` are removed: write `Mesh` and
-    `MeshFactory` (which gained `midpointSubdivide`, and `grid(...).update(fn)`).
+  - `ConnectedMesh`, `FlatMesh`, `RenderMesh`, `MeshGen`, `FlatMeshGen` are gone: write `Mesh`
+    and `MeshFactory` (which gained `midpointSubdivide`, and `grid(...).update(fn)`). The deep
+    paths `core/geometry/mesh/ConnectedMesh` and `core/mesh/FlatMesh` no longer exist.
   - Ids are indices; removing an element leaves a tombstone until `compact()`, which
     renumbers. `nodeCount` counts live nodes, `vertexCount` counts slots.
   - `face.nodes` (and `node.edges`, `node.faces`, `face.edges`) are snapshots; reversing a
     face is `mesh.reverseFace(id)`. `node.position = p` still writes through.
   - `toIndexedTriangles()` → `toMeshData()`; `FlatMesh.fromConnectedMesh(m)` /
-    `m.toConnectedMesh()` return the mesh itself and are deprecated.
+    `m.toConnectedMesh()` are gone — there is nothing to convert, use the mesh.
   - `mesh.positions` is `Float64Array` (the analysis code needs the precision); the
     `MeshData` handed to the renderer/IO stays `Float32Array`. A flat mesh no longer
     satisfies `FlatMeshData` structurally — pass `mesh.toMeshData()`.

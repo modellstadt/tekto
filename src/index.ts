@@ -32,8 +32,7 @@ export type { PerpSegment } from "./core/geometry/PerpVisibility";
 export { MeshAnalysis } from "./core/geometry/mesh/MeshAnalysis";
 
 // Mesh — one class: id-based editing + typed-array storage + connectivity.
-// `ConnectedMesh` / `FlatMesh` are deprecated aliases of it, gone in the next minor.
-export { Mesh, ConnectedMesh, FlatMesh } from "./core/geometry/mesh/Mesh";
+export { Mesh } from "./core/geometry/mesh/Mesh";
 export type { MeshNode, MeshEdge, MeshFace, MeshJSON, LegacyMeshJSON, MeshData as FlatMeshData } from "./core/geometry/mesh/Mesh";
 export { MeshFactory } from "./core/geometry/mesh/MeshFactory";
 export { MeshTransform } from "./core/geometry/mesh/MeshTransform";

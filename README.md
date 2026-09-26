@@ -135,8 +135,6 @@ lists that every edit maintains incrementally. Both old APIs live on it.
 | Cost | 200k triangles: 31 ms to build with edges, ~45 MB; 1M triangles from arrays: 83 ms, ~72 MB. Catmull-Clark on 40k quads: 0.33 s. 5,000 edge splits: 9 ms |
 | Watch out | `face.nodes` / `node.edges` are snapshots (reverse a face with `reverseFace`); in hot loops read `positions`/`faceVerts`, not views |
 
-`ConnectedMesh` and `FlatMesh` remain as deprecated aliases for one release.
-
 ### Three access levels
 
 1. **Sketch API** — `sketch()` (3D) / `sketch2d()` (2D canvas): one function, zero framework knowledge. For students and quick experiments. The function re-runs on every parameter change.
@@ -441,7 +439,7 @@ console.log(Object.keys(G).sort());
 Or use IDE autocomplete on the import line — every export is typed and has JSDoc. The big buckets:
 
 - **Math + primitives**: `Vec2`, `Vec3`, `Vec4`, `Mat4`, `MathUtils`, `Ray`, `Plane`, `Triangle`, `AABB`, `Sphere`, `Polygon2D`, `Intersections`.
-- **Meshes**: `Mesh` (the one class: id-based editing, connectivity, typed arrays), `MeshFactory` (primitives + extrude + revolve + loft + pipe + subdivide), `MeshTransform`, `MeshSubdivide`, `MeshCleanup`, `MeshAnalysis`. (`ConnectedMesh`, `FlatMesh`: deprecated aliases of `Mesh`.)
+- **Meshes**: `Mesh` (the one class: id-based editing, connectivity, typed arrays), `MeshFactory` (primitives + extrude + revolve + loft + pipe + subdivide), `MeshTransform`, `MeshSubdivide`, `MeshCleanup`, `MeshAnalysis`.
 - **Curves + surfaces**: `LineCurve`, `ArcCurve`, `HelixCurve`, `NurbsCurve`, `CubicBezierCurve`, `NurbsSurface`.
 - **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `PolygonBool` (boolean ops with holes), `NoFitPolygon` (Minkowski / NFP / inner-fit for nesting), `perpVisibility` (collimated edge-visibility polygons), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
 - **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.
