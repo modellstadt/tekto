@@ -52,7 +52,6 @@ __export(index_exports, {
   Graph: () => Graph,
   GridGraph: () => GridGraph,
   HMath: () => HMath,
-  HPlane: () => HPlane,
   HelixCurve: () => HelixCurve,
   HolzrahmenBau: () => HolzrahmenBau,
   HolzrahmenBauJointStyle: () => HolzrahmenBauJointStyle,
@@ -89,7 +88,7 @@ __export(index_exports, {
   PlanarGraph: () => PlanarGraph,
   PlanarGraphCleanup: () => PlanarGraphCleanup,
   PlanarGraphRepair: () => PlanarGraphRepair,
-  Plane: () => HPlane,
+  Plane: () => Plane,
   Polygon2D: () => Polygon2D,
   PolygonBool: () => PolygonBool,
   PolylineCurve: () => PolylineCurve,
@@ -1479,8 +1478,8 @@ var Ray = class {
   }
 };
 
-// src/core/geometry/HPlane.ts
-var HPlane = class _HPlane {
+// src/core/geometry/Plane.ts
+var Plane = class _Plane {
   /** ax + by + cz + d = 0 */
   constructor(normal, d) {
     this.normal = normal;
@@ -1488,20 +1487,20 @@ var HPlane = class _HPlane {
   }
   static fromPointNormal(point, normal) {
     const n = normal.normalize();
-    return new _HPlane(n, -n.dot(point));
+    return new _Plane(n, -n.dot(point));
   }
   static fromThreePoints(a, b, c) {
     const n = b.sub(a).cross(c.sub(a)).normalize();
-    return new _HPlane(n, -n.dot(a));
+    return new _Plane(n, -n.dot(a));
   }
   static XY() {
-    return new _HPlane(Vec3.unitZ(), 0);
+    return new _Plane(Vec3.unitZ(), 0);
   }
   static XZ() {
-    return new _HPlane(Vec3.unitY(), 0);
+    return new _Plane(Vec3.unitY(), 0);
   }
   static YZ() {
-    return new _HPlane(Vec3.unitX(), 0);
+    return new _Plane(Vec3.unitX(), 0);
   }
   distToPoint(point) {
     return this.normal.dot(point) + this.d;
@@ -1526,7 +1525,7 @@ var HPlane = class _HPlane {
   }
   /** Returns a new plane with the normal flipped. */
   flipped() {
-    return new _HPlane(this.normal.neg(), -this.d);
+    return new _Plane(this.normal.neg(), -this.d);
   }
   toJSON() {
     return { normal: this.normal.toJSON(), d: this.d };
@@ -1750,7 +1749,7 @@ var Triangle = class {
     return bary.x >= -HMath.EPSILON && bary.y >= -HMath.EPSILON && bary.z >= -HMath.EPSILON;
   }
   closestPointTo(p) {
-    const plane = HPlane.fromThreePoints(this.a, this.b, this.c);
+    const plane = Plane.fromThreePoints(this.a, this.b, this.c);
     const proj = plane.projectPoint(p);
     if (this.containsPoint(proj)) return proj;
     const candidates = [
@@ -6252,7 +6251,7 @@ function traceEuler(mesh, cache, startFaceId, startDir, field, maxSteps, dt, lif
 // src/core/algo/BspTree.ts
 var EPS2 = 1e-5;
 function polygonFromVertices(vertices, shared) {
-  const plane = HPlane.fromThreePoints(vertices[0], vertices[1], vertices[2]);
+  const plane = Plane.fromThreePoints(vertices[0], vertices[1], vertices[2]);
   return { vertices, plane, shared };
 }
 function flipPolygon(p) {
@@ -13727,7 +13726,7 @@ var SpringSystem3D = class {
     this.springs = [];
     // Settings
     this.gravity = new Vec3(0, -9.81, 0);
-    this.floorPlane = new HPlane(new Vec3(0, 0, 1), -10);
+    this.floorPlane = new Plane(new Vec3(0, 0, 1), -10);
     this.globalVelDamping = 0.02;
     this.useGlobalStiffness = true;
     this.globalStiffness = 200;
@@ -26896,7 +26895,6 @@ var Sketch2DInstance = class {
   Graph,
   GridGraph,
   HMath,
-  HPlane,
   HelixCurve,
   HolzrahmenBau,
   HolzrahmenBauJointStyle,

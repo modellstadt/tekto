@@ -1,6 +1,6 @@
 import {
   Scene
-} from "./chunk-L76BR4GT.mjs";
+} from "./chunk-XU6OAJZA.mjs";
 
 // src/react/components.tsx
 import React, {
