@@ -1,6 +1,7 @@
 /**
  * Render on demand: the sketch viewport draws only when something changed, so an
  * idle scene costs nothing, while orbiting, re-runs and animations still draw.
+ * Also: colour / layer / pickTag restyles patch the existing three object.
  */
 import { expect, test, type Page } from "@playwright/test";
 
@@ -81,5 +82,30 @@ test("an animated sketch keeps drawing", async ({ page }) => {
   const [drawn, frames] = [await draws.get(), await draws.frames()];
   expect(frames).toBeGreaterThan(0);
   expect(drawn, "a draw on every animation frame").toBeGreaterThanOrEqual(frames - 1);
+  expect(errors).toEqual([]);
+});
+
+test("colour, layer and pickTag restyle the existing three object", async ({ page }) => {
+  const errors = watchErrors(page);
+  await open(page, "lines-points");
+  const r = await page.evaluate(() => {
+    const owner = (window as any).__tekto.owner;
+    const seg = owner.scene.all().find((o: { type: string }) => o.type === "segment");
+    const before = owner.renderer.getThreeObject(seg.id);
+    owner.scene.setStyle(seg.id, { color: "#ff0000", layer: "x" });
+    owner.scene.setStyle(seg.id, { opacity: 0.5 });
+    owner.scene.update(seg.id, { pickTag: "t", pickable: false });
+    const after = owner.renderer.getThreeObject(seg.id);
+    owner.scene.setStyle(seg.id, { dash: { size: 0.1, gap: 0.1 } });   // not in place → rebuilt
+    return {
+      same: before === after,
+      color: after.material.color.getHexString(),
+      opacity: after.material.opacity,
+      transparent: after.material.transparent,
+      pickable: after.userData.pickable,
+      rebuiltForDash: owner.renderer.getThreeObject(seg.id) !== after,
+    };
+  });
+  expect(r).toEqual({ same: true, color: "ff0000", opacity: 0.5, transparent: true, pickable: false, rebuiltForDash: true });
   expect(errors).toEqual([]);
 });

@@ -33,6 +33,10 @@ export interface ThreeRendererConfig {
   up: "y" | "z";
 }
 
+// Style keys that never change the three.js object: layer is metadata, WebGL
+// lines ignore lineWidth, noExport only filters exports.
+const INERT_STYLE_KEYS = new Set(["layer", "lineWidth", "noExport"]);
+
 const DEFAULTS: ThreeRendererConfig = {
   antialias: true,
   backgroundColor: 0x0a0b14,
@@ -226,24 +230,26 @@ export class ThreeRenderer {
         this.removeFromThree(event.id);
         break;
       case "object:style": {
-        // Fast path: a pure-visibility patch toggles the existing Three
-        // object in place — no geometry/material rebuild. This keeps
-        // display passes (layer show/hide over many objects) cheap.
-        const keys = Object.keys(event.style);
+        // Fast path: colour, opacity, visibility and layer patch the existing
+        // three object — chained `.color().layer()` calls on every object of a
+        // run, and display passes over many objects, stay cheap. Anything else
+        // (dash, tube radius, label, mesh options …) rebuilds it.
         const t = this.objectMap.get(event.id);
         const srcObj = this.gScene.get(event.id);
-        if (t && srcObj && keys.length === 1 && keys[0] === "visible") {
-          t.userData.styleVisible = srcObj.style.visible;
-          t.visible = srcObj.style.visible && !(this.hideHelpers && this._isHelper(srcObj.type));
-          break;
-        }
+        if (t && srcObj && this._restyleInPlace(t, srcObj, event.style)) break;
         this.removeFromThree(event.id);
         if (srcObj) this.addToThree(srcObj);
         break;
       }
       case "object:update": {
-        this.removeFromThree(event.id);
+        const t = this.objectMap.get(event.id);
         const obj = this.gScene.get(event.id);
+        // pickTag / pickable are picking metadata: no rebuild.
+        if (t && obj && Object.keys(event.changes).every(k => k === "pickTag" || k === "pickable")) {
+          t.userData.pickable = obj.pickable !== false;
+          break;
+        }
+        this.removeFromThree(event.id);
         if (obj) this.addToThree(obj);
         break;
       }
@@ -292,6 +298,46 @@ export class ThreeRenderer {
     this.objectMap.set(obj.id, t);
     // If this is the currently selected object, reattach the gizmo.
     if (this.gizmoAttachedId === obj.id) this.attachGizmo(obj.id);
+  }
+
+  /** Apply a style patch to the existing three object if it only touches colour,
+   *  opacity, visibility or inert keys. False → the caller rebuilds the object. */
+  private _restyleInPlace(t: THREE.Object3D, obj: SceneObject, patch: Partial<SceneObject["style"]>): boolean {
+    let paint = false;
+    for (const k of Object.keys(patch)) {
+      if (k === "color" || k === "opacity") paint = true;
+      else if (k !== "visible" && !INERT_STYLE_KEYS.has(k)) return false;
+    }
+    if (paint && !this._repaint(t, obj)) return false;
+    if ("visible" in patch) {
+      t.userData.styleVisible = obj.style.visible;
+      t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
+    }
+    return true;
+  }
+
+  /** Set colour + opacity on a single-material object exactly as convert() would build
+   *  it: lines (segment, polyline, circle), tube segments and unlabelled points. Meshes,
+   *  polygons, planes and labelled points have mode- or label-dependent materials → false. */
+  private _repaint(t: THREE.Object3D, obj: SceneObject): boolean {
+    const s = obj.style;
+    const tube = obj.type === "segment" && !!s.tubeRadius && s.tubeRadius > 0;
+    const line = !tube && (obj.type === "segment" || obj.type === "polyline" || obj.type === "circle");
+    const solid = tube || (obj.type === "point" && !s.label);
+    const m = (t as THREE.Mesh).material;
+    if ((!line && !solid) || !m || Array.isArray(m)) return false;
+    const mat = m as THREE.LineBasicMaterial | THREE.MeshPhongMaterial;
+    // _makeMaterial lets the studio colour override win on solids.
+    mat.color.set(solid && this.currentLighting === "studio" ? (this.studioColor ?? s.color) : s.color);
+    if (obj.type === "point") {
+      // While selected, the highlight owns emissive; update what it restores to.
+      const sel = this.selectionMaterials.get(t.uuid);
+      (sel ? sel.oldEmissive : (mat as THREE.MeshPhongMaterial).emissive).set(s.color);
+    }
+    const transparent = s.opacity < 1;
+    if (mat.transparent !== transparent) { mat.transparent = transparent; mat.needsUpdate = true; }
+    mat.opacity = s.opacity;
+    return true;
   }
 
   /** Apply `obj.transform` (position/rotation/scale) to a Three.Object3D. */

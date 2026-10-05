@@ -14,6 +14,12 @@ before 1.0, breaking changes bump the minor version. See
   directly (e.g. moves an object added with `addExternalObject`) calls the new
   `lab.requestRender()` (also `SketchInstance.requestRender()`, `ThreeRenderer.requestRender()`
   / `renderIfNeeded()`). `appShell()` and `ThreeRenderer.startLoop()` still draw every frame.
+- **Cheaper restyles.** Colour, opacity, visibility and `layer` style changes on lines, tube
+  segments and unlabelled points, and `pickTag` / `pickable` on any object, patch the existing
+  three.js object instead of removing and rebuilding it (other changes still rebuild). Chained
+  calls like `lab.line(…).color(c).layer(l).pickTag(t)` used to build the object four times: a
+  run of 11.5k such objects now builds 11.5k three.js objects instead of 46.5k and re-runs about
+  1.9× faster.
 - **Shared editing.** `SharedStore` — a document of keyed records several people (and agents)
   edit together: writes apply locally at once, the backend stores them and sends them live;
   last write wins per key; presence and broadcasts. Backends are adapters: `memoryAdapter`,
