@@ -21,7 +21,8 @@
       "import": "./dist/react.mjs",
       "require": "./dist/react.js"
     },
-    "./markup-vite": "./tools/markup-vite-plugin.mjs"
+    "./markup-vite": "./tools/markup-vite-plugin.mjs",
+    "./collab-vite": "./tools/collab-vite-plugin.mjs"
   },
   "scripts": {
     "build": "tsup src/index.ts src/react.ts --format cjs,esm --dts --external three --external react --external react-dom --external web-ifc",

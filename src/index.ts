@@ -238,6 +238,15 @@ export type {
 export { appShell } from "./sketch/AppShell";
 export type { AppShellConfig, AppShellInstance } from "./sketch/AppShell";
 
+// Shared editing: a document of keyed records several people (and agents) edit together,
+// with presence; backends are adapters (in-process, Vite dev server, Supabase).
+export { SharedStore, collabColor, memoryAdapter, devServerAdapter, supabaseAdapter } from "./collab/SharedStore";
+export type {
+  SharedRecord, CollabUser, Presence, CollabStatus, CollabEvents, CollabAdapter, SharedStoreOptions, SupabaseLike,
+} from "./collab/SharedStore";
+export { PresenceBar } from "./collab/PresenceBar";
+export type { PresenceBarOptions } from "./collab/PresenceBar";
+
 // Markup overlay types (the overlay itself is mounted by sketch(); see sketch/Markup.ts)
 export type { MarkupBundle, MarkupCaptureOptions, MarkupObjectRef, MarkKind } from "./sketch/Markup";
 

@@ -6,6 +6,13 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Shared editing.** `SharedStore` — a document of keyed records several people (and agents)
+  edit together: writes apply locally at once, the backend stores them and sends them live;
+  last write wins per key; presence and broadcasts. Backends are adapters: `memoryAdapter`,
+  `devServerAdapter` (Vite dev server; plugin `tekto/collab-vite`, records in
+  `.tekto/collab/<doc>.json`), `supabaseAdapter` (the app passes its supabase-js client — no
+  new dependency). `PresenceBar` shows who is online. Playground page "Shared Editing".
+
 ## 0.5.0 — 2026-09-26
 
 - **Breaking — `HPlane` is `Plane`.** The class was always exported as `Plane` as well; the
