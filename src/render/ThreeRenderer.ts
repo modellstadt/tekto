@@ -1641,7 +1641,9 @@ export class ThreeRenderer {
     const pos = c.object.position;
     const step = pos.distanceTo(this._lastCamPos);
     this._lastCamPos.copy(pos);
-    if (!(step > 0)) return false; // also NaN on the first frame
+    // OrbitControls re-derives the position from its spherical angles every update, which
+    // leaves float noise (~1e-13 at a top-down view): no motion, or idle would draw every frame.
+    if (!(step > 1e-9 * Math.max(pos.distanceTo(c.target), 1))) return false; // also NaN on the first frame
     if (c.enableDamping && c.dampingFactor > 0) {
       // Each frame applies `dampingFactor` of what is left, so the rest of the
       // glide is step * (1 - f) / f; as an angle, divide by the orbit radius.
