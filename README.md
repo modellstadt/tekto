@@ -325,6 +325,91 @@ export default { plugins: [tektoMarkup()] };
 
 Without the plugin, Save downloads the three files instead. Turn the button off with `sketch(fn, { markup: false })`.
 
+## Shared editing — several people (and agents) on one model
+
+`SharedStore` is a document of keyed records that everyone with the same document name edits together: a write applies locally at once, is stored by the backend and reaches the other clients live. Per key the last write wins (backend clock) — right for small teams, especially with **presence** showing who is on what. Broadcasts carry transient messages (a point while it is dragged) that are never stored.
+
+```ts
+import { SharedStore, devServerAdapter, PresenceBar } from "tekto";
+
+const store = new SharedStore<[number, number, number]>({ doc: "my-model", adapter: devServerAdapter() });
+await store.connect();
+store.onChange((keys, source) => lab.invalidate());   // a local or remote change → re-run
+store.set("p1", [0, 1, 2]);                            // applied here, stored, sent to everyone
+store.setPresence({ selected: "p1" });                 // others see it in store.others
+new PresenceBar(store, lab.viewport);                  // badges + Sign in, left of ✎ Markup
+```
+
+The backend is an adapter:
+
+| adapter | for | records live in |
+|---|---|---|
+| `memoryAdapter()` | tests, one-page demos | memory |
+| `devServerAdapter()` | windows on one Vite dev server (and agents) | `.tekto/collab/<doc>.json` — edit it and the windows follow |
+| `supabaseAdapter(client)` | online, with sign-in | a Supabase table (+ history) |
+
+The dev adapter needs the plugin (the playground has it — see the **Shared Editing** page):
+
+```js
+import tektoCollab from "tekto/collab-vite";
+export default { plugins: [tektoCollab()] };
+```
+
+**Supabase.** The app creates the client (`createClient(url, anonKey)` from `@supabase/supabase-js`, the app's own dependency) and passes it: `supabaseAdapter(client, { provider: "github" })`. Set up once in the project's SQL editor — records, a history of every write, and writes only for the GitHub logins in `tekto_editors` (who wrote is taken from the sign-in, never from the client):
+
+```sql
+create table if not exists public.tekto_records (
+  doc text not null, key text not null, value jsonb,
+  by text not null default '', at timestamptz not null default now(),
+  primary key (doc, key)
+);
+create table if not exists public.tekto_history (
+  id bigint generated always as identity primary key,
+  doc text not null, key text not null, value jsonb, by text not null, at timestamptz not null
+);
+create table if not exists public.tekto_editors (login text primary key);
+
+create or replace function public.tekto_stamp() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.by := coalesce(auth.jwt() -> 'user_metadata' ->> 'user_name', auth.jwt() ->> 'email', 'anon');
+  new.at := now();
+  return new;
+end $$;
+create or replace function public.tekto_log() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.tekto_history (doc, key, value, by, at) values (new.doc, new.key, new.value, new.by, new.at);
+  return null;
+end $$;
+drop trigger if exists tekto_stamp on public.tekto_records;
+create trigger tekto_stamp before insert or update on public.tekto_records
+  for each row execute function public.tekto_stamp();
+drop trigger if exists tekto_log on public.tekto_records;   -- after: once per write (an upsert
+create trigger tekto_log after insert or update on public.tekto_records   -- fires both before-triggers)
+  for each row execute function public.tekto_log();
+
+create or replace function public.tekto_is_editor() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.tekto_editors e
+                 where e.login = auth.jwt() -> 'user_metadata' ->> 'user_name');
+$$;
+
+alter table public.tekto_records enable row level security;
+alter table public.tekto_history enable row level security;
+alter table public.tekto_editors enable row level security;
+create policy "anyone reads" on public.tekto_records for select using (true);
+create policy "editors insert" on public.tekto_records for insert with check (public.tekto_is_editor());
+create policy "editors update" on public.tekto_records for update
+  using (public.tekto_is_editor()) with check (public.tekto_is_editor());
+create policy "editors read history" on public.tekto_history for select using (public.tekto_is_editor());
+alter publication supabase_realtime add table public.tekto_records;
+
+insert into public.tekto_editors (login) values ('your-github-login') on conflict do nothing;
+```
+
+GitHub sign-in: a GitHub OAuth app whose callback is `https://<project>.supabase.co/auth/v1/callback`, its id and secret under Supabase → Authentication → Providers → GitHub, and the app's URLs (deployed and `http://localhost:5173/**`) under Authentication → URL Configuration. Read access is open (`using (true)`); tighten that policy if the model is not public.
+
 ## Exploring everything via the testbench
 
 Every part of the library is exercised by the playground testbench:
@@ -447,6 +532,7 @@ Or use IDE autocomplete on the import line — every export is typed and has JSD
 - **Viewport**: `Viewport` — a three.js viewport over meshes *you* built (from IFC, a cut list, a supplier), as opposed to a `Scene` the library owns. Shaded / ghost / hidden-line modes, perspective or orthographic with named views (orthographic + hidden line + `front` is an elevation), creases built progressively so a project-scale model still gets them, a real sun from `SunPosition` with a framed shadow camera, and a teardown that actually releases the WebGL context. Colour stays yours through `appearanceOf`.
 - **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — both emit AutoCAD-safe R12), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
 - **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use). Types `MarkupBundle` / `MarkupCaptureOptions` / `MarkupObjectRef` / `MarkKind` for the [Markup](#markup--instructions-for-an-ai-drawn-on-the-view) capture.
+- **Shared editing**: `SharedStore` (keyed records, last write wins, presence, broadcasts), `memoryAdapter` / `devServerAdapter` / `supabaseAdapter`, `PresenceBar`, `collabColor` — see [Shared editing](#shared-editing--several-people-and-agents-on-one-model).
 - **App Shell**: `appShell` — persistent-panel apps (panel built once, animation-friendly) with a built-in top bar (Flat/Studio lighting, render mode, Persp/Iso camera, Sun popover).
 - **React** (from `tekto/react`): `AccordionColumn` — a column of collapsible sections, one of which takes the leftover height and scrolls; headers stay visible with their own summary, open sections drag taller, and the arrangement persists. The shape every inspector ends up with.
 - **GUI building blocks**: `ParamStore` (the one parameter model — all entry APIs store values here), `ControlPanel` (the shared slider/toggle/select/color/menu/tab renderer), `getTheme` (the white-on-dark panel palette), `LayerPanel`.
