@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Breaking — render on demand.** The `sketch()` viewport draws a frame only when something
+  changed: a re-run, a scene or style change, the camera (orbit, damping, `lab.camera` …),
+  lights and sun, drag handles, the gizmo, a resize — and on every frame while a sketch
+  animates. An idle sketch no longer redraws 60 times a second (11.5k objects: 60 → 0 draws/s,
+  the main thread no longer ~100% busy). Migration: a sketch that changes three.js objects
+  directly (e.g. moves an object added with `addExternalObject`) calls the new
+  `lab.requestRender()` (also `SketchInstance.requestRender()`, `ThreeRenderer.requestRender()`
+  / `renderIfNeeded()`). `appShell()` and `ThreeRenderer.startLoop()` still draw every frame.
 - **Shared editing.** `SharedStore` — a document of keyed records several people (and agents)
   edit together: writes apply locally at once, the backend stores them and sends them live;
   last write wins per key; presence and broadcasts. Backends are adapters: `memoryAdapter`,

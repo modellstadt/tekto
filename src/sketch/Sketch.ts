@@ -1061,6 +1061,7 @@ export class SketchInstance {
       get viewport() { return self.viewportEl; },
       worldToScreen(x, y, z) { return self.renderer.worldToScreen(new Vec3(x, y, z)); },
       invalidate() { self.runSketch(); },
+      requestRender() { self.renderer.requestRender(); },
 
       // ── Display pass + view layers ──
 
@@ -1476,7 +1477,10 @@ export class SketchInstance {
         this.animateFn((now - this.startTime) / 1000, dt);
       }
 
-      this.renderer.render();
+      // Draws only when something changed: a re-run or anything the animate
+      // callback did through the Lab marks the frame, so animations keep drawing
+      // and an idle sketch costs nothing.
+      this.renderer.renderIfNeeded();
       requestAnimationFrame(loop);
     };
     loop();
@@ -1523,6 +1527,15 @@ export class SketchInstance {
   /** Force re-run the sketch */
   rerun() {
     this.runSketch();
+  }
+
+  /**
+   * Draw the viewport on the next frame. The loop draws only when something
+   * changed; call this after changing three.js objects directly (e.g. one added
+   * with `addExternalObject`). Scene, camera and Lab calls already do.
+   */
+  requestRender() {
+    this.renderer.requestRender();
   }
 
   /** Change the scene render mode (solid / wireframe / hiddenline). */
