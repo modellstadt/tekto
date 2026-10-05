@@ -421,6 +421,14 @@ export interface Lab {
    */
   invalidate(): void;
 
+  /**
+   * Draw the viewport on the next frame without re-running the sketch. The
+   * viewport draws only when something changed — scene objects, camera, lights,
+   * handles, or anything else done through the Lab — so this is needed only
+   * after changing three.js objects directly.
+   */
+  requestRender(): void;
+
   // ── Display pass (display-only params) ──
   /**
    * Register the display pass: called when a param declared with
@@ -562,7 +570,10 @@ export interface Lab {
    *
    * Default: the sketch function re-runs every frame (immediate mode).
    * With `{ retain: true }`: the sketch only re-runs on param changes.
-   * The animate callback runs per-frame either way.
+   * The animate callback runs per-frame either way. The viewport draws a frame
+   * when the callback changed something through the Lab or the scene (objects,
+   * camera, sun, sliders …); after changing three.js objects directly, call
+   * `lab.requestRender()`.
    */
   animate(fn: (time: number, dt: number) => void, opts?: { retain?: boolean }): void;
 

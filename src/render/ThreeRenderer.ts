@@ -33,6 +33,10 @@ export interface ThreeRendererConfig {
   up: "y" | "z";
 }
 
+// Style keys that never change the three.js object: layer is metadata, WebGL
+// lines ignore lineWidth, noExport only filters exports.
+const INERT_STYLE_KEYS = new Set(["layer", "lineWidth", "noExport"]);
+
 const DEFAULTS: ThreeRendererConfig = {
   antialias: true,
   backgroundColor: 0x0a0b14,
@@ -66,6 +70,12 @@ export class ThreeRenderer {
   private objectMap = new Map<string, THREE.Object3D>();
   private unsub: (() => void) | null = null;
   private rafId = 0;
+  // Render on demand: set by anything that can change the picture (scene events,
+  // camera, lights, handles, resize); cleared by a draw. See renderIfNeeded().
+  private _needsRender = true;
+  // Camera position at the previous renderIfNeeded(), to follow orbit damping
+  // below OrbitControls' change threshold (see _settleDamping).
+  private _lastCamPos = new THREE.Vector3(NaN, NaN, NaN);
 
   // Lighting (created in the constructor; mutated by `_applyLighting`).
   private ambientLight!: THREE.AmbientLight;
@@ -194,7 +204,12 @@ export class ThreeRenderer {
       this.controls.enableDamping = cfg.enableDamping;
       this.controls.dampingFactor = 0.05;
       this.controls.target.set(...cfg.cameraTarget);
+      // Fires on user orbit/pan/zoom (the pointer handlers call update() themselves).
+      this.controls.addEventListener("change", () => this.requestRender());
     }
+
+    // A restored context comes back blank; nothing else would ask for a draw.
+    this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
 
     // Resize
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -210,6 +225,7 @@ export class ThreeRenderer {
   // ── Event Handling ──
 
   private handleEvent(event: SceneEvent) {
+    this._needsRender = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -220,24 +236,26 @@ export class ThreeRenderer {
         this.removeFromThree(event.id);
         break;
       case "object:style": {
-        // Fast path: a pure-visibility patch toggles the existing Three
-        // object in place — no geometry/material rebuild. This keeps
-        // display passes (layer show/hide over many objects) cheap.
-        const keys = Object.keys(event.style);
+        // Fast path: colour, opacity, visibility and layer patch the existing
+        // three object — chained `.color().layer()` calls on every object of a
+        // run, and display passes over many objects, stay cheap. Anything else
+        // (dash, tube radius, label, mesh options …) rebuilds it.
         const t = this.objectMap.get(event.id);
         const srcObj = this.gScene.get(event.id);
-        if (t && srcObj && keys.length === 1 && keys[0] === "visible") {
-          t.userData.styleVisible = srcObj.style.visible;
-          t.visible = srcObj.style.visible && !(this.hideHelpers && this._isHelper(srcObj.type));
-          break;
-        }
+        if (t && srcObj && this._restyleInPlace(t, srcObj, event.style)) break;
         this.removeFromThree(event.id);
         if (srcObj) this.addToThree(srcObj);
         break;
       }
       case "object:update": {
-        this.removeFromThree(event.id);
+        const t = this.objectMap.get(event.id);
         const obj = this.gScene.get(event.id);
+        // pickTag / pickable are picking metadata: no rebuild.
+        if (t && obj && Object.keys(event.changes).every(k => k === "pickTag" || k === "pickable")) {
+          t.userData.pickable = obj.pickable !== false;
+          break;
+        }
+        this.removeFromThree(event.id);
         if (obj) this.addToThree(obj);
         break;
       }
@@ -286,6 +304,46 @@ export class ThreeRenderer {
     this.objectMap.set(obj.id, t);
     // If this is the currently selected object, reattach the gizmo.
     if (this.gizmoAttachedId === obj.id) this.attachGizmo(obj.id);
+  }
+
+  /** Apply a style patch to the existing three object if it only touches colour,
+   *  opacity, visibility or inert keys. False → the caller rebuilds the object. */
+  private _restyleInPlace(t: THREE.Object3D, obj: SceneObject, patch: Partial<SceneObject["style"]>): boolean {
+    let paint = false;
+    for (const k of Object.keys(patch)) {
+      if (k === "color" || k === "opacity") paint = true;
+      else if (k !== "visible" && !INERT_STYLE_KEYS.has(k)) return false;
+    }
+    if (paint && !this._repaint(t, obj)) return false;
+    if ("visible" in patch) {
+      t.userData.styleVisible = obj.style.visible;
+      t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
+    }
+    return true;
+  }
+
+  /** Set colour + opacity on a single-material object exactly as convert() would build
+   *  it: lines (segment, polyline, circle), tube segments and unlabelled points. Meshes,
+   *  polygons, planes and labelled points have mode- or label-dependent materials → false. */
+  private _repaint(t: THREE.Object3D, obj: SceneObject): boolean {
+    const s = obj.style;
+    const tube = obj.type === "segment" && !!s.tubeRadius && s.tubeRadius > 0;
+    const line = !tube && (obj.type === "segment" || obj.type === "polyline" || obj.type === "circle");
+    const solid = tube || (obj.type === "point" && !s.label);
+    const m = (t as THREE.Mesh).material;
+    if ((!line && !solid) || !m || Array.isArray(m)) return false;
+    const mat = m as THREE.LineBasicMaterial | THREE.MeshPhongMaterial;
+    // _makeMaterial lets the studio colour override win on solids.
+    mat.color.set(solid && this.currentLighting === "studio" ? (this.studioColor ?? s.color) : s.color);
+    if (obj.type === "point") {
+      // While selected, the highlight owns emissive; update what it restores to.
+      const sel = this.selectionMaterials.get(t.uuid);
+      (sel ? sel.oldEmissive : (mat as THREE.MeshPhongMaterial).emissive).set(s.color);
+    }
+    const transparent = s.opacity < 1;
+    if (mat.transparent !== transparent) { mat.transparent = transparent; mat.needsUpdate = true; }
+    mat.opacity = s.opacity;
+    return true;
   }
 
   /** Apply `obj.transform` (position/rotation/scale) to a Three.Object3D. */
@@ -421,6 +479,7 @@ export class ThreeRenderer {
         });
       }
     }
+    this.requestRender();
   }
 
   // Line/point "helper" object types (vs solid meshes/polygons/planes).
@@ -441,6 +500,7 @@ export class ThreeRenderer {
   setShadowGroundVisible(visible: boolean): void {
     this.shadowGroundHidden = !visible;
     if (this.shadowGround) this.shadowGround.visible = visible;
+    this.requestRender();
   }
 
   /**
@@ -457,11 +517,13 @@ export class ThreeRenderer {
     });
     this.externalObjects.set(id, obj);
     this.threeScene.add(obj);
+    this.requestRender();
   }
 
   removeExternalObject(id: string): void {
     const prev = this.externalObjects.get(id);
     if (prev) { this.threeScene.remove(prev); this.externalObjects.delete(id); }
+    this.requestRender();
   }
 
   setHelpersVisible(visible: boolean): void {
@@ -473,6 +535,7 @@ export class ThreeRenderer {
         o.visible = visible ? (o.userData.styleVisible ?? true) : false;
       }
     });
+    this.requestRender();
   }
 
   /**
@@ -488,11 +551,13 @@ export class ThreeRenderer {
    *  useful range at building scale. */
   setFog(color: string, density = 0): void {
     this.threeScene.fog = density > 1e-6 ? new THREE.FogExp2(new THREE.Color(color), density) : null;
+    this.requestRender();
   }
 
   /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
   setExposure(v: number): void {
     this.renderer.toneMappingExposure = v;
+    this.requestRender();
   }
 
   setSunDirection(direction: Vec3, distance = 50): void {
@@ -504,6 +569,7 @@ export class ThreeRenderer {
     this.dirLight.target.position.set(0, 0, 0);
     this.dirLight.target.updateMatrixWorld();
     this.dirLight.shadow.camera.updateProjectionMatrix();
+    this.requestRender();
   }
 
   /**
@@ -606,6 +672,7 @@ export class ThreeRenderer {
       this.threeScene.environment = this.envMap;
     }
     this._applyBackground();
+    this.requestRender();
   }
 
   /**
@@ -616,6 +683,7 @@ export class ThreeRenderer {
   setEnvironmentBackground(visible: boolean): void {
     this.envBackground = visible;
     this._applyBackground();
+    this.requestRender();
   }
 
   /**
@@ -632,6 +700,7 @@ export class ThreeRenderer {
     };
     s.environmentRotation?.set(x, y, z);
     s.backgroundRotation?.set(x, y, z);
+    this.requestRender();
   }
 
   private _applyBackground(): void {
@@ -1173,6 +1242,7 @@ export class ThreeRenderer {
     }
 
     handle.position.set(x, y, z);
+    this.requestRender();
     if (this.dragHandleMoveCb) {
       this.dragHandleMoveCb(this.activeDragHandle, x, y, z);
     }
@@ -1278,6 +1348,7 @@ export class ThreeRenderer {
 
     // Re-apply selection styling if this happens to be the selected handle.
     if (this.selectedDragHandle === name) this.applyHandleStyle(name, true);
+    this.requestRender();
   }
 
   /** Remove any drag handles that weren't visited in this run. */
@@ -1291,6 +1362,7 @@ export class ThreeRenderer {
         this.dragHandleConstraints.delete(name);
         this.dragHandlePlanes.delete(name);
         if (this.selectedDragHandle === name) this.selectedDragHandle = null;
+        this.requestRender();
       }
     }
   }
@@ -1319,6 +1391,7 @@ export class ThreeRenderer {
       mat.emissiveIntensity = 0.55;
       mesh.scale.setScalar(1.0);
     }
+    this.requestRender();
   }
 
   /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
@@ -1434,6 +1507,7 @@ export class ThreeRenderer {
       this.transformControls?.setMode(mode);
       if (this.gizmoAttachedId) this.attachGizmo(this.gizmoAttachedId);
     }
+    this.requestRender();
   }
 
   getGizmoMode(): GizmoMode { return this.gizmoMode; }
@@ -1445,11 +1519,13 @@ export class ThreeRenderer {
     this.ensureGizmo();
     this.transformControls!.attach(t);
     this.gizmoAttachedId = id;
+    this.requestRender();
   }
 
   detachGizmo(): void {
     this.transformControls?.detach();
     this.gizmoAttachedId = null;
+    this.requestRender();
   }
 
   private ensureGizmo(): void {
@@ -1464,6 +1540,8 @@ export class ThreeRenderer {
     tc.addEventListener("objectChange", () => {
       if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
     });
+    // Axis hover highlight and drags change the picture without a scene event.
+    tc.addEventListener("change", () => this.requestRender());
     // three ≥ r169: TransformControls is no longer an Object3D — its visible
     // gizmo is `getHelper()`. Adding `tc` itself throws ("not an instance of
     // THREE.Object3D") and no gizmo appears. Older three: add the controls.
@@ -1491,6 +1569,7 @@ export class ThreeRenderer {
   // ── Selection visual feedback ──
 
   setSelectionHighlight(id: string | null): void {
+    this.requestRender();
     // Restore prior highlight.
     for (const [, info] of this.selectionMaterials) {
       const m = info.mat as (THREE.MeshPhongMaterial | THREE.MeshStandardMaterial);
@@ -1517,9 +1596,67 @@ export class ThreeRenderer {
 
   // ── Render ──
 
+  /** Draw now, unconditionally. */
   render() {
     this.controls?.update();
     this.renderer.render(this.threeScene, this.activeCamera);
+    this._needsRender = false;
+  }
+
+  /**
+   * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
+   * lights, drag handles, the gizmo, orbit controls and resizes already ask; call
+   * it after changing three.js objects directly (e.g. one added with
+   * `addExternalObject`).
+   */
+  requestRender(): void {
+    this._needsRender = true;
+  }
+
+  /**
+   * Draw only if something changed since the last draw, or while orbit damping
+   * is still moving the camera. Returns whether it drew. An idle scene of 10k
+   * objects otherwise costs a full draw on every animation frame.
+   */
+  renderIfNeeded(): boolean {
+    // update() advances damping and reports whether the camera moved.
+    const moved = this.controls?.update() ?? false;
+    const settling = this._settleDamping();
+    if (!moved && !settling && !this._needsRender) return false;
+    this.renderer.render(this.threeScene, this.activeCamera);
+    this._needsRender = false;
+    return true;
+  }
+
+  /**
+   * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
+   * creeping the camera after that, so the last drawn frame would lag the camera
+   * slightly. Follow the creep frame by frame instead, and once the remaining
+   * glide is under ~0.1 px apply it at once: the camera then rests exactly where
+   * it was last drawn. Returns whether the camera moved this frame.
+   */
+  private _settleDamping(): boolean {
+    const c = this.controls;
+    if (!c) return false;
+    const pos = c.object.position;
+    const step = pos.distanceTo(this._lastCamPos);
+    this._lastCamPos.copy(pos);
+    // OrbitControls re-derives the position from its spherical angles every update, which
+    // leaves float noise (~1e-13 at a top-down view): no motion, or idle would draw every frame.
+    if (!(step > 1e-9 * Math.max(pos.distanceTo(c.target), 1))) return false; // also NaN on the first frame
+    if (c.enableDamping && c.dampingFactor > 0) {
+      // Each frame applies `dampingFactor` of what is left, so the rest of the
+      // glide is step * (1 - f) / f; as an angle, divide by the orbit radius.
+      const f = c.dampingFactor;
+      const rest = (step * (1 - f) / f) / Math.max(pos.distanceTo(c.target), 1e-9);
+      if (rest < 1e-4) {
+        c.enableDamping = false;
+        c.update(); // undamped update applies the remaining deltas and zeroes them
+        c.enableDamping = true;
+        this._lastCamPos.copy(pos);
+      }
+    }
+    return true;
   }
 
   startLoop(): () => void {
@@ -1543,6 +1680,8 @@ export class ThreeRenderer {
     this.camera.updateProjectionMatrix();
     this._syncOrthoCamFrustum();
     this.renderer.setSize(w, h);
+    // setSize clears the canvas: draw now, not next frame, so it never shows blank.
+    this.render();
   }
 
   // ── Projection & View ──
@@ -1594,6 +1733,7 @@ export class ThreeRenderer {
       (this.controls as any).object = this.activeCamera;
       this.controls.update();
     }
+    this.requestRender();
   }
 
   /**
@@ -1604,6 +1744,7 @@ export class ThreeRenderer {
     this.camera.up.set(x, y, z);
     this._orthoCam.up.set(x, y, z);
     if (this.controls) this.controls.update();
+    this.requestRender();
   }
 
   /** The WebGL canvas element (for attaching input listeners / overlays). */
@@ -1617,11 +1758,13 @@ export class ThreeRenderer {
     // Hidden-line occlusion faces are tinted from config.backgroundColor at
     // mesh build time — keep it in sync so they always match the live bg.
     this.config.backgroundColor = color as unknown as number;
+    this.requestRender();
   }
 
   /** Move the camera without changing its target. */
   setCameraPosition(x: number, y: number, z: number) {
     this.camera.position.set(x, y, z);
+    this.requestRender();
   }
 
   /** Aim the camera (and orbit-controls target) at a point. */
@@ -1631,6 +1774,7 @@ export class ThreeRenderer {
       this.controls.target.set(x, y, z);
       this.controls.update();
     }
+    this.requestRender();
   }
 
   /**
@@ -1671,6 +1815,7 @@ export class ThreeRenderer {
       this._orthoCam.quaternion.copy(this.camera.quaternion);
       this._syncOrthoCamFrustum();
     }
+    this.requestRender();
   }
 
   // ── Raycasting ──
