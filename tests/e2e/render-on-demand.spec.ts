@@ -20,7 +20,7 @@ async function countDraws(page: Page) {
     w.__draws = 0;
     w.__frames = 0;
     const orig = gl.render.bind(gl);
-    gl.render = (s: unknown, c: unknown) => { w.__draws++; orig(s, c); };
+    gl.render = (s: unknown, c: any) => { w.__draws++; w.__drawnCam = c.position.toArray(); orig(s, c); };
     const tick = () => { w.__frames++; requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
   });
@@ -65,12 +65,33 @@ test("an idle sketch stops drawing; orbiting and re-runs draw", async ({ page })
     await page.waitForTimeout(500);
     return draws.get();
   }, { message: "draws after the orbit settled", timeout: 30_000 }).toBe(0);
+  // …and the camera rests exactly where it was last drawn (damping creeps below
+  // OrbitControls' change threshold; the renderer finishes the glide and stops it).
+  await page.waitForTimeout(300);
+  const cam = await page.evaluate(() => {
+    const w = window as any;
+    return { drawn: w.__drawnCam, now: w.__tekto.owner.renderer.activeCamera.position.toArray() };
+  });
+  expect(cam.now, "camera moved after the last draw").toEqual(cam.drawn);
 
   // A re-run draws one frame.
   await page.evaluate(() => (window as any).__tekto.owner.rerun());
   await page.waitForTimeout(200);
   expect(await draws.get(), "draws after a re-run").toBeGreaterThan(0);
   expect(errors).toEqual([]);
+});
+
+test("a restored WebGL context draws again without input", async ({ page }) => {
+  await open(page, "lines-points");
+  const draws = await countDraws(page);
+  await page.evaluate(async () => {
+    const ext = (window as any).__tekto.owner.renderer.renderer.getContext().getExtension("WEBGL_lose_context");
+    ext.loseContext();
+    await new Promise((r) => setTimeout(r, 300));
+    (window as any).__draws = 0;
+    ext.restoreContext();
+  });
+  await expect.poll(() => draws.get(), { message: "draws after the restore", timeout: 5_000 }).toBeGreaterThan(0);
 });
 
 test("an animated sketch keeps drawing", async ({ page }) => {

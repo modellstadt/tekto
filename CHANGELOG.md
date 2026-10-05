@@ -8,8 +8,10 @@ before 1.0, breaking changes bump the minor version. See
 
 - **Breaking — render on demand.** The `sketch()` viewport draws a frame only when something
   changed: a re-run, a scene or style change, the camera (orbit, damping, `lab.camera` …),
-  lights and sun, drag handles, the gizmo, a resize — and on every frame while a sketch
-  animates. An idle sketch no longer redraws 60 times a second (11.5k objects: 60 → 0 draws/s,
+  lights and sun, drag handles, the gizmo, a resize, a restored WebGL context — and on every
+  frame while a sketch animates (a `{ retain: true }` animate callback draws on the frames where
+  it changes something through the Lab or the scene). Orbit damping is drawn to the end and then
+  stopped, so the camera rests exactly where it was last drawn. An idle sketch no longer redraws 60 times a second (11.5k objects: 60 → 0 draws/s,
   the main thread no longer ~100% busy). Migration: a sketch that changes three.js objects
   directly (e.g. moves an object added with `addExternalObject`) calls the new
   `lab.requestRender()` (also `SketchInstance.requestRender()`, `ThreeRenderer.requestRender()`

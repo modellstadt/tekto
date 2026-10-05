@@ -73,6 +73,9 @@ export class ThreeRenderer {
   // Render on demand: set by anything that can change the picture (scene events,
   // camera, lights, handles, resize); cleared by a draw. See renderIfNeeded().
   private _needsRender = true;
+  // Camera position at the previous renderIfNeeded(), to follow orbit damping
+  // below OrbitControls' change threshold (see _settleDamping).
+  private _lastCamPos = new THREE.Vector3(NaN, NaN, NaN);
 
   // Lighting (created in the constructor; mutated by `_applyLighting`).
   private ambientLight!: THREE.AmbientLight;
@@ -204,6 +207,9 @@ export class ThreeRenderer {
       // Fires on user orbit/pan/zoom (the pointer handlers call update() themselves).
       this.controls.addEventListener("change", () => this.requestRender());
     }
+
+    // A restored context comes back blank; nothing else would ask for a draw.
+    this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
 
     // Resize
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -1615,9 +1621,39 @@ export class ThreeRenderer {
   renderIfNeeded(): boolean {
     // update() advances damping and reports whether the camera moved.
     const moved = this.controls?.update() ?? false;
-    if (!moved && !this._needsRender) return false;
+    const settling = this._settleDamping();
+    if (!moved && !settling && !this._needsRender) return false;
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
+    return true;
+  }
+
+  /**
+   * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
+   * creeping the camera after that, so the last drawn frame would lag the camera
+   * slightly. Follow the creep frame by frame instead, and once the remaining
+   * glide is under ~0.1 px apply it at once: the camera then rests exactly where
+   * it was last drawn. Returns whether the camera moved this frame.
+   */
+  private _settleDamping(): boolean {
+    const c = this.controls;
+    if (!c) return false;
+    const pos = c.object.position;
+    const step = pos.distanceTo(this._lastCamPos);
+    this._lastCamPos.copy(pos);
+    if (!(step > 0)) return false; // also NaN on the first frame
+    if (c.enableDamping && c.dampingFactor > 0) {
+      // Each frame applies `dampingFactor` of what is left, so the rest of the
+      // glide is step * (1 - f) / f; as an angle, divide by the orbit radius.
+      const f = c.dampingFactor;
+      const rest = (step * (1 - f) / f) / Math.max(pos.distanceTo(c.target), 1e-9);
+      if (rest < 1e-4) {
+        c.enableDamping = false;
+        c.update(); // undamped update applies the remaining deltas and zeroes them
+        c.enableDamping = true;
+        this._lastCamPos.copy(pos);
+      }
+    }
     return true;
   }
 
