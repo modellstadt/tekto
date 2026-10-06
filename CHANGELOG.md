@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.6.0 — 2026-10-05
+
 - **Breaking — render on demand.** The `sketch()` viewport draws a frame only when something
   changed: a re-run, a scene or style change, the camera (orbit, damping, `lab.camera` …),
   lights and sun, drag handles, the gizmo, a resize, a restored WebGL context — and on every

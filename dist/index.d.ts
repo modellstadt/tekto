@@ -4263,6 +4263,8 @@ declare class ThreeRenderer {
     private objectMap;
     private unsub;
     private rafId;
+    private _needsRender;
+    private _lastCamPos;
     private ambientLight;
     private dirLight;
     private hemiLight;
@@ -4304,6 +4306,13 @@ declare class ThreeRenderer {
     constructor(gScene: Scene, container: HTMLElement, config?: Partial<ThreeRendererConfig>);
     private handleEvent;
     private addToThree;
+    /** Apply a style patch to the existing three object if it only touches colour,
+     *  opacity, visibility or inert keys. False → the caller rebuilds the object. */
+    private _restyleInPlace;
+    /** Set colour + opacity on a single-material object exactly as convert() would build
+     *  it: lines (segment, polyline, circle), tube segments and unlabelled points. Meshes,
+     *  polygons, planes and labelled points have mode- or label-dependent materials → false. */
+    private _repaint;
     /** Apply `obj.transform` (position/rotation/scale) to a Three.Object3D. */
     private applyTransform;
     private removeFromThree;
@@ -4492,7 +4501,29 @@ declare class ThreeRenderer {
     /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */
     private writeBackTransform;
     setSelectionHighlight(id: string | null): void;
+    /** Draw now, unconditionally. */
     render(): void;
+    /**
+     * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
+     * lights, drag handles, the gizmo, orbit controls and resizes already ask; call
+     * it after changing three.js objects directly (e.g. one added with
+     * `addExternalObject`).
+     */
+    requestRender(): void;
+    /**
+     * Draw only if something changed since the last draw, or while orbit damping
+     * is still moving the camera. Returns whether it drew. An idle scene of 10k
+     * objects otherwise costs a full draw on every animation frame.
+     */
+    renderIfNeeded(): boolean;
+    /**
+     * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
+     * creeping the camera after that, so the last drawn frame would lag the camera
+     * slightly. Follow the creep frame by frame instead, and once the remaining
+     * glide is under ~0.1 px apply it at once: the camera then rests exactly where
+     * it was last drawn. Returns whether the camera moved this frame.
+     */
+    private _settleDamping;
     startLoop(): () => void;
     resize(): void;
     /** Compute the orthographic frustum to match the current perspective camera view distance. */
@@ -5901,6 +5932,13 @@ interface Lab {
      */
     invalidate(): void;
     /**
+     * Draw the viewport on the next frame without re-running the sketch. The
+     * viewport draws only when something changed — scene objects, camera, lights,
+     * handles, or anything else done through the Lab — so this is needed only
+     * after changing three.js objects directly.
+     */
+    requestRender(): void;
+    /**
      * Register the display pass: called when a param declared with
      * `display: true` changes, INSTEAD of re-running the sketch. The callback
      * should only restyle existing scene objects (visibility, color, opacity,
@@ -6023,7 +6061,10 @@ interface Lab {
      *
      * Default: the sketch function re-runs every frame (immediate mode).
      * With `{ retain: true }`: the sketch only re-runs on param changes.
-     * The animate callback runs per-frame either way.
+     * The animate callback runs per-frame either way. The viewport draws a frame
+     * when the callback changed something through the Lab or the scene (objects,
+     * camera, sun, sliders …); after changing three.js objects directly, call
+     * `lab.requestRender()`.
      */
     animate(fn: (time: number, dt: number) => void, opts?: {
         retain?: boolean;
@@ -6153,6 +6194,12 @@ declare class SketchInstance {
     private commitRun;
     /** Force re-run the sketch */
     rerun(): void;
+    /**
+     * Draw the viewport on the next frame. The loop draws only when something
+     * changed; call this after changing three.js objects directly (e.g. one added
+     * with `addExternalObject`). Scene, camera and Lab calls already do.
+     */
+    requestRender(): void;
     /** Change the scene render mode (solid / wireframe / hiddenline). */
     setRenderMode(mode: RenderMode): void;
     /**
@@ -6316,6 +6363,224 @@ interface AppShellInstance<S extends ParamSchema = ParamSchema> {
     dispose(): void;
 }
 declare function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppShellInstance<S>;
+
+/**
+ * SharedStore — a document of keyed records that several people (and agents) edit together.
+ *
+ * Each record is one value under one key ("map:ch218.0" → the curve's control points). The
+ * store applies a write locally at once, sends it to the backend, and takes the backend's
+ * stored version back; other clients receive it live. Per key the LAST write wins, ordered by
+ * the backend's clock — fine for small teams, where two people rarely change the same key in
+ * the same second (presence shows who is on what, so they don't).
+ *
+ * Presence (who is online, what they have selected) and broadcasts (transient messages, e.g.
+ * a point while it is dragged) travel through the same backend but are never stored.
+ *
+ * The backend is an adapter (CollabAdapter):
+ *   - memoryAdapter()              — in-process, for tests and single-page demos
+ *   - devServerAdapter()           — the Vite dev server (tools/collab-vite-plugin.mjs): browser
+ *                                    windows share `.tekto/collab/<doc>.json`, which an agent
+ *                                    can read and edit too
+ *   - supabaseAdapter(client)      — Supabase (database + realtime + GitHub/email login); the
+ *                                    app passes its own client, tekto has no dependency on it
+ */
+/** One stored record. `value: null` = removed. `by` / `at` are set by the backend. */
+interface SharedRecord<T = unknown> {
+    key: string;
+    value: T | null;
+    by: string;
+    /** Backend time in ms (orders writes to the same key). */
+    at: number;
+}
+/** A signed-in (or guest) user. */
+interface CollabUser {
+    id: string;
+    name: string;
+    avatarUrl?: string;
+}
+/** One connected client (a browser tab): its user, colour and free-form state. */
+interface Presence {
+    session: string;
+    user: CollabUser;
+    color: string;
+    state: Record<string, unknown>;
+}
+type CollabStatus = "offline" | "connecting" | "online" | "error";
+interface CollabEvents {
+    record(rec: SharedRecord): void;
+    presence(list: Presence[]): void;
+    broadcast(event: string, payload: unknown, from: string): void;
+    status(status: CollabStatus, detail?: string): void;
+}
+/** A backend. Every method is per document (`doc`); `session` identifies this client. */
+interface CollabAdapter {
+    /** All records of the document. */
+    load(doc: string): Promise<SharedRecord[]>;
+    /** Store one record; resolves with the stored version (backend `by` / `at`). */
+    put(doc: string, key: string, value: unknown): Promise<SharedRecord>;
+    /** Live records, presence, broadcasts and connection status. Returns the unsubscribe. */
+    subscribe(doc: string, session: string, on: CollabEvents): () => void;
+    /** Announce this client's presence (sent again on every change). */
+    setPresence(doc: string, presence: Presence): void;
+    /** A transient message to the other clients. */
+    broadcast(doc: string, session: string, event: string, payload: unknown): void;
+    /** The current user, or null when nobody is signed in. */
+    user(): Promise<CollabUser | null>;
+    signIn?(): Promise<void>;
+    signOut?(): Promise<void>;
+    /** Called with the user whenever sign-in changes. Returns the unsubscribe. */
+    onUser?(cb: (user: CollabUser | null) => void): () => void;
+}
+interface SharedStoreOptions {
+    /** Document name: every client with the same name shares the records. */
+    doc: string;
+    adapter: CollabAdapter;
+    /** Presence colour; default: one derived from the user id. */
+    color?: string;
+}
+/** A stable colour per user id (the same person gets the same colour in every tab). */
+declare function collabColor(id: string): string;
+declare class SharedStore<T = unknown> {
+    readonly doc: string;
+    /** This client (tab). */
+    readonly session: string;
+    private adapter;
+    private records;
+    /** Keys written here and not yet confirmed by the backend: remote versions wait … */
+    private pending;
+    /** … here (the newest per key), and the newer of it and ours wins on confirmation. */
+    private deferred;
+    private _status;
+    private _user;
+    private _presence;
+    private myState;
+    private color;
+    private unsub;
+    private unsubUser;
+    private changeL;
+    private presenceL;
+    private statusL;
+    private userL;
+    private broadcastL;
+    private errorL;
+    constructor(opts: SharedStoreOptions);
+    /** Load the document and go live. Safe to call again after `disconnect()`. */
+    connect(): Promise<void>;
+    disconnect(): void;
+    get(key: string): T | undefined;
+    has(key: string): boolean;
+    /** Live entries (removed records left out). */
+    entries(): [string, T][];
+    /** Who wrote a key last, and when (backend time). */
+    meta(key: string): {
+        by: string;
+        at: number;
+    } | undefined;
+    /** Write a key: applied here at once, then stored; on failure the stored version comes back. */
+    set(key: string, value: T | null): void;
+    delete(key: string): void;
+    get presence(): Presence[];
+    /** The other clients (this tab left out). */
+    get others(): Presence[];
+    /** Merge into this client's presence state and announce it (only when something changed,
+     *  so calling it on every sketch run costs nothing). */
+    setPresence(state: Record<string, unknown>): void;
+    broadcast(event: string, payload: unknown): void;
+    get user(): CollabUser | null;
+    get status(): CollabStatus;
+    signIn(): Promise<void>;
+    signOut(): Promise<void>;
+    onChange(cb: (keys: string[], source: "local" | "remote") => void): () => void;
+    onPresence(cb: (list: Presence[]) => void): () => void;
+    onStatus(cb: (status: CollabStatus, detail?: string) => void): () => void;
+    onUser(cb: (user: CollabUser | null) => void): () => void;
+    onBroadcast(cb: (event: string, payload: unknown, from: string) => void): () => void;
+    /** A write the backend refused (e.g. not signed in / not an editor). */
+    onError(cb: (key: string, message: string) => void): () => void;
+    private receive;
+    /** Take a backend version unless this one is as new (or newer); while a local write of the
+     *  key is pending, remote versions are held back (deferred). */
+    private take;
+    private emit;
+    private setStatus;
+    private announce;
+}
+/** An in-process backend: stores on the same adapter share records, presence and broadcasts. */
+declare function memoryAdapter(opts?: {
+    user?: CollabUser | null;
+}): CollabAdapter & {
+    withUser(user: CollabUser | null): CollabAdapter;
+};
+/**
+ * The Vite dev server as backend: records live in `.tekto/collab/<doc>.json` (an agent can read
+ * and edit that file — the browsers pick the change up). Guests pick a name (`signIn()`).
+ * Needs `tektoCollab()` from "tekto/collab-vite" in vite.config.
+ */
+declare function devServerAdapter(opts?: {
+    endpoint?: string;
+}): CollabAdapter;
+/** The part of a supabase-js v2 client the adapter uses (typed loosely: no dependency). */
+interface SupabaseLike {
+    from(table: string): any;
+    channel(name: string, opts?: unknown): any;
+    removeChannel(channel: unknown): unknown;
+    auth: {
+        getUser(): Promise<{
+            data: {
+                user: any;
+            };
+        }>;
+        signInWithOAuth(opts: {
+            provider: string;
+            options?: {
+                redirectTo?: string;
+            };
+        }): Promise<unknown>;
+        signOut(): Promise<unknown>;
+        onAuthStateChange(cb: (event: string, session: {
+            user: any;
+        } | null) => void): {
+            data: {
+                subscription: {
+                    unsubscribe(): void;
+                };
+            };
+        };
+    };
+}
+/**
+ * Supabase as backend. `provider` is the sign-in provider (default "github"); `table` the
+ * records table (default "tekto_records"). Who may write is decided by the table's policies.
+ */
+declare function supabaseAdapter(client: SupabaseLike, opts?: {
+    table?: string;
+    provider?: string;
+}): CollabAdapter;
+
+/**
+ * PresenceBar — who is online in a SharedStore document: a dot for the connection, one round
+ * badge per person (their colour, initials or GitHub avatar; tooltip = name and what they are
+ * on), and a Sign in / Sign out button. Sits in the viewport's top bar row, left of ✎ Markup.
+ */
+
+interface PresenceBarOptions {
+    /** CSS for the bar's position inside the host; default: top right, left of ✎ Markup. */
+    position?: string;
+    /** Tooltip line per person, from their presence state (e.g. "editing ch218.0"). */
+    describe?: (p: Presence) => string | undefined;
+}
+declare class PresenceBar {
+    private store;
+    private opts;
+    readonly el: HTMLDivElement;
+    private dot;
+    private people;
+    private btn;
+    private unsubs;
+    constructor(store: SharedStore<unknown>, host: HTMLElement, opts?: PresenceBarOptions);
+    destroy(): void;
+    render(): void;
+}
 
 /**
  * Markup — draw on the viewport to tell an AI (or a colleague) what to change.
@@ -6545,4 +6810,4 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, FlatMeshData as ColoredMeshData, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HMath, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mat4, type MaterialLayer, MathUtils, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, computeEffectiveVisibility, contactBetween, createRandom, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, sectionAppearance, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, surfaceAppearance, writeDxf3D };
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, Algo, type AnimateFn, type AppShellConfig, type AppShellInstance, type Appearance, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, type CalloutItem, Callouts, Capsule2D, CltConstruction, type CltOptions, type CollabAdapter, type CollabEvents, type CollabStatus, type CollabUser, FlatMeshData as ColoredMeshData, type ConnectionType, type Contact, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, CubicBezierCurve, Curvature, CurveUtils, type CustomRow, type CutListItem, DEFAULT_BACKGROUND, Delaunay2D, DistanceTransform, type DoorOperation, type DrawFn, type Dxf3DArc, type Dxf3DCircle, type Dxf3DContent, type Dxf3DLine, type Dxf3DPoint, type Dxf3DPolyline, type DxfEdgeOptions, DxfExporter, type DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, type ExportRegistration, type ExtraTab, ExtrudedRibbon, type ExtrudedRibbonOptions, type FilletResult, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HMath, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IdBufferOptions, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type ImportRegistration, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type Lab, type Lab2D, type LatticeType, type LayerMap, type LayerNode, LayerPanel, type LayerPosition, type LayerState, type LayoutOptions, LightingMode, LineCurve, type LineHandle, MITER_LIMIT, MarchingCubes, MarchingSquares, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mat4, type MaterialLayer, MathUtils, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshFactory, type MeshHandle, MeshSubdivide, MeshTransform, type MicroPatternType, type MultiPoly2, NavGizmo, type NavGizmoOptions, NoFitPolygon, NurbsCurve, NurbsSurface, OBB2D, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PanelButton, ParamSchema, ParamStore, type PartProfile, type PerpSegment, PixelView, type Placement, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, type PointHandle, type Pointer2D, type PointerFn, type Poly2, Polygon2D, PolygonBool, PolylineCurve, type Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, type Projection, type PropertyMap, Ray, type Reactive, type RealizedSlab, type RealizedWall, RenderMode, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, type Ring2, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SectionRequest, type SeededRandom, Segment, type SelectOpts, type ShapeHandle, type ShapeMode, type SharedRecord, SharedStore, type SharedStoreOptions, type Sketch2DConfig, type Sketch2DFn, Sketch2DInstance, type SketchConfig, SketchInstance, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, type SliderOpts, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StandardView, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type SupabaseLike, type Theme, ThreeRenderer, type ThreeRendererConfig, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, VisualStyle, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, appShell, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, closestPointOnSegment, cltLayers, collabColor, computeEffectiveVisibility, contactBetween, createRandom, devServerAdapter, easeInOut, edgeOutwardVisibility, edgeStyle, extractVisiblePolylines, findAdjacent, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, labelWidthFor, layoutLabels, lightBalance, lineClipPolygon, memoryAdapter, modeBackground, nearestAxis, neighboursOf, noise, orbitFor, orthoFrustum, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, polygonIntersection, polylinesToSVG, processWorkerRequest, realize, realizeSlab, repelBodies, reverse as reverseContact, sectionAppearance, segmentSegmentClosest, setClipSnap, shortestTurn, sketch, sketch2d, standardOrbit, supabaseAdapter, surfaceAppearance, writeDxf3D };

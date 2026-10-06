@@ -17942,6 +17942,7 @@ var ControlPanel = class {
 import * as THREE3 from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls";
+var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
 var DEFAULTS5 = {
   antialias: true,
   backgroundColor: 658196,
@@ -17963,6 +17964,12 @@ var ThreeRenderer = class {
     this.objectMap = /* @__PURE__ */ new Map();
     this.unsub = null;
     this.rafId = 0;
+    // Render on demand: set by anything that can change the picture (scene events,
+    // camera, lights, handles, resize); cleared by a draw. See renderIfNeeded().
+    this._needsRender = true;
+    // Camera position at the previous renderIfNeeded(), to follow orbit damping
+    // below OrbitControls' change threshold (see _settleDamping).
+    this._lastCamPos = new THREE3.Vector3(NaN, NaN, NaN);
     this.currentLighting = "flat";
     // Studio-mode default PBR material, used when a mesh sets no explicit
     // metalness/roughness in its VisualStyle. Configurable via setStudioMaterial.
@@ -18069,6 +18076,7 @@ var ThreeRenderer = class {
         z = c[2];
       }
       handle.position.set(x, y, z);
+      this.requestRender();
       if (this.dragHandleMoveCb) {
         this.dragHandleMoveCb(this.activeDragHandle, x, y, z);
       }
@@ -18127,7 +18135,9 @@ var ThreeRenderer = class {
       this.controls.enableDamping = cfg.enableDamping;
       this.controls.dampingFactor = 0.05;
       this.controls.target.set(...cfg.cameraTarget);
+      this.controls.addEventListener("change", () => this.requestRender());
     }
+    this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
     this.unsub = gScene.on((e) => this.handleEvent(e));
@@ -18139,6 +18149,7 @@ var ThreeRenderer = class {
   }
   // ── Event Handling ──
   handleEvent(event) {
+    this._needsRender = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -18149,21 +18160,21 @@ var ThreeRenderer = class {
         this.removeFromThree(event.id);
         break;
       case "object:style": {
-        const keys = Object.keys(event.style);
         const t = this.objectMap.get(event.id);
         const srcObj = this.gScene.get(event.id);
-        if (t && srcObj && keys.length === 1 && keys[0] === "visible") {
-          t.userData.styleVisible = srcObj.style.visible;
-          t.visible = srcObj.style.visible && !(this.hideHelpers && this._isHelper(srcObj.type));
-          break;
-        }
+        if (t && srcObj && this._restyleInPlace(t, srcObj, event.style)) break;
         this.removeFromThree(event.id);
         if (srcObj) this.addToThree(srcObj);
         break;
       }
       case "object:update": {
-        this.removeFromThree(event.id);
+        const t = this.objectMap.get(event.id);
         const obj = this.gScene.get(event.id);
+        if (t && obj && Object.keys(event.changes).every((k) => k === "pickTag" || k === "pickable")) {
+          t.userData.pickable = obj.pickable !== false;
+          break;
+        }
+        this.removeFromThree(event.id);
         if (obj) this.addToThree(obj);
         break;
       }
@@ -18203,6 +18214,45 @@ var ThreeRenderer = class {
     this.threeScene.add(t);
     this.objectMap.set(obj.id, t);
     if (this.gizmoAttachedId === obj.id) this.attachGizmo(obj.id);
+  }
+  /** Apply a style patch to the existing three object if it only touches colour,
+   *  opacity, visibility or inert keys. False → the caller rebuilds the object. */
+  _restyleInPlace(t, obj, patch) {
+    let paint = false;
+    for (const k of Object.keys(patch)) {
+      if (k === "color" || k === "opacity") paint = true;
+      else if (k !== "visible" && !INERT_STYLE_KEYS.has(k)) return false;
+    }
+    if (paint && !this._repaint(t, obj)) return false;
+    if ("visible" in patch) {
+      t.userData.styleVisible = obj.style.visible;
+      t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
+    }
+    return true;
+  }
+  /** Set colour + opacity on a single-material object exactly as convert() would build
+   *  it: lines (segment, polyline, circle), tube segments and unlabelled points. Meshes,
+   *  polygons, planes and labelled points have mode- or label-dependent materials → false. */
+  _repaint(t, obj) {
+    const s = obj.style;
+    const tube = obj.type === "segment" && !!s.tubeRadius && s.tubeRadius > 0;
+    const line = !tube && (obj.type === "segment" || obj.type === "polyline" || obj.type === "circle");
+    const solid = tube || obj.type === "point" && !s.label;
+    const m = t.material;
+    if (!line && !solid || !m || Array.isArray(m)) return false;
+    const mat = m;
+    mat.color.set(solid && this.currentLighting === "studio" ? this.studioColor ?? s.color : s.color);
+    if (obj.type === "point") {
+      const sel = this.selectionMaterials.get(t.uuid);
+      (sel ? sel.oldEmissive : mat.emissive).set(s.color);
+    }
+    const transparent = s.opacity < 1;
+    if (mat.transparent !== transparent) {
+      mat.transparent = transparent;
+      mat.needsUpdate = true;
+    }
+    mat.opacity = s.opacity;
+    return true;
   }
   /** Apply `obj.transform` (position/rotation/scale) to a Three.Object3D. */
   applyTransform(t, obj) {
@@ -18314,6 +18364,7 @@ var ThreeRenderer = class {
         });
       }
     }
+    this.requestRender();
   }
   // Line/point "helper" object types (vs solid meshes/polygons/planes).
   _isHelper(type) {
@@ -18332,6 +18383,7 @@ var ThreeRenderer = class {
   setShadowGroundVisible(visible) {
     this.shadowGroundHidden = !visible;
     if (this.shadowGround) this.shadowGround.visible = visible;
+    this.requestRender();
   }
   /**
    * Add a raw THREE.Object3D (e.g. a loaded glTF/GLB scene) to the renderer,
@@ -18350,6 +18402,7 @@ var ThreeRenderer = class {
     });
     this.externalObjects.set(id, obj);
     this.threeScene.add(obj);
+    this.requestRender();
   }
   removeExternalObject(id) {
     const prev = this.externalObjects.get(id);
@@ -18357,6 +18410,7 @@ var ThreeRenderer = class {
       this.threeScene.remove(prev);
       this.externalObjects.delete(id);
     }
+    this.requestRender();
   }
   setHelpersVisible(visible) {
     this.hideHelpers = !visible;
@@ -18367,6 +18421,7 @@ var ThreeRenderer = class {
         o.visible = visible ? o.userData.styleVisible ?? true : false;
       }
     });
+    this.requestRender();
   }
   /**
    * Aim the main directional light at the origin from the given unit
@@ -18381,10 +18436,12 @@ var ThreeRenderer = class {
    *  useful range at building scale. */
   setFog(color, density = 0) {
     this.threeScene.fog = density > 1e-6 ? new THREE3.FogExp2(new THREE3.Color(color), density) : null;
+    this.requestRender();
   }
   /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
   setExposure(v) {
     this.renderer.toneMappingExposure = v;
+    this.requestRender();
   }
   setSunDirection(direction, distance = 50) {
     const x = direction.x;
@@ -18394,6 +18451,7 @@ var ThreeRenderer = class {
     this.dirLight.target.position.set(0, 0, 0);
     this.dirLight.target.updateMatrixWorld();
     this.dirLight.shadow.camera.updateProjectionMatrix();
+    this.requestRender();
   }
   /**
    * Reconfigure renderer + lights + scene shadow flags for the given mode.
@@ -18483,6 +18541,7 @@ var ThreeRenderer = class {
       this.threeScene.environment = this.envMap;
     }
     this._applyBackground();
+    this.requestRender();
   }
   /**
    * Show the equirectangular environment source as the scene backdrop (sky).
@@ -18492,6 +18551,7 @@ var ThreeRenderer = class {
   setEnvironmentBackground(visible) {
     this.envBackground = visible;
     this._applyBackground();
+    this.requestRender();
   }
   /**
    * Rotate the environment + background (Euler radians) — e.g. to align a Y-up
@@ -18501,6 +18561,7 @@ var ThreeRenderer = class {
     const s = this.threeScene;
     s.environmentRotation?.set(x, y, z);
     s.backgroundRotation?.set(x, y, z);
+    this.requestRender();
   }
   _applyBackground() {
     if (this.envBackground && this.envSourceTex) {
@@ -19003,6 +19064,7 @@ var ThreeRenderer = class {
     else this.dragHandlePlanes.delete(name);
     if (this.activeDragHandle !== name) mesh.position.set(x, y, z);
     if (this.selectedDragHandle === name) this.applyHandleStyle(name, true);
+    this.requestRender();
   }
   /** Remove any drag handles that weren't visited in this run. */
   endDragHandleSweep() {
@@ -19015,6 +19077,7 @@ var ThreeRenderer = class {
         this.dragHandleConstraints.delete(name);
         this.dragHandlePlanes.delete(name);
         if (this.selectedDragHandle === name) this.selectedDragHandle = null;
+        this.requestRender();
       }
     }
   }
@@ -19044,6 +19107,7 @@ var ThreeRenderer = class {
       mat.emissiveIntensity = 0.55;
       mesh.scale.setScalar(1);
     }
+    this.requestRender();
   }
   /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
   pickAt(clientX, clientY) {
@@ -19149,6 +19213,7 @@ var ThreeRenderer = class {
       this.transformControls?.setMode(mode);
       if (this.gizmoAttachedId) this.attachGizmo(this.gizmoAttachedId);
     }
+    this.requestRender();
   }
   getGizmoMode() {
     return this.gizmoMode;
@@ -19166,10 +19231,12 @@ var ThreeRenderer = class {
     this.ensureGizmo();
     this.transformControls.attach(t);
     this.gizmoAttachedId = id;
+    this.requestRender();
   }
   detachGizmo() {
     this.transformControls?.detach();
     this.gizmoAttachedId = null;
+    this.requestRender();
   }
   ensureGizmo() {
     if (this.transformControls) return;
@@ -19182,6 +19249,7 @@ var ThreeRenderer = class {
     tc.addEventListener("objectChange", () => {
       if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
     });
+    tc.addEventListener("change", () => this.requestRender());
     this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
     this.transformControls = tc;
   }
@@ -19202,6 +19270,7 @@ var ThreeRenderer = class {
   }
   // ── Selection visual feedback ──
   setSelectionHighlight(id) {
+    this.requestRender();
     for (const [, info] of this.selectionMaterials) {
       const m = info.mat;
       m.emissive.copy(info.oldEmissive);
@@ -19225,9 +19294,59 @@ var ThreeRenderer = class {
     });
   }
   // ── Render ──
+  /** Draw now, unconditionally. */
   render() {
     this.controls?.update();
     this.renderer.render(this.threeScene, this.activeCamera);
+    this._needsRender = false;
+  }
+  /**
+   * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
+   * lights, drag handles, the gizmo, orbit controls and resizes already ask; call
+   * it after changing three.js objects directly (e.g. one added with
+   * `addExternalObject`).
+   */
+  requestRender() {
+    this._needsRender = true;
+  }
+  /**
+   * Draw only if something changed since the last draw, or while orbit damping
+   * is still moving the camera. Returns whether it drew. An idle scene of 10k
+   * objects otherwise costs a full draw on every animation frame.
+   */
+  renderIfNeeded() {
+    const moved = this.controls?.update() ?? false;
+    const settling = this._settleDamping();
+    if (!moved && !settling && !this._needsRender) return false;
+    this.renderer.render(this.threeScene, this.activeCamera);
+    this._needsRender = false;
+    return true;
+  }
+  /**
+   * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
+   * creeping the camera after that, so the last drawn frame would lag the camera
+   * slightly. Follow the creep frame by frame instead, and once the remaining
+   * glide is under ~0.1 px apply it at once: the camera then rests exactly where
+   * it was last drawn. Returns whether the camera moved this frame.
+   */
+  _settleDamping() {
+    const c = this.controls;
+    if (!c) return false;
+    const pos = c.object.position;
+    const step = pos.distanceTo(this._lastCamPos);
+    this._lastCamPos.copy(pos);
+    if (!(step > 1e-9 * Math.max(pos.distanceTo(c.target), 1))) return false;
+    if (c.enableDamping && c.dampingFactor > 0) {
+      const f2 = c.dampingFactor;
+      const rest = step * (1 - f2) / f2 / Math.max(pos.distanceTo(c.target), 1e-9);
+      if (rest < 1e-4) {
+        c.enableDamping = false;
+        c.update();
+        c.enableDamping = true;
+        this._lastCamPos.copy(pos);
+      }
+    }
+    return true;
   }
   startLoop() {
     let running = true;
@@ -19251,6 +19370,7 @@ var ThreeRenderer = class {
     this.camera.updateProjectionMatrix();
     this._syncOrthoCamFrustum();
     this.renderer.setSize(w, h);
+    this.render();
   }
   // ── Projection & View ──
   /** Compute the orthographic frustum to match the current perspective camera view distance. */
@@ -19294,6 +19414,7 @@ var ThreeRenderer = class {
       this.controls.object = this.activeCamera;
       this.controls.update();
     }
+    this.requestRender();
   }
   /**
    * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
@@ -19303,6 +19424,7 @@ var ThreeRenderer = class {
     this.camera.up.set(x, y, z);
     this._orthoCam.up.set(x, y, z);
     if (this.controls) this.controls.update();
+    this.requestRender();
   }
   /** The WebGL canvas element (for attaching input listeners / overlays). */
   get canvasEl() {
@@ -19312,10 +19434,12 @@ var ThreeRenderer = class {
   setBackground(color) {
     this.threeScene.background = new THREE3.Color(color);
     this.config.backgroundColor = color;
+    this.requestRender();
   }
   /** Move the camera without changing its target. */
   setCameraPosition(x, y, z) {
     this.camera.position.set(x, y, z);
+    this.requestRender();
   }
   /** Aim the camera (and orbit-controls target) at a point. */
   lookAt(x, y, z) {
@@ -19324,6 +19448,7 @@ var ThreeRenderer = class {
       this.controls.target.set(x, y, z);
       this.controls.update();
     }
+    this.requestRender();
   }
   /**
    * Fit all visible scene objects inside the current view.
@@ -19356,6 +19481,7 @@ var ThreeRenderer = class {
       this._orthoCam.quaternion.copy(this.camera.quaternion);
       this._syncOrthoCamFrustum();
     }
+    this.requestRender();
   }
   // ── Raycasting ──
   /** Pick scene objects under a screen coordinate */
@@ -22518,6 +22644,9 @@ var SketchInstance = class {
       invalidate() {
         self.runSketch();
       },
+      requestRender() {
+        self.renderer.requestRender();
+      },
       // ── Display pass + view layers ──
       onDisplay(fn) {
         self._onDisplayFns.push(fn);
@@ -23122,7 +23251,7 @@ var SketchInstance = class {
       if (this.animateFn) {
         this.animateFn((now - this.startTime) / 1e3, dt);
       }
-      this.renderer.render();
+      this.renderer.renderIfNeeded();
       requestAnimationFrame(loop);
     };
     loop();
@@ -23170,6 +23299,14 @@ var SketchInstance = class {
   /** Force re-run the sketch */
   rerun() {
     this.runSketch();
+  }
+  /**
+   * Draw the viewport on the next frame. The loop draws only when something
+   * changed; call this after changing three.js objects directly (e.g. one added
+   * with `addExternalObject`). Scene, camera and Lab calls already do.
+   */
+  requestRender() {
+    this.renderer.requestRender();
   }
   /** Change the scene render mode (solid / wireframe / hiddenline). */
   setRenderMode(mode) {
@@ -23673,6 +23810,489 @@ function buildSun(renderer, t) {
   return wrap;
 }
 
+// src/collab/SharedStore.ts
+var PALETTE = ["#e8590c", "#1c7ed6", "#2f9e44", "#ae3ec9", "#f08c00", "#0ca678", "#d6336c", "#4263eb"];
+function collabColor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = h * 31 + id.charCodeAt(i) | 0;
+  return PALETTE[Math.abs(h) % PALETTE.length];
+}
+function randomId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
+var SharedStore = class {
+  constructor(opts) {
+    /** This client (tab). */
+    this.session = randomId();
+    this.records = /* @__PURE__ */ new Map();
+    /** Keys written here and not yet confirmed by the backend: remote versions wait … */
+    this.pending = /* @__PURE__ */ new Map();
+    /** … here (the newest per key), and the newer of it and ours wins on confirmation. */
+    this.deferred = /* @__PURE__ */ new Map();
+    this._status = "offline";
+    this._user = null;
+    this._presence = [];
+    this.myState = {};
+    this.unsub = null;
+    this.unsubUser = null;
+    this.changeL = /* @__PURE__ */ new Set();
+    this.presenceL = /* @__PURE__ */ new Set();
+    this.statusL = /* @__PURE__ */ new Set();
+    this.userL = /* @__PURE__ */ new Set();
+    this.broadcastL = /* @__PURE__ */ new Set();
+    this.errorL = /* @__PURE__ */ new Set();
+    this.doc = opts.doc;
+    this.adapter = opts.adapter;
+    this.color = opts.color;
+  }
+  /** Load the document and go live. Safe to call again after `disconnect()`. */
+  async connect() {
+    this.setStatus("connecting");
+    this._user = await this.adapter.user();
+    this.unsubUser = this.adapter.onUser?.((u) => {
+      this._user = u;
+      this.announce();
+      for (const l of this.userL) l(u);
+    }) ?? null;
+    this.unsub = this.adapter.subscribe(this.doc, this.session, {
+      record: (rec) => this.receive(rec),
+      presence: (list) => {
+        this._presence = list;
+        for (const l of this.presenceL) l(list);
+      },
+      broadcast: (event, payload, from) => {
+        if (from !== this.session) for (const l of this.broadcastL) l(event, payload, from);
+      },
+      status: (s, d) => this.setStatus(s, d)
+    });
+    try {
+      const all = await this.adapter.load(this.doc);
+      const keys = [];
+      for (const rec of all) if (this.take(rec)) keys.push(rec.key);
+      if (keys.length) this.emit(keys, "remote");
+    } catch (e) {
+      this.setStatus("error", String(e));
+      throw e;
+    }
+    this.announce();
+  }
+  disconnect() {
+    this.unsub?.();
+    this.unsub = null;
+    this.unsubUser?.();
+    this.unsubUser = null;
+    this.setStatus("offline");
+  }
+  // ── records ──
+  get(key) {
+    const r = this.records.get(key);
+    return r && r.value !== null ? r.value : void 0;
+  }
+  has(key) {
+    return this.get(key) !== void 0;
+  }
+  /** Live entries (removed records left out). */
+  entries() {
+    const out = [];
+    for (const [k, r] of this.records) if (r.value !== null) out.push([k, r.value]);
+    return out;
+  }
+  /** Who wrote a key last, and when (backend time). */
+  meta(key) {
+    const r = this.records.get(key);
+    return r && { by: r.by, at: r.at };
+  }
+  /** Write a key: applied here at once, then stored; on failure the stored version comes back. */
+  set(key, value) {
+    const before = this.records.get(key);
+    const ticket = (this.pending.get(key) ?? 0) + 1;
+    this.pending.set(key, ticket);
+    this.records.set(key, { key, value, by: this._user?.id ?? "", at: before?.at ?? 0 });
+    this.emit([key], "local");
+    const settle = () => {
+      if (this.pending.get(key) !== ticket) return false;
+      this.pending.delete(key);
+      const d = this.deferred.get(key);
+      this.deferred.delete(key);
+      return d ? this.take(d) : false;
+    };
+    this.adapter.put(this.doc, key, value).then(
+      (stored) => {
+        this.take(stored, true);
+        if (settle()) this.emit([key], "remote");
+      },
+      (err) => {
+        if (this.pending.get(key) === ticket) {
+          if (before) this.records.set(key, before);
+          else this.records.delete(key);
+          settle();
+          this.emit([key], "remote");
+        }
+        const msg = String(err?.message ?? err);
+        for (const l of this.errorL) l(key, msg);
+      }
+    );
+  }
+  delete(key) {
+    this.set(key, null);
+  }
+  // ── presence, broadcasts ──
+  get presence() {
+    return this._presence;
+  }
+  /** The other clients (this tab left out). */
+  get others() {
+    return this._presence.filter((p) => p.session !== this.session);
+  }
+  /** Merge into this client's presence state and announce it (only when something changed,
+   *  so calling it on every sketch run costs nothing). */
+  setPresence(state) {
+    const next = { ...this.myState, ...state };
+    if (JSON.stringify(next) === JSON.stringify(this.myState)) return;
+    this.myState = next;
+    this.announce();
+  }
+  broadcast(event, payload) {
+    this.adapter.broadcast(this.doc, this.session, event, payload);
+  }
+  // ── user, status ──
+  get user() {
+    return this._user;
+  }
+  get status() {
+    return this._status;
+  }
+  async signIn() {
+    await this.adapter.signIn?.();
+  }
+  async signOut() {
+    await this.adapter.signOut?.();
+  }
+  // ── listeners (each returns its unsubscribe) ──
+  onChange(cb) {
+    this.changeL.add(cb);
+    return () => this.changeL.delete(cb);
+  }
+  onPresence(cb) {
+    this.presenceL.add(cb);
+    return () => this.presenceL.delete(cb);
+  }
+  onStatus(cb) {
+    this.statusL.add(cb);
+    return () => this.statusL.delete(cb);
+  }
+  onUser(cb) {
+    this.userL.add(cb);
+    return () => this.userL.delete(cb);
+  }
+  onBroadcast(cb) {
+    this.broadcastL.add(cb);
+    return () => this.broadcastL.delete(cb);
+  }
+  /** A write the backend refused (e.g. not signed in / not an editor). */
+  onError(cb) {
+    this.errorL.add(cb);
+    return () => this.errorL.delete(cb);
+  }
+  // ── internals ──
+  receive(rec) {
+    if (this.take(rec)) this.emit([rec.key], "remote");
+  }
+  /** Take a backend version unless this one is as new (or newer); while a local write of the
+   *  key is pending, remote versions are held back (deferred). */
+  take(rec, own = false) {
+    if (!own && this.pending.has(rec.key)) {
+      const d = this.deferred.get(rec.key);
+      if (!d || d.at < rec.at) this.deferred.set(rec.key, rec);
+      return false;
+    }
+    const cur = this.records.get(rec.key);
+    if (cur && (own ? cur.at > rec.at : cur.at >= rec.at)) return false;
+    this.records.set(rec.key, rec);
+    return true;
+  }
+  emit(keys, source) {
+    for (const l of this.changeL) l(keys, source);
+  }
+  setStatus(s, detail) {
+    this._status = s;
+    for (const l of this.statusL) l(s, detail);
+  }
+  announce() {
+    if (!this.unsub) return;
+    const user = this._user ?? { id: `guest-${this.session}`, name: "Guest" };
+    this.adapter.setPresence(this.doc, { session: this.session, user, color: this.color ?? collabColor(user.id), state: this.myState });
+  }
+};
+function memoryAdapter(opts = {}) {
+  const docs = /* @__PURE__ */ new Map();
+  const subs = /* @__PURE__ */ new Map();
+  const presence = /* @__PURE__ */ new Map();
+  let clock = 0;
+  const now = () => clock = Math.max(clock + 1, Date.now());
+  const docOf = (m, doc) => m.get(doc) ?? m.set(doc, /* @__PURE__ */ new Map()).get(doc);
+  const make = (user) => ({
+    async load(doc) {
+      return [...docOf(docs, doc).values()].map((r) => ({ ...r }));
+    },
+    async put(doc, key, value) {
+      const rec = { key, value: value ?? null, by: user?.id ?? "guest", at: now() };
+      docOf(docs, doc).set(key, rec);
+      queueMicrotask(() => {
+        for (const s of docOf(subs, doc).values()) s.record({ ...rec });
+      });
+      return { ...rec };
+    },
+    subscribe(doc, session, on) {
+      docOf(subs, doc).set(session, on);
+      queueMicrotask(() => on.status("online"));
+      return () => {
+        docOf(subs, doc).delete(session);
+        docOf(presence, doc).delete(session);
+        const list = [...docOf(presence, doc).values()];
+        for (const s of docOf(subs, doc).values()) s.presence(list);
+      };
+    },
+    setPresence(doc, p) {
+      docOf(presence, doc).set(p.session, p);
+      const list = [...docOf(presence, doc).values()];
+      queueMicrotask(() => {
+        for (const s of docOf(subs, doc).values()) s.presence(list);
+      });
+    },
+    broadcast(doc, session, event, payload) {
+      queueMicrotask(() => {
+        for (const [sid, s] of docOf(subs, doc)) if (sid !== session) s.broadcast(event, payload, session);
+      });
+    },
+    async user() {
+      return user;
+    }
+  });
+  return Object.assign(make(opts.user ?? null), { withUser: make });
+}
+var DEV_ENDPOINT = "/__tekto/collab";
+var DEV_NAME_KEY = "tekto.collab.name";
+var DEV_ID_KEY = "tekto.collab.id";
+function devServerAdapter(opts = {}) {
+  const base = opts.endpoint ?? DEV_ENDPOINT;
+  const userL = /* @__PURE__ */ new Set();
+  const store = (k, v) => {
+    try {
+      if (v !== void 0) localStorage.setItem(k, v);
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  };
+  const currentUser = () => {
+    const name = store(DEV_NAME_KEY);
+    if (!name) return null;
+    const id = store(DEV_ID_KEY) ?? store(DEV_ID_KEY, `dev-${randomId()}`);
+    return { id, name };
+  };
+  const post2 = async (path, body) => {
+    const r = await fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+    return r.json();
+  };
+  return {
+    async load(doc) {
+      const r = await fetch(`${base}/records?doc=${encodeURIComponent(doc)}`);
+      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+      return r.json();
+    },
+    put(doc, key, value) {
+      return post2("/put", { doc, key, value: value ?? null, by: currentUser()?.name ?? "guest" });
+    },
+    subscribe(doc, session, on) {
+      let es = null;
+      let closed = false;
+      const open = () => {
+        on.status("connecting");
+        es = new EventSource(`${base}/events?doc=${encodeURIComponent(doc)}&session=${session}`);
+        es.addEventListener("open", () => on.status("online"));
+        es.addEventListener("record", (e) => on.record(JSON.parse(e.data)));
+        es.addEventListener("presence", (e) => on.presence(JSON.parse(e.data)));
+        es.addEventListener("broadcast", (e) => {
+          const m = JSON.parse(e.data);
+          on.broadcast(m.event, m.payload, m.from);
+        });
+        es.addEventListener("error", () => {
+          if (!closed) on.status("connecting", "reconnecting");
+        });
+      };
+      open();
+      return () => {
+        closed = true;
+        es?.close();
+        on.status("offline");
+      };
+    },
+    setPresence(doc, presence) {
+      void post2("/presence", { doc, presence }).catch(() => {
+      });
+    },
+    broadcast(doc, session, event, payload) {
+      void post2("/broadcast", { doc, from: session, event, payload }).catch(() => {
+      });
+    },
+    async user() {
+      return currentUser();
+    },
+    async signIn() {
+      const name = window.prompt("Your name (shown to the others)", store(DEV_NAME_KEY) ?? "");
+      if (!name) return;
+      store(DEV_NAME_KEY, name.trim());
+      const u = currentUser();
+      for (const l of userL) l(u);
+    },
+    async signOut() {
+      try {
+        localStorage.removeItem(DEV_NAME_KEY);
+      } catch {
+      }
+      for (const l of userL) l(null);
+    },
+    onUser(cb) {
+      userL.add(cb);
+      return () => userL.delete(cb);
+    }
+  };
+}
+function supabaseUser(u) {
+  if (!u) return null;
+  const m = u.user_metadata ?? {};
+  return { id: m.user_name ?? m.preferred_username ?? u.email ?? u.id, name: m.full_name ?? m.name ?? m.user_name ?? u.email ?? "user", avatarUrl: m.avatar_url };
+}
+function fromRow(row) {
+  return { key: row.key, value: row.value ?? null, by: row.by ?? "", at: Date.parse(row.at) };
+}
+function supabaseAdapter(client, opts = {}) {
+  const table = opts.table ?? "tekto_records";
+  const channels = /* @__PURE__ */ new Map();
+  const joined = /* @__PURE__ */ new Set();
+  const lastPresence = /* @__PURE__ */ new Map();
+  return {
+    async load(doc) {
+      const { data, error } = await client.from(table).select("key,value,by,at").eq("doc", doc);
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(fromRow);
+    },
+    async put(doc, key, value) {
+      const { data, error } = await client.from(table).upsert({ doc, key, value: value ?? null }, { onConflict: "doc,key" }).select("key,value,by,at").single();
+      if (error) throw new Error(error.message);
+      return fromRow(data);
+    },
+    subscribe(doc, session, on) {
+      on.status("connecting");
+      const ch = client.channel(`tekto:${doc}`, { config: { presence: { key: session }, broadcast: { self: false } } });
+      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `doc=eq.${doc}` }, (p) => {
+        if (p.new?.key) on.record(fromRow(p.new));
+      });
+      ch.on("presence", { event: "sync" }, () => {
+        const state = ch.presenceState();
+        on.presence(Object.values(state).map((metas) => metas[metas.length - 1]).filter(Boolean));
+      });
+      ch.on("broadcast", { event: "tekto" }, (m) => on.broadcast(m.payload.event, m.payload.payload, m.payload.from));
+      ch.subscribe((status, err) => {
+        if (status === "SUBSCRIBED") {
+          joined.add(doc);
+          on.status("online");
+          const p = lastPresence.get(doc);
+          if (p) void ch.track(p);
+        } else if (status === "CLOSED") {
+          joined.delete(doc);
+          on.status("offline");
+        } else on.status(status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "error" : "connecting", err?.message ?? status);
+      });
+      channels.set(doc, ch);
+      return () => {
+        channels.delete(doc);
+        joined.delete(doc);
+        void client.removeChannel(ch);
+        on.status("offline");
+      };
+    },
+    setPresence(doc, presence) {
+      lastPresence.set(doc, presence);
+      if (joined.has(doc)) void channels.get(doc)?.track(presence);
+    },
+    broadcast(doc, session, event, payload) {
+      void channels.get(doc)?.send({ type: "broadcast", event: "tekto", payload: { event, payload, from: session } });
+    },
+    async user() {
+      return supabaseUser((await client.auth.getUser()).data.user);
+    },
+    async signIn() {
+      await client.auth.signInWithOAuth({ provider: opts.provider ?? "github", options: { redirectTo: location.href } });
+    },
+    async signOut() {
+      await client.auth.signOut();
+    },
+    onUser(cb) {
+      const { data } = client.auth.onAuthStateChange((_e, s) => cb(supabaseUser(s?.user)));
+      return () => data.subscription.unsubscribe();
+    }
+  };
+}
+
+// src/collab/PresenceBar.ts
+var STATUS_COL = { online: "#2f9e44", connecting: "#f08c00", offline: "#adb5bd", error: "#e03131" };
+var PresenceBar = class {
+  constructor(store, host, opts = {}) {
+    this.store = store;
+    this.opts = opts;
+    this.unsubs = [];
+    this.el = document.createElement("div");
+    this.el.style.cssText = `position:absolute;${opts.position ?? "top:10px;right:100px;"}z-index:22;display:flex;gap:6px;align-items:center;font:12px system-ui,sans-serif;background:#fff;border:1px solid #d0d0d6;border-radius:7px;padding:3px 6px;box-shadow:0 2px 8px rgba(0,0,0,.12);`;
+    this.dot = document.createElement("span");
+    this.dot.style.cssText = "width:8px;height:8px;border-radius:50%;display:inline-block;";
+    this.people = document.createElement("div");
+    this.people.style.cssText = "display:flex;gap:3px;align-items:center;";
+    this.btn = document.createElement("button");
+    this.btn.style.cssText = "font:12px system-ui,sans-serif;padding:3px 8px;border-radius:5px;border:1px solid #d0d0d6;background:#fff;color:#222;cursor:pointer;";
+    this.btn.addEventListener("click", () => void (store.user ? store.signOut() : store.signIn()));
+    this.el.append(this.dot, this.people, this.btn);
+    host.appendChild(this.el);
+    this.unsubs.push(store.onPresence(() => this.render()), store.onStatus(() => this.render()), store.onUser(() => this.render()));
+    this.render();
+  }
+  destroy() {
+    for (const u of this.unsubs) u();
+    this.el.remove();
+  }
+  render() {
+    const st = this.store.status;
+    this.dot.style.background = STATUS_COL[st];
+    this.dot.title = `shared editing: ${st}`;
+    const user = this.store.user;
+    this.btn.textContent = user ? "Sign out" : "Sign in";
+    this.btn.title = user ? `Signed in as ${user.name}` : "Sign in to edit together";
+    this.people.replaceChildren();
+    const seen = /* @__PURE__ */ new Set();
+    for (const p of this.store.presence) {
+      if (seen.has(p.user.id)) continue;
+      seen.add(p.user.id);
+      const b = document.createElement("span");
+      const me = p.session === this.store.session;
+      b.style.cssText = `width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font:600 10px system-ui,sans-serif;color:#fff;background:${p.color};box-shadow:0 0 0 2px ${me ? "#222" : "#fff"};overflow:hidden;`;
+      if (p.user.avatarUrl) {
+        const img = document.createElement("img");
+        img.src = p.user.avatarUrl;
+        img.alt = "";
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+        b.appendChild(img);
+      } else {
+        b.textContent = p.user.name.split(/\s+/).map((w) => w[0] ?? "").join("").slice(0, 2).toUpperCase();
+      }
+      const what = this.opts.describe?.(p);
+      b.title = `${p.user.name}${me ? " (you)" : ""}${what ? ` \u2014 ${what}` : ""}`;
+      this.people.appendChild(b);
+    }
+  }
+};
+
 // src/sketch/Sketch2D.ts
 function sketch2d(fn, config) {
   return new Sketch2DInstance(fn, config ?? {});
@@ -24131,6 +24751,7 @@ export {
   Polygon2D,
   PolygonBool,
   PolylineCurve,
+  PresenceBar,
   Ray,
   RibbonEndTrim,
   RibbonFrame,
@@ -24172,6 +24793,7 @@ export {
   SdfUtils,
   SdfVoronoi,
   Segment,
+  SharedStore,
   Sketch2DInstance,
   SketchInstance,
   Slab,
@@ -24209,11 +24831,13 @@ export {
   clampedUniformKnots,
   closestPointOnSegment,
   cltLayers,
+  collabColor,
   computeEffectiveVisibility,
   contactBetween,
   createLayout,
   createParams,
   createRandom,
+  devServerAdapter,
   easeInOut,
   edgeOutwardVisibility,
   edgeStyle,
@@ -24231,6 +24855,7 @@ export {
   layoutLabels,
   lightBalance,
   lineClipPolygon,
+  memoryAdapter,
   modeBackground,
   nearestAxis,
   neighboursOf,
@@ -24254,6 +24879,7 @@ export {
   sketch,
   sketch2d,
   standardOrbit,
+  supabaseAdapter,
   surfaceAppearance,
   writeDxf3D
 };
