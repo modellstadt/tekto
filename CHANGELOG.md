@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`Viewport.setHidden(meshes)`** and `isHidden(mesh)`: hide meshes the way a layer switch
+  or an isolate means it. A hidden mesh is not drawn, casts no shadow, has no outline, cannot
+  be picked or hovered, hides no callout and leaves no poché in a section; the camera and the
+  section plane stay put. What a layer is stays the app's business. Playground page
+  "Viewport" gains a show: all / studs / plates switch.
+
 ## 0.6.0 — 2026-10-05
 
 - **Breaking — render on demand.** The `sketch()` viewport draws a frame only when something

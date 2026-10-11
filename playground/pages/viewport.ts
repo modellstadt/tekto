@@ -136,6 +136,15 @@ export default function (container: HTMLElement): { dispose(): void } {
   group<ViewMode>(["shaded", "ghost", "hidden-line"], "shaded", (m) => viewport.setViewMode(m));
   group<Projection>(["perspective", "orthographic"], "perspective", (p) => viewport.setProjection(p));
   group<StandardView>(["iso", "top", "front", "right"], "iso", (v) => viewport.setView(v));
+  // a layer switch: which meshes a layer means is the page's business, and
+  // the viewport only hides what it is handed, from drawing, picking,
+  // outlines and the section alike
+  const STUDS = new Set(["stud", "jackStud", "cripple"]);
+  group<"all" | "studs" | "plates">(["all", "studs", "plates"], "all", (show) => {
+    viewport.setHidden(meshes.filter((m) => (show === "studs" ? !STUDS.has(m.userData.role)
+      : show === "plates" ? STUDS.has(m.userData.role) : false)));
+    if (selected && viewport.isHidden(selected)) { selected = null; readout.textContent = "click a member"; }
+  });
 
   const sun = document.createElement("button");
   sun.textContent = "sun";

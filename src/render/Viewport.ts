@@ -400,7 +400,12 @@ export class Viewport {
   private mode: ViewMode = "shaded";
   private outlinesBuilt = false;
   private buildingOutlines = false;
+  /** Bumped whenever the outlines are thrown away, so a chunked build still
+   *  running for the old ones stops instead of adding to the new. */
+  private outlineGeneration = 0;
   private content: ContentOptions = {};
+  /** What the host has hidden: see `setHidden`. */
+  private hidden = new Set<THREE.Object3D>();
 
   private sun: THREE.DirectionalLight;
   private sky: THREE.HemisphereLight;
@@ -586,7 +591,10 @@ export class Viewport {
     );
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
-    return (ray.intersectObjects(this.meshGroup.children, false)[0]?.object as THREE.Mesh) ?? null;
+    // a hidden mesh is still in the group, and a ray does not know it is hidden
+    const hit = ray.intersectObjects(this.meshGroup.children, false)
+      .find((h) => !this.hidden.has(h.object));
+    return (hit?.object as THREE.Mesh) ?? null;
   }
 
   private pick(e: PointerEvent) {
@@ -625,7 +633,7 @@ export class Viewport {
   private wantsOutlines(): THREE.Mesh[] {
     const rule = this.content.outline ?? true;
     if (rule === false) return [];
-    const all = this.meshGroup.children as THREE.Mesh[];
+    const all = (this.meshGroup.children as THREE.Mesh[]).filter((m) => !this.hidden.has(m));
     return rule === true ? all : all.filter(rule);
   }
 
@@ -635,21 +643,61 @@ export class Viewport {
       const m = child.material;
       (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
     }
-    for (const line of this.outlines.children as THREE.LineSegments[]) {
-      line.geometry.dispose();
-      (line.material as THREE.Material).dispose();
-    }
+    this.disposeOutlines();
     this.clearSection();            // its markers share geometry with the meshes
     this.meshGroup.clear();
-    this.outlines.clear();
+    // the meshes it named are gone; new content starts with everything shown
+    this.hidden.clear();
     this.setOutlined([]);           // its geometry came from meshes now gone
     // anchors were measured from meshes that no longer exist, so a label left
     // over from the last model would point at where something used to be
     this.calloutAnchors.clear();
     this.calloutVisible.clear();
     this.callouts?.setItems([]);
+  }
+
+  private disposeOutlines() {
+    for (const line of this.outlines.children as THREE.LineSegments[]) {
+      line.geometry.dispose();
+      (line.material as THREE.Material).dispose();
+    }
+    this.outlines.clear();
+    this.outlineGeneration++;
     this.outlinesBuilt = false;
     this.buildingOutlines = false;
+  }
+
+  /**
+   * Hide these meshes and show every other one.
+   *
+   * What a layer switch, an isolate or "hide the upper storey" turns into once
+   * the app has decided which meshes it means; what a layer is stays the app's
+   * business. Hidden is hidden from everything the viewport does with a mesh:
+   * it is not drawn, casts no shadow, has no outline, cannot be picked or
+   * hovered, hides no callout behind it and leaves no poché in a section. The
+   * camera does not move, and a section stays where it is: the reader is
+   * looking at a place, and switching a layer off should not take them
+   * somewhere else. An empty list shows everything; new content starts shown.
+   */
+  setHidden(meshes: Iterable<THREE.Object3D>) {
+    const next = new Set(meshes);
+    if (next.size === this.hidden.size && [...next].every((m) => this.hidden.has(m))) return;
+    this.hidden = next;
+    for (const child of this.meshGroup.children) child.visible = !this.hidden.has(child);
+    // outlines are merged across meshes, so a hidden mesh's edges can only be
+    // taken out by merging again; a large model that never built them still
+    // waits for a mode to ask
+    const had = this.outlinesBuilt || this.buildingOutlines;
+    this.disposeOutlines();
+    if (had) this.buildOutlines();
+    if (this.sectionRequest) this.setSection(this.sectionRequest);
+    this.calloutCheckedAt = 0;               // what hides a label has changed
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  /** Whether `setHidden` has hidden this mesh. */
+  isHidden(mesh: THREE.Object3D): boolean {
+    return this.hidden.has(mesh);
   }
 
   /** Convenience for the common case: a mesh from raw buffers, which is what
@@ -815,7 +863,7 @@ export class Viewport {
       const distance = direction.length();
       ray.set(camera.position, direction.normalize());
       ray.far = distance;                  // nothing beyond the anchor can hide it
-      const hit = ray.intersectObjects(meshes, false)[0];
+      const hit = ray.intersectObjects(meshes, false).find((h) => !this.hidden.has(h.object));
       // its own geometry standing in front of its centre is not occlusion: a
       // wall's centre is inside the wall, so every callout would fail
       if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
@@ -915,7 +963,7 @@ export class Viewport {
       clippingPlanes: [plane],
     });
     for (const mesh of this.meshGroup.children as THREE.Mesh[]) {
-      if (!mesh.geometry) continue;
+      if (!mesh.geometry || this.hidden.has(mesh)) continue;
       const inside = new THREE.Mesh(mesh.geometry, poche);
       inside.matrixAutoUpdate = false;
       inside.matrix.copy(mesh.matrix);
@@ -1098,8 +1146,10 @@ export class Viewport {
     this.buildingOutlines = true;
     const angle = this.content.creaseAngle ?? 30;
     const style = edgeStyle(this.mode);
+    const generation = this.outlineGeneration;
     let i = 0;
     const step = () => {
+      if (generation !== this.outlineGeneration) return;
       const positions: number[] = [];
       const end = Math.min(i + OUTLINE_CHUNK, meshes.length);
       for (; i < end; i++) {
