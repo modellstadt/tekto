@@ -15,6 +15,11 @@ before 1.0, breaking changes bump the minor version. See
   house, 10 m under a block, every fifth line stronger) and faded out with distance, so it has
   no edge and reads as ground rather than as a sheet under the model. `groundGrid(radius)` is
   the spacing rule. The default stays `"plate"`.
+- **Callouts on what is plainly visible.** A callout's element counts as seen if its centre or
+  any of eight points inside its box is (`calloutSamples`), and the leader goes to the first
+  point seen; only a surface that writes depth can hide it (`occludes`). Before, one ray to
+  the centre decided, so a wall with a door in its middle, everything in ghost mode, and an
+  element inside see-through formwork all lost their labels.
 
 ## 0.6.0 — 2026-10-05
 

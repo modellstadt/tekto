@@ -10,7 +10,8 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
-  modeBackground, groundAppearance, groundGrid, sectionAppearance, DEFAULT_BACKGROUND,
+  modeBackground, groundAppearance, groundGrid, calloutSamples, occludes, sectionAppearance,
+  DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut,
 } from "../src/render/Viewport";
 
@@ -239,5 +240,26 @@ describe("framing", () => {
     expect(f.top).toBeCloseTo(halfHeight);
     expect(f.bottom).toBeCloseTo(-halfHeight);
     expect(f.right - f.left).toBeCloseTo((f.top - f.bottom) * 1.5);
+  });
+});
+
+describe("callout visibility", () => {
+  it("looks at the centre first, then inside each corner", () => {
+    const box = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(8, 2.7, 0.25));
+    const samples = calloutSamples(box);
+    expect(samples).toHaveLength(9);
+    expect(samples[0].toArray()).toEqual([4, 1.35, 0.125]);
+    // every point inside the box, none on its corners
+    for (const p of samples) expect(box.containsPoint(p)).toBe(true);
+    expect(samples.slice(1).some((p) => p.x === 0 || p.x === 8)).toBe(false);
+  });
+
+  it("is hidden only by what the renderer would let hide it", () => {
+    expect(occludes(new THREE.MeshStandardMaterial())).toBe(true);
+    // ghost, and anything an app has made see-through, writes no depth
+    expect(occludes(new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.11, depthWrite: false })))
+      .toBe(false);
+    expect(occludes(new THREE.MeshStandardMaterial({ visible: false }))).toBe(false);
+    expect(occludes([new THREE.MeshBasicMaterial()])).toBe(true);
   });
 });

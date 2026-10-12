@@ -196,7 +196,7 @@ export type { SVGRendererConfig } from "./render/SVGRenderer";
 // owns: view modes, progressive creases, a real sun, camera projections.
 export {
   Viewport, edgeStyle, surfaceAppearance, lightBalance, modeBackground,
-  groundAppearance, groundGrid, sectionAppearance, DEFAULT_BACKGROUND,
+  groundAppearance, groundGrid, calloutSamples, occludes, sectionAppearance, DEFAULT_BACKGROUND,
   standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut,
   fitRadius, orthoFrustum,
 } from "./render/Viewport";

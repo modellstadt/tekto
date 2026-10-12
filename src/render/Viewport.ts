@@ -242,6 +242,37 @@ export function groundAppearance(mode: ViewMode): {
 }
 
 /**
+ * Where to look for a callout's element: its centre first, then eight points
+ * between the centre and the corners of its box. An element counts as seen if
+ * any of them is, because a wall whose middle is a door, or a slab whose
+ * middle is behind a beam, is still plainly on screen.
+ */
+export function calloutSamples(box: THREE.Box3): THREE.Vector3[] {
+  const centre = box.getCenter(new THREE.Vector3());
+  const out = [centre];
+  for (const x of [box.min.x, box.max.x]) {
+    for (const y of [box.min.y, box.max.y]) {
+      for (const z of [box.min.z, box.max.z]) {
+        // most of the way out, not all of it: a corner is shared with the
+        // neighbours, and a ray to it hits them as often as the element
+        out.push(new THREE.Vector3(x, y, z).lerp(centre, 0.3));
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a surface hides what is behind it from a callout. The same answer
+ * the renderer gives: a material that writes no depth (ghost, or whatever an
+ * app has made see-through) hides nothing on screen, so it hides no label.
+ */
+export function occludes(material: THREE.Material | THREE.Material[]): boolean {
+  const m = Array.isArray(material) ? material[0] : material;
+  return !!m && m.visible !== false && m.depthWrite !== false;
+}
+
+/**
  * The spacing and the reach of a "grid" ground, for content of a given
  * bounding radius in metres.
  *
@@ -514,10 +545,11 @@ export class Viewport {
   /** World-space anchor per callout, remeasured only when the content changes:
    *  a bounding box costs a walk of the geometry and nothing in the scene
    *  moves except the camera. */
-  private calloutAnchors = new Map<string, THREE.Vector3>();
+  private calloutAnchors = new Map<string, THREE.Vector3[]>();
   /** Which callouts the reader can actually see, recomputed on a timer rather
    *  than per frame, because it costs a raycast each. */
-  private calloutVisible = new Set<string>();
+  /** per seen callout, the point its leader goes to */
+  private calloutVisible = new Map<string, THREE.Vector3>();
   private calloutCheckedAt = 0;
   /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
    *  every one of the frames a still camera also renders. */
@@ -915,7 +947,7 @@ export class Viewport {
       if (!item.objects.length) continue;
       box.makeEmpty();
       for (const o of item.objects) box.expandByObject(o);
-      if (!box.isEmpty()) this.calloutAnchors.set(item.id, box.getCenter(new THREE.Vector3()));
+      if (!box.isEmpty()) this.calloutAnchors.set(item.id, calloutSamples(box));
     }
     this.calloutCheckedAt = 0;             // re-test visibility on the next frame
   }
@@ -926,8 +958,14 @@ export class Viewport {
    * A leader pointing confidently at a wall that is behind three other walls
    * is worse than no leader: on a face view half the building is occluded, and
    * without this every one of those elements would still be labelled and the
-   * reader would have no way to tell which. One raycast per callout, on a
-   * timer, because the answer only changes when the camera moves.
+   * reader would have no way to tell which. On a timer, because the answer
+   * only changes when the camera moves.
+   *
+   * Seen means any part of it is: the centre, or one of the points
+   * `calloutSamples` adds, and the leader goes to the first point seen. Only
+   * what `occludes` can hide it, so a see-through surface (all of ghost, or
+   * formwork an app has made translucent round the wall it stands beside)
+   * no longer silences the label of the thing inside it.
    */
   private checkCalloutVisibility() {
     this.calloutVisible.clear();
@@ -935,17 +973,23 @@ export class Viewport {
     const ray = new THREE.Raycaster();
     const meshes = this.meshGroup.children;
     const direction = new THREE.Vector3();
-    for (const [id, anchor] of this.calloutAnchors) {
+    for (const [id, samples] of this.calloutAnchors) {
       const wanted = this.callouts?.objectsOf(id) ?? [];
-      direction.copy(anchor).sub(camera.position);
-      const distance = direction.length();
-      ray.set(camera.position, direction.normalize());
-      ray.far = distance;                  // nothing beyond the anchor can hide it
-      const hit = ray.intersectObjects(meshes, false).find((h) => !this.hidden.has(h.object));
-      // its own geometry standing in front of its centre is not occlusion: a
-      // wall's centre is inside the wall, so every callout would fail
-      if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
-        this.calloutVisible.add(id);
+      // the centre first, and the rest only when it is hidden, so the usual
+      // case stays one ray per callout
+      for (const point of samples) {
+        direction.copy(point).sub(camera.position);
+        const distance = direction.length();
+        ray.set(camera.position, direction.normalize());
+        ray.far = distance;                // nothing beyond the point can hide it
+        const hit = ray.intersectObjects(meshes, false)
+          .find((h) => !this.hidden.has(h.object) && occludes((h.object as THREE.Mesh).material));
+        // its own geometry standing in front of its centre is not occlusion: a
+        // wall's centre is inside the wall, so every callout would fail
+        if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
+          this.calloutVisible.set(id, point);
+          break;
+        }
       }
     }
   }
@@ -962,8 +1006,7 @@ export class Viewport {
     }
     const v = new THREE.Vector3();
     const anchors: { id: string; x: number; y: number }[] = [];
-    for (const [id, anchor] of this.calloutAnchors) {
-      if (!this.calloutVisible.has(id)) continue;
+    for (const [id, anchor] of this.calloutVisible) {
       v.copy(anchor).project(camera);
       if (v.z > 1) continue;               // behind the camera
       anchors.push({ id, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
