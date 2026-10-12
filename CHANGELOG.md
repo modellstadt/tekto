@@ -23,6 +23,10 @@ before 1.0, breaking changes bump the minor version. See
 - **A callout whose text changes is redrawn.** Labels were built once per id, so an app that
   changed what a label says (an answer arriving, a colour changing) kept showing the old
   words. `calloutChanged` is the rule.
+- **Callout visibility no longer costs frames.** It is worked out only once the camera has
+  been still for 120 ms, a 6 ms slice per frame, and swapped in whole; while the camera moves
+  the labels keep the last answer and follow their anchors. Points off screen cast no ray.
+  Labelling all 446 elements of a model used to slow orbiting about fivefold.
 
 ## 0.6.0 — 2026-10-05
 

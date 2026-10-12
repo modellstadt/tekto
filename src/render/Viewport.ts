@@ -163,6 +163,10 @@ export interface ContentOptions {
  * not abandoned either, which is the bug this constant exists to prevent.
  */
 const OUTLINE_LIMIT = 1500;
+/** How long the camera must be still before callout visibility is redone. */
+const CALLOUT_SETTLE_MS = 120;
+/** Time per frame spent on callout visibility while it is being redone. */
+const CALLOUT_BUDGET_MS = 6;
 /** Meshes per frame while building outlines in the background. */
 const OUTLINE_CHUNK = 250;
 
@@ -546,11 +550,16 @@ export class Viewport {
    *  a bounding box costs a walk of the geometry and nothing in the scene
    *  moves except the camera. */
   private calloutAnchors = new Map<string, THREE.Vector3[]>();
-  /** Which callouts the reader can actually see, recomputed on a timer rather
-   *  than per frame, because it costs a raycast each. */
-  /** per seen callout, the point its leader goes to */
+  /** Which callouts the reader can see, and per callout the point its leader
+   *  goes to. Recomputed only once the camera is still (see drawCallouts). */
   private calloutVisible = new Map<string, THREE.Vector3>();
-  private calloutCheckedAt = 0;
+  /** something that decides visibility changed since the last answer */
+  private calloutDirty = true;
+  /** the camera the current answer, or the one being worked out, is for */
+  private calloutCamera = "";
+  private calloutStillSince = 0;
+  /** a check in progress, a slice per frame */
+  private calloutPending: { queue: string[]; next: Map<string, THREE.Vector3> } | null = null;
   /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
    *  every one of the frames a still camera also renders. */
   private gizmoAt = { phi: NaN, theta: NaN };
@@ -763,6 +772,8 @@ export class Viewport {
     // over from the last model would point at where something used to be
     this.calloutAnchors.clear();
     this.calloutVisible.clear();
+    this.calloutPending = null;
+    this.calloutDirty = true;
     this.callouts?.setItems([]);
   }
 
@@ -801,7 +812,7 @@ export class Viewport {
     this.disposeOutlines();
     if (had) this.buildOutlines();
     if (this.sectionRequest) this.setSection(this.sectionRequest);
-    this.calloutCheckedAt = 0;               // what hides a label has changed
+    this.calloutDirty = true;                // what hides a label has changed
     this.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -941,6 +952,11 @@ export class Viewport {
     }
     this.callouts.setItems(items);
     this.calloutAnchors.clear();
+    // keep the last answer for what is still there, so a relabel does not
+    // blank the margins while the new one is worked out
+    const ids = new Set(items.map((i) => i.id));
+    for (const id of [...this.calloutVisible.keys()]) if (!ids.has(id)) this.calloutVisible.delete(id);
+    this.calloutPending = null;
     this.root.updateMatrixWorld(true);
     const box = new THREE.Box3();
     for (const item of items) {
@@ -949,7 +965,7 @@ export class Viewport {
       for (const o of item.objects) box.expandByObject(o);
       if (!box.isEmpty()) this.calloutAnchors.set(item.id, calloutSamples(box));
     }
-    this.calloutCheckedAt = 0;             // re-test visibility on the next frame
+    this.calloutDirty = true;              // re-test visibility once the camera is still
   }
 
   /**
@@ -967,17 +983,25 @@ export class Viewport {
    * formwork an app has made translucent round the wall it stands beside)
    * no longer silences the label of the thing inside it.
    */
-  private checkCalloutVisibility() {
-    this.calloutVisible.clear();
+  private checkCalloutVisibility(deadline: number) {
+    const pending = this.calloutPending;
+    if (!pending) return;
     const camera = this.camera;
     const ray = new THREE.Raycaster();
     const meshes = this.meshGroup.children;
     const direction = new THREE.Vector3();
-    for (const [id, samples] of this.calloutAnchors) {
+    const ndc = new THREE.Vector3();
+    while (pending.queue.length && performance.now() < deadline) {
+      const id = pending.queue.pop()!;
+      const samples = this.calloutAnchors.get(id);
+      if (!samples) continue;
       const wanted = this.callouts?.objectsOf(id) ?? [];
       // the centre first, and the rest only when it is hidden, so the usual
       // case stays one ray per callout
       for (const point of samples) {
+        // off screen needs no ray: its leader would point out of the view
+        ndc.copy(point).project(camera);
+        if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;
         direction.copy(point).sub(camera.position);
         const distance = direction.length();
         ray.set(camera.position, direction.normalize());
@@ -987,10 +1011,14 @@ export class Viewport {
         // its own geometry standing in front of its centre is not occlusion: a
         // wall's centre is inside the wall, so every callout would fail
         if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
-          this.calloutVisible.set(id, point);
+          pending.next.set(id, point);
           break;
         }
       }
+    }
+    if (!pending.queue.length) {
+      this.calloutVisible = pending.next;
+      this.calloutPending = null;
     }
   }
 
@@ -999,11 +1027,27 @@ export class Viewport {
     if (!this.callouts) return;
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
     const camera = this.camera;
+    // Visibility costs rays, up to nine per callout against every mesh, which
+    // on a model of a few hundred elements is more than a frame can afford.
+    // So it is never worked out while the camera moves: the labels keep the
+    // last answer and follow their anchors, and the answer is redone once the
+    // camera has been still for a moment, a slice per frame, then swapped in
+    // whole.
     const now = performance.now();
-    if (now - this.calloutCheckedAt > 180) {
-      this.checkCalloutVisibility();
-      this.calloutCheckedAt = now;
+    const at = `${this.spherical.phi},${this.spherical.theta},${this.spherical.radius},`
+      + `${this.target.x},${this.target.y},${this.target.z},${this.projectionMode},${w},${h}`;
+    if (at !== this.calloutCamera) {
+      this.calloutCamera = at;
+      this.calloutStillSince = now;
+      this.calloutPending = null;
+      this.calloutDirty = true;
     }
+    if (this.calloutDirty && !this.calloutPending && now - this.calloutStillSince > CALLOUT_SETTLE_MS) {
+      this.calloutPending = { queue: [...this.calloutAnchors.keys()].reverse(), next: new Map() };
+      // cleared as the check starts, so a change while it runs asks for another
+      this.calloutDirty = false;
+    }
+    if (this.calloutPending) this.checkCalloutVisibility(now + CALLOUT_BUDGET_MS);
     const v = new THREE.Vector3();
     const anchors: { id: string; x: number; y: number }[] = [];
     for (const [id, anchor] of this.calloutVisible) {
@@ -1181,6 +1225,7 @@ export class Viewport {
 
   /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
   repaint() {
+    this.calloutDirty = true;              // what is see-through may have changed
     for (const child of this.meshGroup.children) this.paint(child as THREE.Mesh);
   }
 
