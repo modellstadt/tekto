@@ -11,6 +11,10 @@ before 1.0, breaking changes bump the minor version. See
   be picked or hovered, hides no callout and leaves no poché in a section; the camera and the
   section plane stay put. What a layer is stays the app's business. Playground page
   "Viewport" gains a show: all / studs / plates switch.
+- **`ViewportOptions.groundStyle: "grid"`**: the ground ruled in round metres (1 m under a
+  house, 10 m under a block, every fifth line stronger) and faded out with distance, so it has
+  no edge and reads as ground rather than as a sheet under the model. `groundGrid(radius)` is
+  the spacing rule. The default stays `"plate"`.
 
 ## 0.6.0 — 2026-10-05
 

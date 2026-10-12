@@ -88,6 +88,14 @@ export interface ViewportOptions {
    */
   ground?: boolean;
   /**
+   * How that ground is drawn. "plate", the default, is an even tone a step off
+   * the background. "grid" rules it in metres and lets it fade out with
+   * distance, so it has no edge: a reader gets a sense of size from the lines,
+   * and the ground stops reading as a sheet laid under the model. See
+   * `groundGrid` for the spacing.
+   */
+  groundStyle?: "plate" | "grid";
+  /**
    * Up axis of the meshes handed over. Tekto and IFC are both Z-up, but
    * web-ifc returns geometry already turned to three.js Y-up, so an app can
    * have both in play. Getting this wrong lays a storey-height wall on the floor.
@@ -224,10 +232,80 @@ export function sectionAppearance(mode: ViewMode): { colour: number } {
  */
 export function groundAppearance(mode: ViewMode): {
   visible: boolean; colour: number; opacity: number;
+  /** the rule lines of a "grid" ground: a step further off the page than the
+   *  ground itself, the same direction, so a grid never outshouts the model */
+  line: number;
 } {
-  if (mode === "hidden-line") return { visible: false, colour: 0xffffff, opacity: 0 };
-  if (mode === "ghost") return { visible: true, colour: 0x252d38, opacity: 1 };
-  return { visible: true, colour: 0xe7ebf1, opacity: 1 };
+  if (mode === "hidden-line") return { visible: false, colour: 0xffffff, opacity: 0, line: 0xffffff };
+  if (mode === "ghost") return { visible: true, colour: 0x252d38, opacity: 1, line: 0x3a4554 };
+  return { visible: true, colour: 0xe7ebf1, opacity: 1, line: 0xc9d1dc };
+}
+
+/**
+ * The spacing and the reach of a "grid" ground, for content of a given
+ * bounding radius in metres.
+ *
+ * The minor step is a power of ten, so a line always means a round number of
+ * metres: 1 m under a house, 10 m under a block. Every fifth line is stronger.
+ * The ground is solid out to twice the radius and gone by six times it, so
+ * the model always stands on something and the edge is never seen.
+ */
+export function groundGrid(radius: number): {
+  minor: number; major: number; fadeFrom: number; fadeTo: number; size: number;
+} {
+  const r = Math.max(radius, 0.5);
+  const minor = 10 ** Math.floor(Math.log10(r / 4));
+  return { minor, major: minor * 5, fadeFrom: r * 2, fadeTo: r * 6, size: r * 14 };
+}
+
+/**
+ * The ground as a ruled sheet that fades to nothing. Unlit, as the plate is,
+ * so the sun never changes its tone. Lines are drawn a pixel wide whatever
+ * the distance (fwidth), so they neither shimmer up close nor fill in far off.
+ */
+function gridMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uColour: { value: new THREE.Color(0xe7ebf1) },
+      uLine: { value: new THREE.Color(0xc9d1dc) },
+      uOpacity: { value: 1 },
+      uCentre: { value: new THREE.Vector2() },
+      uMinor: { value: 1 },
+      uMajor: { value: 5 },
+      uFadeFrom: { value: 10 },
+      uFadeTo: { value: 30 },
+    },
+    vertexShader: `
+      varying vec3 vWorld;
+      void main() {
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vWorld = world.xyz;
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }`,
+    fragmentShader: `
+      uniform vec3 uColour;
+      uniform vec3 uLine;
+      uniform float uOpacity;
+      uniform vec2 uCentre;
+      uniform float uMinor;
+      uniform float uMajor;
+      uniform float uFadeFrom;
+      uniform float uFadeTo;
+      varying vec3 vWorld;
+      float rule(vec2 p, float step) {
+        vec2 q = p / step;
+        vec2 g = abs(fract(q - 0.5) - 0.5) / fwidth(q);
+        return 1.0 - min(min(g.x, g.y), 1.0);
+      }
+      void main() {
+        vec2 p = vWorld.xz;
+        float fade = 1.0 - smoothstep(uFadeFrom, uFadeTo, length(p - uCentre));
+        float line = max(rule(p, uMinor) * 0.55, rule(p, uMajor));
+        gl_FragColor = vec4(mix(uColour, uLine, line), fade * uOpacity);
+      }`,
+  });
 }
 
 /** How a mode paints a surface whose own colour is `base`. */
@@ -496,7 +574,7 @@ export class Viewport {
       new THREE.PlaneGeometry(1, 1),
       // unlit, so the plane stays an even tone whatever the sun is doing and
       // never competes with the building for attention
-      new THREE.MeshBasicMaterial({ transparent: true }),
+      opts.groundStyle === "grid" ? gridMaterial() : new THREE.MeshBasicMaterial({ transparent: true }),
     );
     this.groundPlane.rotation.x = -Math.PI / 2;
     this.groundPlane.visible = false;
@@ -1105,11 +1183,18 @@ export class Viewport {
     const balance = lightBalance(mode, this.shadows);
     const floor = groundAppearance(mode);
     this.groundPlane.visible = floor.visible && (this.opts.ground ?? true);
-    const gm = this.groundPlane.material as THREE.MeshBasicMaterial;
-    gm.color.setHex(floor.colour);
-    gm.opacity = floor.opacity;
-    gm.transparent = floor.opacity < 1;
-    gm.needsUpdate = true;
+    if (this.groundPlane.material instanceof THREE.ShaderMaterial) {
+      const u = this.groundPlane.material.uniforms;
+      (u.uColour.value as THREE.Color).setHex(floor.colour);
+      (u.uLine.value as THREE.Color).setHex(floor.line);
+      u.uOpacity.value = floor.opacity;
+    } else {
+      const gm = this.groundPlane.material as THREE.MeshBasicMaterial;
+      gm.color.setHex(floor.colour);
+      gm.opacity = floor.opacity;
+      gm.transparent = floor.opacity < 1;
+      gm.needsUpdate = true;
+    }
     // the cut is drawn by the mode, so a mode change has to rebuild it or the
     // poché keeps the tone of the mode the reader has just left
     if (changed && this.sectionRequest && this.sectionColour === null) {
@@ -1251,6 +1336,18 @@ export class Viewport {
     // becomes a change of background colour, which anchors nothing.
     this.groundPlane.position.set(sphere.center.x, box.min.y - r * 0.004, sphere.center.z);
     this.groundPlane.scale.set(r * 7, r * 7, 1);
+    if (this.groundPlane.material instanceof THREE.ShaderMaterial) {
+      // ruled from the world origin, not from the content, so a line falls on
+      // a round coordinate; faded round the content, so it stands mid-sheet
+      const grid = groundGrid(r);
+      const u = this.groundPlane.material.uniforms;
+      (u.uCentre.value as THREE.Vector2).set(sphere.center.x, sphere.center.z);
+      u.uMinor.value = grid.minor;
+      u.uMajor.value = grid.major;
+      u.uFadeFrom.value = grid.fadeFrom;
+      u.uFadeTo.value = grid.fadeTo;
+      this.groundPlane.scale.set(grid.size, grid.size, 1);
+    }
     this.renderer.shadowMap.needsUpdate = true;
   }
 

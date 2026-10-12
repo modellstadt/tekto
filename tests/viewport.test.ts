@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
-  modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
+  modeBackground, groundAppearance, groundGrid, sectionAppearance, DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut,
 } from "../src/render/Viewport";
 
@@ -73,6 +73,29 @@ describe("view modes", () => {
       expect(Math.abs(luminance(groundAppearance(mode).colour) - luminance(page)))
         .toBeLessThan(40);
     }
+  });
+
+  it("rules a grid ground a step further from the page, the same way", () => {
+    for (const mode of ["shaded", "ghost"] as const) {
+      const page = luminance(modeBackground(mode, DEFAULT_BACKGROUND));
+      const ground = luminance(groundAppearance(mode).colour);
+      const line = luminance(groundAppearance(mode).line);
+      expect(Math.sign(line - ground)).toBe(Math.sign(ground - page));
+      // still a rule on the ground, not a drawing over it
+      expect(Math.abs(line - ground)).toBeLessThan(40);
+    }
+  });
+
+  it("spaces the grid in round metres for the size of the content", () => {
+    expect(groundGrid(8)).toMatchObject({ minor: 1, major: 5 });       // a house
+    expect(groundGrid(60)).toMatchObject({ minor: 10, major: 50 });    // a block
+    expect(groundGrid(1).minor).toBeCloseTo(0.1);                      // a component
+    // solid under the content, gone well inside the sheet, so no edge shows
+    const g = groundGrid(8);
+    expect(g.fadeFrom).toBeGreaterThan(8);
+    expect(g.fadeTo).toBeLessThan(g.size / 2);
+    // never zero or negative, whatever it is handed
+    expect(groundGrid(0).minor).toBeGreaterThan(0);
   });
 });
 
