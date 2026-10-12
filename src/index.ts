@@ -200,6 +200,10 @@ export {
   standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut,
   fitRadius, orthoFrustum,
 } from "./render/Viewport";
+export {
+  viewModeIconSvg, viewModeIconShapes, VIEW_MODE_ICON_SVG, VIEW_MODE_ICON_CORNERS,
+} from "./render/viewModeIcons";
+export type { IconShape } from "./render/viewModeIcons";
 export type {
   ViewMode, Projection, StandardView, Appearance, ViewportOptions, ContentOptions,
   SectionRequest,

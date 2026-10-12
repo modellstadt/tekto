@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **View-mode icons.** One cube drawn the way each `Viewport` mode draws it: three toned faces
+  (shaded), see-through with its hidden edges faint (ghost), visible edges only (hidden line).
+  `viewModeIconSvg(mode, size?)` returns SVG markup for DOM apps; `ViewModeIcon` in
+  `tekto/react` is the same as a component; `viewModeIconShapes(mode)` is the data both draw.
+  24 grid, `currentColor`, so they sit beside lucide icons. Playground page "Viewport" uses them.
+
 ## 0.6.0 — 2026-10-05
 
 - **Breaking — render on demand.** The `sketch()` viewport draws a frame only when something

@@ -15,6 +15,7 @@
 import * as THREE from "three";
 import {
   Viewport, Vec2, Wall, WallOpening, WallType, HolzrahmenBau, holzrahmenbauLayers, realize,
+  viewModeIconSvg,
 } from "../../src";
 import type { ViewMode, Projection, StandardView } from "../../src";
 
@@ -109,14 +110,17 @@ export default function (container: HTMLElement): { dispose(): void } {
     + "flex-wrap:wrap;font:12px system-ui;align-items:center";
   container.appendChild(bar);
 
-  const group = <T extends string>(values: T[], initial: T, onPick: (v: T) => void) => {
+  const group = <T extends string>(values: T[], initial: T, onPick: (v: T) => void,
+                                   icon?: (v: T) => string) => {
     const box = document.createElement("div");
     box.style.cssText = "display:flex;border:1px solid #cbd2d9;border-radius:4px;"
       + "overflow:hidden;background:#fff";
     const buttons = values.map((v) => {
       const b = document.createElement("button");
-      b.textContent = v;
-      b.style.cssText = "border:0;padding:4px 9px;font:12px system-ui;cursor:pointer;background:#fff";
+      if (icon) b.innerHTML = icon(v);
+      b.append(v);
+      b.style.cssText = "border:0;padding:4px 9px;font:12px system-ui;cursor:pointer;background:#fff;"
+        + "display:flex;align-items:center;gap:5px";
       b.onclick = () => {
         onPick(v);
         buttons.forEach((other, i) => {
@@ -133,7 +137,8 @@ export default function (container: HTMLElement): { dispose(): void } {
     return box;
   };
 
-  group<ViewMode>(["shaded", "ghost", "hidden-line"], "shaded", (m) => viewport.setViewMode(m));
+  group<ViewMode>(["shaded", "ghost", "hidden-line"], "shaded", (m) => viewport.setViewMode(m),
+    (m) => viewModeIconSvg(m, 14));
   group<Projection>(["perspective", "orthographic"], "perspective", (p) => viewport.setProjection(p));
   group<StandardView>(["iso", "top", "front", "right"], "iso", (v) => viewport.setView(v));
 

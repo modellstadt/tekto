@@ -7,6 +7,7 @@ export {
   TektoApp, useScene, useSceneObjects, useSelection, useParams,
   ParamPanel, InspectorPanel, Toolbar, AccordionColumn, InfoHint,
 } from "./react/components";
+export { ViewModeIcon } from "./react/ViewModeIcon";
 export type {
   ToolbarAction, AccordionSection, AccordionColumnProps,
 } from "./react/components";
