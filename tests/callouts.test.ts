@@ -7,7 +7,7 @@
  * checked here rather than looked at in a browser.
  */
 import { describe, it, expect } from "vitest";
-import { calloutChanged, layoutLabels } from "../src/render/Callouts";
+import { calloutChanged, layoutLabels, marginCapacity } from "../src/render/Callouts";
 
 const BOX = { width: 800, height: 600, rowHeight: 30, labelWidth: 150, inset: 8 };
 
@@ -114,5 +114,16 @@ describe("callout text", () => {
     expect(calloutChanged(item, { ...item, text: "Aussenwand D1190", detail: "datasheet" })).toBe(true);
     expect(calloutChanged(item, { ...item, colour: "#5a9e7f" })).toBe(true);
     expect(calloutChanged(item, undefined)).toBe(true);
+  });
+});
+
+describe("margin capacity", () => {
+  it("is the number of rows layoutLabels places on one side", () => {
+    const cap = marginCapacity(BOX.height, BOX);
+    const many = Array.from({ length: 60 }, (_, i) => ({ id: `l${i}`, x: 100, y: 10 + i * 9 }));
+    const { placed, dropped } = layoutLabels(many, BOX);
+    expect(placed).toHaveLength(cap);
+    expect(dropped).toHaveLength(60 - cap);
+    expect(marginCapacity(10)).toBe(0);
   });
 });

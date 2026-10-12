@@ -26,7 +26,9 @@ before 1.0, breaking changes bump the minor version. See
 - **Callout visibility no longer costs frames.** It is worked out only once the camera has
   been still for 120 ms, a 6 ms slice per frame, and swapped in whole; while the camera moves
   the labels keep the last answer and follow their anchors. Points off screen cast no ray.
-  Labelling all 446 elements of a model used to slow orbiting about fivefold.
+  Labelling all 446 elements of a model used to slow orbiting about fivefold. Labels appear as
+  they are found, and the check stops once both margins are full (`marginCapacity`); what it
+  never looked at is counted as "up to N more not labelled".
 
 ## 0.6.0 — 2026-10-05
 

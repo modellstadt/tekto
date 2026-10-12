@@ -38,7 +38,7 @@
 import * as THREE from "three";
 import { SunPosition } from "../core/solar/SunPosition";
 import { NavGizmo } from "./NavGizmo";
-import { Callouts, layoutLabels, labelWidthFor, type CalloutItem } from "./Callouts";
+import { Callouts, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem } from "./Callouts";
 
 /**
  * How the content is drawn. Not decoration: each answers a different question.
@@ -558,8 +558,13 @@ export class Viewport {
   /** the camera the current answer, or the one being worked out, is for */
   private calloutCamera = "";
   private calloutStillSince = 0;
-  /** a check in progress, a slice per frame */
-  private calloutPending: { queue: string[]; next: Map<string, THREE.Vector3> } | null = null;
+  /** a check in progress, a slice per frame: what is left, and how many
+   *  labels each margin has found so far against what it holds */
+  private calloutPending: {
+    queue: string[]; skipped: string[]; left: number; right: number; capacity: number;
+  } | null = null;
+  /** callouts the last check never looked at, because the margins were full */
+  private calloutUnchecked = 0;
   /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
    *  every one of the frames a still camera also renders. */
   private gizmoAt = { phi: NaN, theta: NaN };
@@ -773,6 +778,7 @@ export class Viewport {
     this.calloutAnchors.clear();
     this.calloutVisible.clear();
     this.calloutPending = null;
+    this.calloutUnchecked = 0;
     this.calloutDirty = true;
     this.callouts?.setItems([]);
   }
@@ -991,11 +997,18 @@ export class Viewport {
     const meshes = this.meshGroup.children;
     const direction = new THREE.Vector3();
     const ndc = new THREE.Vector3();
-    while (pending.queue.length && performance.now() < deadline) {
+    const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
+    while (pending.queue.length && !full() && performance.now() < deadline) {
       const id = pending.queue.pop()!;
       const samples = this.calloutAnchors.get(id);
       if (!samples) continue;
+      // a margin that is full takes no more, so its side needs no rays: on a
+      // large model this is what keeps the check to the labels that can show
+      ndc.copy(samples[0]).project(camera);
+      const side = ndc.x < 0 ? "left" : "right";
+      if (pending[side] >= pending.capacity) { pending.skipped.push(id); continue; }
       const wanted = this.callouts?.objectsOf(id) ?? [];
+      let seen: THREE.Vector3 | null = null;
       // the centre first, and the rest only when it is hidden, so the usual
       // case stays one ray per callout
       for (const point of samples) {
@@ -1011,13 +1024,20 @@ export class Viewport {
         // its own geometry standing in front of its centre is not occlusion: a
         // wall's centre is inside the wall, so every callout would fail
         if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
-          pending.next.set(id, point);
+          seen = point;
           break;
         }
       }
+      // in place, so labels appear as they are found and a re-check after a
+      // move never blanks the margins while it runs
+      if (seen) { this.calloutVisible.set(id, seen); pending[side]++; }
+      else this.calloutVisible.delete(id);
     }
-    if (!pending.queue.length) {
-      this.calloutVisible = pending.next;
+    if (!pending.queue.length || full()) {
+      // what was never looked at shows no label, and is counted as maybe
+      const unchecked = [...pending.queue, ...pending.skipped];
+      for (const id of unchecked) this.calloutVisible.delete(id);
+      this.calloutUnchecked = unchecked.length;
       this.calloutPending = null;
     }
   }
@@ -1043,14 +1063,21 @@ export class Viewport {
       this.calloutDirty = true;
     }
     if (this.calloutDirty && !this.calloutPending && now - this.calloutStillSince > CALLOUT_SETTLE_MS) {
-      this.calloutPending = { queue: [...this.calloutAnchors.keys()].reverse(), next: new Map() };
+      this.calloutPending = {
+        queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0,
+        capacity: marginCapacity(h),
+      };
       // cleared as the check starts, so a change while it runs asks for another
       this.calloutDirty = false;
     }
     if (this.calloutPending) this.checkCalloutVisibility(now + CALLOUT_BUDGET_MS);
     const v = new THREE.Vector3();
     const anchors: { id: string; x: number; y: number }[] = [];
-    for (const [id, anchor] of this.calloutVisible) {
+    // in the caller's order, which is priority: the visible map is updated in
+    // place and its own order drifts
+    for (const id of this.calloutAnchors.keys()) {
+      const anchor = this.calloutVisible.get(id);
+      if (!anchor) continue;
       v.copy(anchor).project(camera);
       if (v.z > 1) continue;               // behind the camera
       anchors.push({ id, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
@@ -1058,7 +1085,7 @@ export class Viewport {
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);
     const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length);
+    this.callouts.update(placed, dropped.length + this.calloutUnchecked, this.calloutUnchecked > 0);
   }
 
   /**
