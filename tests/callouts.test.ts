@@ -7,7 +7,7 @@
  * checked here rather than looked at in a browser.
  */
 import { describe, it, expect } from "vitest";
-import { layoutLabels } from "../src/render/Callouts";
+import { calloutChanged, layoutLabels } from "../src/render/Callouts";
 
 const BOX = { width: 800, height: 600, rowHeight: 30, labelWidth: 150, inset: 8 };
 
@@ -103,5 +103,16 @@ describe("callout layout", () => {
 
   it("has nothing to place when nothing is visible", () => {
     expect(layoutLabels([], BOX)).toEqual({ placed: [], dropped: [] });
+  });
+});
+
+describe("callout text", () => {
+  const item = { id: "w", objects: [], text: "not asked yet", detail: "not asked yet", colour: "#e4e8ec" };
+  it("rebuilds a label whose words or colour changed, and keeps one that did not", () => {
+    expect(calloutChanged(item, { ...item })).toBe(false);
+    // the app's answer arrived: the label must stop saying it has none
+    expect(calloutChanged(item, { ...item, text: "Aussenwand D1190", detail: "datasheet" })).toBe(true);
+    expect(calloutChanged(item, { ...item, colour: "#5a9e7f" })).toBe(true);
+    expect(calloutChanged(item, undefined)).toBe(true);
   });
 });

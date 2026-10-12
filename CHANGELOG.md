@@ -20,6 +20,9 @@ before 1.0, breaking changes bump the minor version. See
   point seen; only a surface that writes depth can hide it (`occludes`). Before, one ray to
   the centre decided, so a wall with a door in its middle, everything in ghost mode, and an
   element inside see-through formwork all lost their labels.
+- **A callout whose text changes is redrawn.** Labels were built once per id, so an app that
+  changed what a label says (an answer arriving, a colour changing) kept showing the old
+  words. `calloutChanged` is the rule.
 
 ## 0.6.0 — 2026-10-05
 

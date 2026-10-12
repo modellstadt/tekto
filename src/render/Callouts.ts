@@ -152,6 +152,11 @@ export function layoutLabels(
  * Knows nothing about cameras or meshes. It is handed placements in pixels and
  * renders them, which is what keeps the layout rule above testable.
  */
+/** Whether a label built for `was` no longer says what `now` says (or `now` is gone). */
+export function calloutChanged(was: CalloutItem | undefined, now: CalloutItem | undefined): boolean {
+  return !was || !now || was.text !== now.text || was.detail !== now.detail || was.colour !== now.colour;
+}
+
 export class Callouts {
   private root: HTMLDivElement;
   private svg: SVGSVGElement;
@@ -180,12 +185,17 @@ export class Callouts {
 
   /** What there is to say. Placements arrive separately, each frame. */
   setItems(items: CalloutItem[]) {
-    this.items = new Map(items.map((i) => [i.id, i]));
+    const next = new Map(items.map((i) => [i.id, i]));
     for (const [id, el] of this.labels) {
-      if (!this.items.has(id)) {
+      // gone, or now saying something else: a label is built once, so one
+      // whose item changed would go on showing the old words, a statement
+      // the app has already withdrawn. Dropped here, it is rebuilt when next
+      // placed.
+      if (calloutChanged(this.items.get(id), next.get(id))) {
         el.box.remove(); el.leader.remove(); this.labels.delete(id);
       }
     }
+    this.items = next;
   }
 
   /** Track the host's width, so labels stay a share of it rather than a

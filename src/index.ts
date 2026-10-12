@@ -210,7 +210,7 @@ export { NavGizmo } from "./render/NavGizmo";
 export type { NavGizmoOptions } from "./render/NavGizmo";
 // Labels in the margins with leaders to what they name, laid out the way a
 // drawing is annotated rather than floated at the thing.
-export { Callouts, layoutLabels, labelWidthFor } from "./render/Callouts";
+export { Callouts, calloutChanged, layoutLabels, labelWidthFor } from "./render/Callouts";
 // Which elements touch which, worked out from geometry. The companion to the
 // relations an IFC file states, and separate because inference is not testimony.
 export {
