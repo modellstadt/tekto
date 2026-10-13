@@ -32,6 +32,8 @@ import { Mesh } from "./mesh/Mesh";
  * Opening, attachment, and dimension math becomes trivial 1D/2D in this frame.
  * Multi-segment walls have one RibbonFrame per segment with a `uOffset` equal
  * to the cumulative arc-length up to that segment.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class RibbonFrame {
   readonly origin: Vec2;     // world XY position at segment start
@@ -151,6 +153,8 @@ export interface ExtrudedRibbonOptions {
 /**
  * Maximum miter extension as a multiple of half-width.
  * Clamps acute angles to avoid self-intersection.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export const MITER_LIMIT = 6;
 

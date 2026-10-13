@@ -98,7 +98,11 @@ export function closestPointOnSegment(p: Vec3, a: Vec3, b: Vec3): Vec3 {
   return a.add(ab.mul(t));
 }
 
-/** Closest points between 3D segments a1→a2 and b1→b2, with their parameters `t` (on a) and `u` (on b), both 0..1. */
+/**
+ * Closest points between 3D segments a1→a2 and b1→b2, with their parameters `t` (on a) and `u` (on b), both 0..1.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function segmentSegmentClosest(
   a1: Vec3, a2: Vec3, b1: Vec3, b2: Vec3
 ): { pointA: Vec3; pointB: Vec3; t: number; u: number } {

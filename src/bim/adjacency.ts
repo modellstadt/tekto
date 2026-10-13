@@ -133,7 +133,11 @@ export function contactBetween(
   return { contact: "overlaps", overlap };
 }
 
-/** The opposite sense, so both elements can be asked the same question. */
+/**
+ * The opposite sense, so both elements can be asked the same question.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function reverse(contact: Contact): Contact {
   return contact === "supports" ? "supportedBy"
     : contact === "supportedBy" ? "supports" : contact;

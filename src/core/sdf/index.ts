@@ -52,7 +52,11 @@ export class SdfBox implements ISdf {
   }
 }
 
-/** Capsule: every point within `radius` of segment a→b (round ends). */
+/**
+ * Capsule: every point within `radius` of segment a→b (round ends).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfCapsule implements ISdf {
   constructor(public a: Vec3, public b: Vec3, public radius: number) {}
 
@@ -64,7 +68,11 @@ export class SdfCapsule implements ISdf {
   }
 }
 
-/** Flat-capped cylinder of `radius` from `a` to `b`; `SdfCylinder.vertical(height, radius)` stands one on the Y axis, centred on the origin. */
+/**
+ * Flat-capped cylinder of `radius` from `a` to `b`; `SdfCylinder.vertical(height, radius)` stands one on the Y axis, centred on the origin.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfCylinder implements ISdf {
   constructor(public a: Vec3, public b: Vec3, public radius: number) {}
 
@@ -96,7 +104,11 @@ export class SdfCylinder implements ISdf {
   }
 }
 
-/** Capped cone (frustum) from `a` (radius `radiusA`) to `b` (radius `radiusB`); the slanted side uses radial distance, so it is approximate. */
+/**
+ * Capped cone (frustum) from `a` (radius `radiusA`) to `b` (radius `radiusB`); the slanted side uses radial distance, so it is approximate.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfCone implements ISdf {
   constructor(
     public a: Vec3, public b: Vec3,
@@ -125,7 +137,11 @@ export class SdfCone implements ISdf {
   }
 }
 
-/** Torus at the origin around the Y axis (ring in the XZ plane): `majorRadius` to the tube centre, `minorRadius` of the tube. */
+/**
+ * Torus at the origin around the Y axis (ring in the XZ plane): `majorRadius` to the tube centre, `minorRadius` of the tube.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfTorus implements ISdf {
   constructor(public majorRadius: number, public minorRadius: number) {}
 
@@ -135,7 +151,11 @@ export class SdfTorus implements ISdf {
   }
 }
 
-/** Ellipsoid at the origin with semi-axes `radii`; the distance is an approximation (exact only for a sphere). */
+/**
+ * Ellipsoid at the origin with semi-axes `radii`; the distance is an approximation (exact only for a sphere).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfEllipsoid implements ISdf {
   constructor(public radii: Vec3) {}
 
@@ -155,6 +175,8 @@ export class SdfEllipsoid implements ISdf {
 /**
  * Half-space behind a plane (exported as `SdfPlaneField`): negative on the side away from `normal`.
  * Give the plane as `normal` plus offset `d` (normal·p = d) or a point on it; the normal is normalised.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SdfPlane implements ISdf {
   normal: Vec3;
@@ -172,7 +194,11 @@ export class SdfPlane implements ISdf {
   distance(p: Vec3): number { return p.dot(this.normal) - this.d; }
 }
 
-/** Unsigned distance to the infinite line through `a` and `b` (exported as `SdfLineField`); wrap in `SdfOffset` for an endless rod. */
+/**
+ * Unsigned distance to the infinite line through `a` and `b` (exported as `SdfLineField`); wrap in `SdfOffset` for an endless rod.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfLine implements ISdf {
   constructor(public a: Vec3, public b: Vec3) {}
 
@@ -189,7 +215,11 @@ export class SdfLine implements ISdf {
 // Boolean Operations
 // ═════════════════════════════════════════════
 
-/** Union of any number of fields (the minimum of their distances). */
+/**
+ * Union of any number of fields (the minimum of their distances).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfUnion implements ISdf {
   children: ISdf[];
   constructor(...children: ISdf[]) { this.children = children; }
@@ -201,7 +231,11 @@ export class SdfUnion implements ISdf {
   }
 }
 
-/** Intersection of any number of fields (the maximum of their distances). */
+/**
+ * Intersection of any number of fields (the maximum of their distances).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfIntersect implements ISdf {
   children: ISdf[];
   constructor(...children: ISdf[]) { this.children = children; }
@@ -223,7 +257,11 @@ export class SdfSubtract implements ISdf {
 // Smooth Operations
 // ═════════════════════════════════════════════
 
-/** Smooth union of `a` and `b`, filleting the joint over `radius` (quadratic smooth-min; same field as `SdfSmoothUnion` with k = radius). */
+/**
+ * Smooth union of `a` and `b`, filleting the joint over `radius` (quadratic smooth-min; same field as `SdfSmoothUnion` with k = radius).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfBlend implements ISdf {
   constructor(public a: ISdf, public b: ISdf, public radius = 1) {}
 
@@ -235,7 +273,11 @@ export class SdfBlend implements ISdf {
   }
 }
 
-/** `a` minus `b` with the cut edge rounded over `radius`. */
+/**
+ * `a` minus `b` with the cut edge rounded over `radius`.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfSmoothSubtract implements ISdf {
   constructor(public a: ISdf, public b: ISdf, public radius = 1) {}
 
@@ -264,13 +306,21 @@ export class SdfSmoothUnion implements ISdf {
 // Modifiers
 // ═════════════════════════════════════════════
 
-/** Hollows `input` into a wall `2 × thickness` thick, centred on its surface (|d| − thickness). */
+/**
+ * Hollows `input` into a wall `2 × thickness` thick, centred on its surface (|d| − thickness).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfShell implements ISdf {
   constructor(public input: ISdf, public thickness = 1) {}
   distance(p: Vec3): number { return Math.abs(this.input.distance(p)) - this.thickness; }
 }
 
-/** Nested shells: applies |d| − thickness `layers` times, each pass splitting every wall in two. */
+/**
+ * Nested shells: applies |d| − thickness `layers` times, each pass splitting every wall in two.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfOnion implements ISdf {
   constructor(public input: ISdf, public thickness: number, public layers = 1) {}
   distance(p: Vec3): number {
@@ -299,7 +349,11 @@ export class SdfTwist implements ISdf {
   }
 }
 
-/** Revolves a profile around the Y axis: `input` is sampled in its z = 0 plane at (distance from the Y axis, y). */
+/**
+ * Revolves a profile around the Y axis: `input` is sampled in its z = 0 plane at (distance from the Y axis, y).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfRevolution implements ISdf {
   constructor(public input: ISdf) {}
   distance(p: Vec3): number {
@@ -308,13 +362,21 @@ export class SdfRevolution implements ISdf {
   }
 }
 
-/** Extrudes `input`'s z = 0 section endlessly along Z. */
+/**
+ * Extrudes `input`'s z = 0 section endlessly along Z.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfExtrude implements ISdf {
   constructor(public input: ISdf) {}
   distance(p: Vec3): number { return this.input.distance(new Vec3(p.x, p.y, 0)); }
 }
 
-/** Extrudes `input`'s z = 0 section along Z over `height`, centred on z = 0 (flat caps). */
+/**
+ * Extrudes `input`'s z = 0 section along Z over `height`, centred on z = 0 (flat caps).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfBoundedExtrude implements ISdf {
   halfHeight: number;
   constructor(public input: ISdf, height: number) { this.halfHeight = height * 0.5; }
@@ -324,7 +386,11 @@ export class SdfBoundedExtrude implements ISdf {
   }
 }
 
-/** Mirror symmetry about the plane through the origin with `planeNormal`: the part of `input` on the normal's side is reflected onto the other side (what was there is dropped). */
+/**
+ * Mirror symmetry about the plane through the origin with `planeNormal`: the part of `input` on the normal's side is reflected onto the other side (what was there is dropped).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfMirror implements ISdf {
   normal: Vec3;
   constructor(public input: ISdf, planeNormal: Vec3) {
@@ -340,6 +406,8 @@ export class SdfMirror implements ISdf {
 /**
  * `count` copies of `input` around the Z axis, 360°/count apart, taken from the sector around +X.
  * The fold reflects (angle a → −a) rather than rotates, so copies are mirrored in y unless `input` is symmetric about XZ.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SdfRadialArray implements ISdf {
   private deltaAngle: number;
@@ -359,6 +427,8 @@ export class SdfRadialArray implements ISdf {
 /**
  * Places `input` with a Mat4 (stored inverted; `input` is sampled at transform⁻¹·p).
  * Exact for rigid transforms; under scaling the distance stays in `input`'s unscaled units.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SdfTransform implements ISdf {
   private inverse: Mat4;
@@ -373,13 +443,21 @@ export class SdfTransform implements ISdf {
   }
 }
 
-/** Grows `input` outward by `amount` (shrinks it if negative), which also rounds its edges. */
+/**
+ * Grows `input` outward by `amount` (shrinks it if negative), which also rounds its edges.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfOffset implements ISdf {
   constructor(public input: ISdf, public amount: number) {}
   distance(p: Vec3): number { return this.input.distance(p) - this.amount; }
 }
 
-/** Weighted sum `a + factor × b`: modulates one field by another (the result is not a true distance). */
+/**
+ * Weighted sum `a + factor × b`: modulates one field by another (the result is not a true distance).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export class SdfGradient implements ISdf {
   constructor(public a: ISdf, public b: ISdf, public factor = 1) {}
   distance(p: Vec3): number { return this.a.distance(p) + this.factor * this.b.distance(p); }
@@ -388,6 +466,8 @@ export class SdfGradient implements ISdf {
 /**
  * Voronoi walls between the fields in `children` (push them in after construction): |d1 − d2| − `offset` over the two
  * nearest, so the walls are where they are equally near, `2 × offset` thick. 0 everywhere when there are no children.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SdfVoronoi implements ISdf {
   children: ISdf[];
@@ -407,7 +487,11 @@ export class SdfVoronoi implements ISdf {
 // SdfLattice (TPMS)
 // ═════════════════════════════════════════════
 
-/** Triply periodic minimal surface (TPMS) family for {@link SdfLattice}. */
+/**
+ * Triply periodic minimal surface (TPMS) family for {@link SdfLattice}.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export type LatticeType =
   | "schwarz" | "gyroid" | "diamond" | "lidinoid" | "neovius"
   | "fischerKoch" | "frd" | "doubleDiamond" | "doubleGyroid" | "s";
@@ -416,6 +500,8 @@ export type LatticeType =
  * Endless TPMS lattice (gyroid, Schwarz, diamond …) as an implicit field, not a true distance: period 2π·`scale`
  * on each axis, `offset` shifts the level (solid fraction); `shell: true` gives a wall |f| − offset instead of a solid.
  * Intersect it with a body to fill that body.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SdfLattice implements ISdf {
   constructor(
@@ -481,6 +567,8 @@ export type MicroPatternType =
 /**
  * Endless strut lattice: `pattern`'s struts, laid out in one octant of a `cellSize` cube and mirrored to fill it,
  * tiled through space; `strutRadius` is the strut radius.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SdfMicrostructure implements ISdf {
   private struts: { a: Vec3; b: Vec3 }[];
@@ -552,6 +640,8 @@ function generateStruts(pattern: MicroPatternType, dim: number): { a: Vec3; b: V
 /**
  * Queries on any {@link ISdf}: central-difference `gradient`, sphere-tracing `rayMarch`, `surfaceNormal`,
  * `projectToSurface`, `estimateCurvature` (Laplacian) and `ambientOcclusion` (0..1, 1 = open).
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export const SdfUtils = {
   gradient(sdf: ISdf, p: Vec3, epsilon = 0.001): Vec3 {
@@ -639,6 +729,8 @@ export const SdfUtils = {
  * One-call wrappers that return a new {@link ISdf}: `translate`, `rotateX|Y|Z` (radians), `scale` (via
  * {@link SdfTransform}), `union`, `intersect`, `subtract`, `blend`, `shell`, `round`, `mirror`, `twist`, `revolve`.
  *   const s = SdfOps.translate(new SdfSphere(1), 0, 0, 2);
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export const SdfOps = {
   translate(sdf: ISdf, x: number, y: number, z: number): ISdf {

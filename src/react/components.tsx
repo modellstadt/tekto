@@ -23,14 +23,22 @@ interface TektoCtx {
 
 const Ctx = createContext<TektoCtx | null>(null);
 
-/** The `Scene` of the enclosing `<TektoApp>`; throws outside one. */
+/**
+ * The `Scene` of the enclosing `<TektoApp>`; throws outside one.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function useScene(): Scene {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useScene must be inside <TektoApp>");
   return ctx.scene;
 }
 
-/** Provides a `Scene` (the one passed in, or a new one) to its children; `useScene` and the other hooks need it above them. */
+/**
+ * Provides a `Scene` (the one passed in, or a new one) to its children; `useScene` and the other hooks need it above them.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function TektoApp({
   scene: extScene,
   children,
@@ -46,7 +54,11 @@ export function TektoApp({
 // Hooks
 // ═══════════════════════════════════════════════
 
-/** Reactively watch all scene objects */
+/**
+ * Reactively watch all scene objects
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function useSceneObjects(): SceneObject[] {
   const scene = useScene();
   const [objects, setObjects] = useState<SceneObject[]>(scene.all());
@@ -54,7 +66,11 @@ export function useSceneObjects(): SceneObject[] {
   return objects;
 }
 
-/** Watch selection */
+/**
+ * Watch selection
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function useSelection() {
   const scene = useScene();
   const [ids, setIds] = useState<string[]>([]);
@@ -71,7 +87,11 @@ export function useSelection() {
   };
 }
 
-/** Use a ParamStore reactively */
+/**
+ * Use a ParamStore reactively
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function useParams<S extends ParamSchema>(store: ParamStore<S>) {
   const [values, setValues] = useState(store.getAll());
 
@@ -96,7 +116,11 @@ interface ParamPanelProps {
   className?: string;
 }
 
-/** A React panel generated from a `ParamStore`: one control per param, grouped into folders by an optional `ParamLayout`, kept in sync with the store. */
+/**
+ * A React panel generated from a `ParamStore`: one control per param, grouped into folders by an optional `ParamLayout`, kept in sync with the store.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function ParamPanel({ store, layout, title, style, className }: ParamPanelProps) {
   const { values, set } = useParams(store);
   const schema = store.getSchema();
@@ -266,7 +290,11 @@ function FolderWidget({
 // Inspector Panel
 // ═══════════════════════════════════════════════
 
-/** A list of the scene's objects (type, id, label); clicking one toggles its selection and calls `onSelect`. */
+/**
+ * A list of the scene's objects (type, id, label); clicking one toggles its selection and calls `onSelect`.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function InspectorPanel({
   style, className, onSelect,
 }: {
@@ -311,7 +339,11 @@ export function InspectorPanel({
 // Toolbar
 // ═══════════════════════════════════════════════
 
-/** One `Toolbar` button: label, optional icon, click handler, `active` highlight and `group`; `shortcut` only appears in the tooltip. */
+/**
+ * One `Toolbar` button: label, optional icon, click handler, `active` highlight and `group`; `shortcut` only appears in the tooltip.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export interface ToolbarAction {
   key: string;
   label: string;
@@ -322,7 +354,11 @@ export interface ToolbarAction {
   group?: string;
 }
 
-/** A row of buttons with a divider between `group`s; `active` ones are highlighted. Shortcuts are shown in the tooltip, not bound. */
+/**
+ * A row of buttons with a divider between `group`s; `active` ones are highlighted. Shortcuts are shown in the tooltip, not bound.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function Toolbar({
   actions, style, className,
 }: {
@@ -486,6 +522,8 @@ const buttonStyle: CSSProperties = {
  * `meta` is the part that earns a closed section its place on screen: a count,
  * a total, a setting. A header that says only "Cut list" is worth nothing shut;
  * one that says "Cut list, 94 pieces" answers the question most readers had.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export interface AccordionSection {
   id: string;
@@ -511,7 +549,11 @@ export interface AccordionSection {
   children: ReactNode;
 }
 
-/** Props of `AccordionColumn`: its sections, the `localStorage` key for open state and heights, and class names for the host's styling. */
+/**
+ * Props of `AccordionColumn`: its sections, the `localStorage` key for open state and heights, and class names for the host's styling.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export interface AccordionColumnProps {
   sections: AccordionSection[];
   /** localStorage key for what is open and how tall. Omit to keep it per mount. */
@@ -555,6 +597,8 @@ const FLEXING = 1;
  * The flexible section takes the leftover until a sash gives it a height of its
  * own; from then on it is a section like the others, which is what makes a
  * boundary stay where it was put.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export function AccordionColumn({
   sections, storageKey, className, style, classes = {},
@@ -724,6 +768,8 @@ export function AccordionColumn({
  * click, so it works with a mouse, a keyboard and a finger. Positioned to the
  * right-bottom of the mark by default; a host that needs it elsewhere styles
  * the box.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export function InfoHint({ text, className, boxClassName, label = "What this is" }: {
   text: ReactNode; className?: string; boxClassName?: string; label?: string;
