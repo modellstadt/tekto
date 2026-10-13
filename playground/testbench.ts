@@ -18,7 +18,7 @@
  */
 
 import type { RenderMode, LightingMode } from "../src";
-import { SunPosition, SketchInstance, Sketch2DInstance } from "../src";
+import { SunPosition, SketchInstance, Sketch2DInstance, download } from "../src";
 
 // ─── Cities (lat, lon, standard-time UTC offset) ────────────────────
 
@@ -239,12 +239,8 @@ function rebuildExportMenu() {
     b.title = `Download as ${it.fileName}`;
     b.addEventListener("click", async () => {
       exportList.hidden = true;
-      const blob = await it.handler();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = it.fileName;
-      a.click();
-      URL.revokeObjectURL(url);
+      // download() keeps the URL alive past the click; revoking it at once truncates large files.
+      download(await it.handler(), it.fileName, it.mimeType ? { type: it.mimeType } : {});
     });
     exportList.appendChild(b);
   }

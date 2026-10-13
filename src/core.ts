@@ -105,8 +105,10 @@ export type { RigidBodyConfig, SpringConfig } from "./core/physics/RigidBody2D";
 // IO
 export { ObjFile } from "./io";
 export type { MeshData as ObjMeshData } from "./io";
-export { writeDxf3D } from "./io/DxfWriter";
+export { writeDxf3D, writeDxf2D } from "./io/DxfWriter";
 export type { DxfLayerDef, Dxf3DContent, Dxf3DPolyline, Dxf3DLine, Dxf3DPoint, Dxf3DArc, Dxf3DCircle } from "./io/DxfWriter";
+export type { Dxf2DContent, Dxf2DPolyline, Dxf2DLine, Dxf2DCircle, Dxf2DArc, Dxf2DText, Dxf2DPoint } from "./io/DxfWriter";
+export { stampName } from "./io/download";
 export { IfcFile } from "./io/IfcFile";
 export type { IfcParseOptions } from "./io/IfcFile";
 export { IfcModel } from "./io/IfcModel";

@@ -60,7 +60,8 @@ export interface ExportRegistration {
   name: string;
   fileName: string;
   mimeType?: string;
-  handler: () => Blob | Promise<Blob>;
+  /** The file's contents: a string (DXF, SVG, JSON …) or a Blob, or a promise of one. */
+  handler: () => Blob | string | Promise<Blob | string>;
 }
 
 /** Item registered via `lab.registerImport(...)`. */
@@ -277,7 +278,7 @@ export interface Lab {
    *     handler:  () => writer.saveBlob(),
    *   });
    */
-  registerExport(opts: { name: string; fileName: string; mimeType?: string; handler: () => Blob | Promise<Blob> }): void;
+  registerExport(opts: { name: string; fileName: string; mimeType?: string; handler: () => Blob | string | Promise<Blob | string> }): void;
 
   /**
    * Register an "Import ▾" item for the host shell. The handler receives

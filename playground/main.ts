@@ -1,4 +1,4 @@
-import { sketch } from "../src";
+import { sketch, writeDxf2D } from "../src";
 
 sketch((lab) => {
   // ── GUI Controls ──
@@ -32,6 +32,17 @@ sketch((lab) => {
     .color(lab.rgb(50, 150, 255))
     .rotateX(lab.time * speed.value * 0.5)
     .translate(3, 1, 0);
+
+  // ── Export: shows as "Export ▾" in this sketch's header ──
+  lab.registerExport({
+    name: "Plan (DXF)",
+    fileName: "playground-plan.dxf",
+    handler: () => writeDxf2D({
+      polylines: [{ layer: "terrain", points: [{ x: -4, y: -4 }, { x: 4, y: -4 }, { x: 4, y: 4 }, { x: -4, y: 4 }], closed: true }],
+      circles: [{ layer: "objects", center: { x: 0, y: 0 }, radius: 0.5 + n * 0.5 }],
+      texts: [{ layer: "text", at: { x: -4, y: -4.6 }, text: "Tekto Playground — plan", height: 0.3 }],
+    }, { scale: 1000 }),
+  });
 
   // ── Random points ──
   lab.randomSeed(42);
