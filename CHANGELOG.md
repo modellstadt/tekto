@@ -22,6 +22,12 @@ before 1.0, breaking changes bump the minor version. See
 - **`SceneObject.key`** — the record an object shows (`"blocks/k3f9x2"`), set by
   `scene.withKey(key, fn)` from the moment it is added; `scene.byKey(key)`. Snapshots and ✎
   Markup report it, so a mark on the viewport names a document record.
+- **New `Selection` and `selectOnClick(renderer, scene, selection)`** — selection by record
+  key, not scene object, so it survives re-renders, undo and reload. A click selects the record
+  an object shows, Shift/⌘/Ctrl-click toggles, a background click clears; every object of a
+  selected record is highlighted, again after `bindScene` rebuilds it. `ThreeRenderer`:
+  `setSelectionHighlight` takes a list of ids, and `onPick` listeners get the modifier keys
+  (`PickInfo`).
 
 ## 0.7.0 — 2026-10-13
 

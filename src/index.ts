@@ -31,7 +31,7 @@ export type {
 
 // Renderers
 export { ThreeRenderer } from "./render/ThreeRenderer";
-export type { ThreeRendererConfig } from "./render/ThreeRenderer";
+export type { ThreeRendererConfig, PickInfo } from "./render/ThreeRenderer";
 export { SVGRenderer } from "./render/SVGRenderer";
 export type { SVGRendererConfig } from "./render/SVGRenderer";
 // A viewport for meshes an app built itself, as opposed to a Scene the library

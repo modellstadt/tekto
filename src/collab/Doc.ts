@@ -464,3 +464,91 @@ export function bindScene<S extends DocSchema, C extends keyof S & string>(
   };
 }
 
+
+// ── Selection: which records are selected ──────────────────────────────────────
+
+/**
+ * The selected records, by key (`"blocks/k3f9x2"` — the `key` every object of a record
+ * carries). Records, not scene objects: a selection survives re-renders, undo and reload.
+ * View state — keep it out of the document (or share it as presence).
+ *
+ *   const sel = new Selection();
+ *   selectOnClick(app.renderer, app.scene, sel);
+ *   sel.onChange(() => panel.show(sel.ids("blocks")));
+ */
+export class Selection {
+  private set = new Set<string>();
+  private listeners = new Set<(keys: string[]) => void>();
+
+  keys(): string[] { return [...this.set]; }
+  has(key: string): boolean { return this.set.has(key); }
+  get size(): number { return this.set.size; }
+  /** The ids of the selected records of one collection. */
+  ids(collection: string): string[] {
+    const prefix = collection + SEP;
+    return this.keys().filter(k => k.startsWith(prefix)).map(k => k.slice(prefix.length));
+  }
+
+  /** Replace the selection. */
+  select(keys: Iterable<string>): void {
+    const next = new Set(keys);
+    if (next.size === this.set.size && [...next].every(k => this.set.has(k))) return;
+    this.set = next;
+    this.emit();
+  }
+  add(key: string): void { if (!this.set.has(key)) { this.set.add(key); this.emit(); } }
+  remove(key: string): void { if (this.set.delete(key)) this.emit(); }
+  toggle(key: string): void { if (!this.set.delete(key)) this.set.add(key); this.emit(); }
+  clear(): void { if (this.set.size) { this.set.clear(); this.emit(); } }
+
+  onChange(cb: (keys: string[]) => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  private emit(): void {
+    const keys = this.keys();
+    for (const l of this.listeners) l(keys);
+  }
+}
+
+/** What `selectOnClick` needs from a renderer: structurally a ThreeRenderer. */
+export interface PickingView {
+  setPickEnabled(enabled: boolean): void;
+  onPick(listener: (sceneId: string | null, info: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) => void): () => void;
+  setSelectionHighlight(sceneIds: readonly string[] | null): void;
+}
+
+/**
+ * Click to select records in a viewport: a click selects the record an object shows,
+ * Shift/⌘/Ctrl-click adds or removes it, a click on the background clears. Every object of
+ * a selected record is highlighted — again after `bindScene` rebuilds it. Returns the
+ * unsubscribe.
+ */
+export function selectOnClick(view: PickingView, scene: Scene, selection: Selection): () => void {
+  view.setPickEnabled(true);
+  const highlight = () => {
+    if (!selection.size) { view.setSelectionHighlight(null); return; }
+    const ids: string[] = [];
+    for (const o of scene.all()) if (o.key && selection.has(o.key)) ids.push(o.id);
+    view.setSelectionHighlight(ids);
+  };
+  const offPick = view.onPick((sceneId, info) => {
+    const key = sceneId ? scene.get(sceneId)?.key : undefined;
+    if (!key) { if (!info.shiftKey && !info.metaKey && !info.ctrlKey) selection.clear(); return; }
+    if (info.shiftKey || info.metaKey || info.ctrlKey) selection.toggle(key);
+    else selection.select([key]);
+  });
+  const offSel = selection.onChange(highlight);
+  // A rebuilt record gets new scene objects: highlight them once the rebuild is done.
+  let queued = false;
+  const offScene = scene.on((e) => {
+    if (e.type !== "object:add" || !selection.size || queued) return;
+    const key = scene.get(e.id)?.key;
+    if (!key || !selection.has(key)) return;
+    queued = true;
+    queueMicrotask(() => { queued = false; highlight(); });
+  });
+  highlight();
+  return () => { offPick(); offSel(); offScene(); view.setSelectionHighlight(null); };
+}

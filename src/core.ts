@@ -193,8 +193,8 @@ export type {
 // with presence; backends are adapters (in-process, Vite dev server, Supabase).
 export { SharedStore, collabColor, memoryAdapter, devServerAdapter, supabaseAdapter } from "./collab/SharedStore";
 // The document of a retained app: typed records, stable ids, undo/redo, save/open (on SharedStore).
-export { Doc, localAdapter, bindScene } from "./collab/Doc";
-export type { DocSchema, DocChange, DocChangeSource, DocEditOptions, DocOptions, DocJSON, SceneBinding } from "./collab/Doc";
+export { Doc, localAdapter, bindScene, Selection, selectOnClick } from "./collab/Doc";
+export type { DocSchema, DocChange, DocChangeSource, DocEditOptions, DocOptions, DocJSON, SceneBinding, PickingView } from "./collab/Doc";
 export type {
   SharedRecord, CollabUser, Presence, CollabStatus, CollabEvents, CollabAdapter, SharedStoreOptions, SupabaseLike,
 } from "./collab/SharedStore";
