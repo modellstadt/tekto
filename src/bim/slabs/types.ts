@@ -40,7 +40,8 @@ export type { PropertyMap, MaterialLayer, PartProfile } from "../walls/types";
 export type SlabPartRole =
   | "joist"           // primary horizontal member
   | "beam"            // larger primary beam (often supports joists)
-  | "header"          // around openings
+  | "header"          // across an opening's ends, between its trimmers
+  | "trimmer"         // a joist beside an opening, carrying its headers
   | "blocking"        // between joists, for stiffness
   | "sheathing"       // OSB / plywood structural deck on top of joists
   | "decking"         // finished floor surface

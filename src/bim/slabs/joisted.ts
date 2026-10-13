@@ -15,9 +15,12 @@
 //                  (OSB / plywood structural deck).
 //   • Ceiling      a single thin plate below the joists (gypsum etc.).
 //
+//   • Openings  each `slab.openings[]` gets a trimmer along both long
+//                sides (in place of the joists there) and a header across
+//                both ends; the joists in between stop at the headers. The
+//                sheathing and ceiling leave the opening out.
+//
 // Currently NOT modelled (clear extension points):
-//   • Joist headers / trimmers around `slab.openings` (TODO comment in
-//     the construction body marks where they go).
 //   • Cantilever overhangs (joists extending past the slab boundary).
 //   • Crown / camber direction.
 //
@@ -30,8 +33,9 @@ import {
   ExtrudedRibbon,
 } from "../../core/geometry/ExtrudedRibbon";
 import { Polygon2D } from "../../core/geometry/Polygon2D";
+import { Slab } from "./types";
 import type {
-  SlabConstruction, SlabPart, SlabContext, Slab, PartProfile,
+  SlabConstruction, SlabPart, SlabContext, PartProfile,
 } from "./types";
 import { lineClipPolygon, joistDirectionFromBounds } from "./orientation";
 
@@ -175,52 +179,62 @@ export function JoistedSlab(options: JoistedSlabOptions = {}): SlabConstruction 
       if (proj > maxP) maxP = proj;
     }
 
+    // A point at `t` along the joists and `p` across them, and a member between two of them.
+    const at = (t: number, p: number) => new Vec2(direction.x * t + perp.x * p, direction.y * t + perp.y * p);
+    const member = (name: string, role: string, a: Vec2, b: Vec2) => {
+      const length = a.distTo(b);
+      if (length < 0.01) return;
+      const ribbon = new ExtrudedRibbon({ centerline: [a, b], width: opts.profile.w, height: opts.profile.h, baseZ: joistBottomZ });
+      parts.push({ name, role, mesh: ribbon.toMesh(), material: opts.material, profile: opts.profile, length, ifcType: "IfcMember" });
+    };
+    /** Where a line of joists at `p` meets the inside of the rim, as [tMin, tMax] along it. */
+    const span = (p: number): [number, number] | null => {
+      const hits = lineClipPolygon(at(0, p), direction, regularJoistClipBoundary);
+      return hits.length < 2 ? null : [hits[0], hits[hits.length - 1]];
+    };
+
+    // ── Openings: their extent along (t) and across (p) the joists; a trimmer stands beside
+    //    each long side, a header across each end between the trimmers ──
+    const w = opts.profile.w;
+    const wells = slab.openingRings(direction).map((ring) => {
+      const ts = ring.map((q) => q.dot(direction)), ps = ring.map((q) => q.dot(perp));
+      return { t0: Math.min(...ts), t1: Math.max(...ts), p0: Math.min(...ps), p1: Math.max(...ps) };
+    });
+    const trimmerPs = wells.flatMap((o) => [o.p0 - w / 2, o.p1 + w / 2]);
+
     // ── Place joists with `edgeOffset` from the inside face on each side ──
     const startP = minP + edgeOffset;
     const endP   = maxP - edgeOffset;
     let joistIdx = 0;
     for (let p = startP; p <= endP + 1e-6; p += opts.spacing) {
-      const origin = new Vec2(perp.x * p, perp.y * p);
-      const hits = lineClipPolygon(origin, direction, regularJoistClipBoundary);
-      if (hits.length < 2) continue;
-      const tMin = hits[0];
-      const tMax = hits[hits.length - 1];
-
-      const startPt = new Vec2(origin.x + direction.x * tMin, origin.y + direction.y * tMin);
-      const endPt   = new Vec2(origin.x + direction.x * tMax, origin.y + direction.y * tMax);
-      const length  = startPt.distTo(endPt);
-      if (length < 0.01) continue;
-
-      const ribbon = new ExtrudedRibbon({
-        centerline: [startPt, endPt],
-        width:  opts.profile.w,
-        height: opts.profile.h,
-        baseZ:  joistBottomZ,
-      });
-      parts.push({
-        name:     `Joist ${++joistIdx}`,
-        role:     "joist",
-        mesh:     ribbon.toMesh(),
-        material: opts.material,
-        profile:  opts.profile,
-        length,
-        ifcType:  "IfcMember",
-      });
+      if (trimmerPs.some((tp) => Math.abs(p - tp) < w)) continue;      // a trimmer stands here
+      const range = span(p);
+      if (!range) continue;
+      // A joist through an opening stops at its headers: the pieces either side are tail joists.
+      let pieces: [number, number][] = [range];
+      for (const o of wells) {
+        if (p <= o.p0 - w / 2 || p >= o.p1 + w / 2) continue;
+        const cut0 = o.t0 - w - bearingGap, cut1 = o.t1 + w + bearingGap;
+        pieces = pieces.flatMap(([a, b]): [number, number][] =>
+          cut1 <= a || cut0 >= b ? [[a, b]] : [[a, Math.min(b, cut0)], [Math.max(a, cut1), b]]);
+      }
+      for (const [a, b] of pieces) member(`Joist ${++joistIdx}`, "joist", at(a, p), at(b, p));
     }
-
-    // TODO: openings — add headers + trimmers around each `slab.openings[]`.
-    //   For each opening, replace the joists crossing it with full joists
-    //   that stop at the opening's near edge, plus two trimmers (joists
-    //   along the opening's parallel edges) and a header (joist
-    //   perpendicular to the joist run, spanning between trimmers).
+    wells.forEach((o, i) => {
+      const n = wells.length > 1 ? ` ${i + 1}` : "";
+      for (const [k, p] of [o.p0 - w / 2, o.p1 + w / 2].entries()) {
+        const range = span(p);
+        if (range) member(`Trimmer${n}${k ? "b" : "a"}`, "trimmer", at(range[0], p), at(range[1], p));
+      }
+      // Headers hang between the trimmers' inner faces, with the bearing gap at each end.
+      for (const [k, t] of [o.t0 - w / 2, o.t1 + w / 2].entries()) {
+        member(`Header${n}${k ? "b" : "a"}`, "header", at(t, o.p0 + bearingGap), at(t, o.p1 - bearingGap));
+      }
+    });
 
     // ── Sheathing (full slab area, one thin plate above the joists) ──
     if (opts.sheathingThickness > 1e-6) {
-      const sheathingSlab = makeFlatPlate(
-        slab.boundary,
-        slab.elevation - opts.sheathingThickness,
-        opts.sheathingThickness,
-      );
+      const sheathingSlab = makeFlatPlate(slab, direction, slab.elevation - opts.sheathingThickness, opts.sheathingThickness);
       parts.push({
         name:     "Sheathing",
         role:     "sheathing",
@@ -233,7 +247,7 @@ export function JoistedSlab(options: JoistedSlabOptions = {}): SlabConstruction 
     // ── Ceiling (full slab area, one thin plate below the joists) ──
     if (opts.ceilingThickness > 1e-6) {
       const ceilingZ = joistBottomZ - opts.ceilingThickness;
-      const ceilingMesh = makeFlatPlate(slab.boundary, ceilingZ, opts.ceilingThickness);
+      const ceilingMesh = makeFlatPlate(slab, direction, ceilingZ, opts.ceilingThickness);
       parts.push({
         name:     "Ceiling",
         role:     "ceiling",
@@ -268,40 +282,12 @@ function ringPerimeter(closedRing: Vec2[]): number {
 import { Mesh } from "../../core/geometry/mesh/Mesh";
 
 /**
- * Build a thin flat plate by extruding `boundary` upward by `thickness`
- * starting at `baseZ`. Used for the sheathing / ceiling / topping layers.
+ * A thin flat plate over the slab's footprint, `thickness` up from `baseZ`, with the slab's
+ * openings left out (aligned with the joists). Used for the sheathing and ceiling layers.
  */
-function makeFlatPlate(boundary: Vec2[], baseZ: number, thickness: number): Mesh {
-  const ring = Polygon2D.openRing(boundary);
-  const n = ring.length;
-  if (n < 3) return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
-
-  const positions: number[] = [];
-  const normals:   number[] = [];
-  const indices:   number[] = [];
-  const tris = Polygon2D.triangulate2D(ring);
-
-  const topBase = positions.length / 3;
-  for (const p of ring) { positions.push(p.x, p.y, baseZ + thickness); normals.push(0, 0, 1); }
-  for (const [a, b, c] of tris) indices.push(topBase + a, topBase + b, topBase + c);
-
-  const botBase = positions.length / 3;
-  for (const p of ring) { positions.push(p.x, p.y, baseZ); normals.push(0, 0, -1); }
-  for (const [a, b, c] of tris) indices.push(botBase + c, botBase + b, botBase + a);
-
-  for (let i = 0; i < n; i++) {
-    const p0 = ring[i];
-    const p1 = ring[(i + 1) % n];
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-9) continue;
-    const nx = dy / len, ny = -dx / len;
-    const base = positions.length / 3;
-    positions.push(p0.x, p0.y, baseZ, p1.x, p1.y, baseZ, p1.x, p1.y, baseZ + thickness, p0.x, p0.y, baseZ + thickness);
-    for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-
-  return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));
+function makeFlatPlate(slab: Slab, direction: Vec2, baseZ: number, thickness: number): Mesh {
+  return new Slab({
+    boundary: slab.boundary, thickness, elevation: baseZ + thickness,
+    openings: slab.openings, joistDirection: direction,
+  }).toMesh();
 }
