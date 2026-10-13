@@ -245,6 +245,34 @@ export function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box:
   return req.flip ? new THREE.Plane(a, -level) : new THREE.Plane(a.negate(), level);
 }
 
+/**
+ * Where to look for a callout's element: its centre first, then eight points between the
+ * centre and the corners of its box. An element counts as seen if any of them is: a wall
+ * whose middle is a door, or a slab whose middle is behind a beam, is still plainly on
+ * screen. Most of the way out, not all of it: a corner is shared with the neighbours, and
+ * a ray to it hits them as often as the element.
+ */
+export function calloutSamples(box: THREE.Box3): THREE.Vector3[] {
+  const centre = box.getCenter(new THREE.Vector3());
+  const out = [centre];
+  for (const x of [box.min.x, box.max.x]) {
+    for (const y of [box.min.y, box.max.y]) {
+      for (const z of [box.min.z, box.max.z]) out.push(new THREE.Vector3(x, y, z).lerp(centre, 0.3));
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a surface hides what is behind it from a callout: the renderer's own answer. A
+ * material that writes no depth (ghost, or whatever an app made see-through) hides nothing
+ * on screen, so it hides no label.
+ */
+export function occludes(material: THREE.Material | THREE.Material[]): boolean {
+  const m = Array.isArray(material) ? material[0] : material;
+  return !!m && m.visible !== false && m.depthWrite !== false;
+}
+
 /** Brightness 0..1 of a colour three.js understands (hex number or CSS string). */
 export function luminance(colour: THREE.ColorRepresentation): number {
   const c = new THREE.Color(colour);

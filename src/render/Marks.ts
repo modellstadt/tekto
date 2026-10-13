@@ -4,9 +4,14 @@
  */
 import * as THREE from "three";
 import type { SectionRequest } from "../scene/Scene";
-import { sectionPlane, sectionAppearance } from "./viewRules";
-import { Callouts, layoutLabels, labelWidthFor, type CalloutItem } from "./Callouts";
+import { sectionPlane, sectionAppearance, calloutSamples, occludes } from "./viewRules";
+import { Callouts, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem } from "./Callouts";
 import type { RendererCore } from "./RendererCore";
+
+/** How long the camera must be still before callout visibility is redone (ms). */
+const CALLOUT_SETTLE_MS = 120;
+/** Time per frame spent on callout visibility while it is being redone (ms). */
+const CALLOUT_BUDGET_MS = 6;
 
 /** A material you can see through (its back faces would show without a cut). */
 function seeThrough(m: THREE.Material | THREE.Material[]): boolean {
@@ -25,9 +30,20 @@ export class Marks {
 
   // ── Callouts (setCallouts) ──
   private callouts: Callouts | null = null;
-  private calloutAnchors = new Map<string, THREE.Vector3>();
-  private calloutVisible = new Set<string>();
-  private calloutCheckedAt = 0;
+  /** Per callout, where to look for it: its centre, then points toward its box's corners. */
+  private calloutAnchors = new Map<string, THREE.Vector3[]>();
+  /** Per callout seen, the point its leader goes to. Redone only once the camera is still. */
+  private calloutVisible = new Map<string, THREE.Vector3>();
+  /** Something that decides visibility changed since the last answer. */
+  private calloutCheckDirty = true;
+  /** The camera the answer is for, and since when it has been still. */
+  private calloutCamera = "";
+  private calloutStillSince = 0;
+  /** A check in progress, a slice per frame: what is left, and how many labels each margin
+   *  has found so far against what it holds. */
+  private calloutPending: { queue: string[]; skipped: string[]; left: number; right: number; capacity: number } | null = null;
+  /** Callouts the last check never looked at, because the margins were full. */
+  private calloutUnchecked = 0;
   private calloutRecheck = 0;
   calloutsDirty = false;
   private calloutHandlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {};
@@ -171,6 +187,7 @@ export class Marks {
     const axis = section && new THREE.Vector3(section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
     this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === undefined ? this.core.contentBox() : null) : null;
     this.core.renderer.localClippingEnabled = !!this.sectionClip;
+    this.calloutCheckDirty = true;                 // what the cut removed hides no label
     for (const t of this.core.objectMap.values()) this.dressSection(t);
     if (this.outlineMat) this._outlineMaterial();
     for (const c of this.presenceMats.keys()) this._presenceMaterial(c);
@@ -243,12 +260,17 @@ export class Marks {
       onHover: (id) => this.calloutHandlers.onHover?.(id),
     });
     this.callouts.setItems(items);
+    // Keep the last answer for what is still there, so a relabel doesn't blank the margins
+    // while the new one is worked out.
+    const ids = new Set(items.map((i) => i.id));
+    for (const id of [...this.calloutVisible.keys()]) if (!ids.has(id)) this.calloutVisible.delete(id);
+    this.calloutPending = null;
     this.calloutsDirty = true;
     this.core.requestRender();
   }
 
 
-  /** Re-measure each callout's anchor: the centre of its objects' bounds. */
+  /** Re-measure where to look for each callout: points in its objects' bounds. */
   private _measureCallouts(): void {
     this.calloutsDirty = false;
     this.calloutAnchors.clear();
@@ -256,32 +278,66 @@ export class Marks {
     for (const id of this.callouts?.ids ?? []) {
       box.makeEmpty();
       for (const t of this.core.resolve(this.callouts!.objectsOf(id))) if (t.visible) box.expandByObject(t);
-      if (!box.isEmpty()) this.calloutAnchors.set(id, box.getCenter(new THREE.Vector3()));
+      if (!box.isEmpty()) this.calloutAnchors.set(id, calloutSamples(box));
     }
-    this.calloutCheckedAt = 0;
+    this.calloutPending = null;
+    this.calloutCheckDirty = true;
   }
 
 
-  /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
-  private _checkCalloutVisibility(): void {
-    this.calloutVisible.clear();
+  /**
+   * Work on which callouts the reader can see, until `deadline`. Seen means any of its
+   * sample points is: the centre first, the others only if it is hidden, and the leader goes
+   * to the first one seen. Only a surface that writes depth hides it (`occludes`), its own
+   * objects don't count, nor does what the section removed. A margin that is full takes no
+   * more, so its side needs no rays, and the check ends when both are.
+   */
+  private _checkCalloutVisibility(deadline: number): void {
+    const pending = this.calloutPending;
+    if (!pending) return;
     const cam = this.core.activeCamera;
     const meshes = [...this.core.objectMap.values()].filter(t => t.visible);
     const ray = new THREE.Raycaster();
     const eye = cam.getWorldPosition(new THREE.Vector3());
-    for (const [id, anchor] of this.calloutAnchors) {
+    const view = cam.getWorldDirection(new THREE.Vector3());
+    const ortho = (cam as THREE.OrthographicCamera).isOrthographicCamera;
+    const ndc = new THREE.Vector3(), dir = new THREE.Vector3();
+    const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
+    while (pending.queue.length && !full() && performance.now() < deadline) {
+      const id = pending.queue.pop()!;
+      const samples = this.calloutAnchors.get(id);
+      if (!samples) continue;
+      const side = ndc.copy(samples[0]).project(cam).x < 0 ? "left" : "right";
+      if (pending[side] >= pending.capacity) { pending.skipped.push(id); continue; }
       const own = new Set(this.core.resolve(this.callouts!.objectsOf(id)));
-      const dir = anchor.clone().sub(eye);
-      const dist = dir.length();
-      if ((cam as THREE.OrthographicCamera).isOrthographicCamera) {
-        cam.getWorldDirection(dir);                       // parallel rays: along the view
-        ray.set(anchor.clone().addScaledVector(dir, -1e4), dir);
-        ray.far = 1e4;
-      } else { ray.set(eye, dir.normalize()); ray.far = dist; }
-      const hit = ray.intersectObjects(meshes, true).find(h => !this.cutAway(h.point));
-      let owner: THREE.Object3D | null = hit?.object ?? null;
-      while (owner && !own.has(owner)) owner = owner.parent;
-      if (!hit || owner || hit.distance >= ray.far - 1e-3) this.calloutVisible.add(id);
+      let seen: THREE.Vector3 | null = null;
+      for (const point of samples) {
+        ndc.copy(point).project(cam);
+        if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;   // off screen: no ray
+        if (ortho) {
+          ray.set(point.clone().addScaledVector(view, -1e4), view);              // parallel rays: along the view
+          ray.far = 1e4;
+        } else {
+          dir.copy(point).sub(eye);
+          ray.far = dir.length();
+          ray.set(eye, dir.normalize());
+        }
+        // Surfaces only: three.js picks lines within a whole unit of the ray.
+        const hit = ray.intersectObjects(meshes, true)
+          .find(h => (h.object as THREE.Mesh).isMesh && occludes((h.object as THREE.Mesh).material) && !this.cutAway(h.point));
+        let owner: THREE.Object3D | null = hit?.object ?? null;
+        while (owner && !own.has(owner)) owner = owner.parent;
+        if (!hit || owner || hit.distance >= ray.far - 1e-3) { seen = point; break; }
+      }
+      // In place, so labels appear as they are found and a recheck never blanks the margins.
+      if (seen) { this.calloutVisible.set(id, seen); pending[side]++; } else this.calloutVisible.delete(id);
+    }
+    if (!pending.queue.length || full()) {
+      // What was never looked at shows no label, and is counted as "up to".
+      const unchecked = [...pending.queue, ...pending.skipped];
+      for (const id of unchecked) this.calloutVisible.delete(id);
+      this.calloutUnchecked = unchecked.length;
+      this.calloutPending = null;
     }
   }
 
@@ -292,19 +348,41 @@ export class Marks {
     if (this.calloutsDirty) this._measureCallouts();
     const w = this.core.container.clientWidth || 1, h = this.core.container.clientHeight || 1;
     const now = performance.now();
-    if (now - this.calloutCheckedAt > 180) {
-      this._checkCalloutVisibility();
-      this.calloutCheckedAt = now;
-    } else if (!this.calloutRecheck) {
-      // The camera may stop before the next check is due: look once more when it is.
-      this.calloutRecheck = window.setTimeout(() => { this.calloutRecheck = 0; this.calloutCheckedAt = 0; this.core.requestRender(); }, 200);
-    }
     const cam = this.core.activeCamera;
     cam.updateMatrixWorld();
+    // Visibility costs rays, up to nine per callout against every mesh: more than a frame can
+    // afford on a model of a few hundred elements. So it is never worked out while the camera
+    // moves (the labels keep the last answer and follow their anchors), and is redone once the
+    // camera has been still a moment, a slice per frame.
+    // Rounded: the controls recompute the camera each frame, with noise in the last digits.
+    const key = (m: THREE.Matrix4) => m.elements.map((e) => e.toFixed(6)).join();
+    const at = `${key(cam.matrixWorld)}|${key(cam.projectionMatrix)}|${w}|${h}`;
+    if (at !== this.calloutCamera) {
+      this.calloutCamera = at;
+      this.calloutStillSince = now;
+      this.calloutPending = null;
+      this.calloutCheckDirty = true;
+    }
+    if (this.calloutCheckDirty && !this.calloutPending) {
+      if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
+        this.calloutPending = { queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0, capacity: marginCapacity(h) };
+        this.calloutCheckDirty = false;                  // cleared as it starts: a change while it runs asks for another
+      } else if (!this.calloutRecheck) {
+        // Frames are drawn on demand: ask for one when the camera will have settled.
+        this.calloutRecheck = window.setTimeout(() => { this.calloutRecheck = 0; this.core.requestRender(); },
+          CALLOUT_SETTLE_MS - (now - this.calloutStillSince) + 5);
+      }
+    }
+    if (this.calloutPending) {
+      this._checkCalloutVisibility(now + CALLOUT_BUDGET_MS);
+      if (this.calloutPending) this.core.requestRender();          // the next slice
+    }
     const v = new THREE.Vector3();
     const anchors: { id: string; x: number; y: number }[] = [];
-    for (const [id, anchor] of this.calloutAnchors) {
-      if (!this.calloutVisible.has(id)) continue;
+    // In the caller's order, which is priority.
+    for (const id of this.calloutAnchors.keys()) {
+      const anchor = this.calloutVisible.get(id);
+      if (!anchor) continue;
       v.copy(anchor).project(cam);
       if (v.z > 1) continue;
       anchors.push({ id, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
@@ -312,7 +390,7 @@ export class Marks {
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);
     const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length);
+    this.callouts.update(placed, dropped.length + this.calloutUnchecked, this.calloutUnchecked > 0);
   }
 
   dispose(): void {
