@@ -44,6 +44,7 @@ import { ControlPanel, ControlItem } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
 import { SunPosition } from "../core/solar/SunPosition";
 import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject } from "./AgentBridge";
+import { Commands, viewCommands } from "../gui/Commands";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
 
 // ─── Config ──────────────────────────────────
@@ -98,6 +99,11 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
   renderer: ThreeRenderer;
   /** The sidebar renderer — call panel.render(...) to change the control structure at runtime. */
   panel: ControlPanel;
+  /** What the app can do, with its keys: `app.commands.add({ id: "edit.undo", label: "Undo",
+   *  keys: "Mod+Z", run: () => doc.undo() })`. Keys work while the app is mounted (not while
+   *  typing in a field); agents list and run them through `window.__tekto`. The view commands
+   *  (`view.top`, `view.fitAll`, …) are there from the start, without keys. */
+  commands: Commands;
 
   /** Register an animation callback (called every frame with dt in seconds) */
   onAnimate(fn: (dt: number, time: number) => void): void;
@@ -236,6 +242,11 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     ...config.renderer,
   });
 
+  // ── Commands: the view's from the start, keys bound while the app is mounted ──
+  const commands = new Commands();
+  commands.add(viewCommands(renderer));
+  const unbindKeys = commands.bindKeys();
+
   // ── Top bar: lighting (Flat / Studio) · render mode · camera · sun ──
   if (config.topBar !== false) {
     buildTopBar(header, scene, renderer, t, config.topBar === true || config.topBar === undefined ? {} : config.topBar);
@@ -285,6 +296,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     scene,
     renderer,
     panel,
+    commands,
 
     onAnimate(fn) { animateFn = fn; },
 
@@ -314,6 +326,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       disposed = true;
       markup?.dispose();
       bridge.dispose();
+      unbindKeys();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
@@ -344,6 +357,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     up: config.up ?? "z",
     params: params.getAll(),
     logs: statusText ? [{ label: "status", value: statusText }] : [],
+    commands: commands.list(),
     errors: bridge.errors(),
   });
   const markup = config.markup === false ? null : new MarkupOverlay({
@@ -359,6 +373,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
   const bridge = installAgentBridge({
     owner: instance,
+    commands,
     harness: "appShell",
     store: params,
     snapshot: (opts?: MarkupCaptureOptions) => markup

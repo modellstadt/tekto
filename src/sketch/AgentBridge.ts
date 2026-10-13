@@ -13,6 +13,7 @@
 import type { ParamStore, ParamDef } from "../gui/Params";
 import type { Scene } from "../scene/Scene";
 import type { MarkupBundle, MarkupCaptureOptions, MarkupObjectRef } from "./Markup";
+import type { Commands } from "../gui/Commands";
 
 /** Which app harness installed the bridge. */
 export type AgentHarness = "sketch" | "sketch2d" | "appShell";
@@ -40,6 +41,8 @@ export interface AgentBridgeHost {
   snapshot(opts?: MarkupCaptureOptions): Promise<MarkupBundle>;
   /** 3D harnesses only. */
   camera?(pos: number[], target?: number[]): void;
+  /** The app's commands, listed and run by id for agents. */
+  commands?: Commands;
 }
 
 export interface AgentBridge {
@@ -88,6 +91,9 @@ export function installAgentBridge(host: AgentBridgeHost): AgentBridge {
       return r;
     },
     ...(host.camera ? { camera: host.camera } : {}),
+    // What the app can do — undo, delete, the views … — by id, as a person would by key.
+    commands: () => host.commands?.list() ?? [],
+    run: (id: string) => host.commands ? host.commands.run(id) : Promise.resolve(false),
   };
 
   return {

@@ -9,6 +9,11 @@ export default function (container: HTMLElement): SketchInstance {
     const subLevels = lab.slider("Subdivision Levels", 0, 3, 1, { step: 1 });
     // A control set from code: the slider moves and the sketch re-runs.
     lab.button("Smoothest", () => subLevels.set(3));
+    // The same as commands: keys for a person, ids for an agent (`__tekto.run("subdiv.more")`).
+    lab.command([
+      { id: "subdiv.more", label: "More subdivision", keys: "]", run: () => subLevels.set(Math.min(3, subLevels.value + 1)) },
+      { id: "subdiv.less", label: "Less subdivision", keys: "[", run: () => subLevels.set(Math.max(0, subLevels.value - 1)) },
+    ]);
     const sp = 3.5;
 
     // Box

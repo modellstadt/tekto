@@ -16,6 +16,7 @@ import type { Algo } from "../core/algo/algorithms";
 import type { Scene, VisualStyle, FlatMeshData } from "../scene/Scene";
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 import type { SectionRequest, StandardView } from "../scene/Scene";
+import type { Command } from "../gui/Commands";
 export type { LayerNode, LayerState, LayerMap } from "../gui/LayerPanel";
 import type { LayerState } from "../gui/LayerPanel";
 
@@ -283,6 +284,16 @@ export interface Lab {
    *   });
    */
   registerExport(opts: { name: string; fileName: string; mimeType?: string; handler: () => Blob | string | Promise<Blob | string> }): void;
+
+  /**
+   * Something the sketch can do, with its keys — run from the keys while the sketch is
+   * mounted (not while typing in a field) and by agents (`window.__tekto.run(id)`):
+   *
+   *   lab.command({ id: "shape.reset", label: "Reset shape", keys: "R", run: () => reset() });
+   *
+   * Declared per run like `lab.button`; `Mod` is ⌘ on a Mac and Ctrl elsewhere.
+   */
+  command(cmd: Command | readonly Command[]): void;
 
   /**
    * Register an "Import ▾" item for the host shell. The handler receives
