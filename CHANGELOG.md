@@ -39,6 +39,9 @@ before 1.0, breaking changes bump the minor version. See
   text, detail or colour changed is redrawn. Visibility is worked out only once the camera
   has been still for 120 ms, a 6 ms slice per frame, and stops once both margins are full
   ("up to N more not labelled").
+- **`appShell()` draws on demand**: an idle app no longer redraws every frame (render on
+  demand had only reached `sketch()`). An app with `onAnimate` still draws every frame.
+  Changed three.js objects yourself outside `onAnimate`? Call `app.renderer.requestRender()`.
 - `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
   experimental: BuildGraph uses them. 47 exports keep the tag.
 
