@@ -43,6 +43,8 @@ import { ParamStore, ParamSchema } from "../gui/Params";
 import { ControlPanel, ControlItem } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
 import { SunPosition } from "../core/solar/SunPosition";
+import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject } from "./AgentBridge";
+import type { MarkupCaptureOptions } from "./Markup";
 
 // ─── Config ──────────────────────────────────
 
@@ -234,9 +236,10 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
   }
   requestAnimationFrame(loop);
 
-  // ── Return instance ──
+  // ── window.__tekto for agents (tools/snap.mjs) ──
 
-  return {
+  let statusText = "";
+  const instance: AppShellInstance<S> = {
     params,
     scene,
     renderer,
@@ -249,6 +252,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     rebuild() { buildFn?.(); displayFn?.(); },
 
     status(text: string) {
+      statusText = text;
       if (text) {
         statusEl.textContent = text;
         statusEl.style.display = "block";
@@ -259,11 +263,37 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
     dispose() {
       disposed = true;
+      bridge.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
     },
   };
+
+  const bridge = installAgentBridge({
+    owner: instance,
+    harness: "appShell",
+    store: params,
+    snapshot: (opts?: MarkupCaptureOptions) => plainBundle({
+      ...opts,
+      title: config.title ?? "app",
+      harness: "appShell",
+      png: renderer.snapshotPng(),
+      viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
+      context: {
+        ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
+        up: config.up ?? "z",
+        params: params.getAll(),
+        logs: statusText ? [{ label: "status", value: statusText }] : [],
+        errors: bridge.errors(),
+      },
+    }),
+    camera: (pos, target) => {
+      renderer.setCameraPosition(pos[0], pos[1], pos[2]);
+      if (target) renderer.lookAt(target[0], target[1], target[2]);
+    },
+  });
+  return instance;
 }
 
 // ─── Top bar (lighting / render mode / camera / sun) ──

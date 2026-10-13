@@ -121,7 +121,7 @@ Shadow flags are applied in `addToThree` based on the current lighting mode, so 
 ## When you're stuck
 
 - Run `npm run lint` to see what TypeScript thinks of your change.
-- Look before you claim. With the dev server running, `npm run snap -- <page url>` captures the sketch the way a person sees it (`.tekto/markup/latest/view.png` + `markup.json`); read it before saying a visual change works. A user's ✎ Markup lands in the same folder — "see the markup" means read that.
+- Look before you claim. With the dev server running, `npm run snap -- <page url>` captures the sketch the way a person sees it (`.tekto/markup/latest/view.png` + `markup.json`); read it before saying a visual change works. It works on `sketch()`, `sketch2d()` and `appShell()` pages, prints the app's log lines, and exits 1 if the page logged an error — treat that as a failed change, not a flaky tool. A user's ✎ Markup lands in the same folder — "see the markup" means read that.
 - Search for prior art: most APIs in `src/` are exercised by at least one playground page. Find one and pattern-match.
 - If you're working through an assistant that keeps cross-conversation memory, read what's already there before re-deriving context.
 - Open a clarifying question rather than guess; when exploring, give a 2-3-sentence recommendation, not a decided plan.

@@ -12,7 +12,9 @@
  *
  * --params names controls by label (case-insensitive), "Group:Label" when two share a
  * label, or the internal key; a name that matches nothing fails the run and lists the
- * page's controls.
+ * page's controls. Works for sketch(), sketch2d() and appShell() apps (--camera: 3D only).
+ * The run exits 1 when the page threw or logged an error (--allow-errors accepts that);
+ * the app's log lines are printed, and markup.json carries them and the errors.
  *        [--note "after raising the riser"] [--wait 800]
  *
  * No dependencies: talks to Chrome over the DevTools protocol with Node's WebSocket.
@@ -24,10 +26,12 @@ import os from "node:os";
 import path from "node:path";
 
 const args = process.argv.slice(2);
+const BOOLEAN = new Set(["--allow-errors"]);
+const isFlagValue = (a) => { const i = args.indexOf(a); return i > 0 && args[i - 1].startsWith("--") && !BOOLEAN.has(args[i - 1]); };
 const url = args.find((a) => !a.startsWith("--") && !isFlagValue(a));
 const flag = (name) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
-function isFlagValue(a) { const i = args.indexOf(a); return i > 0 && args[i - 1].startsWith("--"); }
-if (!url) { console.error("usage: snap.mjs <url> [--params json] [--camera x,y,z[,tx,ty,tz]] [--size WxH] [--note text] [--wait ms]"); process.exit(2); }
+const allowErrors = args.includes("--allow-errors");
+if (!url) { console.error("usage: snap.mjs <url> [--params json] [--camera x,y,z[,tx,ty,tz]] [--size WxH] [--note text] [--wait ms] [--allow-errors]"); process.exit(2); }
 
 const [W, H] = (flag("size") ?? "1400x900").split("x").map(Number);
 const wait = +(flag("wait") ?? 600);
@@ -66,8 +70,10 @@ try {
   const page = targets.find((t) => t.type === "page");
   const cdp = await connect(page.webSocketDebuggerUrl);
 
-  cdp.on("Runtime.exceptionThrown", (p) => console.error("[page exception]", p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text));
+  let pageErrors = 0;   // exceptions and console.error during this run: they fail it
+  cdp.on("Runtime.exceptionThrown", (p) => { pageErrors++; console.error("[page exception]", p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text); });
   cdp.on("Runtime.consoleAPICalled", (p) => {
+    if (p.type === "error") pageErrors++;
     if (p.type === "error" || p.type === "warning") console.error(`[page ${p.type}]`, p.args.map((a) => a.value ?? a.description).join(" "));
   });
   await cdp.send("Runtime.enable");
@@ -83,7 +89,7 @@ try {
 
   const t0 = Date.now();
   while (!(await evaluate("!!window.__tekto").catch(() => false))) {
-    if (Date.now() - t0 > 30000) throw new Error("page never exposed window.__tekto (is it a 3D sketch()? is the dev server running?)");
+    if (Date.now() - t0 > 30000) throw new Error("page never exposed window.__tekto — is it a sketch(), sketch2d() or appShell() app, and is the dev server running?");
     await sleep(200);
   }
   if (flag("params")) {
@@ -97,15 +103,25 @@ try {
     }
   }
   if (flag("camera")) {
+    if (!(await evaluate("typeof window.__tekto.camera === 'function'"))) throw new Error("--camera: this app has no 3D camera (sketch2d?)");
     const c = flag("camera").split(",").map(Number);
     await evaluate(`window.__tekto.camera(${JSON.stringify(c.slice(0, 3))}, ${c.length >= 6 ? JSON.stringify(c.slice(3, 6)) : "undefined"})`);
   }
   await sleep(wait);
 
   const out = await evaluate(`window.__tekto.snapshot({ label: "snap", note: ${JSON.stringify(flag("note") ?? "")} })
-    .then(b => ({ dir: b.dir, groups: b.markup.scene.groups.length, shown: b.markup.scene.shownObjects }))`);
+    .then(b => ({ dir: b.dir, harness: b.markup.harness, scene: b.markup.scene ? { groups: b.markup.scene.groups.length, shown: b.markup.scene.shownObjects } : null,
+                  logs: b.markup.logs ?? [], errors: b.markup.errors ?? [] }))`);
   if (!out.dir) throw new Error("snapshot was not saved — is tools/markup-vite-plugin.mjs in the dev server's vite config?");
-  console.log(`${out.dir}  (${out.shown} objects in ${out.groups} groups)`);
+  const what = out.scene ? `${out.scene.shown} objects in ${out.scene.groups} groups` : "2D canvas";
+  console.log(`${out.dir}  (${out.harness ?? "sketch"}: ${what})`);
+  for (const l of out.logs.slice(0, 20)) console.log(`  log  ${l.label}${l.value ? "  " + l.value : ""}`);
+  // The app's own error record covers what happened before snap attached; CDP covers this run.
+  const errs = Math.max(pageErrors, out.errors.length);
+  if (errs && !allowErrors) {
+    for (const e of out.errors.slice(0, 5)) console.error(`  error  ${e.split("\n")[0]}`);
+    throw new Error(`the page reported ${errs} error(s) — the bundle is saved, but don't trust the picture (--allow-errors to accept)`);
+  }
   cdp.close();
 } catch (e) {
   console.error(String(e?.message ?? e));

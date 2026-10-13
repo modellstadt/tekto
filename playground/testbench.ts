@@ -95,6 +95,9 @@ const GROUPS: PageGroup[] = [
     { slug: "gizmo",     label: "Pick & Gizmo", load: () => import("./pages/gizmo") },
     { slug: "shared-editing", label: "Shared Editing", load: () => import("./pages/shared-editing") },
   ]},
+  { name: "App Shell", pages: [
+    { slug: "app-shell", label: "App Shell (retained)", load: () => import("./pages/app-shell") },
+  ]},
   { name: "Sketch2D", pages: [
     { slug: "pointer-2d", label: "Pointer Input", load: () => import("./pages/pointer-2d") },
   ]},

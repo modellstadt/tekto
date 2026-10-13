@@ -20,6 +20,7 @@
  * agent driving a headless browser (tools/snap.mjs) sees what a person sees.
  */
 import type { Vec3 } from "../core/math/vectors";
+import { saveBundle, slug } from "./AgentBridge";
 
 type Pt = [number, number];
 
@@ -84,7 +85,6 @@ export interface MarkupBundle {
 }
 
 const INK = "#ff00d4";         // a colour no model uses, so marks never read as geometry
-const ENDPOINT = "/__tekto/markup";
 
 export class MarkupOverlay {
   private host: MarkupHost;
@@ -362,7 +362,7 @@ export class MarkupOverlay {
         files: { view: "view.png", clean: "clean.png" },
       };
       const bundle: MarkupBundle = { markup, viewPng, cleanPng };
-      if (opts.save !== false) bundle.dir = await post(bundle, opts.label ?? slug(this.host.title));
+      if (opts.save !== false) bundle.dir = await saveBundle(bundle, opts.label ?? slug(this.host.title));
       return bundle;
     } finally {
       if (!wasActive) this.host.setTracking(false);
@@ -552,22 +552,4 @@ function bounds(ps: Vec3[]) {
 
 export function round3(p: { x: number; y: number; z: number }): number[] {
   return [p.x, p.y, p.z].map((v) => +v.toFixed(4));
-}
-
-function slug(s: string) { return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "sketch"; }
-
-async function post(b: MarkupBundle, label: string): Promise<string | undefined> {
-  try {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ label, markup: b.markup, viewPng: b.viewPng, cleanPng: b.cleanPng }),
-    });
-    if (res.ok) return (await res.json()).dir as string;
-  } catch { /* no dev server — fall through to download */ }
-  const dl = (name: string, href: string) => { const a = document.createElement("a"); a.href = href; a.download = name; a.click(); };
-  dl(`${label}-view.png`, b.viewPng);
-  dl(`${label}-clean.png`, b.cleanPng);
-  dl(`${label}-markup.json`, URL.createObjectURL(new Blob([JSON.stringify(b.markup, null, 2)], { type: "application/json" })));
-  return undefined;
 }

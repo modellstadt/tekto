@@ -40,6 +40,8 @@ import { ParamStore, ParamDef } from "../gui/Params";
 import { ControlPanel, ControlItem, PanelButton } from "../gui/ControlPanel";
 import { getTheme } from "../gui/theme";
 import type { Reactive, SliderOpts, SelectOpts } from "./SketchTypes";
+import { installAgentBridge, plainBundle, type AgentBridge } from "./AgentBridge";
+import type { MarkupCaptureOptions } from "./Markup";
 export type { Reactive, SliderOpts, SelectOpts } from "./SketchTypes";
 
 // ═══════════════════════════════════════════════
@@ -185,6 +187,7 @@ export class Sketch2DInstance {
   private items = new Map<string, ControlItem>();
   private buttons: PanelButton[] = [];
   private logs: LogEntry[] = [];
+  private bridge: AgentBridge | null = null;
   private drawFn: DrawFn | null = null;
   private animateFn: AnimateFn | null = null;
   private pointerDownFns: PointerFn[] = [];
@@ -226,6 +229,25 @@ export class Sketch2DInstance {
     this.wireInput();
     this.runSketch();
     this.startLoop();
+    // window.__tekto for agents (tools/snap.mjs): the canvas plus params, logs and errors.
+    this.bridge = installAgentBridge({
+      owner: this,
+      harness: "sketch2d",
+      store: this.store,
+      snapshot: (opts?: MarkupCaptureOptions) => plainBundle({
+        ...opts,
+        title: this.config.title ?? "sketch2d",
+        harness: "sketch2d",
+        png: this.canvas.toDataURL("image/png"),
+        viewport: { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
+        context: {
+          params: this.store.getAll(),
+          // The body's lines plus this frame's: keep the latest value per label.
+          logs: [...new Map(this.logs.map(l => [l.label, { ...l }])).values()],
+          errors: this.bridge?.errors() ?? [],
+        },
+      }),
+    });
   }
 
   // ── DOM ──
@@ -577,6 +599,7 @@ export class Sketch2DInstance {
   /** Tear down the sketch */
   dispose() {
     this.disposed = true;
+    this.bridge?.dispose();
     this.panel.dispose();
     this.container.innerHTML = "";
   }
