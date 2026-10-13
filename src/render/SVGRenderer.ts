@@ -39,7 +39,7 @@ const DEFAULTS: SVGRendererConfig = {
 };
 
 /**
- * Draws a `Scene`'s points, segments, polygons, circles and meshes as SVG, projected onto one plane (`xz` by default), and redraws on every scene change.
+ * Draws a `Scene`'s points, segments, polylines, polygons, circles and meshes as SVG, projected onto one plane (`xz` by default), and redraws on every scene change.
  * `setViewBox` pans/zooms; `dispose()` unsubscribes and removes the SVG.
  *
  * @experimental No app uses this yet; it may still change.
@@ -147,6 +147,19 @@ export class SVGRenderer {
         const line = this.createSVGLine(a.x, a.y, b.x, b.y, s.color, 0.03, s.opacity);
         line.dataset.geomId = obj.id;
         this.contentGroup.appendChild(line);
+        break;
+      }
+
+      case "polyline": {
+        if (!obj.vertices || obj.vertices.length < 2) break;
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        el.setAttribute("points", obj.vertices.map(v => { const p = this.project(v); return `${p.x},${p.y}`; }).join(" "));
+        el.setAttribute("fill", "none");
+        el.setAttribute("stroke", s.color);
+        el.setAttribute("stroke-width", "0.03");           // as a segment
+        el.setAttribute("opacity", String(s.opacity));
+        el.dataset.geomId = obj.id;
+        this.contentGroup.appendChild(el);
         break;
       }
 

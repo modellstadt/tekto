@@ -24,7 +24,8 @@ export interface Spring {
 /**
  * Spring-mass simulation of a `Mesh`: `initFromMesh` makes a particle per node with edge, quad-diagonal and hinge
  * springs (optionally a second truss layer), `step(dt)` integrates in substeps, `updateMesh` writes positions back.
- * Set `gravity` and `floorPlane` for your up axis: the defaults are gravity −Y and a floor at z = 10 facing +Z.
+ * The defaults are Y-up: gravity −Y and a floor at y = −10; for a Z-up model set both
+ * (`gravity = new Vec3(0, 0, -9.81)`, `floorPlane = new Plane(new Vec3(0, 0, 1), d)`).
  *
  * @experimental No app uses this yet; it may still change.
  */
@@ -36,7 +37,7 @@ export class SpringSystem3D {
 
   // Settings
   gravity = new Vec3(0, -9.81, 0);
-  floorPlane = new Plane(new Vec3(0, 0, 1), -10);
+  floorPlane = new Plane(new Vec3(0, 1, 0), 10);       // y = −10, under gravity −Y
   globalVelDamping = 0.02;
 
   useGlobalStiffness = true;

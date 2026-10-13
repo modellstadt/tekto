@@ -205,3 +205,20 @@ describe("BspTree", () => {
     });
   });
 });
+
+describe("traversal order", () => {
+  // Two parallel squares facing +Z, at z = 0 and z = 1, seen from z = 5.
+  const square = (z: number) => polygonFromVertices([new Vec3(0, 0, z), new Vec3(1, 0, z), new Vec3(1, 1, z), new Vec3(0, 1, z)], `z${z}`);
+  const order = (walk: "traverseFrontToBack" | "traverseBackToFront") => {
+    const tree = BspTree.fromPolygons([square(0), square(1)]);
+    const seen: string[] = [];
+    tree[walk](new Vec3(0.5, 0.5, 5), (polys) => polys.forEach(p => seen.push(String(p.shared))));
+    return seen;
+  };
+  it("front-to-back visits the nearer polygon first", () => {
+    expect(order("traverseFrontToBack")).toEqual(["z1", "z0"]);
+  });
+  it("back-to-front (painter's order) visits the farther polygon first", () => {
+    expect(order("traverseBackToFront")).toEqual(["z0", "z1"]);
+  });
+});
