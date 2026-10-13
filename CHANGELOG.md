@@ -31,6 +31,11 @@ before 1.0, breaking changes bump the minor version. See
 - **✎ Markup in `appShell()`** — the same overlay as in `sketch()` (opt out with
   `markup: false`). Marks resolve to the objects they touch and, through `key`, to the document
   records they show; `window.__tekto.snapshot()` (and so `snap`) includes the marks.
+- **New playground page "Site Editor (Doc + undo)"** — the retained model end to end and the
+  example to copy: blocks in a `Doc` (kept in this browser, or `?shared=1` through the dev
+  server), `bindScene`, click/Shift-click selection with highlight, sliders that edit the
+  selection (a drag is one undo step), Add / Duplicate / Delete, ⌘Z / ⇧⌘Z, arrow keys,
+  Save JSON / Open JSON.
 
 ## 0.7.0 — 2026-10-13
 
