@@ -110,12 +110,20 @@ try {
   await sleep(wait);
 
   const out = await evaluate(`window.__tekto.snapshot({ label: "snap", note: ${JSON.stringify(flag("note") ?? "")} })
-    .then(b => ({ dir: b.dir, harness: b.markup.harness, scene: b.markup.scene ? { groups: b.markup.scene.groups.length, shown: b.markup.scene.shownObjects } : null,
+    .then(b => ({ dir: b.dir, harness: b.markup.harness, scene: b.markup.scene ? { groups: b.markup.scene.groups.length, shown: b.markup.scene.shownObjects,
+                    meshesWithIssues: b.markup.scene.meshesWithIssues ?? 0, meshIssues: b.markup.scene.meshIssues ?? [] } : null,
                   logs: b.markup.logs ?? [], errors: b.markup.errors ?? [] }))`);
   if (!out.dir) throw new Error("snapshot was not saved — is tools/markup-vite-plugin.mjs in the dev server's vite config?");
   const what = out.scene ? `${out.scene.shown} objects in ${out.scene.groups} groups` : "2D canvas";
   console.log(`${out.dir}  (${out.harness ?? "sketch"}: ${what})`);
   for (const l of out.logs.slice(0, 20)) console.log(`  log  ${l.label}${l.value ? "  " + l.value : ""}`);
+  // Mesh.validate() findings: printed, not fatal — an open or non-manifold mesh can be on purpose.
+  if (out.scene?.meshesWithIssues) {
+    console.log(`  ${out.scene.meshesWithIssues} mesh(es) with issues (markup.json → scene.meshIssues):`);
+    for (const m of out.scene.meshIssues.slice(0, 5)) {
+      console.log(`    ${m.label ?? m.layer ?? m.id}${m.src ? "  " + m.src : ""}: ${m.issues.join("; ")}`);
+    }
+  }
   // The app's own error record covers what happened before snap attached; CDP covers this run.
   const errs = Math.max(pageErrors, out.errors.length);
   if (errs && !allowErrors) {

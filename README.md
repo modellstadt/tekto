@@ -145,6 +145,7 @@ lists that every edit maintains incrementally. Both old APIs live on it.
 | Ids | are indices and stay valid across other edits; removal leaves a tombstone, `compact()` renumbers |
 | Cost | 200k triangles: 31 ms to build with edges, ~45 MB; 1M triangles from arrays: 83 ms, ~72 MB. Catmull-Clark on 40k quads: 0.33 s. 5,000 edge splits: 9 ms |
 | Watch out | `face.nodes` / `node.edges` are snapshots (reverse a face with `reverseFace`); in hot loops read `positions`/`faceVerts`, not views |
+| Check | `mesh.validate()` lists what silently breaks volumes, culling and exports — NaN positions, bad faces, non-manifold or inconsistently wound edges, an inside-out solid. Certain bugs throw where they happen (a face on a missing node, a NaN position, a loft over mismatched profiles) |
 
 ### Three access levels
 

@@ -292,7 +292,18 @@ export const Polygon2D = {
    * Simple miter-join approach; may produce artifacts on very sharp angles
    * (the miter is clamped to 4× the offset distance to avoid spikes).
    */
+  /**
+   * Offset a simple polygon by moving each vertex along its corner bisector: positive
+   * `distance` grows it, negative shrinks it, whichever way it winds. A ring that repeats
+   * its first point comes back closed the same way. Insetting past the polygon's inner
+   * radius returns `[]` (the polygon is gone) instead of an inverted shape. Vertex offset
+   * only — no clean-up of self-intersections at deep concave insets; for those use
+   * `PolygonBool`.
+   */
   offset(polygon: Vec2[], distance: number): Vec2[] {
+    if (!Number.isFinite(distance)) throw new Error(`Polygon2D.offset: distance must be a finite number, got ${distance}`);
+    const closed = polygon.length > 3 && polygon[0].distSqTo(polygon[polygon.length - 1]) <= 1e-24;
+    if (closed) polygon = Polygon2D.openRing(polygon);
     const n = polygon.length;
     if (n < 3) return [...polygon];
 
@@ -326,6 +337,19 @@ export const Polygon2D = {
         result.push(polygon[i].add(bisNorm.mul(scale)));
       }
     }
+    // Shrunk past nothing: the corners crossed over. Every edge then runs backwards (a
+    // symmetric shape keeps its winding, so the area's sign alone can't tell), or the
+    // ring turned inside-out.
+    if (d < 0) {
+      let reversed = 0;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        if (polygon[j].sub(polygon[i]).dot(result[j].sub(result[i])) < 0) reversed++;
+      }
+      const a0 = Polygon2D.signedArea(polygon), a1 = Polygon2D.signedArea(result);
+      if (reversed === n || Math.sign(a1) !== Math.sign(a0) || Math.abs(a1) < 1e-12 * Math.max(1, Math.abs(a0))) return [];
+    }
+    if (closed) result.push(result[0]);
     return result;
   },
 

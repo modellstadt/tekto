@@ -6,6 +6,22 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Changed — certain bugs now throw where they happen** instead of producing quiet garbage
+  (each message names the call and the value): `Mesh.addNode`/`setPosition` with a non-finite
+  position; `Mesh.addFace` with fewer than 3 nodes or a node that doesn't exist (it went into
+  the index buffer); `MeshFactory` generators with impossible arguments (`grid` with 0
+  divisions, `sphere` with 2 segments, `loft` over profiles of different lengths — it used the
+  shorter one —, a 1-point `pipe` …); `writeDxf3D` with a NaN coordinate (it wrote `0`; arcs and
+  circles with a degenerate radius are still dropped). Loading an old Map-based mesh JSON skips
+  its degenerate faces. Eight apps in tekto-apps run unchanged on it.
+- **New `Mesh.validate()`** — non-finite positions, faces with missing or repeated nodes,
+  degenerate faces, non-manifold edges, faces wound against their neighbours, and a closed
+  mesh that is inside-out; open edges are counted, not flagged. Every snapshot runs it on the
+  scene's meshes: `markup.json` → `scene.meshIssues`, and `snap` prints them.
+- **Fix — `Polygon2D.offset`:** a ring that repeats its first point no longer gets a notch
+  (and comes back closed); insetting past the polygon returns `[]` instead of an inverted
+  shape; a non-finite distance throws.
+
 - **The agent loop works on every app.** `sketch2d()` and `appShell()` now install
   `window.__tekto` too (it was `sketch()` only), so `snap` captures all three. New
   `__tekto.schema()` lists every control with type, range, default and value. `markup.json`

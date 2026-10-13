@@ -11,6 +11,12 @@ import { CurveUtils } from "../curves";
 /** A grid whose heights can be rewritten in place (animation) without rebuilding topology. */
 export type GridMesh = Mesh & { update(heightFn: (x: number, z: number) => number): void };
 
+/** Throw a clear error naming the generator and the argument, instead of building NaN geometry. */
+function need(ok: boolean, msg: string): void {
+  if (!ok) throw new Error(`MeshFactory.${msg}`);
+}
+const isCount = (n: number, min: number) => Number.isInteger(n) && n >= min;
+
 export const MeshFactory = {
 
   // ── Parametric Surfaces ──
@@ -22,6 +28,8 @@ export const MeshFactory = {
     divisionsZ: number,
     heightFn: (x: number, z: number) => number = () => 0
   ): GridMesh {
+    need(isCount(divisionsX, 1) && isCount(divisionsZ, 1), `grid: divisions must be whole numbers ≥ 1, got ${divisionsX} × ${divisionsZ}`);
+    need(Number.isFinite(width) && Number.isFinite(depth), `grid: width and depth must be finite, got ${width} × ${depth}`);
     const mesh = new Mesh() as GridMesh;
     const ids: number[][] = [];
 
@@ -65,6 +73,8 @@ export const MeshFactory = {
    * seen from the tip of `direction` first.
    */
   extrude(polygon: Vec3[], direction: Vec3, cap = true): Mesh {
+    need(polygon.length >= 2, `extrude: the outline needs at least 2 points, got ${polygon.length}`);
+    need(direction.lenSq() > 0 && Number.isFinite(direction.lenSq()), `extrude: the direction must be a finite, non-zero vector`);
     const mesh = new Mesh();
     const n = polygon.length;
     // Newell normal of the outline; if it opposes the extrusion, walk the outline backwards.
@@ -95,6 +105,8 @@ export const MeshFactory = {
   },
 
   revolve(profile: Vec2[], segments: number = 32, angleRange = Math.PI * 2): Mesh {
+    need(profile.length >= 2, `revolve: the profile needs at least 2 points, got ${profile.length}`);
+    need(isCount(segments, 1), `revolve: segments must be a whole number ≥ 1, got ${segments}`);
     const mesh = new Mesh();
     const n = profile.length;
     const ids: number[][] = [];
@@ -124,6 +136,9 @@ export const MeshFactory = {
   },
 
   loft(profiles: Vec3[][], closedProfile = true): Mesh {
+    need(profiles.length >= 2, `loft: needs at least 2 profiles, got ${profiles.length}`);
+    need(profiles.every(p => p.length === profiles[0].length && p.length >= 2),
+      `loft: every profile needs the same number of points (≥ 2), got ${profiles.map(p => p.length).join(", ")}`);
     const mesh = new Mesh();
     const ids: number[][] = [];
 
@@ -175,6 +190,7 @@ export const MeshFactory = {
   },
 
   sphere(radius = 1, segments = 24, rings = 16): Mesh {
+    need(isCount(segments, 3) && isCount(rings, 2), `sphere: needs whole numbers, segments ≥ 3 and rings ≥ 2, got ${segments} and ${rings}`);
     const mesh = new Mesh();
     const ids: number[][] = [];
 
@@ -209,6 +225,7 @@ export const MeshFactory = {
   },
 
   cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24, cap = true): Mesh {
+    need(isCount(segments, 3), `cylinder: segments must be a whole number ≥ 3, got ${segments}`);
     const mesh = new Mesh();
     const h2 = height / 2;
     const bottomIds: number[] = [];
@@ -241,6 +258,7 @@ export const MeshFactory = {
   },
 
   torus(majorRadius = 1, minorRadius = 0.3, segments = 32, sides = 16): Mesh {
+    need(isCount(segments, 3) && isCount(sides, 3), `torus: segments and sides must be whole numbers ≥ 3, got ${segments} and ${sides}`);
     const mesh = new Mesh();
     const ids: number[][] = [];
 
@@ -273,6 +291,8 @@ export const MeshFactory = {
    * Accepts uniform radius (number) or per-point varying radii (number[]).
    */
   pipe(path: Vec3[], radius: number | number[], sides = 8): Mesh {
+    need(path.length >= 2, `pipe: the path needs at least 2 points, got ${path.length}`);
+    need(isCount(sides, 3), `pipe: sides must be a whole number ≥ 3, got ${sides}`);
     if (Array.isArray(radius) && radius.length !== path.length) {
       throw new Error(`MeshFactory.pipe: ${radius.length} radii for ${path.length} path points — need one radius per point (or a single number)`);
     }

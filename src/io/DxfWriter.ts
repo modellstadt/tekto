@@ -114,6 +114,19 @@ export function writeDxf3D(content: Dxf3DContent): string {
   const lines: string[] = [];
   const okR = (r: number) => Number.isFinite(r) && r > 1e-9;
 
+  // A NaN written as 0 moves a point to the origin without a word; refuse it instead.
+  // (Arcs and circles with a degenerate radius are dropped below, as before — only the
+  // ones that will be written are checked.)
+  const finite = (v: Vec3) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+  const bad = (what: string, i: number, layer: string) => {
+    throw new Error(`writeDxf3D: ${what} ${i} (layer "${layer}") has a non-finite coordinate`);
+  };
+  polylines.forEach((p, i) => { if (!p.points.every(finite)) bad("polyline", i, p.layer); });
+  lineSegs.forEach((l, i) => { if (!finite(l.start) || !finite(l.end)) bad("line", i, l.layer); });
+  points.forEach((pt, i) => { if (!finite(pt.position)) bad("point", i, pt.layer); });
+  arcs.forEach((a, i) => { if (okR(a.radius) && (!finite(a.center) || !Number.isFinite(a.startDeg) || !Number.isFinite(a.endDeg))) bad("arc", i, a.layer); });
+  circles.forEach((c, i) => { if (okR(c.radius) && !finite(c.center)) bad("circle", i, c.layer); });
+
   const used = new Set<string>();
   for (const p of polylines) if (p.points.length >= 2) used.add(p.layer);
   for (const s of lineSegs)                            used.add(s.layer);

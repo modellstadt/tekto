@@ -39,7 +39,7 @@ export { MeshAnalysis } from "./core/geometry/mesh/MeshAnalysis";
 
 // Mesh — one class: id-based editing + typed-array storage + connectivity.
 export { Mesh } from "./core/geometry/mesh/Mesh";
-export type { MeshNode, MeshEdge, MeshFace, MeshJSON, LegacyMeshJSON, MeshData as FlatMeshData } from "./core/geometry/mesh/Mesh";
+export type { MeshNode, MeshEdge, MeshFace, MeshJSON, LegacyMeshJSON, MeshValidation, MeshData as FlatMeshData } from "./core/geometry/mesh/Mesh";
 export { MeshFactory } from "./core/geometry/mesh/MeshFactory";
 export { MeshTransform } from "./core/geometry/mesh/MeshTransform";
 export type { Axis } from "./core/geometry/mesh/MeshTransform";

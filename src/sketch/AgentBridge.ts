@@ -153,6 +153,8 @@ export function sceneSummary(
 ): Record<string, unknown> {
   const groups = new Map<string, { layer?: string; label?: string; type: string; src?: string; color?: string; count: number; ids: string[]; min: number[]; max: number[] }>();
   const objects: unknown[] = [];
+  const meshIssues: { id: string; label?: string; layer?: string; src?: string; issues: string[] }[] = [];
+  let meshesWithIssues = 0;
   let shown = 0;
   for (const o of scene.all()) {
     if (!renderer.isObjectShown(o.id)) continue;
@@ -160,6 +162,14 @@ export function sceneSummary(
     if (!b) continue;
     shown++;
     const d = describe(o.id)!;
+    // Mesh.validate(): what silently breaks volumes, culling and exports (see Mesh.ts).
+    if (o.mesh && typeof o.mesh.validate === "function") {
+      const v = o.mesh.validate();
+      if (!v.valid) {
+        meshesWithIssues++;
+        if (meshIssues.length < 20) meshIssues.push({ id: o.id, label: d.label, layer: d.layer, src: d.src, issues: v.issues });
+      }
+    }
     const key = [d.layer, d.label, d.type, d.src, d.color].join("|");
     let g = groups.get(key);
     if (!g) {
@@ -178,6 +188,8 @@ export function sceneSummary(
     camera: { ...cam, position: r4(cam.position), target: r4(cam.target) },
     scene: {
       shownObjects: shown,
+      meshesWithIssues,
+      meshIssues,
       groups: [...groups.values()].map(({ min, max, ...g }) => ({ ...g, bounds: [r4(min), r4(max)] })),
       ...(shown <= 150 ? { objects } : {}),
     },
