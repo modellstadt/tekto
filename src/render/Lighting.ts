@@ -331,7 +331,25 @@ export class Lighting {
     return env;
   }
 
+  /** The lamps: a point light at each `at`, warm by default, replacing the ones there were. */
+  setLamps(lamps: readonly { at: Vec3; colour?: THREE.ColorRepresentation; intensity?: number; distance?: number }[]): void {
+    for (const l of this.lamps) l.removeFromParent();
+    this.lamps = lamps.map(({ at, colour = 0xffd2a0, intensity = 4, distance = 8 }) => {
+      if (![at.x, at.y, at.z].every(Number.isFinite)) throw new Error(`setLamps: a lamp at a non-finite point (${at.x}, ${at.y}, ${at.z})`);
+      const light = new THREE.PointLight(colour, intensity, distance, 2);
+      light.position.set(at.x, at.y, at.z);
+      light.castShadow = false;                   // a point light's shadow is six renders, per lamp
+      this.core.threeScene.add(light);
+      return light;
+    });
+    this.core.requestRender();
+  }
+
+  private lamps: THREE.PointLight[] = [];
+
   dispose(): void {
+    for (const l of this.lamps) l.removeFromParent();
+    this.lamps = [];
     this.core.threeScene.environment = null;
     this.envMap?.dispose();
     this.envMap = null;

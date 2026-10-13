@@ -641,6 +641,15 @@ export class ThreeRenderer {
   setSunDirection(direction: Vec3, distance = 50): void { this.lighting.setSunDirection(direction, distance); }
 
   /**
+   * Lamps: a warm point light at each point (in the content's axes), in both lighting modes,
+   * without shadows (a point light's shadow is six renders, per lamp). One per room at
+   * pendant height carries an interior at dusk. Each takes a `colour` (default warm white
+   * 0xffd2a0), an `intensity` in candela (default 4) and a `distance` it reaches (m, default
+   * 8). Replaces the lamps there were; `[]` removes them.
+   */
+  setLamps(lamps: readonly { at: Vec3; colour?: number | string; intensity?: number; distance?: number }[]): void { this.lighting.setLamps(lamps); }
+
+  /**
    * Set an equirectangular source texture for the environment (e.g. a loaded
    * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
    * The texture is PMREM-prefiltered here; the caller keeps ownership of it.

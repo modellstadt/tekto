@@ -145,3 +145,26 @@ test("Studio: no warnings, a cut shows its poché on double-sided meshes and dro
     return r.getThreeObject(blocks.objectsOf(doc.ids("blocks")[0])[0]).children.find((c: any) => c.userData.surface).material.clipShadows;
   })).toBe(false);
 });
+
+test("lamps: a point light at each point, replaced and removed, no shadows", async ({ page }) => {
+  await page.goto("/testbench.html?page=site-editor");
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  const lamps = () => page.evaluate(() => {
+    const out: { at: number[]; shadow: boolean }[] = [];
+    (window as any).__tekto.owner.renderer.threeScene.traverse((o: any) => {
+      if (o.isPointLight) out.push({ at: o.position.toArray(), shadow: o.castShadow });
+    });
+    return out;
+  });
+  const set = (l: unknown) => page.evaluate((l) => (window as any).__tekto.owner.renderer.setLamps(l), l);
+  await set([{ at: { x: 0, y: 0, z: 2.4 } }, { at: { x: 4, y: 0, z: 2.4 }, intensity: 8 }]);
+  expect(await lamps()).toEqual([{ at: [0, 0, 2.4], shadow: false }, { at: [4, 0, 2.4], shadow: false }]);
+  await set([{ at: { x: 1, y: 1, z: 2.2 } }]);
+  expect((await lamps()).map((l) => l.at)).toEqual([[1, 1, 2.2]]);
+  await set([]);
+  expect(await lamps()).toEqual([]);
+  expect(await page.evaluate(() => {
+    try { (window as any).__tekto.owner.renderer.setLamps([{ at: { x: NaN, y: 0, z: 0 } }]); return "no error"; }
+    catch (e) { return String(e); }
+  })).toMatch(/non-finite/);
+});

@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`renderer.setLamps([{ at, colour, intensity, distance }])`**: a warm point light at each
+  point, without shadows; one per room at pendant height carries an interior at dusk.
+  Replaces the lamps there were; `[]` removes them. (#66)
 - **`renderer.walkTo(eye, target, { fov })`** stands inside with a wider lens (default 75°);
   the next `setView`, `orbitTo`, `fitTo` or `fitAll` gives the lens back, and a view stands
   back to see the content instead of keeping the walker's distance. `renderer.inside` says
