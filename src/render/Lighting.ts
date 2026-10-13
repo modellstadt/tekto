@@ -209,7 +209,9 @@ export class Lighting {
 
     // ── Renderer: shadow map + tonemapping + colour space ─────────
     this.core.renderer.shadowMap.enabled = studio;
-    this.core.renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+    // Soft PCF: from r180 three makes PCFShadowMap soft and warns that PCFSoftShadowMap is
+    // deprecated (it maps it to PCFShadowMap anyway), so ask for what each version draws soft.
+    this.core.renderer.shadowMap.type    = parseInt(THREE.REVISION, 10) >= 180 ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     this.core.renderer.toneMapping       = studio ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.core.renderer.toneMappingExposure = 1.0;
     this.core.renderer.outputColorSpace  = THREE.SRGBColorSpace;

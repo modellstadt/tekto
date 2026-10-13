@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- Studio no longer logs "PCFSoftShadowMap has been deprecated" with three r180+: it asks
+  for `PCFShadowMap` there (which three draws soft from r180) and `PCFSoftShadowMap` before.
 - **Fix: a thin part the section doesn't reach no longer turns the poché colour** at a
   glancing view (7DHouse's 27 mm deck boards under a plan cut). The poché takes the
   surfaces' slope offset now; a real cut still fills. In Flat since 0.8.0, in Studio since
