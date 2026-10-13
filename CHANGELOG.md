@@ -6,6 +6,11 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`renderer.setSky(image | canvas | texture | null, { background, intensity })`**: a sky
+  in one call, lighting the scene (Studio's PBR materials) and behind it, stood upright in a
+  Z-up scene; `intensity` turns it down inside. An .hdr comes from the app's own
+  `HDRLoader` / `RGBELoader`; a plain panorama can be an image or a canvas. (#66)
+  Fix on the way: turning the environment background off left the image up.
 - **`renderer.setAmbientOcclusion(true | { radius, intensity })`**: three's GTAO multiplied
   over the drawn frame (tone mapping, background, grid and section as they are), following
   the section; perspective views only. Ported from 7DHouse. (#66)

@@ -237,3 +237,39 @@ test("ambient occlusion darkens the frame in perspective, never lightens it, and
   expect(await compare()).toEqual({ darker: 0, lighter: 0 });
   expect(errors).toEqual([]);
 });
+
+test("setSky lights and backs the scene with an image, stood upright in Z-up; null takes it away", async ({ page }) => {
+  await page.goto("/testbench.html?page=app-shell");                 // appShell: Z-up
+  await page.waitForFunction(() => (window as any).__tekto?.owner?.scene.all().length >= 12, null, { timeout: 15_000 });
+  const corners = () => page.evaluate(async () => {
+    const r = (window as any).__tekto.owner.renderer;
+    const img = new Image();
+    img.src = r.snapshotPng();
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext("2d")!;
+    g.drawImage(img, 0, 0);
+    const at = (y: number) => [...g.getImageData(6, y, 1, 1).data.slice(0, 3)];
+    return { top: at(6), bottom: at(c.height - 6), env: !!r.threeScene.environment };
+  });
+  await page.evaluate(() => {
+    // A panorama: sky blue above the horizon, earth brown below.
+    const c = document.createElement("canvas");
+    c.width = 64; c.height = 32;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#285adc"; g.fillRect(0, 0, 64, 16);
+    g.fillStyle = "#785028"; g.fillRect(0, 16, 64, 16);
+    const r = (window as any).__tekto.owner.renderer;
+    r.setView("front", { animate: false });                          // level: sky above, ground below
+    r.setSky(c);
+  });
+  const sky = await corners();
+  expect(sky.env).toBe(true);
+  expect(sky.top[2]).toBeGreaterThan(sky.top[0] + 60);               // blue above
+  expect(sky.bottom[0]).toBeGreaterThan(sky.bottom[2] + 30);         // brown below
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setSky(null));
+  const plain = await corners();
+  expect(plain.env).toBe(false);
+  expect(plain.top).toEqual([0x0a, 0x0b, 0x14]);
+});
