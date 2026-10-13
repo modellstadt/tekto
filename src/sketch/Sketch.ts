@@ -50,7 +50,7 @@ import { Commands, viewCommands, type Command } from "../gui/Commands";
 import { meshHandle, flatMeshHandle, pointHandle, lineHandle, polylineHandle, shapeHandle } from "./handles";
 import type { SectionRequest } from "../scene/Scene";
 import { MarkupOverlay, MarkupCaptureOptions } from "./Markup";
-import { installAgentBridge, AgentBridge, describeSceneObject, sceneSummary } from "./AgentBridge";
+import { installAgentBridge, AgentBridge, describeSceneObject, sceneSummary, addOverlay, snapshotWithOverlays } from "./AgentBridge";
 import { noise } from "../core/math/noise";
 import { createRandom, SeededRandom } from "../core/math/random";
 
@@ -153,6 +153,9 @@ export class SketchInstance {
   /** What the sketch can do, with its keys — the view commands, and what `lab.command`
    *  declares in the current run. Agents list and run them through `window.__tekto`. */
   readonly commands = new Commands();
+  private viewportWrap!: HTMLElement;
+  private overlays: HTMLElement[] = [];
+  private overlayByName = new Map<string, HTMLElement>();
   private _runCommands: Command[] = [];
   private _unbindCommandKeys: (() => void) | null = null;
   private scene: Scene;
@@ -315,6 +318,7 @@ export class SketchInstance {
     this._fileMenusEl = layout.fileMenusEl;
     this.panelEl = layout.panelEl;
     this.viewportEl = layout.viewportEl;
+    this.viewportWrap = layout.viewportWrap;
     this.logEl = layout.logEl;
     const t = this.theme;
 
@@ -769,6 +773,8 @@ export class SketchInstance {
       separator() {
         self.separatorCount++;
       },
+
+      overlay(name = "default") { return self.overlay(name); },
 
       command(cmd) {
         const list = Array.isArray(cmd) ? cmd : [cmd as Command];
@@ -1237,6 +1243,18 @@ export class SketchInstance {
     this.scene.setRenderMode(mode);
   }
 
+  /**
+   * A layer over the 3D view, kept across re-runs — mount a 2D view there (a `SheetCanvas`
+   * showing the drawing of what the sketch builds). The same `name` gives the same layer;
+   * hide it (`style.display = "none"`) to show the 3D view again. Its canvases marked
+   * `data-tekto-overlay` are in snapshots and ✎ Markup.
+   */
+  overlay(name = "default"): HTMLElement {
+    let el = this.overlayByName.get(name);
+    if (!el) { el = addOverlay(this.viewportEl, this.overlays); this.overlayByName.set(name, el); }
+    return el;
+  }
+
   /** Cut the model with a section (see `ThreeRenderer.setSection`); null clears. */
   setSection(section: SectionRequest | null) {
     this.renderer.setSection(section);
@@ -1360,7 +1378,7 @@ export class SketchInstance {
       title: this.config.title ?? "sketch",
       hitAt: (x, y) => this.renderer.hitAt(x, y),
       groundAt: (x, y) => this.renderer.groundAt(x, y),
-      snapshotPng: () => this.renderer.snapshotPng(),
+      snapshotPng: () => snapshotWithOverlays(this.renderer, this.viewportWrap),
       describe: (id) => this.describeObject(id),
       context: () => this.markupContext(),
       setTracking(on) {

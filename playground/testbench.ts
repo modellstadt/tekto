@@ -99,6 +99,7 @@ const GROUPS: PageGroup[] = [
     { slug: "app-shell", label: "App Shell (retained)", load: () => import("./pages/app-shell") },
     { slug: "site-editor", label: "Site Editor (Doc + undo)", load: () => import("./pages/site-editor") },
     { slug: "drawing-sheet", label: "Drawing Sheet (plan, elevations, DXF)", load: () => import("./pages/drawing-sheet") },
+    { slug: "sketch-drawing", label: "Sketch + drawing (lab.overlay)", load: () => import("./pages/sketch-drawing") },
   ]},
   { name: "Sketch2D", pages: [
     { slug: "pointer-2d", label: "Pointer Input", load: () => import("./pages/pointer-2d") },

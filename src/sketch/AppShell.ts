@@ -43,7 +43,7 @@ import { ParamStore, ParamSchema } from "../gui/Params";
 import { ControlPanel, ControlItem } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
 import { SunPosition } from "../core/solar/SunPosition";
-import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject } from "./AgentBridge";
+import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
 import { Commands, viewCommands } from "../gui/Commands";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
 
@@ -314,13 +314,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       }
     },
 
-    overlay() {
-      const el = document.createElement("div");
-      el.style.cssText = "position:absolute;inset:0;";
-      (overlays[overlays.length - 1] ?? viewportEl).after(el);
-      overlays.push(el);
-      return el;
-    },
+    overlay() { return addOverlay(viewportEl, overlays); },
 
     dispose() {
       disposed = true;
@@ -334,21 +328,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
   };
 
   // What the viewport shows: the 3D view, and the overlay canvases that are visible over it.
-  const snapshotPng = (): string => {
-    const base = renderer.snapshotPng();
-    const shown = [...vpWrap.querySelectorAll<HTMLCanvasElement>("canvas[data-tekto-overlay]")].filter(c => c.getClientRects().length > 0);
-    if (!shown.length) return base;
-    const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
-    const out = document.createElement("canvas");
-    out.width = src.width; out.height = src.height;
-    const g = out.getContext("2d")!;
-    g.drawImage(src, 0, 0);                     // drawn in the same task as the render, so the buffer still holds it
-    for (const c of shown) {
-      const r = c.getBoundingClientRect();
-      g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
-    }
-    return out.toDataURL("image/png");
-  };
+  const snapshotPng = (): string => snapshotWithOverlays(renderer, vpWrap);
 
   // ✎ Markup: marks resolve to the objects they touch — and through `key` to document records.
   const context = () => ({

@@ -6,6 +6,13 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`lab.overlay(name?)` in `sketch()`**: a layer over the 3D view, kept across re-runs, for
+  a 2D view such as a `SheetCanvas` showing the drawing of what the sketch builds. This is
+  what an app like the stair needs. Snapshots and ✎ Markup include visible overlay canvases,
+  as in `appShell()`; the overlay and snapshot helpers are now shared. The sketch's 3D
+  viewport has its own stacking context, so the axis widget stays under an overlay.
+  New playground page: **Sketch + drawing** (a stair with a Drawing toggle and Export DXF).
+
 - **New: commands and shortcuts.** `Commands` is one list of what an app can do: id, label,
   keys (`"Mod+Z"`: ⌘ on a Mac, Ctrl elsewhere), `run`, and `enabled`.
   - It runs commands from their keys, but not while typing in a field, and lists them.
