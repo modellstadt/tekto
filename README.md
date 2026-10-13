@@ -310,11 +310,11 @@ Each mark keeps its strokes as vectors *and* the scene objects they touch, resol
 An agent can take the same capture itself, without marks, to look at its own result:
 
 ```bash
-npm run snap -- "http://localhost:5173/testbench.html?page=primitives" \
-  [--params '{"Radius":2}'] [--camera 8,6,10,0,0,0] [--size 1400x900]
+npm run snap -- "http://localhost:5173/testbench.html?page=mesh-factory" \
+  [--params '{"Subdivision Levels":2}'] [--camera 8,6,10,0,0,0] [--size 1400x900]
 ```
 
-`snap` drives headless Chrome over the DevTools protocol (no extra dependency), prints page errors, and writes to `.tekto/markup/<stamp>-snap/`.
+`snap` drives headless Chrome over the DevTools protocol (no extra dependency), prints page errors, and writes to `.tekto/markup/<stamp>-snap/`. `--params` names controls by their label (case-insensitive), or `"Group:Label"` when two share a label; a name that matches nothing fails the run and lists the page's controls, so a change that didn't apply is never photographed as if it had.
 
 Saving to disk and mapping stack positions to `.ts` lines is done by a small Vite plugin; the playground already has it. In an app's `vite.config`:
 
@@ -521,7 +521,7 @@ import * as G from "tekto";
 console.log(Object.keys(G).sort());
 ```
 
-Or use IDE autocomplete on the import line — every export is typed and has JSDoc. The big buckets:
+Or use IDE autocomplete on the import line — every export is typed, and the core ones carry JSDoc. The big buckets:
 
 - **Math + primitives**: `Vec2`, `Vec3`, `Vec4`, `Mat4`, `MathUtils`, `Ray`, `Plane`, `Triangle`, `AABB`, `Sphere`, `Polygon2D`, `Intersections`.
 - **Meshes**: `Mesh` (the one class: id-based editing, connectivity, typed arrays), `MeshFactory` (primitives + extrude + revolve + loft + pipe + subdivide), `MeshTransform`, `MeshSubdivide`, `MeshCleanup`, `MeshAnalysis`.
@@ -543,15 +543,15 @@ For curated category breakdowns see **[Generators](#generators)**, **[Algorithms
 
 If you're an LLM helping someone use tekto, please:
 
-1. **Read [`CLAUDE.md`](CLAUDE.md) first** — it's the agent-editing handbook for this codebase: naming gotchas (mesh has two names), coordinate convention (Z-up), the lint setup (which extends to `playground/` + `tests/`, not just `src/`), and the "what to never do without asking" list.
+1. **Read [`CLAUDE.md`](CLAUDE.md) first** — it's the agent-editing handbook for this codebase: what catches agents out (one `Mesh`, re-running sketches), the two coordinate conventions, the lint setup (which extends to `playground/` + `tests/`, not just `src/`), and the "what to never do without asking" list.
 2. **Use only the names exported from `src/index.ts`** (or `src/react.ts`, imported as `tekto/react`, for the React layer). Don't import from `tekto/src/*` directly — that's a private surface. If something a user needs isn't exported, file it as an issue or add the re-export deliberately.
-3. **Pattern-match against the playground demos** ([playground/pages/](playground/pages/)) — every public API has at least one demo that exercises it. They're the canonical "how to use X" examples. Find one and copy its shape.
+3. **Pattern-match against the playground demos** ([playground/pages/](playground/pages/)) and the tests ([tests/](tests/)) — they are the canonical "how to use X" examples. Not every export has a demo yet; when one is missing, the export's JSDoc and its test are the next best reference.
 4. **Sketches re-run on every parameter change.** Don't put expensive one-shot work inside the sketch body. Use `lab.button(...)` for one-shots; cache anything across runs in module-scope variables. The 3D viewport draws only when something changed (re-run, scene, camera, lights, animation); after changing three.js objects directly, call `lab.requestRender()`.
-5. **Coordinate convention is Z-up** (XY = ground plane). When emitting DXF or screen-space SVG, drop Z. The walls / slabs / sun-position modules all assume this convention; don't rotate to Y-up just because Three.js does by default.
+5. **There are two coordinate conventions — know which one you're in.** `sketch()` and the `MeshFactory` primitives are Y-up (three.js); `appShell()`, BIM (walls, slabs, stairs), DXF and sun position are Z-up (XY = ground plane). For CAD content in a `sketch()`, pass `up: "z"`. When emitting DXF or screen-space SVG, drop Z.
 6. **Look before you claim.** When the user says "see the markup", read `.tekto/markup/latest/markup.json` and `view.png`. To check your own change visually, run `npm run snap -- <page url>` against the running dev server and read the bundle it prints. See [Markup](#markup--instructions-for-an-ai-drawn-on-the-view).
-7. **Vec2 / Vec3 / Vec4 / Mat4 are immutable.** All ops return new instances. Don't mutate `.x` / `.y` / `.z` — search for `as any` in the repo before reaching for that escape hatch.
+7. **Vec2 / Vec3 / Vec4 / Mat4 are immutable.** All ops return new instances. Don't mutate `.x` / `.y` / `.z`; to move a mesh node, assign `node.position = p`.
 
-The recurring "the same concept has two or more names" pitfalls are catalogued near the top of CLAUDE.md. Reading those three points alone will save you most debugging time.
+One name per concept: `Mesh`, `MeshFactory`, `Plane`. If you meet an older name in an app (`ConnectedMesh`, `FlatMesh`, `MeshGen`, `HPlane`), the app predates tekto 0.4/0.5 — see the CHANGELOG for the rename.
 
 ## Development
 
@@ -559,7 +559,7 @@ The recurring "the same concept has two or more names" pitfalls are catalogued n
 npm install        # install dependencies
 npm run build      # build CJS + ESM + types (tsup)
 npm run dev        # watch mode
-npm test           # run vitest (150 tests, 16 files)
+npm test           # run vitest (unit tests in tests/*.test.ts)
 npm run lint       # tsc --noEmit -p tsconfig.lint.json
                    # covers src/, playground/, tests/ — catches type
                    # errors in demos before they reach the browser

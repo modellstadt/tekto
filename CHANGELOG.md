@@ -23,6 +23,15 @@ before 1.0, breaking changes bump the minor version. See
   TypeScript see `OrbitControls`/`TransformControls` for the first time (they were silently
   `any`); `@types/three` is now aligned with the runtime (0.160 → 0.183). CI checks that the
   build loads in Node.
+- **Fix — `snap --params` applies what it is given, or says why not.** The documented
+  `--params '{"Radius":2}'` did nothing: sketch keys read `slider::Radius` and unknown keys were
+  dropped silently, so an agent photographed the unchanged design. Controls are now named by
+  label (case-insensitive) or `"Group:Label"`; a name that matches nothing fails the run and
+  lists the page's controls. New `ParamStore.findKeys` / `setByName` / `names` (also behind
+  `window.__tekto.setParams` / `paramNames`). `snap` no longer crashes on exit while Chrome is
+  still writing its temp profile.
+- **Docs:** README "For LLMs" matches the code again (two coordinate conventions, one `Mesh`,
+  no claims of a demo or JSDoc for every export, no stale test counts).
 
 ## 0.6.0 — 2026-10-05
 

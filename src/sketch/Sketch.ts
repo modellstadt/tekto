@@ -1675,7 +1675,19 @@ export class SketchInstance {
       owner: this,
       snapshot: (opts?: MarkupCaptureOptions) => this.markup!.capture(opts),
       params: () => this.store.getAll(),
-      setParams: (p: Record<string, unknown>) => { this.store.loadJSON(p); },
+      paramNames: () => this.store.names(),
+      // By label ("Radius"), "Group:Label" or key. Names that match nothing, or more than
+      // one control, are reported (and warned about) instead of silently dropped.
+      setParams: (p: Record<string, unknown>) => {
+        const r = this.store.setByName(p);
+        if (r.unknown.length || r.ambiguous.length) {
+          console.warn("tekto setParams:", [
+            ...r.unknown.map(n => `no control named "${n}"`),
+            ...r.ambiguous.map(a => `"${a.name}" matches ${a.keys.length} controls — use Group:Label`),
+          ].join("; "), "| controls:", this.store.names().join(", "));
+        }
+        return r;
+      },
       camera: (pos: number[], target?: number[]) => {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
         if (target) this.renderer.lookAt(target[0], target[1], target[2]);
