@@ -1,7 +1,7 @@
 import {
   Polygon2D,
   PolygonBool
-} from "./chunk-TZW7QNPY.mjs";
+} from "./chunk-K5F6U4JJ.mjs";
 import {
   Mesh,
   Plane
@@ -15304,6 +15304,18 @@ var Selection = class {
       this.emit();
     }
   }
+  /** A click on a record (`key`) or on nothing (null): it selects the record, Shift/⌘/Ctrl
+   *  adds or removes it, a plain click on nothing clears. The rule every view shares — a
+   *  3D viewport (`selectOnClick`), a drawing (`SheetCanvas.onPick`), a list. */
+  click(key, mods = {}) {
+    const adding = !!(mods.shiftKey || mods.metaKey || mods.ctrlKey);
+    if (!key) {
+      if (!adding) this.clear();
+      return;
+    }
+    if (adding) this.toggle(key);
+    else this.select([key]);
+  }
   onChange(cb) {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
@@ -15324,15 +15336,7 @@ function selectOnClick(view, scene, selection) {
     for (const o of scene.all()) if (o.key && selection.has(o.key)) ids.push(o.id);
     view.setSelectionHighlight(ids);
   };
-  const offPick = view.onPick((sceneId, info) => {
-    const key = sceneId ? scene.get(sceneId)?.key : void 0;
-    if (!key) {
-      if (!info.shiftKey && !info.metaKey && !info.ctrlKey) selection.clear();
-      return;
-    }
-    if (info.shiftKey || info.metaKey || info.ctrlKey) selection.toggle(key);
-    else selection.select([key]);
-  });
+  const offPick = view.onPick((sceneId, info) => selection.click(sceneId ? scene.get(sceneId)?.key : null, info));
   const offSel = selection.onChange(highlight);
   let queued = false;
   const offScene = scene.on((e) => {

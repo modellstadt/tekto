@@ -135,22 +135,27 @@ import {
   reverse,
   selectOnClick,
   supabaseAdapter
-} from "./chunk-BEIQQYD6.mjs";
+} from "./chunk-EJK3E2KL.mjs";
 import {
+  DASH_PATTERNS,
   OBB2D,
   ParamStore,
   Polygon2D,
   PolygonBool,
+  Sheet,
+  SheetView,
+  aciFromHex,
   createLayout,
   createParams,
   createRandom,
   noise,
+  pickPrim,
   polygonIntersection,
   setClipSnap,
   stampName,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-TZW7QNPY.mjs";
+} from "./chunk-K5F6U4JJ.mjs";
 import {
   Mesh,
   Plane,
@@ -182,6 +187,7 @@ export {
   CubicBezierCurve,
   Curvature,
   CurveUtils,
+  DASH_PATTERNS,
   Delaunay2D,
   DistanceTransform,
   Doc,
@@ -270,6 +276,8 @@ export {
   Segment,
   Selection,
   SharedStore,
+  Sheet,
+  SheetView,
   Slab,
   SlabOpening,
   SlabType,
@@ -295,6 +303,7 @@ export {
   WallOpening,
   WallSystem,
   WallType,
+  aciFromHex,
   bindScene,
   boundingWalls,
   boxOf,
@@ -322,6 +331,7 @@ export {
   noise,
   perpVisibility,
   perpVisibilityOfPolys,
+  pickPrim,
   polygonFromVertices,
   polygonIntersection,
   realize,

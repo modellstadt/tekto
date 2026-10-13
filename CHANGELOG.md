@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.7.2 — 2026-10-13
+
+Drawings: a `Sheet` shown on screen and exported to SVG and DXF from the same primitives.
+
 - **New `SheetCanvas` — a `Sheet` on screen** (`tekto/2d`, `tekto`). It fills a container,
   fits the drawing, zooms with the wheel about the cursor, pans by dragging and fits on
   double-click. Pens, dashes and text are drawn at their paper size for the current zoom.

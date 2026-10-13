@@ -1,16 +1,22 @@
 import {
+  SheetCanvas,
   Sketch2DInstance,
+  drawSheet,
+  fitSheet,
   sketch2d
-} from "./chunk-WYU5UG63.mjs";
+} from "./chunk-AQT7Y2CN.mjs";
 import {
   Polygon2D,
   PolygonBool,
+  Sheet,
+  SheetView,
   createRandom,
   download,
   noise,
+  pickPrim,
   stampName,
   writeDxf2D
-} from "./chunk-TZW7QNPY.mjs";
+} from "./chunk-K5F6U4JJ.mjs";
 import {
   Segment,
   Vec2,
@@ -22,13 +28,19 @@ export {
   Polygon2D,
   PolygonBool,
   Segment,
+  Sheet,
+  SheetCanvas,
+  SheetView,
   Sketch2DInstance,
   Vec2,
   Vec3,
   closestPointOnSegment,
   createRandom,
   download,
+  drawSheet,
+  fitSheet,
   noise,
+  pickPrim,
   segmentSegmentClosest,
   sketch2d,
   stampName,

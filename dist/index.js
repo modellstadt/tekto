@@ -43,6 +43,7 @@ __export(index_exports, {
   CubicBezierCurve: () => CubicBezierCurve,
   Curvature: () => Curvature,
   CurveUtils: () => CurveUtils,
+  DASH_PATTERNS: () => DASH_PATTERNS,
   DEFAULT_BACKGROUND: () => DEFAULT_BACKGROUND,
   Delaunay2D: () => Delaunay2D,
   DistanceTransform: () => DistanceTransform,
@@ -137,6 +138,9 @@ __export(index_exports, {
   Segment: () => Segment,
   Selection: () => Selection,
   SharedStore: () => SharedStore,
+  Sheet: () => Sheet,
+  SheetCanvas: () => SheetCanvas,
+  SheetView: () => SheetView,
   Sketch2DInstance: () => Sketch2DInstance,
   SketchInstance: () => SketchInstance,
   Slab: () => Slab,
@@ -166,6 +170,7 @@ __export(index_exports, {
   WallOpening: () => WallOpening,
   WallSystem: () => WallSystem,
   WallType: () => WallType,
+  aciFromHex: () => aciFromHex,
   appShell: () => appShell,
   bindScene: () => bindScene,
   boundingWalls: () => boundingWalls,
@@ -183,12 +188,14 @@ __export(index_exports, {
   createRandom: () => createRandom,
   devServerAdapter: () => devServerAdapter,
   download: () => download,
+  drawSheet: () => drawSheet,
   easeInOut: () => easeInOut,
   edgeOutwardVisibility: () => edgeOutwardVisibility,
   edgeStyle: () => edgeStyle,
   extractVisiblePolylines: () => extractVisiblePolylines,
   findAdjacent: () => findAdjacent,
   fitRadius: () => fitRadius,
+  fitSheet: () => fitSheet,
   getTheme: () => getTheme,
   groundAppearance: () => groundAppearance,
   hiddenLineIdBuffer: () => hiddenLineIdBuffer,
@@ -210,6 +217,7 @@ __export(index_exports, {
   orthoFrustum: () => orthoFrustum,
   perpVisibility: () => perpVisibility,
   perpVisibilityOfPolys: () => perpVisibilityOfPolys,
+  pickPrim: () => pickPrim,
   polygonFromVertices: () => polygonFromVertices,
   polygonIntersection: () => polygonIntersection,
   polylinesToSVG: () => polylinesToSVG,
@@ -2215,13 +2223,13 @@ var Polygon2D = {
   // ================================================================
   /** Signed area of a 2D polygon (positive if CCW, negative if CW). */
   signedArea(polygon) {
-    let area = 0;
+    let area2 = 0;
     const n = polygon.length;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      area += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
+      area2 += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
     }
-    return area / 2;
+    return area2 / 2;
   },
   /** Unsigned area. */
   area(polygon) {
@@ -2820,9 +2828,9 @@ var Polygon2D = {
       }
       const w = maxU - minU;
       const h = maxV - minV;
-      const area = w * h;
-      if (area < bestArea) {
-        bestArea = area;
+      const area2 = w * h;
+      if (area2 < bestArea) {
+        bestArea = area2;
         bestAngle = angle;
         bestW = w;
         bestH = h;
@@ -4032,15 +4040,15 @@ var Mesh = class _Mesh {
   }
   surfaceArea() {
     const pos = this._pos, idx = this.indices;
-    let area = 0;
+    let area2 = 0;
     for (let t = 0; t < idx.length; t += 3) {
       const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
       const abx = pos[b] - pos[a], aby = pos[b + 1] - pos[a + 1], abz = pos[b + 2] - pos[a + 2];
       const acx = pos[c] - pos[a], acy = pos[c + 1] - pos[a + 1], acz = pos[c + 2] - pos[a + 2];
       const cx = aby * acz - abz * acy, cy = abz * acx - abx * acz, cz = abx * acy - aby * acx;
-      area += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
+      area2 += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
     }
-    return area;
+    return area2;
   }
   /** Average of the live node positions. */
   centroid() {
@@ -7580,15 +7588,15 @@ var PGFace = class {
     return n;
   }
   signedArea() {
-    let area = 0;
+    let area2 = 0;
     let h = this.edge;
     do {
       const a = h.origin.position;
       const b = h.destination.position;
-      area += a.x * b.y - b.x * a.y;
+      area2 += a.x * b.y - b.x * a.y;
       h = h.next;
     } while (h !== this.edge);
-    return area * 0.5;
+    return area2 * 0.5;
   }
   get isCCW() {
     return this.signedArea() > 0;
@@ -14467,7 +14475,15 @@ function _resolveLayers(defs, used) {
   }
   return { names, colorOf };
 }
-function _writeR12Prologue(lines, names, colorOf, scale = 1e3) {
+var LINETYPES = {
+  DASHED: { desc: "Dashed __ __ __", pattern: [3, -1.5] },
+  HIDDEN: { desc: "Hidden _ _ _ _", pattern: [1.5, -1] },
+  DOTTED: { desc: "Dotted . . . .", pattern: [0, -1] },
+  CENTER: { desc: "Center ____ _ ____", pattern: [6, -1.2, 1, -1.2] }
+};
+function _writeR12Prologue(lines, names, colorOf, scale = 1e3, linetypes = {}) {
+  const used = [.../* @__PURE__ */ new Set([...linetypes.used ?? [], ...linetypes.layerType?.values() ?? []])].filter((n) => n in LINETYPES);
+  const ps = linetypes.patternScale ?? 1;
   lines.push(
     "0",
     "SECTION",
@@ -14489,11 +14505,17 @@ function _writeR12Prologue(lines, names, colorOf, scale = 1e3) {
     "ENDSEC"
   );
   lines.push("0", "SECTION", "2", "TABLES");
-  lines.push("0", "TABLE", "2", "LTYPE", "70", "1");
+  lines.push("0", "TABLE", "2", "LTYPE", "70", String(1 + used.length));
   lines.push("0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0");
+  for (const name of used) {
+    const { desc, pattern } = LINETYPES[name];
+    const total = pattern.reduce((a, b) => a + Math.abs(b), 0) * ps;
+    lines.push("0", "LTYPE", "2", name, "70", "0", "3", desc, "72", "65", "73", String(pattern.length), "40", _real(total));
+    for (const d of pattern) lines.push("49", _real(d * ps));
+  }
   lines.push("0", "ENDTAB");
   lines.push("0", "TABLE", "2", "LAYER", "70", String(names.length));
-  for (const name of names) lines.push("0", "LAYER", "2", name, "70", "0", "62", String(colorOf.get(name) ?? 7), "6", "CONTINUOUS");
+  for (const name of names) lines.push("0", "LAYER", "2", name, "70", "0", "62", String(colorOf.get(name) ?? 7), "6", linetypes.layerType?.get(name) ?? "CONTINUOUS");
   lines.push("0", "ENDTAB", "0", "ENDSEC");
   lines.push("0", "SECTION", "2", "BLOCKS", "0", "ENDSEC");
 }
@@ -14609,6 +14631,7 @@ function writeDxf2D(content, opts = {}) {
   const circles = content.circles ?? [];
   const arcs = content.arcs ?? [];
   const texts = content.texts ?? [];
+  const solids = content.solids ?? [];
   const okR = (r) => Number.isFinite(r) && r > 1e-9;
   const finite = (p) => Number.isFinite(p.x) && Number.isFinite(p.y);
   const bad = (what, i, layer, why = "a non-finite coordinate") => {
@@ -14636,28 +14659,36 @@ function writeDxf2D(content, opts = {}) {
   for (const c of circles) if (okR(c.radius)) used.add(c.layer);
   for (const a of arcs) if (okR(a.radius)) used.add(a.layer);
   for (const t of texts) used.add(t.layer);
+  for (const so of solids) if (so.points.length >= 3) used.add(so.layer);
+  solids.forEach((so, i) => {
+    if (!so.points.every(finite)) bad("solid", i, so.layer);
+  });
   const lines = [];
   const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
-  _writeR12Prologue(lines, names, colorOf, scale);
+  const layerType = /* @__PURE__ */ new Map();
+  for (const d of content.layers ?? []) if (d.lineType && d.lineType !== "CONTINUOUS") layerType.set(_sanLayer(d.name), d.lineType.toUpperCase());
+  const usedTypes = [...polylines, ...lineSegs, ...circles, ...arcs].map((e) => e.linetype).filter((t) => !!t);
+  _writeR12Prologue(lines, names, colorOf, scale, { used: usedTypes, layerType, patternScale: opts.linetypeScale ?? 1 });
+  const look = (e) => [...e.linetype ? ["6", e.linetype] : [], ...e.color !== void 0 ? ["62", String(e.color)] : []];
   const v = (n) => _real(n * scale);
   const xy = (p) => ["10", v(p.x), "20", v(p.y), "30", "0"];
-  const emitCircle = (layer, c, r) => lines.push("0", "CIRCLE", "8", _sanLayer(layer), ...xy(c), "40", v(r));
+  const emitCircle = (e, c, r) => lines.push("0", "CIRCLE", "8", _sanLayer(e.layer), ...look(e), ...xy(c), "40", v(r));
   lines.push("0", "SECTION", "2", "ENTITIES");
   for (const poly of polylines) {
     if (poly.points.length < 2) continue;
     const layer = _sanLayer(poly.layer);
-    lines.push("0", "POLYLINE", "8", layer, "66", "1", "70", poly.closed ? "1" : "0", "10", "0", "20", "0", "30", "0");
+    lines.push("0", "POLYLINE", "8", layer, ...look(poly), "66", "1", "70", poly.closed ? "1" : "0", "10", "0", "20", "0", "30", "0");
     for (const p of poly.points) lines.push("0", "VERTEX", "8", layer, ...xy(p), "70", "0");
     lines.push("0", "SEQEND", "8", layer);
   }
   for (const l of lineSegs) {
-    lines.push("0", "LINE", "8", _sanLayer(l.layer), ...xy(l.start), "11", v(l.end.x), "21", v(l.end.y), "31", "0");
+    lines.push("0", "LINE", "8", _sanLayer(l.layer), ...look(l), ...xy(l.start), "11", v(l.end.x), "21", v(l.end.y), "31", "0");
   }
-  for (const c of circles) if (okR(c.radius)) emitCircle(c.layer, c.center, c.radius);
+  for (const c of circles) if (okR(c.radius)) emitCircle(c, c.center, c.radius);
   for (const a of arcs) {
     if (!okR(a.radius)) continue;
     if (Math.abs(a.endDeg - a.startDeg) >= 360 - 1e-6) {
-      emitCircle(a.layer, a.center, a.radius);
+      emitCircle(a, a.center, a.radius);
       continue;
     }
     const norm = (d) => {
@@ -14665,14 +14696,52 @@ function writeDxf2D(content, opts = {}) {
       if (x < 0) x += 360;
       return x;
     };
-    lines.push("0", "ARC", "8", _sanLayer(a.layer), ...xy(a.center), "40", v(a.radius), "50", _real(norm(a.startDeg)), "51", _real(norm(a.endDeg)));
+    lines.push("0", "ARC", "8", _sanLayer(a.layer), ...look(a), ...xy(a.center), "40", v(a.radius), "50", _real(norm(a.startDeg)), "51", _real(norm(a.endDeg)));
+  }
+  for (const so of solids) {
+    if (so.points.length < 3) continue;
+    const [p1, p2, p3, p4 = so.points[2]] = so.points;
+    lines.push(
+      "0",
+      "SOLID",
+      "8",
+      _sanLayer(so.layer),
+      ...so.color !== void 0 ? ["62", String(so.color)] : [],
+      "10",
+      v(p1.x),
+      "20",
+      v(p1.y),
+      "30",
+      "0",
+      "11",
+      v(p2.x),
+      "21",
+      v(p2.y),
+      "31",
+      "0",
+      "12",
+      v(p4.x),
+      "22",
+      v(p4.y),
+      "32",
+      "0",
+      "13",
+      v(p3.x),
+      "23",
+      v(p3.y),
+      "33",
+      "0"
+    );
   }
   for (const t of texts) {
+    const h = t.align === "center" ? 1 : t.align === "right" ? 2 : 0;
+    const vj = t.valign === "bottom" ? 1 : t.valign === "middle" ? 2 : t.valign === "top" ? 3 : 0;
     lines.push(
       "0",
       "TEXT",
       "8",
       _sanLayer(t.layer),
+      ...t.color !== void 0 ? ["62", String(t.color)] : [],
       ...xy(t.at),
       "40",
       v(t.height),
@@ -14681,9 +14750,618 @@ function writeDxf2D(content, opts = {}) {
       "50",
       _real(t.rotationDeg ?? 0)
     );
+    if (h || vj) lines.push("72", String(h), "11", v(t.at.x), "21", v(t.at.y), "31", "0", "73", String(vj));
   }
   lines.push("0", "ENDSEC", "0", "EOF");
   return lines.join("\r\n") + "\r\n";
+}
+var ACI = [
+  [1, 255, 0, 0],
+  [2, 255, 255, 0],
+  [3, 0, 255, 0],
+  [4, 0, 255, 255],
+  [5, 0, 0, 255],
+  [6, 255, 0, 255],
+  [7, 0, 0, 0],
+  [8, 128, 128, 128],
+  [9, 192, 192, 192],
+  [250, 51, 51, 51],
+  [251, 80, 80, 80],
+  [252, 105, 105, 105],
+  [253, 130, 130, 130],
+  [254, 190, 190, 190],
+  [255, 255, 255, 255],
+  [30, 255, 127, 0],
+  [140, 0, 127, 255],
+  [210, 255, 0, 127],
+  [94, 0, 127, 0],
+  [14, 127, 0, 0]
+];
+function aciFromHex(hex) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return 7;
+  const h = m[1].length === 3 ? m[1].split("").map((c) => c + c).join("") : m[1];
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  if (Math.max(r, g, b) - Math.min(r, g, b) < 24 && (r < 40 || r > 235)) return 7;
+  let best = 7, bestD = Infinity;
+  for (const [i, R, G, B] of ACI) {
+    const d = (R - r) ** 2 + (G - g) ** 2 + (B - b) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+// src/core/drawing/Sheet.ts
+var DASH_PATTERNS = {
+  dashed: [3, 1.5],
+  hidden: [1.5, 1],
+  dotted: [0.2, 1],
+  center: [6, 1.2, 1, 1.2]
+};
+var DEFAULT_STYLE = { color: "#000000", weight: 0.25, dash: "solid" };
+var SheetView = class {
+  /** @internal — views come from `sheet.view(name)`. */
+  constructor(sheet, name, opts) {
+    this.entities = [];
+    this.sheet = sheet;
+    this.name = name;
+    this.opts = opts;
+  }
+  get options() {
+    return this.opts;
+  }
+  /** Lines through points; `closed` shuts the ring, `fill` colours its inside. Accepts 2D
+   *  points, or `Vec3` when the view has `project`. */
+  polyline(points, opts = {}) {
+    const pts = points.map((p) => this.local(p));
+    if (pts.length >= 2) this.entities.push({ t: "polyline", points: pts, closed: !!opts.closed, fill: opts.fill, o: opts });
+    return this;
+  }
+  line(a, b, opts = {}) {
+    return this.polyline([a, b], opts);
+  }
+  /** Axis-aligned rectangle from its lower-left corner. */
+  rect(x, y, w, h, opts = {}) {
+    return this.polyline([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], { ...opts, closed: true });
+  }
+  circle(center, radius, opts = {}) {
+    this.entities.push({ t: "circle", c: this.local(center), r: radius, o: opts });
+    return this;
+  }
+  /** Counter-clockwise arc from `startDeg` to `endDeg`. */
+  arc(center, radius, startDeg, endDeg, opts = {}) {
+    this.entities.push({ t: "arc", c: this.local(center), r: radius, a0: startDeg, a1: endDeg, o: opts });
+    return this;
+  }
+  /** A solid fill (poché): one ring, or [outer, ...holes]. */
+  fill(rings, opts = {}) {
+    const nested = Array.isArray(rings[0]) && rings[0].length > 0 && typeof rings[0][0] === "object";
+    const list = nested ? rings : [rings];
+    this.entities.push({ t: "fill", rings: list.map((r) => r.map((p) => this.local(p))), color: opts.color, o: opts });
+    return this;
+  }
+  text(text, at, opts = {}) {
+    this.entities.push({ t: "text", at: this.local(at), text, o: opts });
+    return this;
+  }
+  /** A dimension between two points, with extension lines, ticks and the measured length. */
+  dim(a, b, opts = {}) {
+    this.entities.push({ t: "dim", a: this.local(a), b: this.local(b), o: opts });
+    return this;
+  }
+  /** A radius dimension: centre mark, a line from the centre to the arc at `angle` degrees
+   *  (default 45) with an arrow, and "R 1200" along it. */
+  radius(center, radius, opts = {}) {
+    this.entities.push({ t: "radius", c: this.local(center), r: radius, angle: opts.angle ?? 45, o: opts });
+    return this;
+  }
+  /** A leader: an arrow at `points[0]` (what it points at), lines through the rest, and the
+   *  text beside the last point. */
+  leader(points, text, opts = {}) {
+    const pts = points.map((p) => this.local(p));
+    if (pts.length >= 2) this.entities.push({ t: "leader", points: pts, text, o: opts });
+    return this;
+  }
+  /** A level mark: a triangle standing on the level at `at`, and the level in metres with
+   *  its sign ("+2.450", "±0.000"). */
+  level(at, opts = {}) {
+    this.entities.push({ t: "level", at: this.local(at), o: opts });
+    return this;
+  }
+  /** Projected segments, e.g. from `DxfExporter.toSegments(view)` (hidden lines removed). */
+  segments(segs, opts = {}) {
+    for (const s of segs) this.entities.push({ t: "polyline", points: [{ x: s.u0, y: s.v0 }, { x: s.u1, y: s.v1 }], closed: false, o: { layer: s.layer, ...opts } });
+    return this;
+  }
+  local(p) {
+    let q = toPt(p);
+    const pr = this.opts.project, z = p.z;
+    if (z !== void 0 && pr) {
+      if (typeof pr === "function") q = toPt(pr(p));
+      else {
+        const { right, up, origin } = pr;
+        const dx = q.x - (origin?.x ?? 0), dy = q.y - (origin?.y ?? 0), dz = z - (origin?.z ?? 0);
+        q = { x: dx * right.x + dy * right.y + dz * right.z, y: dx * up.x + dy * up.y + dz * up.z };
+      }
+    }
+    if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) throw new Error(`Sheet view "${this.name}": non-finite point (${q.x}, ${q.y})`);
+    return { x: q.x, y: q.y };
+  }
+  /** @internal */
+  get sheetRef() {
+    return this.sheet;
+  }
+};
+var Sheet = class {
+  constructor(opts = {}) {
+    this.layerStyles = /* @__PURE__ */ new Map();
+    this.views = /* @__PURE__ */ new Map();
+    this.scale = opts.scale ?? 1;
+    if (!(this.scale > 0)) throw new Error(`Sheet: scale must be positive (50 = 1:50), got ${opts.scale}`);
+    for (const [name, style] of Object.entries(opts.layers ?? {})) this.layerStyles.set(name, style);
+  }
+  /** Define or change a layer's style. */
+  layer(name, style) {
+    this.layerStyles.set(name, { ...this.layerStyles.get(name), ...style });
+    return this;
+  }
+  get layers() {
+    return this.layerStyles;
+  }
+  /** The view named `name` — created with `opts` the first time. */
+  view(name, opts = {}) {
+    let v = this.views.get(name);
+    if (!v) {
+      v = new SheetView(this, name, opts);
+      this.views.set(name, v);
+    }
+    return v;
+  }
+  /** The default view at the origin (`sheet.main.polyline(…)`). */
+  get main() {
+    return this.view("main");
+  }
+  viewNames() {
+    return [...this.views.keys()];
+  }
+  /** Paper millimetres → sheet (model) units. */
+  paper(mm) {
+    return mm * this.scale / 1e3;
+  }
+  /** Everything as plain primitives in sheet coordinates — what every output draws. */
+  explode() {
+    const fills = [], rest = [];
+    for (const view of this.views.values()) {
+      const vo = view.options;
+      const k = vo.scale ?? 1;
+      const rot = (vo.rotation ?? 0) * Math.PI / 180, cr = Math.cos(rot), sr = Math.sin(rot);
+      const at = vo.at ? toPt(vo.at) : { x: 0, y: 0 };
+      const T = (p) => ({ x: at.x + k * (p.x * cr - p.y * sr), y: at.y + k * (p.x * sr + p.y * cr) });
+      const P2 = (mm) => this.paper(mm) / k;
+      const local = [];
+      for (const e of view.entities) this.explodeEntity(e, P2, local);
+      if (vo.title) {
+        const b = boundsOf(local);
+        if (b) local.push(textPrim(vo.title, { x: (b.min.x + b.max.x) / 2, y: b.min.y - P2(8) }, P2(3.5), 0, "center", "top", this.style({})));
+      }
+      for (const p of local) {
+        const q = transformPrim(p, T, k, vo.rotation ?? 0);
+        (q.kind === "fill" ? fills : rest).push(q);
+      }
+    }
+    return [...fills, ...rest];
+  }
+  /** Bounds of the exploded drawing (text estimated), or null when empty. */
+  bounds() {
+    return boundsOf(this.explode());
+  }
+  /** The resolved style of an entity: layer style, then its overrides. */
+  style(o) {
+    const layer = o.layer ?? "0";
+    const ls = this.layerStyles.get(layer) ?? {};
+    return {
+      layer,
+      color: o.color ?? ls.color ?? DEFAULT_STYLE.color,
+      weight: o.weight ?? ls.weight ?? DEFAULT_STYLE.weight,
+      dash: o.dash ?? ls.dash ?? DEFAULT_STYLE.dash
+    };
+  }
+  /** The sheet as an SVG document, sized in millimetres on paper (`margin` in mm). */
+  toSVG(opts = {}) {
+    return sheetToSVG(this, opts);
+  }
+  /**
+   * The sheet as DXF R12: lines, polylines, arcs, circles, text with its alignment, dashed
+   * line types, layers with their colours; fills as SOLID triangles. `units: "mm"` (default)
+   * writes model metres as millimetres. Pen weights have no place in R12 — they travel with
+   * the layers, as CAD plotting does.
+   */
+  toDXF(opts = {}) {
+    return sheetToDXF(this, opts);
+  }
+  explodeEntity(e, P2, out) {
+    const st = this.style(e.o);
+    const key = e.o.key;
+    switch (e.t) {
+      case "polyline": {
+        if (e.fill) out.push({ kind: "fill", rings: [e.points], color: e.fill, layer: st.layer, key });
+        out.push({ kind: "polyline", points: e.points, closed: e.closed, style: st, key });
+        break;
+      }
+      case "circle":
+        out.push({ kind: "circle", center: e.c, radius: e.r, style: st, key });
+        break;
+      case "arc":
+        out.push({ kind: "arc", center: e.c, radius: e.r, startDeg: e.a0, endDeg: e.a1, style: st, key });
+        break;
+      case "fill": {
+        const layerFill = this.layerStyles.get(st.layer)?.fill;
+        out.push({ kind: "fill", rings: e.rings, color: e.color ?? layerFill ?? "#d9d9d9", layer: st.layer, key });
+        break;
+      }
+      case "text": {
+        const o = e.o;
+        out.push({ ...textPrim(e.text, e.at, P2(o.size ?? 2.5), o.rotation ?? 0, o.align ?? "left", o.baseline ?? "bottom", st), ...key ? { key } : {} });
+        break;
+      }
+      case "dim":
+        explodeDim(e.a, e.b, e.o, st, P2, out);
+        break;
+      case "radius":
+        explodeRadius(e.c, e.r, e.angle, e.o, st, P2, out);
+        break;
+      case "leader":
+        explodeLeader(e.points, e.text, e.o, st, P2, out);
+        break;
+      case "level":
+        explodeLevel(e.at, e.o, st, P2, out);
+        break;
+    }
+  }
+};
+function explodeDim(a, b, o, st, P2, out) {
+  const dir = o.direction ?? "aligned";
+  let ux = b.x - a.x, uy = b.y - a.y;
+  if (dir === "horizontal") {
+    ux = Math.sign(ux) || 1;
+    uy = 0;
+  }
+  if (dir === "vertical") {
+    ux = 0;
+    uy = Math.sign(uy) || 1;
+  }
+  const len = Math.hypot(ux, uy);
+  if (len < 1e-12) return;
+  ux /= len;
+  uy /= len;
+  const nx = -uy, ny = ux;
+  const measured = Math.abs((b.x - a.x) * ux + (b.y - a.y) * uy);
+  const off = P2(o.offset ?? 8);
+  const ka = a.x * nx + a.y * ny, kb = b.x * nx + b.y * ny;
+  const base = (off >= 0 ? Math.max(ka, kb) : Math.min(ka, kb)) + off;
+  const onLine = (p) => {
+    const d = base - (p.x * nx + p.y * ny);
+    return { x: p.x + nx * d, y: p.y + ny * d };
+  };
+  const da = onLine(a), db = onLine(b);
+  const gap = P2(1), over = P2(2);
+  const ext = (p, q) => {
+    const L = Math.hypot(q.x - p.x, q.y - p.y);
+    if (L <= gap) return;
+    const ex = (q.x - p.x) / L, ey = (q.y - p.y) / L;
+    out.push({ kind: "polyline", points: [{ x: p.x + ex * gap, y: p.y + ey * gap }, { x: q.x + ex * over, y: q.y + ey * over }], closed: false, style: st });
+  };
+  ext(a, da);
+  ext(b, db);
+  out.push({ kind: "polyline", points: [da, db], closed: false, style: st });
+  const t = P2(1.25), tx = (ux + nx) * Math.SQRT1_2 * t, ty = (uy + ny) * Math.SQRT1_2 * t;
+  for (const p of [da, db]) out.push({ kind: "polyline", points: [{ x: p.x - tx, y: p.y - ty }, { x: p.x + tx, y: p.y + ty }], closed: false, style: { ...st, weight: Math.max(st.weight, 0.35) } });
+  const text = o.text ?? formatLength(measured, o);
+  const ang = upright(ux, uy), r = ang * Math.PI / 180;
+  const mid = { x: (da.x + db.x) / 2 - Math.sin(r) * P2(1), y: (da.y + db.y) / 2 + Math.cos(r) * P2(1) };
+  out.push(textPrim(text, mid, P2(o.size ?? 2.5), ang, "center", "bottom", st));
+}
+function explodeRadius(c, radius, angle, o, st, P2, out) {
+  const ux = Math.cos(angle * Math.PI / 180), uy = Math.sin(angle * Math.PI / 180);
+  const m = P2(1.5);
+  out.push({ kind: "polyline", points: [{ x: c.x - m, y: c.y }, { x: c.x + m, y: c.y }], closed: false, style: st });
+  out.push({ kind: "polyline", points: [{ x: c.x, y: c.y - m }, { x: c.x, y: c.y + m }], closed: false, style: st });
+  const end = { x: c.x + ux * radius, y: c.y + uy * radius };
+  out.push({ kind: "polyline", points: [c, end], closed: false, style: st });
+  out.push(arrow(end, ux, uy, P2, st));
+  const ang = upright(ux, uy), r = ang * Math.PI / 180;
+  const mid = { x: c.x + ux * radius / 2 - Math.sin(r) * P2(1), y: c.y + uy * radius / 2 + Math.cos(r) * P2(1) };
+  out.push(textPrim(o.text ?? `R ${formatLength(radius, o)}`, mid, P2(o.size ?? 2.5), ang, "center", "bottom", st));
+}
+function explodeLeader(points, text, o, st, P2, out) {
+  out.push({ kind: "polyline", points, closed: false, style: st });
+  const [p0, p1] = points, L = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  if (L > 0) out.push(arrow(p0, (p0.x - p1.x) / L, (p0.y - p1.y) / L, P2, st));
+  const a = points[points.length - 2], b = points[points.length - 1];
+  const right = b.x >= a.x;
+  const at = { x: b.x + (right ? P2(1) : -P2(1)), y: b.y };
+  out.push(textPrim(text, at, P2(o.size ?? 2.5), 0, o.align ?? (right ? "left" : "right"), o.baseline ?? "middle", st));
+}
+function explodeLevel(at, o, st, P2, out) {
+  const h = P2(2.2), w = P2(1.3);
+  out.push({ kind: "polyline", points: [at, { x: at.x - w, y: at.y + h }, { x: at.x + w, y: at.y + h }], closed: true, style: st });
+  const v = o.value ?? at.y;
+  const s = v.toFixed(o.decimals ?? 3);
+  const text = o.text ?? (Number(s) === 0 ? `\xB1${s.replace("-", "")}` : v > 0 ? `+${s}` : s);
+  out.push(textPrim(text, { x: at.x + w + P2(1), y: at.y + h / 2 }, P2(o.size ?? 2.5), 0, "left", "middle", st));
+}
+function arrow(p, ux, uy, P2, st) {
+  const L = P2(2.5), c = Math.cos(0.3), s = Math.sin(0.3);
+  const back = (sg) => ({ x: p.x - L * (ux * c - sg * uy * s), y: p.y - L * (uy * c + sg * ux * s) });
+  return { kind: "polyline", points: [back(1), p, back(-1)], closed: false, style: st };
+}
+function upright(ux, uy) {
+  let ang = Math.atan2(uy, ux) * 180 / Math.PI;
+  if (ang > 90 + 1e-9 || ang <= -90 + 1e-9) ang += 180;
+  return (ang % 360 + 360) % 360;
+}
+function formatLength(m, o) {
+  const unit = o.unit ?? "mm";
+  const value = m * (unit === "mm" ? 1e3 : unit === "cm" ? 100 : 1);
+  return value.toFixed(o.decimals ?? (unit === "mm" ? 0 : unit === "cm" ? 1 : 2));
+}
+function toPt(p) {
+  return Array.isArray(p) ? { x: p[0], y: p[1] } : p;
+}
+function textPrim(text, at, height, rotation, align, baseline, style) {
+  return { kind: "text", at, text, height, rotation, align, baseline, style };
+}
+function transformPrim(p, T, k, rotDeg) {
+  switch (p.kind) {
+    case "polyline":
+      return { ...p, points: p.points.map(T) };
+    case "circle":
+      return { ...p, center: T(p.center), radius: p.radius * k };
+    case "arc":
+      return { ...p, center: T(p.center), radius: p.radius * k, startDeg: p.startDeg + rotDeg, endDeg: p.endDeg + rotDeg };
+    case "fill":
+      return { ...p, rings: p.rings.map((r) => r.map(T)) };
+    case "text":
+      return { ...p, at: T(p.at), height: p.height * k, rotation: p.rotation + rotDeg };
+  }
+}
+function textCorners(t) {
+  const w = t.text.length * t.height * 0.6, h = t.height;
+  const x0 = t.align === "left" ? 0 : t.align === "center" ? -w / 2 : -w;
+  const y0 = t.baseline === "bottom" ? 0 : t.baseline === "middle" ? -h / 2 : -h;
+  const r = t.rotation * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  return [[x0, y0], [x0 + w, y0], [x0 + w, y0 + h], [x0, y0 + h]].map(([x, y]) => ({ x: t.at.x + x * c - y * s, y: t.at.y + x * s + y * c }));
+}
+function boundsOf(prims) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const add = (p) => {
+    x0 = Math.min(x0, p.x);
+    y0 = Math.min(y0, p.y);
+    x1 = Math.max(x1, p.x);
+    y1 = Math.max(y1, p.y);
+  };
+  for (const p of prims) {
+    if (p.kind === "polyline") p.points.forEach(add);
+    else if (p.kind === "fill") p.rings.forEach((r) => r.forEach(add));
+    else if (p.kind === "circle") {
+      add({ x: p.center.x - p.radius, y: p.center.y - p.radius });
+      add({ x: p.center.x + p.radius, y: p.center.y + p.radius });
+    } else if (p.kind === "arc") {
+      let sweep = (p.endDeg - p.startDeg) % 360;
+      if (sweep <= 0) sweep += 360;
+      const at = (deg) => add({ x: p.center.x + p.radius * Math.cos(deg * Math.PI / 180), y: p.center.y + p.radius * Math.sin(deg * Math.PI / 180) });
+      at(p.startDeg);
+      at(p.startDeg + sweep);
+      for (let q = Math.ceil(p.startDeg / 90) * 90; q < p.startDeg + sweep; q += 90) at(q);
+    } else textCorners(p).forEach(add);
+  }
+  return x0 === Infinity ? null : { min: { x: x0, y: y0 }, max: { x: x1, y: y1 } };
+}
+function pickPrim(prims, p, tolerance) {
+  for (let i = prims.length - 1; i >= 0; i--) {
+    const q = prims[i];
+    if (q.kind !== "fill" && primDistance(q, p) <= tolerance) return q;
+  }
+  for (let i = prims.length - 1; i >= 0; i--) {
+    const q = prims[i];
+    if (q.kind === "fill" && q.rings.reduce((inside2, r) => inside2 !== inRing(r, p), false)) return q;
+  }
+  return null;
+}
+function primDistance(q, p) {
+  if (q.kind === "polyline") {
+    let d = Infinity;
+    const n = q.points.length, m = q.closed ? n : n - 1;
+    for (let i = 0; i < m; i++) d = Math.min(d, segDistance(p, q.points[i], q.points[(i + 1) % n]));
+    return d;
+  }
+  if (q.kind === "circle") return Math.abs(Math.hypot(p.x - q.center.x, p.y - q.center.y) - q.radius);
+  if (q.kind === "arc") {
+    let a = Math.atan2(p.y - q.center.y, p.x - q.center.x) * 180 / Math.PI - q.startDeg;
+    a = (a % 360 + 360) % 360;
+    let sweep = (q.endDeg - q.startDeg) % 360;
+    if (sweep <= 0) sweep += 360;
+    if (a <= sweep) return Math.abs(Math.hypot(p.x - q.center.x, p.y - q.center.y) - q.radius);
+    const end = (deg) => ({ x: q.center.x + q.radius * Math.cos(deg * Math.PI / 180), y: q.center.y + q.radius * Math.sin(deg * Math.PI / 180) });
+    const e0 = end(q.startDeg), e1 = end(q.startDeg + sweep);
+    return Math.min(Math.hypot(p.x - e0.x, p.y - e0.y), Math.hypot(p.x - e1.x, p.y - e1.y));
+  }
+  const c = textCorners(q);
+  if (inRing(c, p)) return 0;
+  return Math.min(...c.map((a, i) => segDistance(p, a, c[(i + 1) % 4])));
+}
+function segDistance(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+  const t = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2)) : 0;
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+}
+function inRing(r, p) {
+  let inside2 = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const a = r[i], b = r[j];
+    if (a.y > p.y !== b.y > p.y && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside2 = !inside2;
+  }
+  return inside2;
+}
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function sheetToSVG(sheet, opts) {
+  const prims = sheet.explode();
+  const k = 1e3 / sheet.scale;
+  const n = (v) => +v.toFixed(3);
+  const X = (p) => n(p.x * k), Y = (p) => n(-p.y * k);
+  const b = boundsOf(prims) ?? { min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
+  const m = opts.margin ?? 10;
+  const minX = b.min.x * k - m, minY = -b.max.y * k - m;
+  const w = (b.max.x - b.min.x) * k + 2 * m, h = (b.max.y - b.min.y) * k + 2 * m;
+  const stroke = (s) => `stroke="${s.color}" stroke-width="${n(s.weight)}"${s.dash !== "solid" ? ` stroke-dasharray="${DASH_PATTERNS[s.dash].join(" ")}"` : ""}`;
+  const out = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${n(w)}mm" height="${n(h)}mm" viewBox="${n(minX)} ${n(minY)} ${n(w)} ${n(h)}">`);
+  if (opts.background) out.push(`<rect x="${n(minX)}" y="${n(minY)}" width="${n(w)}" height="${n(h)}" fill="${opts.background}"/>`);
+  out.push(`<g fill="none" stroke-linecap="round" stroke-linejoin="round">`);
+  for (const p of prims) {
+    const key = p.key ? ` data-key="${esc(p.key)}"` : "";
+    const layer = ` data-layer="${esc(p.kind === "fill" ? p.layer : p.style.layer)}"`;
+    if (p.kind === "polyline") {
+      const pts = p.points.map((q) => `${X(q)},${Y(q)}`).join(" ");
+      out.push(`<${p.closed ? "polygon" : "polyline"} points="${pts}" ${stroke(p.style)}${layer}${key}/>`);
+    } else if (p.kind === "circle") {
+      out.push(`<circle cx="${X(p.center)}" cy="${Y(p.center)}" r="${n(p.radius * k)}" ${stroke(p.style)}${layer}${key}/>`);
+    } else if (p.kind === "arc") {
+      const a0 = p.startDeg * Math.PI / 180, a1 = p.endDeg * Math.PI / 180;
+      let sweep = (p.endDeg - p.startDeg) % 360;
+      if (sweep <= 0) sweep += 360;
+      const s = { x: p.center.x + p.radius * Math.cos(a0), y: p.center.y + p.radius * Math.sin(a0) };
+      const e = { x: p.center.x + p.radius * Math.cos(a1), y: p.center.y + p.radius * Math.sin(a1) };
+      const r = n(p.radius * k);
+      out.push(`<path d="M ${X(s)} ${Y(s)} A ${r} ${r} 0 ${sweep > 180 ? 1 : 0} 0 ${X(e)} ${Y(e)}" ${stroke(p.style)}${layer}${key}/>`);
+    } else if (p.kind === "fill") {
+      const d = p.rings.map((r) => "M " + r.map((q) => `${X(q)} ${Y(q)}`).join(" L ") + " Z").join(" ");
+      out.push(`<path d="${d}" fill="${p.color}" fill-rule="evenodd" stroke="none"${layer}${key}/>`);
+    } else {
+      const anchor = p.align === "left" ? "start" : p.align === "center" ? "middle" : "end";
+      const base = p.baseline === "bottom" ? "alphabetic" : p.baseline === "middle" ? "central" : "hanging";
+      const x = X(p.at), y = Y(p.at);
+      out.push(`<text x="${x}" y="${y}" font-size="${n(p.height * k)}" font-family="Helvetica, Arial, sans-serif" fill="${p.style.color}" stroke="none" text-anchor="${anchor}" dominant-baseline="${base}"${p.rotation ? ` transform="rotate(${n(-p.rotation)} ${x} ${y})"` : ""}${layer}${key}>${esc(p.text)}</text>`);
+    }
+  }
+  out.push(`</g>`, `</svg>`);
+  return out.join("\n") + "\n";
+}
+function sheetToDXF(sheet, opts) {
+  const prims = sheet.explode();
+  const units = opts.units ?? "mm";
+  const c = {
+    polylines: [],
+    circles: [],
+    arcs: [],
+    texts: [],
+    solids: [],
+    layers: []
+  };
+  const lt = (d) => d === "solid" ? void 0 : d.toUpperCase();
+  const layerColor = /* @__PURE__ */ new Map();
+  for (const [name, st] of sheet.layers) layerColor.set(name, aciFromHex(st.color ?? DEFAULT_STYLE.color));
+  for (const p of prims) {
+    if (p.kind === "fill") {
+      for (const tri of triangulateRings(p.rings)) c.solids.push({ layer: p.layer, points: tri, color: aciFromHex(p.color) });
+      continue;
+    }
+    const s = p.style;
+    const color = aciFromHex(s.color) === (layerColor.get(s.layer) ?? 7) ? void 0 : aciFromHex(s.color);
+    const common = { layer: s.layer, ...color !== void 0 ? { color } : {}, ...lt(s.dash) ? { linetype: lt(s.dash) } : {} };
+    if (p.kind === "polyline") c.polylines.push({ ...common, points: p.points, closed: p.closed });
+    else if (p.kind === "circle") c.circles.push({ ...common, center: p.center, radius: p.radius });
+    else if (p.kind === "arc") c.arcs.push({ ...common, center: p.center, radius: p.radius, startDeg: p.startDeg, endDeg: p.endDeg });
+    else c.texts.push({ layer: s.layer, ...color !== void 0 ? { color } : {}, at: p.at, text: p.text, height: p.height, rotationDeg: p.rotation, align: p.align, valign: p.baseline });
+  }
+  const layers = [...sheet.layers].map(([name, st]) => ({ name, color: layerColor.get(name), ...st.dash && st.dash !== "solid" ? { lineType: st.dash.toUpperCase() } : {} }));
+  return writeDxf2D({ ...c, layers }, { scale: units === "mm" ? 1e3 : 1, linetypeScale: sheet.scale * (units === "mm" ? 1 : 1e-3) });
+}
+function triangulateRings(rings) {
+  let poly = normalize(rings[0], true);
+  for (const hole of rings.slice(1)) poly = bridge(poly, normalize(hole, false));
+  return earClip(poly);
+}
+function area(r) {
+  let a = 0;
+  for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
+}
+function normalize(r, ccw) {
+  let ring = r.length > 1 && r[0].x === r[r.length - 1].x && r[0].y === r[r.length - 1].y ? r.slice(0, -1) : r.slice();
+  if (area(ring) > 0 !== ccw) ring = ring.reverse();
+  return ring;
+}
+function bridge(outer, hole) {
+  let hi = 0;
+  for (let i = 1; i < hole.length; i++) if (hole[i].x > hole[hi].x) hi = i;
+  const h = hole[hi];
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < outer.length; i++) {
+    const o = outer[i];
+    if (o.x < h.x) continue;
+    const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2;
+    if (d < bestD && !crossesAny(h, o, outer, hole)) {
+      bestD = d;
+      best = i;
+    }
+  }
+  if (best < 0) best = 0;
+  const holeLoop = [...hole.slice(hi), ...hole.slice(0, hi), h];
+  return [...outer.slice(0, best + 1), ...holeLoop, ...outer.slice(best)];
+}
+function crossesAny(a, b, ...rings) {
+  for (const r of rings) for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    if (p === a || q === a || p === b || q === b) continue;
+    if (segX(a, b, p, q)) return true;
+  }
+  return false;
+}
+function segX(a, b, c, d) {
+  const o = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
+}
+function earClip(poly) {
+  const tris = [];
+  const idx = poly.map((_, i) => i);
+  const isEar = (i, j, k) => {
+    const a = poly[i], b = poly[j], c = poly[k];
+    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 1e-18) return false;
+    for (const m of idx) {
+      if (m === i || m === j || m === k) continue;
+      const p = poly[m];
+      const s1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+      const s2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
+      const s3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
+      if (s1 >= 0 && s2 >= 0 && s3 >= 0 && !(p.x === a.x && p.y === a.y) && !(p.x === b.x && p.y === b.y) && !(p.x === c.x && p.y === c.y)) return false;
+    }
+    return true;
+  };
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 1e4) {
+    let clipped = false;
+    for (let n = 0; n < idx.length; n++) {
+      const i = idx[(n + idx.length - 1) % idx.length], j = idx[n], k = idx[(n + 1) % idx.length];
+      if (isEar(i, j, k)) {
+        tris.push([poly[i], poly[j], poly[k]]);
+        idx.splice(n, 1);
+        clipped = true;
+        break;
+      }
+    }
+    if (!clipped) break;
+  }
+  if (idx.length === 3) tris.push(idx.map((i) => poly[i]));
+  return tris;
 }
 
 // src/io/download.ts
@@ -18557,7 +19235,7 @@ function pushBox(out, flb, frb, brb, blb, flt, frt, brt, blt) {
 }
 
 // src/scene/Scene.ts
-var DEFAULT_STYLE = {
+var DEFAULT_STYLE2 = {
   color: "#6ee7b7",
   opacity: 1,
   wireframe: false,
@@ -18703,7 +19381,7 @@ var Scene = class _Scene {
       id: this.genId("pt"),
       type: "point",
       position,
-      style: { ...DEFAULT_STYLE, color: "#ff6b6b", pointSize: 0.1, ...style },
+      style: { ...DEFAULT_STYLE2, color: "#ff6b6b", pointSize: 0.1, ...style },
       interactive: true,
       data: data ?? {}
     });
@@ -18717,7 +19395,7 @@ var Scene = class _Scene {
       type: "segment",
       start,
       end,
-      style: { ...DEFAULT_STYLE, color: "#4dabf7", ...style },
+      style: { ...DEFAULT_STYLE2, color: "#4dabf7", ...style },
       interactive: true,
       data: {}
     });
@@ -18727,7 +19405,7 @@ var Scene = class _Scene {
       id: this.genId("poly"),
       type: "polygon",
       vertices,
-      style: { ...DEFAULT_STYLE, color: "#51cf66", opacity: 0.6, ...style },
+      style: { ...DEFAULT_STYLE2, color: "#51cf66", opacity: 0.6, ...style },
       interactive: true,
       data: {}
     });
@@ -18740,7 +19418,7 @@ var Scene = class _Scene {
       id: this.genId("pline"),
       type: "polyline",
       vertices,
-      style: { ...DEFAULT_STYLE, color: "#4dabf7", ...style },
+      style: { ...DEFAULT_STYLE2, color: "#4dabf7", ...style },
       interactive: false,
       data: {}
     });
@@ -18750,7 +19428,7 @@ var Scene = class _Scene {
       id: this.genId("mesh"),
       type: "mesh",
       mesh,
-      style: { ...DEFAULT_STYLE, color: "#845ef7", ...style },
+      style: { ...DEFAULT_STYLE2, color: "#845ef7", ...style },
       interactive: true,
       data: {}
     });
@@ -18760,7 +19438,7 @@ var Scene = class _Scene {
       id: this.genId("mesh"),
       type: "mesh",
       flatMeshData: data,
-      style: { ...DEFAULT_STYLE, color: "#845ef7", ...style },
+      style: { ...DEFAULT_STYLE2, color: "#845ef7", ...style },
       interactive: true,
       data: {}
     });
@@ -18771,7 +19449,7 @@ var Scene = class _Scene {
       type: "circle",
       center,
       radius,
-      style: { ...DEFAULT_STYLE, color: "#ffd43b", ...style },
+      style: { ...DEFAULT_STYLE2, color: "#ffd43b", ...style },
       interactive: true,
       data: {}
     });
@@ -18782,7 +19460,7 @@ var Scene = class _Scene {
       type: "plane",
       normal,
       distance,
-      style: { ...DEFAULT_STYLE, color: "#aaaaaa", opacity: 0.3, ...style },
+      style: { ...DEFAULT_STYLE2, color: "#aaaaaa", opacity: 0.3, ...style },
       interactive: false,
       data: {}
     });
@@ -19101,10 +19779,10 @@ function contactBetween(a, b, opts = {}) {
   const gaps = [0, 1, 2].map((k) => share(a.min[k], a.max[k], b.min[k], b.max[k]));
   if (gaps.some((g) => g < -tol)) return null;
   const flat = [0, 1, 2].filter((k) => k !== up);
-  const area = flat.reduce((p, k) => p * Math.max(0, gaps[k]), 1);
+  const area2 = flat.reduce((p, k) => p * Math.max(0, gaps[k]), 1);
   const footprint = (box) => flat.reduce((p, k) => p * (box.max[k] - box.min[k]), 1);
   const smaller = Math.min(footprint(a), footprint(b));
-  const overlap = smaller > 0 ? Math.min(1, area / smaller) : 0;
+  const overlap = smaller > 0 ? Math.min(1, area2 / smaller) : 0;
   const verticalTouch = gaps[up] <= tol;
   if (verticalTouch) {
     if (overlap < (opts.minOverlap ?? 0.02)) return null;
@@ -19956,6 +20634,18 @@ var Selection = class {
       this.emit();
     }
   }
+  /** A click on a record (`key`) or on nothing (null): it selects the record, Shift/⌘/Ctrl
+   *  adds or removes it, a plain click on nothing clears. The rule every view shares — a
+   *  3D viewport (`selectOnClick`), a drawing (`SheetCanvas.onPick`), a list. */
+  click(key, mods = {}) {
+    const adding = !!(mods.shiftKey || mods.metaKey || mods.ctrlKey);
+    if (!key) {
+      if (!adding) this.clear();
+      return;
+    }
+    if (adding) this.toggle(key);
+    else this.select([key]);
+  }
   onChange(cb) {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
@@ -19976,15 +20666,7 @@ function selectOnClick(view, scene, selection) {
     for (const o of scene.all()) if (o.key && selection.has(o.key)) ids.push(o.id);
     view.setSelectionHighlight(ids);
   };
-  const offPick = view.onPick((sceneId, info) => {
-    const key = sceneId ? scene.get(sceneId)?.key : void 0;
-    if (!key) {
-      if (!info.shiftKey && !info.metaKey && !info.ctrlKey) selection.clear();
-      return;
-    }
-    if (info.shiftKey || info.metaKey || info.ctrlKey) selection.toggle(key);
-    else selection.select([key]);
-  });
+  const offPick = view.onPick((sceneId, info) => selection.click(sceneId ? scene.get(sceneId)?.key : null, info));
   const offSel = selection.onChange(highlight);
   let queued = false;
   const offScene = scene.on((e) => {
@@ -21852,10 +22534,10 @@ var ControlPanel = class {
     header.addEventListener("mouseleave", () => {
       header.style.background = "transparent";
     });
-    const arrow = document.createElement("span");
-    arrow.style.cssText = `font-size:8px;color:${t.textFaint};transition:transform .15s;width:10px;`;
-    arrow.textContent = collapsed ? "\u25B6" : "\u25BC";
-    header.appendChild(arrow);
+    const arrow2 = document.createElement("span");
+    arrow2.style.cssText = `font-size:8px;color:${t.textFaint};transition:transform .15s;width:10px;`;
+    arrow2.textContent = collapsed ? "\u25B6" : "\u25BC";
+    header.appendChild(arrow2);
     const title = document.createElement("span");
     title.style.cssText = `font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:1.8px;color:${t.textFaint};`;
     title.textContent = name;
@@ -21886,7 +22568,7 @@ var ControlPanel = class {
       if (isCollapsed) this.collapsedGroups.delete(name);
       else this.collapsedGroups.add(name);
       body.style.display = isCollapsed ? "" : "none";
-      arrow.textContent = isCollapsed ? "\u25BC" : "\u25B6";
+      arrow2.textContent = isCollapsed ? "\u25BC" : "\u25B6";
     });
     return section;
   }
@@ -23897,6 +24579,265 @@ var SVGRenderer = class {
   }
 };
 
+// src/render/SheetCanvas.ts
+var FONT = "Helvetica, Arial, sans-serif";
+var MIN_PEN_PX = 0.75;
+var HIGHLIGHT = "#1e88e5";
+function fitSheet(bounds2, width, height, margin = 24) {
+  if (!bounds2) return { scale: 1, x: width / 2, y: height / 2 };
+  const bw = Math.max(bounds2.max.x - bounds2.min.x, 1e-9), bh = Math.max(bounds2.max.y - bounds2.min.y, 1e-9);
+  const scale = Math.max(1e-9, Math.min((width - 2 * margin) / bw, (height - 2 * margin) / bh));
+  const cx = (bounds2.min.x + bounds2.max.x) / 2, cy = (bounds2.min.y + bounds2.max.y) / 2;
+  return { scale, x: width / 2 - cx * scale, y: height / 2 + cy * scale };
+}
+function drawSheet(ctx, sheet, t, opts = {}) {
+  const prims = opts.prims ?? sheet.explode();
+  const hl = opts.highlight ? new Set(opts.highlight) : null;
+  const hlColor = opts.highlightColor ?? HIGHLIGHT;
+  const mmPx = sheet.scale / 1e3 * t.scale;
+  const X = (p) => t.x + p.x * t.scale, Y = (p) => t.y - p.y * t.scale;
+  const pen = (s, lit) => {
+    ctx.strokeStyle = lit ? hlColor : s.color;
+    ctx.lineWidth = Math.max(MIN_PEN_PX, s.weight * mmPx) + (lit ? 1.5 : 0);
+    ctx.setLineDash(s.dash === "solid" ? [] : DASH_PATTERNS[s.dash].map((d) => Math.max(d * mmPx, 0.5)));
+  };
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const p of prims) {
+    const lit = !!(hl && p.key && hl.has(p.key));
+    if (p.kind === "fill") {
+      ctx.beginPath();
+      for (const r of p.rings) r.forEach((q, i) => i ? ctx.lineTo(X(q), Y(q)) : ctx.moveTo(X(q), Y(q)));
+      ctx.fillStyle = p.color;
+      ctx.fill("evenodd");
+      if (lit) {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = hlColor;
+        ctx.fill("evenodd");
+        ctx.globalAlpha = 1;
+      }
+    } else if (p.kind === "polyline") {
+      pen(p.style, lit);
+      ctx.beginPath();
+      p.points.forEach((q, i) => i ? ctx.lineTo(X(q), Y(q)) : ctx.moveTo(X(q), Y(q)));
+      if (p.closed) ctx.closePath();
+      ctx.stroke();
+    } else if (p.kind === "circle") {
+      pen(p.style, lit);
+      ctx.beginPath();
+      ctx.arc(X(p.center), Y(p.center), p.radius * t.scale, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.kind === "arc") {
+      let sweep = (p.endDeg - p.startDeg) % 360;
+      if (sweep <= 0) sweep += 360;
+      const a0 = -p.startDeg * Math.PI / 180, a1 = -(p.startDeg + sweep) * Math.PI / 180;
+      pen(p.style, lit);
+      ctx.beginPath();
+      ctx.arc(X(p.center), Y(p.center), p.radius * t.scale, a0, a1, true);
+      ctx.stroke();
+    } else {
+      const px = p.height * t.scale;
+      if (px < 0.5) continue;
+      ctx.save();
+      ctx.translate(X(p.at), Y(p.at));
+      if (p.rotation) ctx.rotate(-p.rotation * Math.PI / 180);
+      ctx.font = `${px}px ${FONT}`;
+      ctx.fillStyle = lit ? hlColor : p.style.color;
+      ctx.textAlign = p.align;
+      ctx.textBaseline = p.baseline === "bottom" ? "alphabetic" : p.baseline === "middle" ? "middle" : "hanging";
+      ctx.fillText(p.text, 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+var SheetCanvas = class {
+  constructor(container, opts = {}) {
+    this._sheet = null;
+    this.prims = [];
+    this.t = { scale: 1, x: 0, y: 0 };
+    this.fitted = false;
+    this.highlight = [];
+    this.pickFns = [];
+    this.drawFns = [];
+    this.frame = 0;
+    this.opts = opts;
+    this.canvas = document.createElement("canvas");
+    this.canvas.dataset.tektoOverlay = "";
+    this.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;";
+    if (getComputedStyle(container).position === "static") container.style.position = "relative";
+    container.appendChild(this.canvas);
+    this.ctx = this.canvas.getContext("2d");
+    this.off = this.wire();
+    this.ro = new ResizeObserver(() => this.resize());
+    this.ro.observe(container);
+    this.resize();
+    if (opts.sheet) this.setSheet(opts.sheet);
+  }
+  get sheet() {
+    return this._sheet;
+  }
+  /** The primitives on screen (the sheet, exploded once per `setSheet`). */
+  get primitives() {
+    return this.prims;
+  }
+  get transform() {
+    return { ...this.t };
+  }
+  /** Show a sheet. The first one is fitted; later ones keep the zoom, so a sheet rebuilt on
+   *  every edit stays put (`fit: true` to refit). */
+  setSheet(sheet, opts = {}) {
+    this._sheet = sheet;
+    this.prims = sheet ? sheet.explode() : [];
+    if (opts.fit || !this.fitted) this.fit();
+    else this.redraw();
+  }
+  setTransform(t) {
+    this.t = { ...t };
+    this.redraw();
+  }
+  fit() {
+    const { width, height } = this.size();
+    if (!this._sheet || !width || !height) {
+      this.redraw();
+      return;
+    }
+    this.t = fitSheet(boundsOf(this.prims), width, height, this.opts.margin ?? 24);
+    this.fitted = true;
+    this.redraw();
+  }
+  toSheet(x, y) {
+    return { x: (x - this.t.x) / this.t.scale, y: (this.t.y - y) / this.t.scale };
+  }
+  toScreen(p) {
+    return { x: this.t.x + p.x * this.t.scale, y: this.t.y - p.y * this.t.scale };
+  }
+  /** The primitive at a canvas position (CSS pixels), or null. */
+  pick(x, y) {
+    return pickPrim(this.prims, this.toSheet(x, y), (this.opts.pickTolerance ?? 6) / this.t.scale);
+  }
+  /** Clicks (not drags): the picked primitive, or null for paper. Returns the unsubscribe. */
+  onPick(fn) {
+    this.pickFns.push(fn);
+    return () => {
+      this.pickFns = this.pickFns.filter((f2) => f2 !== fn);
+    };
+  }
+  /** Draw primitives with these keys highlighted (a selection); null clears. */
+  setHighlight(keys) {
+    this.highlight = keys ? [...keys] : [];
+    this.redraw();
+  }
+  /** Paint over the sheet in screen pixels after every redraw. Returns the unsubscribe. */
+  onDraw(fn) {
+    this.drawFns.push(fn);
+    this.redraw();
+    return () => {
+      this.drawFns = this.drawFns.filter((f2) => f2 !== fn);
+      this.redraw();
+    };
+  }
+  /** Redraw on the next frame (calls coalesce). */
+  redraw() {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      this.paint();
+    });
+  }
+  /** Draw now — before reading the canvas back. */
+  paint() {
+    const { width, height, dpr } = this.size();
+    const ctx = this.ctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const bg = this.opts.background ?? "#ffffff";
+    if (bg !== "transparent") {
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+    }
+    if (this._sheet) drawSheet(ctx, this._sheet, this.t, { prims: this.prims, highlight: this.highlight, highlightColor: this.opts.highlightColor });
+    for (const fn of this.drawFns) {
+      ctx.save();
+      fn(ctx, this.transform);
+      ctx.restore();
+    }
+  }
+  dispose() {
+    cancelAnimationFrame(this.frame);
+    this.ro.disconnect();
+    this.off();
+    this.canvas.remove();
+  }
+  size() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    return { width: this.canvas.clientWidth, height: this.canvas.clientHeight, dpr };
+  }
+  resize() {
+    const { width, height, dpr } = this.size();
+    if (!width || !height) return;
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
+    if (!this.fitted && this._sheet) this.fit();
+    else this.paint();
+  }
+  wire() {
+    const c = this.canvas;
+    const local = (e) => {
+      const r = c.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const onWheel = (e) => {
+      e.preventDefault();
+      const p = local(e), k = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 15e-4));
+      this.t = { scale: this.t.scale * k, x: p.x - (p.x - this.t.x) * k, y: p.y - (p.y - this.t.y) * k };
+      this.redraw();
+    };
+    let drag = null;
+    const onDown = (e) => {
+      if (e.button !== 0 && e.button !== 1) return;
+      const p = local(e);
+      drag = { id: e.pointerId, x: p.x, y: p.y, t: { ...this.t }, moved: false };
+      c.setPointerCapture(e.pointerId);
+    };
+    const onMove = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const p = local(e);
+      if (!drag.moved && Math.hypot(p.x - drag.x, p.y - drag.y) < 4) return;
+      drag.moved = true;
+      this.t = { ...drag.t, x: drag.t.x + p.x - drag.x, y: drag.t.y + p.y - drag.y };
+      this.redraw();
+    };
+    const onUp = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const wasClick = !drag.moved && e.button === 0;
+      drag = null;
+      if (!wasClick) return;
+      const p = local(e), prim = this.pick(p.x, p.y);
+      for (const fn of this.pickFns) fn(prim, { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
+    };
+    const onCancel = () => {
+      drag = null;
+    };
+    const onDbl = () => this.fit();
+    c.addEventListener("wheel", onWheel, { passive: false });
+    c.addEventListener("pointerdown", onDown);
+    c.addEventListener("pointermove", onMove);
+    c.addEventListener("pointerup", onUp);
+    c.addEventListener("pointercancel", onCancel);
+    c.addEventListener("dblclick", onDbl);
+    return () => {
+      c.removeEventListener("wheel", onWheel);
+      c.removeEventListener("pointerdown", onDown);
+      c.removeEventListener("pointermove", onMove);
+      c.removeEventListener("pointerup", onUp);
+      c.removeEventListener("pointercancel", onCancel);
+      c.removeEventListener("dblclick", onDbl);
+    };
+  }
+};
+
 // src/render/Viewport.ts
 var THREE5 = __toESM(require("three"));
 
@@ -25314,18 +26255,18 @@ var LayerPanel = class {
     row.addEventListener("mouseleave", () => {
       row.style.background = "";
     });
-    const arrow = document.createElement("span");
-    arrow.style.cssText = `width:10px;font-size:7px;flex-shrink:0;line-height:1;color:${arrowColor};user-select:none;`;
+    const arrow2 = document.createElement("span");
+    arrow2.style.cssText = `width:10px;font-size:7px;flex-shrink:0;line-height:1;color:${arrowColor};user-select:none;`;
     if (hasChildren) {
-      arrow.textContent = isCollapsed ? "\u25B6" : "\u25BC";
-      arrow.style.cursor = "pointer";
-      arrow.addEventListener("click", (e) => {
+      arrow2.textContent = isCollapsed ? "\u25B6" : "\u25BC";
+      arrow2.style.cursor = "pointer";
+      arrow2.addEventListener("click", (e) => {
         e.stopPropagation();
         this._collapsed.has(node.id) ? this._collapsed.delete(node.id) : this._collapsed.add(node.id);
         this._rebuild();
       });
     }
-    row.appendChild(arrow);
+    row.appendChild(arrow2);
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = state.visible;
@@ -25952,11 +26893,11 @@ function resample(s, step, max) {
 }
 function gridInside(ring, target) {
   const [x0, y0, x1, y1] = bbox2(ring);
-  const area = Math.abs(ring.reduce((a, p, i) => {
+  const area2 = Math.abs(ring.reduce((a, p, i) => {
     const q = ring[(i + 1) % ring.length];
     return a + p[0] * q[1] - q[0] * p[1];
   }, 0)) / 2;
-  const step = Math.max(4, Math.sqrt(area / target));
+  const step = Math.max(4, Math.sqrt(area2 / target));
   const out = [];
   for (let y = y0 + step / 2; y < y1; y += step) {
     for (let x = x0 + step / 2; x < x1; x += step) if (inside([x, y], ring)) out.push([x, y]);
@@ -27934,6 +28875,7 @@ function appShell(config) {
   }
   requestAnimationFrame(loop);
   let statusText = "";
+  const overlays = [];
   const instance = {
     params,
     scene,
@@ -27961,14 +28903,37 @@ function appShell(config) {
         statusEl.style.display = "none";
       }
     },
+    overlay() {
+      const el = document.createElement("div");
+      el.style.cssText = "position:absolute;inset:0;";
+      (overlays[overlays.length - 1] ?? viewportEl).after(el);
+      overlays.push(el);
+      return el;
+    },
     dispose() {
       disposed = true;
       markup?.dispose();
-      bridge.dispose();
+      bridge2.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
     }
+  };
+  const snapshotPng = () => {
+    const base = renderer.snapshotPng();
+    const shown = [...vpWrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
+    if (!shown.length) return base;
+    const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
+    const out = document.createElement("canvas");
+    out.width = src.width;
+    out.height = src.height;
+    const g = out.getContext("2d");
+    g.drawImage(src, 0, 0);
+    for (const c of shown) {
+      const r = c.getBoundingClientRect();
+      g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
+    }
+    return out.toDataURL("image/png");
   };
   const context = () => ({
     harness: "appShell",
@@ -27976,20 +28941,20 @@ function appShell(config) {
     up: config.up ?? "z",
     params: params.getAll(),
     logs: statusText ? [{ label: "status", value: statusText }] : [],
-    errors: bridge.errors()
+    errors: bridge2.errors()
   });
   const markup = config.markup === false ? null : new MarkupOverlay({
     viewport: vpWrap,
     title: config.title ?? "app",
     hitAt: (x, y) => renderer.hitAt(x, y),
     groundAt: (x, y) => renderer.groundAt(x, y),
-    snapshotPng: () => renderer.snapshotPng(),
+    snapshotPng: () => snapshotPng(),
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => {
     }
   });
-  const bridge = installAgentBridge({
+  const bridge2 = installAgentBridge({
     owner: instance,
     harness: "appShell",
     store: params,
@@ -27997,7 +28962,7 @@ function appShell(config) {
       ...opts,
       title: config.title ?? "app",
       harness: "appShell",
-      png: renderer.snapshotPng(),
+      png: snapshotPng(),
       viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
       context: context()
     }),
@@ -28659,6 +29624,7 @@ var Sketch2DInstance = class {
   CubicBezierCurve,
   Curvature,
   CurveUtils,
+  DASH_PATTERNS,
   DEFAULT_BACKGROUND,
   Delaunay2D,
   DistanceTransform,
@@ -28753,6 +29719,9 @@ var Sketch2DInstance = class {
   Segment,
   Selection,
   SharedStore,
+  Sheet,
+  SheetCanvas,
+  SheetView,
   Sketch2DInstance,
   SketchInstance,
   Slab,
@@ -28782,6 +29751,7 @@ var Sketch2DInstance = class {
   WallOpening,
   WallSystem,
   WallType,
+  aciFromHex,
   appShell,
   bindScene,
   boundingWalls,
@@ -28799,12 +29769,14 @@ var Sketch2DInstance = class {
   createRandom,
   devServerAdapter,
   download,
+  drawSheet,
   easeInOut,
   edgeOutwardVisibility,
   edgeStyle,
   extractVisiblePolylines,
   findAdjacent,
   fitRadius,
+  fitSheet,
   getTheme,
   groundAppearance,
   hiddenLineIdBuffer,
@@ -28826,6 +29798,7 @@ var Sketch2DInstance = class {
   orthoFrustum,
   perpVisibility,
   perpVisibilityOfPolys,
+  pickPrim,
   polygonFromVertices,
   polygonIntersection,
   polylinesToSVG,
