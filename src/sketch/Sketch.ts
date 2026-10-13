@@ -45,6 +45,7 @@ import { ParamStore } from "../gui/Params";
 import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
 import { ThreeRenderer } from "../render/ThreeRenderer";
+import type { SectionRequest } from "../scene/Scene";
 import { MarkupOverlay, MarkupCaptureOptions } from "./Markup";
 import { installAgentBridge, AgentBridge, describeSceneObject, sceneSummary } from "./AgentBridge";
 import { download } from "../io/download";
@@ -1004,6 +1005,7 @@ export class SketchInstance {
       lookAt(x, y, z) { self.renderer.lookAt(x, y, z); },
       fitAll() { self.renderer.fitAll(); },
       setProjection(type) { self.renderer.setProjection(type); },
+      setSection(section) { self.renderer.setSection(section); },
       cameraUp(x, y, z) { self.renderer.setCameraUp(x, y, z); },
 
       // ── Info ──
@@ -1575,9 +1577,14 @@ export class SketchInstance {
     this.renderer.requestRender();
   }
 
-  /** Change the scene render mode (solid / wireframe / hiddenline). */
+  /** Change the scene render mode (solid / wireframe / hiddenline / ghost). */
   setRenderMode(mode: RenderMode) {
     this.scene.setRenderMode(mode);
+  }
+
+  /** Cut the model with a section (see `ThreeRenderer.setSection`); null clears. */
+  setSection(section: SectionRequest | null) {
+    this.renderer.setSection(section);
   }
 
   /**

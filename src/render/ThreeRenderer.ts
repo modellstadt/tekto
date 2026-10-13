@@ -10,9 +10,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 // @ts-ignore — TransformControls typings vary across Three.js versions
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-import { Scene as GScene, SceneObject, SceneEvent } from "../scene/Scene";
+import { Scene as GScene, SceneObject, SceneEvent, type SectionRequest } from "../scene/Scene";
 import { Mesh as GMesh } from "../core/geometry/mesh/Mesh";
 import { Vec3 } from "../core/math/vectors";
+import { sectionPlane, sectionAppearance, surfaceAppearance, edgeStyle } from "./viewRules";
 
 export type GizmoMode = "translate" | "rotate" | "scale" | "none";
 
@@ -55,6 +56,11 @@ const DEFAULTS: ThreeRendererConfig = {
   fov: 55,
   up: "y",
 };
+
+/** A material you can see through (its back faces would show without a cut). */
+function seeThrough(m: THREE.Material | THREE.Material[]): boolean {
+  return (Array.isArray(m) ? m : [m]).some(x => x.transparent && x.opacity < 1);
+}
 
 export class ThreeRenderer {
   readonly threeScene: THREE.Scene;
@@ -126,7 +132,7 @@ export class ThreeRenderer {
   private gizmoMode: GizmoMode = "translate";
   private gizmoAttachedId: string | null = null;
   private pointerDown: { x: number; y: number } | null = null;
-  private selectionMaterials = new Map<string, { mat: THREE.Material; oldEmissive: THREE.Color; oldIntensity: number }>();
+  private selectionMaterials = new Map<string, { mat: THREE.Material; oldEmissive: THREE.Color; oldIntensity: number; oldOpacity: number; oldDepthWrite: boolean }>();
 
   // ── Drag handles ──
   private dragHandles = new Map<string, THREE.Mesh>();
@@ -139,6 +145,13 @@ export class ThreeRenderer {
   private selectedDragHandle: string | null = null;
   private dragPlane = new THREE.Plane();
   private dragSeenThisRun = new Set<string>();
+
+  // ── Section (setSection) ──
+  private sectionReq: SectionRequest | null = null;
+  private sectionClip: THREE.Plane | null = null;
+  private sectionColour: number | null = null;
+  // One poché material for every cut mesh; its colour follows the render mode.
+  private pocheMat: THREE.MeshBasicMaterial | null = null;
 
   constructor(gScene: GScene, container: HTMLElement, config?: Partial<ThreeRendererConfig>) {
     this.gScene = gScene;
@@ -296,13 +309,16 @@ export class ThreeRenderer {
     // waiting for the next `_applyLighting` pass. Cheap; just two
     // booleans per mesh.
     if (this.currentLighting === "studio") {
+      // A ghost is see-through: its shadow would read as dirt on the drawing.
+      const cast = this.gScene.renderMode !== "ghost";
       t.traverse((child) => {
         if (child instanceof THREE.Mesh) {
-          child.castShadow    = true;
+          child.castShadow    = cast;
           child.receiveShadow = true;
         }
       });
     }
+    if (this.sectionClip) this._dressSection(t);
     this.threeScene.add(t);
     this.objectMap.set(obj.id, t);
     // If this is the currently selected object, reattach the gizmo.
@@ -616,9 +632,10 @@ export class ThreeRenderer {
     // ── Mesh cast/receive flags ───────────────────────────────────
     // Walk the existing tree; rebuildAllMeshes (called by the scene
     // event handler) will set the same flags on freshly-built meshes.
+    const cast = studio && this.gScene.renderMode !== "ghost";
     this.threeScene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
-        obj.castShadow    = studio;
+        obj.castShadow    = cast;
         obj.receiveShadow = studio;
       }
     });
@@ -978,7 +995,9 @@ export class ThreeRenderer {
         polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
       }));
       const group = new THREE.Group();
-      group.add(new THREE.Mesh(geo, materials));
+      const surface = new THREE.Mesh(geo, materials);
+      surface.userData.surface = true;
+      group.add(surface);
       if (!s.wireframe) {
         group.add(new THREE.Mesh(geo.clone(), new THREE.MeshBasicMaterial({
           color: 0xffffff, wireframe: true, opacity: 0.04, transparent: true,
@@ -1044,6 +1063,24 @@ export class ThreeRenderer {
       });
       group.add(new THREE.Mesh(geo, rimMat));
 
+    } else if (mode === "ghost") {
+      // Every surface in its own colour, faint and without depth writes, so a part
+      // behind reads through the ones in front; flat (emissive), so the side turned
+      // away from the light doesn't drop to black. Creases carry the form.
+      const look = surfaceAppearance("ghost", 0);
+      const surface = new THREE.Mesh(geo, this._makeMaterial({
+        color: hasVertexColors ? 0xffffff : s.color, vertexColors: hasVertexColors,
+        emissive: hasVertexColors ? 0x000000 : s.color, emissiveIntensity: 0.8,
+        opacity: look.opacity, transparent: true, depthWrite: look.depthWrite,
+        side: THREE.DoubleSide,
+      }));
+      surface.userData.surface = true;
+      group.add(surface);
+      const edge = edgeStyle("ghost", this.config.backgroundColor);
+      group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, s.edgeAngle ?? 30), new THREE.LineBasicMaterial({
+        color: edge.colour, opacity: edge.opacity, transparent: true, depthWrite: false,
+      })));
+
     } else {
       // Solid mode (default) — polygonOffset pushes mesh depth back so
       // coplanar lines (lab.line) render cleanly on top without z-fighting.
@@ -1084,7 +1121,9 @@ export class ThreeRenderer {
         };
       }
 
-      group.add(new THREE.Mesh(geo, solidMat));
+      const surface = new THREE.Mesh(geo, solidMat);
+      surface.userData.surface = true;
+      group.add(surface);
 
       if (s.wireframe) {
         const wireMat = new THREE.MeshBasicMaterial({
@@ -1418,6 +1457,7 @@ export class ThreeRenderer {
     }
     const hits = this.raycaster.intersectObjects(pickable, true);
     for (const h of hits) {
+      if (this._cutAway(h.point)) continue;
       let cur: THREE.Object3D | null = h.object;
       while (cur && !cur.userData.geomId) cur = cur.parent;
       if (cur?.userData.geomId) return cur.userData.geomId as string;
@@ -1441,6 +1481,7 @@ export class ThreeRenderer {
     for (const t of this.objectMap.values()) if (t.visible) targets.push(t);
     const hits = this.raycaster.intersectObjects(targets, true);
     for (const h of hits) {
+      if (this._cutAway(h.point)) continue;
       let cur: THREE.Object3D | null = h.object;
       let shown = true;
       while (cur && !cur.userData.geomId) { if (!cur.visible) shown = false; cur = cur.parent; }
@@ -1582,9 +1623,12 @@ export class ThreeRenderer {
       const m = info.mat as (THREE.MeshPhongMaterial | THREE.MeshStandardMaterial);
       m.emissive.copy(info.oldEmissive);
       m.emissiveIntensity = info.oldIntensity;
+      m.opacity = info.oldOpacity;
+      m.depthWrite = info.oldDepthWrite;
     }
     this.selectionMaterials.clear();
     const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
+    const ghost = this.gScene.renderMode === "ghost";
     for (const id of list) {
       const t = this.objectMap.get(id);
       if (!t) continue;
@@ -1595,12 +1639,102 @@ export class ThreeRenderer {
             mat: m,
             oldEmissive: m.emissive.clone(),
             oldIntensity: m.emissiveIntensity ?? 0,
+            oldOpacity: m.opacity,
+            oldDepthWrite: m.depthWrite,
           });
           m.emissive = new THREE.Color(0x38d9a9);
           m.emissiveIntensity = 0.35;
+          // Ghost exists so a selection reads through everything else: draw it solid.
+          if (ghost && child.userData.surface) { m.opacity = 0.85; m.depthWrite = true; }
         }
       });
     }
+  }
+
+  // ── Section ──
+
+  /**
+   * Cut the model with a plane and fill the cut, so it reads as solid: `{ axis: "z",
+   * coordinate: 1.2 }` is a plan cut at 1.2 m (what is above goes), `{ axis: "x", at: 0.5 }`
+   * a section through the middle of the content, `flip` keeps the other side. Null clears.
+   * Everything the scene draws is clipped (grid, axes, handles and the gizmo are not); a
+   * click picks what is still there. The cut stays while the scene is rebuilt — a `sketch()`
+   * re-run keeps it; `at` is measured against the content present when it is set.
+   *
+   * The cut face is the meshes' inside — their back faces, painted flat (poché) — not a
+   * capped polygon, so it needs nothing of the geometry: no closed solids, no winding. Only
+   * opaque surfaces get it: through a translucent one the inside would show uncut too.
+   */
+  setSection(section: SectionRequest | null): void {
+    this.sectionReq = section;
+    const axis = section && new THREE.Vector3(section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
+    this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === undefined ? this._contentBox() : null) : null;
+    this.renderer.localClippingEnabled = !!this.sectionClip;
+    for (const t of this.objectMap.values()) this._dressSection(t);
+    this.requestRender();
+  }
+
+  /** The section in force, or null. */
+  get section(): SectionRequest | null { return this.sectionReq; }
+
+  /** Paint the cut this colour; null follows the render mode (dark, pale in ghost). */
+  setSectionColour(colour: number | string | null): void {
+    this.sectionColour = colour === null ? null : new THREE.Color(colour).getHex();
+    if (this.sectionReq) this.setSection(this.sectionReq);
+  }
+
+  /** Clip one object's materials with the live section (or unclip it) and give its
+   *  surfaces their poché. */
+  private _dressSection(t: THREE.Object3D): void {
+    const plane = this.sectionClip;
+    const old: THREE.Object3D[] = [];
+    const surfaces: THREE.Mesh[] = [];
+    t.traverse((c) => {
+      if (c.userData.poche) { old.push(c); return; }
+      const m = (c as THREE.Mesh).material;
+      if (m) {
+        for (const one of Array.isArray(m) ? m : [m]) {
+          if ((one.clippingPlanes?.length ?? 0) === 0 && !plane) continue;
+          one.clippingPlanes = plane ? [plane] : null;
+          one.needsUpdate = true;
+        }
+      }
+      if (plane && c.userData.surface && !seeThrough((c as THREE.Mesh).material)) surfaces.push(c as THREE.Mesh);
+    });
+    for (const o of old) o.removeFromParent();
+    // Hidden line draws back faces in the edge colour already: the cut shows as poché. Ghost
+    // and other see-through surfaces get none — their back faces show through them uncut.
+    if (!plane || this.gScene.renderMode === "hiddenline" || this.gScene.renderMode === "ghost") return;
+    const mat = this._poche(plane);
+    for (const s of surfaces) {
+      const p = new THREE.Mesh(s.geometry, mat);
+      p.userData.poche = true;
+      p.renderOrder = -1;
+      p.raycast = () => {};                  // a pick goes to the surface, not the fill behind it
+      s.parent!.add(p);
+    }
+  }
+
+  private _poche(plane: THREE.Plane): THREE.MeshBasicMaterial {
+    const mode = this.gScene.renderMode === "ghost" ? "ghost" : "shaded";
+    const colour = this.sectionColour ?? sectionAppearance(mode).colour;
+    const m = this.pocheMat;
+    if (m && m.color.getHex() === colour && m.clippingPlanes?.[0] === plane) return m;
+    m?.dispose();
+    this.pocheMat = new THREE.MeshBasicMaterial({ color: colour, side: THREE.BackSide, clippingPlanes: [plane], toneMapped: false });
+    return this.pocheMat;
+  }
+
+  /** Is this world point on the side the section removed? */
+  private _cutAway(p: THREE.Vector3): boolean {
+    return !!this.sectionClip && this.sectionClip.distanceToPoint(p) < -1e-9;
+  }
+
+  /** Bounds of what the scene shows. */
+  private _contentBox(): THREE.Box3 {
+    const box = new THREE.Box3();
+    for (const t of this.objectMap.values()) if (t.visible) box.expandByObject(t);
+    return box;
   }
 
   // ── Render ──
@@ -1843,6 +1977,7 @@ export class ThreeRenderer {
     const hits = raycaster.intersectObjects(targets, true);
 
     for (const hit of hits) {
+      if (this._cutAway(hit.point)) continue;
       let obj: THREE.Object3D | null = hit.object;
       while (obj && !obj.userData.geomId) obj = obj.parent;
       if (obj?.userData.geomId) {
@@ -1874,6 +2009,7 @@ export class ThreeRenderer {
 
   private disposeObject(obj: THREE.Object3D) {
     obj.traverse(child => {
+      if (child.userData.poche) return;      // shares the surface's geometry and the renderer's material
       const m = child as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
       if (m.material) {
@@ -1886,6 +2022,7 @@ export class ThreeRenderer {
   dispose() {
     this.unsub?.();
     this.clearThree();
+    this.pocheMat?.dispose();
     this.threeScene.environment = null;
     this.envMap?.dispose();
     this.envMap = null;

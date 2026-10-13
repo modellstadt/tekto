@@ -157,6 +157,9 @@ let importsUnsub:  (() => void) | null = null;
 const app             = document.getElementById("app") as HTMLDivElement;
 const pageChooser     = document.getElementById("page-chooser") as HTMLSelectElement;
 const renderModeSel   = document.getElementById("render-mode") as HTMLSelectElement;
+const cutGroup        = document.getElementById("cut-group") as HTMLSpanElement;
+const sectionAxisSel  = document.getElementById("section-axis") as HTMLSelectElement;
+const sectionAt       = document.getElementById("section-at") as HTMLInputElement;
 const lightingSel     = document.getElementById("lighting-mode") as HTMLSelectElement;
 const exportBtn       = document.getElementById("export-btn") as HTMLButtonElement;
 const exportList      = document.getElementById("export-list") as HTMLDivElement;
@@ -184,6 +187,7 @@ const sunMenu         = document.getElementById("sun-menu") as HTMLElement;
 function setShellMode(is2D: boolean) {
   const d = is2D ? "none" : "";
   renderGroup.style.display = d;
+  cutGroup.style.display = d;
   lightGroup.style.display = d;
   sunMenu.style.display = d;
 }
@@ -217,6 +221,16 @@ renderModeSel.addEventListener("change", () => {
   currentRenderMode = renderModeSel.value as RenderMode;
   as3D()?.setRenderMode(currentRenderMode);
 });
+
+// ─── Section cut ────────────────────────────────────────────────────
+
+function applySection() {
+  const axis = sectionAxisSel.value as "" | "x" | "y" | "z";
+  sectionAt.hidden = !axis;
+  as3D()?.setSection(axis ? { axis, at: Number(sectionAt.value) / 100 } : null);
+}
+sectionAxisSel.addEventListener("change", applySection);
+sectionAt.addEventListener("input", applySection);
 
 // ─── Lighting mode (persisted) ──────────────────────────────────────
 
@@ -414,6 +428,7 @@ async function loadPage(slug: string) {
     setShellMode(!s3d); // hide render/lighting/sun for 2D pages
     if (s3d) {
       if (currentRenderMode !== "solid")  s3d.setRenderMode(currentRenderMode);
+      if (sectionAxisSel.value) requestAnimationFrame(applySection);   // once the page has built its content
       if (currentLightingMode !== "flat") s3d.setLightingMode(currentLightingMode);
       // Subscribe to the sketch's export/import registrations and re-render
       // the menus whenever the sketch (re)registers an entry.

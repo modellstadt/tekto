@@ -180,7 +180,7 @@ lists that every edit maintains incrementally. Both old APIs live on it.
 ### Three access levels
 
 1. **Sketch API** — `sketch()` (3D) / `sketch2d()` (2D canvas): one function, zero framework knowledge. For students and quick experiments. The function re-runs on every parameter change.
-2. **App Shell** — `appShell()`: a persistent sidebar + viewer for real apps. The panel is built ONCE from a declarative `params` schema and updated in place, so animation loops never fight the GUI. Comes with the top bar (lighting / render mode / camera / Sun). Subscribe with `app.params.onChange(...)`.
+2. **App Shell** — `appShell()`: a persistent sidebar + viewer for real apps. The panel is built ONCE from a declarative `params` schema and updated in place, so animation loops never fight the GUI. Comes with the top bar (lighting / render mode / camera / Cut / Sun; `topBar: { cut: false }` drops a control the app has no use for). Subscribe with `app.params.onChange(...)`.
 3. **React components** *(optional)* — `<ParamPanel>`, `<InspectorPanel>`, hooks, imported from **`tekto/react`** (install `react` + `react-dom`). Only reach for this when you need React ecosystem integration; levels 1–2 cover most apps. The core `tekto` barrel is React-free.
 
 All three levels share the same GUI foundation: values live in a `ParamStore`, panels are rendered by the shared `ControlPanel`, colors come from `getTheme()`. A control type added there appears everywhere.
@@ -288,7 +288,7 @@ Each storey gets its own `IfcRelContainedInSpatialStructure` at save time; the b
 
 The playground's testbench ([playground/testbench.html](playground/testbench.html) + [.ts](playground/testbench.ts)) is also a *template* for custom apps. Three reusable pieces:
 
-- **Top-bar** with global controls — page chooser (categorised dropdown), render mode (solid / wireframe / hidden-line), lighting preset (Flat / Studio with PBR + soft shadows + ACES tonemapping), Sun popover (city / lat-lon / date / hour / `Now` button), Export ▾ and Import ▾ menus populated dynamically from the current sketch.
+- **Top-bar** with global controls — page chooser (categorised dropdown), render mode (solid / wireframe / hidden-line / ghost), Cut (a section along Z, X or Y, and where), lighting preset (Flat / Studio with PBR + soft shadows + ACES tonemapping), Sun popover (city / lat-lon / date / hour / `Now` button), Export ▾ and Import ▾ menus populated dynamically from the current sketch.
 - **`SketchConfig.showHeader`** — set `false` (or auto-detected when the container has `data-shell="…"`) to suppress the sketch's internal title bar so the shell's top bar becomes the single source of page identity.
 - **`lab.registerExport({ name, fileName, handler })`** / **`lab.registerImport({ name, accept, handler })`** — sketches register handlers; the shell discovers them via `SketchInstance.getExports/getImports` + `onExportsChange/onImportsChange` and shows menu items automatically.
 
@@ -344,6 +344,23 @@ scene.addMesh(flat, { color: "#e0a14f", edgeColor: "#e0a14f" }); // colored edge
 
 Note this draws creases, not view-dependent silhouettes — a smooth sphere has no
 sharp edges, so in hidden-line it reads as the occluding solid with no lines.
+
+### Ghost and section cuts
+
+**Ghost** (`scene.setRenderMode("ghost")`, the Ghost button) draws every surface faint in
+its own colour, with its creases, so what is inside reads through what is in front; a
+selected object is drawn solid. A **section** cuts the model with a plane and fills the cut:
+
+```ts
+renderer.setSection({ axis: "z", coordinate: 1.2 });     // plan cut at 1.2 m: what is above goes
+renderer.setSection({ axis: "x", at: 0.5 });             // through the middle of the content
+renderer.setSection({ axis: "y", at: 0.3, flip: true }); // keep the other side
+renderer.setSection(null);
+```
+
+In a `sketch()` it is `lab.setSection(…)`, and it stays across re-runs. Clicks pick what is
+still there. The cut face is the solids' inside drawn flat (poché) on opaque surfaces, so it
+needs no closed meshes; translucent ones are just clipped. Both cost nothing until used.
 
 ## Markup — instructions for an AI, drawn on the view
 
@@ -584,7 +601,7 @@ Or use IDE autocomplete on the import line — every export is typed, and the co
 - **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views of meshes), `Sheet` (a drawing at a scale: views placed on the sheet — plan, elevations projected from 3D, details — with lines, arcs, fills, text, dimensions, leaders and level marks; `toSVG` and `toDXF` export the same primitives; on screen `SheetCanvas` — pan, zoom, pick by `key`, highlight — or `drawSheet` into any canvas; over a 3D app in `app.overlay()`), `writeDxf2D` (raw drawings: polylines, lines, circles, arcs, text, solids, line types; `scale: 1000` → mm), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — all emit AutoCAD-safe R12), `download` / `stampName` (save a file from the browser — a `sketch()` lists `lab.registerExport` items in its Export menu), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
 - **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use). Types `MarkupBundle` / `MarkupCaptureOptions` / `MarkupObjectRef` / `MarkKind` for the [Markup](#markup--instructions-for-an-ai-drawn-on-the-view) capture.
 - **Shared editing**: `SharedStore` (keyed records, last write wins, presence, broadcasts), `memoryAdapter` / `devServerAdapter` / `supabaseAdapter`, `PresenceBar`, `collabColor` — see [Shared editing](#shared-editing--several-people-and-agents-on-one-model).
-- **App Shell**: `appShell` — persistent-panel apps (panel built once, animation-friendly) with a built-in top bar (Flat/Studio lighting, render mode, Persp/Iso camera, Sun popover).
+- **App Shell**: `appShell` — persistent-panel apps (panel built once, animation-friendly) with a built-in top bar (Flat/Studio lighting, render mode, Persp/Iso camera, Cut and Sun popovers — each can be switched off).
 - **React** (from `tekto/react`): `AccordionColumn` — a column of collapsible sections, one of which takes the leftover height and scrolls; headers stay visible with their own summary, open sections drag taller, and the arrangement persists. The shape every inspector ends up with.
 - **GUI building blocks**: `ParamStore` (the one parameter model — all entry APIs store values here), `ControlPanel` (the shared slider/toggle/select/color/menu/tab renderer), `getTheme` (the white-on-dark panel palette), `LayerPanel`.
 

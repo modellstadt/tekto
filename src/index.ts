@@ -38,16 +38,16 @@ export type { SheetCanvasOptions, SheetTransform, DrawSheetOptions } from "./ren
 export type { SVGRendererConfig } from "./render/SVGRenderer";
 // A viewport for meshes an app built itself, as opposed to a Scene the library
 // owns: view modes, progressive creases, a real sun, camera projections.
+export { Viewport } from "./render/Viewport";
+export type { ViewportOptions, ContentOptions } from "./render/Viewport";
+// The rules both draw by, as plain functions: mode looks, named views, fitting, sections.
 export {
-  Viewport, edgeStyle, surfaceAppearance, lightBalance, modeBackground,
+  edgeStyle, surfaceAppearance, lightBalance, modeBackground,
   groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut,
-  fitRadius, orthoFrustum,
-} from "./render/Viewport";
-export type {
-  ViewMode, Projection, StandardView, Appearance, ViewportOptions, ContentOptions,
-  SectionRequest,
-} from "./render/Viewport";
+  fitRadius, orthoFrustum, sectionPlane,
+} from "./render/viewRules";
+export type { ViewMode, Projection, StandardView, Appearance } from "./render/viewRules";
 // The axis widget the Viewport puts in its corner. Exported for an app that
 // wants one over a scene of its own; a Viewport already has it.
 export { NavGizmo } from "./render/NavGizmo";

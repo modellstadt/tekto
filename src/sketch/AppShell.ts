@@ -64,13 +64,29 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   panelWidth?: number;
   /** Renderer config overrides */
   renderer?: Partial<ThreeRendererConfig>;
-  /** Top bar with Lighting / Render-mode / Camera / Sun controls. Default: true. */
-  topBar?: boolean;
+  /** Top bar with Lighting / Render-mode / Camera / Cut / Sun controls. Default: true.
+   *  An object turns single controls off where they don't make sense for the app
+   *  (`{ cut: false, sun: false }`). */
+  topBar?: boolean | TopBarOptions;
   /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
   markup?: boolean;
 }
 
 // ─── App Shell instance ──────────────────────
+
+/** The appShell top bar's controls; each is shown unless set to false. */
+export interface TopBarOptions {
+  /** Flat / Studio lighting. */
+  light?: boolean;
+  /** Solid / Wire / Hidden / Ghost. */
+  mode?: boolean;
+  /** Perspective / isometric. */
+  camera?: boolean;
+  /** A section through the model (`renderer.setSection`). */
+  cut?: boolean;
+  /** The sun for a place, date and hour. */
+  sun?: boolean;
+}
 
 export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
   params: ParamStore<S>;
@@ -215,7 +231,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
   // ── Top bar: lighting (Flat / Studio) · render mode · camera · sun ──
   if (config.topBar !== false) {
-    buildTopBar(header, scene, renderer, t);
+    buildTopBar(header, scene, renderer, t, config.topBar === true || config.topBar === undefined ? {} : config.topBar);
   }
 
   // ── Build / display passes ──
@@ -363,7 +379,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 // Sun popover (date + lat/lon → SunPosition → directional light, for
 // solar/shadow studies).
 
-function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer, t: Theme): void {
+function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer, t: Theme, show: TopBarOptions): void {
   const bar = document.createElement("div");
   bar.style.cssText = "margin-left:auto; display:flex; align-items:center; gap:16px;";
   header.appendChild(bar);
@@ -405,11 +421,11 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
     return g;
   };
 
-  bar.appendChild(group("Light", segmented<LightingMode>(
+  if (show.light !== false) bar.appendChild(group("Light", segmented<LightingMode>(
     [["Flat", "flat"], ["Studio", "studio"]], "flat", (v) => scene.setLightingMode(v))));
-  bar.appendChild(group("Mode", segmented<RenderMode>(
-    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"]], "solid", (v) => scene.setRenderMode(v))));
-  bar.appendChild(group("Cam", segmented<"persp" | "iso">(
+  if (show.mode !== false) bar.appendChild(group("Mode", segmented<RenderMode>(
+    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]], "solid", (v) => scene.setRenderMode(v))));
+  if (show.camera !== false) bar.appendChild(group("Cam", segmented<"persp" | "iso">(
     [["Persp", "persp"], ["Iso", "iso"]], "persp", (v) => {
       if (v === "iso") {
         // True isometric: camera on the (1,-1,1) diagonal — equal foreshortening
@@ -428,7 +444,48 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
         renderer.setProjection("perspective");
       }
     })));
-  bar.appendChild(buildSun(renderer, t));
+  if (show.cut !== false) bar.appendChild(buildCut(renderer, t, segmented));
+  if (show.sun !== false) bar.appendChild(buildSun(renderer, t));
+}
+
+/** "Cut ▾": a section along an axis, its position through the model, which side stays. */
+function buildCut(
+  renderer: ThreeRenderer, t: Theme,
+  segmented: <T extends string>(opts: Array<[string, T]>, initial: T, onSel: (v: T) => void) => HTMLElement,
+): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "position:relative;";
+  const btn = document.createElement("button");
+  btn.textContent = "Cut ▾";
+  btn.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
+  const pop = document.createElement("div");
+  pop.style.cssText = `position:absolute; top:130%; right:0; z-index:50; display:none; flex-direction:column; gap:8px;
+    padding:12px; border:1px solid ${t.border}; border-radius:8px; background:${t.panelBg};
+    box-shadow:0 8px 24px rgba(0,0,0,.45); width:228px; font-size:11px; color:${t.textDim};`;
+  btn.onclick = () => { pop.style.display = pop.style.display === "none" ? "flex" : "none"; };
+  wrap.append(btn, pop);
+
+  const state = { axis: "off" as "off" | "x" | "y" | "z", at: 50, flip: false };
+  const apply = () => {
+    renderer.setSection(state.axis === "off" ? null : { axis: state.axis, at: state.at / 100, flip: state.flip });
+    btn.style.color = state.axis === "off" ? t.textDim : t.accent;
+  };
+  const pos = document.createElement("input");
+  pos.type = "range"; pos.min = "0"; pos.max = "100"; pos.step = "1"; pos.value = "50";
+  pos.className = "tekto-slider";
+  pos.style.cssText = `cursor:pointer;--tekto-track:${t.controlBorder};--tekto-thumb:${t.accent};`;
+  pos.oninput = () => { state.at = Number(pos.value); apply(); };
+  const flip = document.createElement("label");
+  flip.style.cssText = "display:flex; align-items:center; gap:6px; cursor:pointer;";
+  const flipBox = document.createElement("input");
+  flipBox.type = "checkbox";
+  flipBox.onchange = () => { state.flip = flipBox.checked; apply(); };
+  flip.append(flipBox, "Keep the other side");
+  pop.append(
+    segmented<"off" | "x" | "y" | "z">([["Off", "off"], ["Plan", "z"], ["X", "x"], ["Y", "y"]], "off", (v) => { state.axis = v; apply(); }),
+    pos, flip,
+  );
+  return wrap;
 }
 
 function buildSun(renderer: ThreeRenderer, t: Theme): HTMLElement {
