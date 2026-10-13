@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **New `Doc` — the document of a retained app** (`tekto/core`). Typed records in named
+  collections, each with a stable id (`doc.add("walls", {...})` → the object's handle through
+  edits, undo, saving and reopening); `update` merges or maps, `remove`; `transact(label, fn)`
+  makes many writes one undo step and one notification; `undo` / `redo` with labels, and
+  `coalesce` keys that turn a drag into one step; `onChange(changes, "local" | "remote" |
+  "history")`; `toJSON` / `load` for Save and Open. Built on `SharedStore`, so the adapters give
+  persistence and shared editing: new `localAdapter()` (this browser), `devServerAdapter()`,
+  `supabaseAdapter()`, `memoryAdapter()`. Records are plain JSON; geometry is derived from them.
+
 ## 0.7.0 — 2026-10-13
 
 - **Export pipeline.** New `writeDxf2D` (in `tekto/core` and `tekto/2d`): plans, sections and
