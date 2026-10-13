@@ -42,6 +42,11 @@ before 1.0, breaking changes bump the minor version. See
 - **`appShell()` draws on demand**: an idle app no longer redraws every frame (render on
   demand had only reached `sketch()`). An app with `onAnimate` still draws every frame.
   Changed three.js objects yourself outside `onAnimate`? Call `app.renderer.requestRender()`.
+- **A hidden object is hidden from everything** (BuildGraph's `Viewport.setHidden`, #21,
+  now on the one renderer): with `style.visible: false` it can't be picked or hovered
+  (`pickAt`, `pick`; `hitAt` already skipped it), shows no selection or presence outline,
+  and has no callout. Fix on the way: a callout whose element left the view (hidden, out of
+  sight) stayed on screen without its leader; it is hidden now.
 - `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
   experimental: BuildGraph uses them. 47 exports keep the tag.
 

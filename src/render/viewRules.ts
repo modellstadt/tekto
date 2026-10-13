@@ -245,6 +245,12 @@ export function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box:
   return req.flip ? new THREE.Plane(a, -level) : new THREE.Plane(a.negate(), level);
 }
 
+/** Is this object drawn: itself and every parent visible? (The raycaster ignores it.) */
+export function shown(o: THREE.Object3D | null): boolean {
+  for (; o; o = o.parent) if (!o.visible) return false;
+  return true;
+}
+
 /**
  * Where to look for a callout's element: its centre first, then eight points between the
  * centre and the corners of its box. An element counts as seen if any of them is: a wall

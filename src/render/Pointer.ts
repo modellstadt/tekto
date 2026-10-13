@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { Vec3 } from "../core/math/vectors";
 import type { RendererCore } from "./RendererCore";
+import { shown } from "./viewRules";
 import type { ObjectBuilder } from "./ObjectBuilder";
 import type { Marks } from "./Marks";
 
@@ -291,11 +292,12 @@ export class Pointer {
       cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
     const pickable: THREE.Object3D[] = [];
     for (const t of this.core.objectMap.values()) {
-      if (t.userData.pickable !== false) pickable.push(t);
+      if (t.userData.pickable !== false && t.visible) pickable.push(t);
     }
+    // The raycaster tests hidden objects too: a hidden one is not there to pick or hover.
     const hits = this.raycaster.intersectObjects(pickable, true);
     for (const h of hits) {
-      if (this.marks.cutAway(h.point)) continue;
+      if (this.marks.cutAway(h.point) || !shown(h.object)) continue;
       let cur: THREE.Object3D | null = h.object;
       while (cur && !cur.userData.geomId) cur = cur.parent;
       if (cur?.userData.geomId) return cur.userData.geomId as string;
@@ -446,11 +448,11 @@ export class Pointer {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, this.core.camera);
 
-    const targets = [...this.core.objectMap.values()];
+    const targets = [...this.core.objectMap.values()].filter(t => t.visible);
     const hits = raycaster.intersectObjects(targets, true);
 
     for (const hit of hits) {
-      if (this.marks.cutAway(hit.point)) continue;
+      if (this.marks.cutAway(hit.point) || !shown(hit.object)) continue;
       let obj: THREE.Object3D | null = hit.object;
       while (obj && !obj.userData.geomId) obj = obj.parent;
       if (obj?.userData.geomId) {
