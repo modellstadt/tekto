@@ -98,7 +98,6 @@ import {
   Stair,
   StairType,
   StreamlineTracer,
-  SunPosition,
   VoxelGrid,
   VoxelGrid2D,
   Wall,
@@ -136,7 +135,7 @@ import {
   selectOnClick,
   shareSelection,
   supabaseAdapter
-} from "./chunk-NDCENBAZ.mjs";
+} from "./chunk-IP4M4MKU.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -161,8 +160,9 @@ import {
   Mesh,
   Plane,
   Scene,
+  SunPosition,
   Triangle
-} from "./chunk-IYZEH7EG.mjs";
+} from "./chunk-WINXAB7M.mjs";
 import {
   AABB,
   HMath,

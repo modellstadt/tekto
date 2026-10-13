@@ -246,6 +246,7 @@ __export(index_exports, {
   viewCommands: () => viewCommands,
   viewModeIconShapes: () => viewModeIconShapes,
   viewModeIconSvg: () => viewModeIconSvg,
+  viewerToolbar: () => viewerToolbar,
   writeDxf2D: () => writeDxf2D,
   writeDxf3D: () => writeDxf3D
 });
@@ -23111,7 +23112,7 @@ var ControlPanel = class {
 };
 
 // src/render/ThreeRenderer.ts
-var THREE11 = __toESM(require("three"));
+var THREE12 = __toESM(require("three"));
 var import_OrbitControls = require("three/examples/jsm/controls/OrbitControls.js");
 
 // src/render/ObjectBuilder.ts
@@ -23247,6 +23248,36 @@ function gridLineColour(background) {
     out |= Math.round(c + (to - c) * 0.2) << shift;
   }
   return out;
+}
+var DAYLIGHT = [
+  [35, { sun: 16777215, sunIntensity: 2.8, sky: 4482730, ground: 3351057, skyIntensity: 0.3, ambient: 0.35, exposure: 1, background: 1844534, backgroundAmount: 0 }],
+  [20, { sun: 16763032, sunIntensity: 2.4, sky: 6978726, ground: 3812386, skyIntensity: 0.32, ambient: 0.3, exposure: 1.25, background: 1844534, backgroundAmount: 0.6 }],
+  [5, { sun: 16752736, sunIntensity: 1.5, sky: 5596300, ground: 2760728, skyIntensity: 0.3, ambient: 0.22, exposure: 1.35, background: 1712690, backgroundAmount: 1 }],
+  [-4, { sun: 16742976, sunIntensity: 0.25, sky: 3819632, ground: 1578e3, skyIntensity: 0.26, ambient: 0.14, exposure: 1.5, background: 1185830, backgroundAmount: 1 }],
+  [-12, { sun: 8425664, sunIntensity: 0, sky: 1712696, ground: 789520, skyIntensity: 0.18, ambient: 0.08, exposure: 1.6, background: 461071, backgroundAmount: 1 }]
+];
+function daylight(altitudeDeg) {
+  const a = Number.isFinite(altitudeDeg) ? altitudeDeg : 90;
+  if (a >= DAYLIGHT[0][0]) return { ...DAYLIGHT[0][1] };
+  for (let i = 1; i < DAYLIGHT.length; i++) {
+    const [hi, from] = DAYLIGHT[i - 1], [lo, to] = DAYLIGHT[i];
+    if (a < lo) continue;
+    const t = (hi - a) / (hi - lo);
+    const mix = (x, y) => new THREE3.Color(x).lerp(new THREE3.Color(y), t).getHex();
+    const num = (x, y) => x + (y - x) * t;
+    return {
+      sun: mix(from.sun, to.sun),
+      sunIntensity: num(from.sunIntensity, to.sunIntensity),
+      sky: mix(from.sky, to.sky),
+      ground: mix(from.ground, to.ground),
+      skyIntensity: num(from.skyIntensity, to.skyIntensity),
+      ambient: num(from.ambient, to.ambient),
+      exposure: num(from.exposure, to.exposure),
+      background: mix(from.background, to.background),
+      backgroundAmount: num(from.backgroundAmount, to.backgroundAmount)
+    };
+  }
+  return { ...DAYLIGHT[DAYLIGHT.length - 1][1] };
 }
 function shown(o) {
   for (; o; o = o.parent) if (!o.visible) return false;
@@ -23743,6 +23774,8 @@ var Lighting = class {
     // Optional equirectangular source (e.g. a loaded HDR) for the environment.
     // null → the built-in procedural gradient. The app owns/disposes this texture.
     this.envSourceTex = null;
+    // A sky texture setSky made from an image or a canvas (the app's own textures stay the app's).
+    this.ownSky = null;
     this.envEnabled = false;
     this.envBackground = false;
     // show the equirect source as the scene backdrop
@@ -23751,6 +23784,9 @@ var Lighting = class {
     this.sunDir = new THREE5.Vector3(8, 10, 15).normalize();
     this.sunMinDistance = 50;
     this.sunDirty = true;
+    /** Studio's light follows the sun's altitude (setDaylight). */
+    this.daylightOn = false;
+    this.lamps = [];
     const isZUp = core.isZUp;
     this.ambientLight = new THREE5.AmbientLight(16777215, 0.5);
     core.threeScene.add(this.ambientLight);
@@ -23825,7 +23861,9 @@ var Lighting = class {
     this.dirLight.position.copy(sphere.center).addScaledVector(this.sunDir, d);
     this.dirLight.target.position.copy(sphere.center);
     this.dirLight.target.updateMatrixWorld();
-    this.dirLight.shadow.normalBias = r * 2e-3;
+    const lift = Math.max(this.sunAltitude(), 0) * Math.PI / 180;
+    this.dirLight.shadow.normalBias = r * 2e-3 * (Math.sin(lift) >= 0.5 ? 1 : 0.5 / Math.max(Math.sin(lift), 0.1));
+    this._applyDaylight();
     const sc = this.dirLight.shadow.camera;
     sc.left = -r * 1.2;
     sc.right = r * 1.2;
@@ -23835,6 +23873,40 @@ var Lighting = class {
     sc.far = d + r * 1.5;
     sc.updateProjectionMatrix();
   }
+  /** The sun's altitude above the ground plane, in degrees. */
+  sunAltitude() {
+    const up = this.core.isZUp ? this.sunDir.z : this.sunDir.y;
+    return Math.asin(Math.max(-1, Math.min(1, up))) * 180 / Math.PI;
+  }
+  setDaylight(on) {
+    this.daylightOn = on;
+    if (on) this.sunDirty = true;
+    else this._resetDaylight();
+    this.core.requestRender();
+  }
+  /** In Studio with daylight on: sun, sky, ambient, exposure and background from the altitude. */
+  _applyDaylight() {
+    if (!this.daylightOn || this.currentLighting !== "studio") return;
+    const d = daylight(this.sunAltitude());
+    this.dirLight.color.setHex(d.sun);
+    this.dirLight.intensity = d.sunIntensity;
+    this.hemiLight.color.setHex(d.sky);
+    this.hemiLight.groundColor.setHex(d.ground);
+    this.hemiLight.intensity = d.skyIntensity;
+    this.ambientLight.intensity = d.ambient;
+    this.core.renderer.toneMappingExposure = d.exposure;
+    if (!(this.envBackground && this.envSourceTex)) {
+      this.core.threeScene.background = new THREE5.Color(this.core.config.backgroundColor).lerp(new THREE5.Color(d.background), d.backgroundAmount);
+    }
+  }
+  /** Back to the plain balance of the current mode. */
+  _resetDaylight() {
+    this.dirLight.color.setHex(16777215);
+    this.hemiLight.color.setHex(4482730);
+    this.hemiLight.groundColor.setHex(3351057);
+    if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE5.Color(this.core.config.backgroundColor);
+    this.applyMode(this.currentLighting);
+  }
   /**
    * Reconfigure renderer + lights + scene shadow flags for the given mode.
    * Material swapping happens after this returns, via `rebuildAllMeshes`.
@@ -23843,7 +23915,7 @@ var Lighting = class {
     this.currentLighting = mode;
     const studio = mode === "studio";
     this.core.renderer.shadowMap.enabled = studio;
-    this.core.renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
+    this.core.renderer.shadowMap.type = parseInt(THREE5.REVISION, 10) >= 180 ? THREE5.PCFShadowMap : THREE5.PCFSoftShadowMap;
     this.core.renderer.toneMapping = studio ? THREE5.ACESFilmicToneMapping : THREE5.NoToneMapping;
     this.core.renderer.toneMappingExposure = 1;
     this.core.renderer.outputColorSpace = THREE5.SRGBColorSpace;
@@ -23860,6 +23932,12 @@ var Lighting = class {
       this.hemiLight.intensity = 0.4;
       this.dirLight.intensity = 0.7;
       this.dirLight.castShadow = false;
+      if (this.daylightOn) {
+        this.dirLight.color.setHex(16777215);
+        this.hemiLight.color.setHex(4482730);
+        this.hemiLight.groundColor.setHex(3351057);
+        if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE5.Color(this.core.config.backgroundColor);
+      }
     }
     const cast = studio && this.core.gScene.renderMode !== "ghost";
     this.core.threeScene.traverse((obj) => {
@@ -23928,7 +24006,31 @@ var Lighting = class {
     if (this.envBackground && this.envSourceTex) {
       this.envSourceTex.mapping = THREE5.EquirectangularReflectionMapping;
       this.core.threeScene.background = this.envSourceTex;
+    } else if (this.core.threeScene.background?.isTexture) {
+      this.core.threeScene.background = new THREE5.Color(this.core.config.backgroundColor);
     }
+  }
+  /** A sky: an equirectangular image lighting the scene and, by default, behind it. */
+  setSky(source, opts = {}) {
+    const s = this.core.threeScene;
+    this.ownSky?.dispose();
+    this.ownSky = null;
+    let texture = null;
+    if (source && source.isTexture) texture = source;
+    else if (source) {
+      texture = this.ownSky = new THREE5.Texture(source);
+      texture.colorSpace = THREE5.SRGBColorSpace;
+      texture.needsUpdate = true;
+    }
+    const intensity = opts.intensity ?? 1;
+    if (!(intensity >= 0)) throw new Error(`setSky: intensity must be 0 or more, got ${opts.intensity}`);
+    s.environmentIntensity = texture ? intensity : 1;
+    s.backgroundIntensity = texture ? intensity : 1;
+    this.envBackground = !!texture && (opts.background ?? true);
+    this.setEnvironmentSource(texture);
+    if (texture && this.core.isZUp) this.setEnvironmentRotation(Math.PI / 2, 0, 0);
+    this.core.gScene.setEnvironment(!!texture);
+    this.core.requestRender();
   }
   /**
    * Build a prefiltered (PMREM) environment from a procedural vertical
@@ -23982,10 +24084,27 @@ var Lighting = class {
     tex.dispose();
     return env;
   }
+  /** The lamps: a point light at each `at`, warm by default, replacing the ones there were. */
+  setLamps(lamps) {
+    for (const l of this.lamps) l.removeFromParent();
+    this.lamps = lamps.map(({ at, colour = 16765600, intensity = 4, distance = 8 }) => {
+      if (![at.x, at.y, at.z].every(Number.isFinite)) throw new Error(`setLamps: a lamp at a non-finite point (${at.x}, ${at.y}, ${at.z})`);
+      const light = new THREE5.PointLight(colour, intensity, distance, 2);
+      light.position.set(at.x, at.y, at.z);
+      light.castShadow = false;
+      this.core.threeScene.add(light);
+      return light;
+    });
+    this.core.requestRender();
+  }
   dispose() {
+    for (const l of this.lamps) l.removeFromParent();
+    this.lamps = [];
     this.core.threeScene.environment = null;
     this.envMap?.dispose();
     this.envMap = null;
+    this.ownSky?.dispose();
+    this.ownSky = null;
   }
 };
 
@@ -24210,6 +24329,8 @@ var CameraRig = class {
     this.navGizmo = null;
     // A camera move in progress: a turn about the target, and a glide of the target and the distance.
     this.cameraMove = null;
+    // Standing inside (walkTo): the lens the camera had outside, given back on the way out.
+    this.outsideFov = null;
     this.projectionListeners = /* @__PURE__ */ new Set();
     core.controls?.addEventListener("start", () => {
       this.cameraMove = null;
@@ -24333,25 +24454,73 @@ var CameraRig = class {
     this.orbitTo(viewDirection(view, this.core.isZUp ? "z" : "y"), opts);
   }
   orbitTo(direction, opts = {}) {
-    const target = this.core.controls?.target ?? new THREE7.Vector3();
+    const out = this._leaveInside();
+    let target = this.core.controls?.target ?? new THREE7.Vector3();
     const cam = this.activeCamera;
     const offset = cam.position.clone().sub(target);
-    const dist2 = offset.length() || 10;
+    let dist2 = offset.length() || 10;
+    if (out) {
+      target = out.target;
+      dist2 = out.dist;
+    }
     const dir = new THREE7.Vector3(direction.x, direction.y, direction.z).normalize();
     if (Math.abs(dir.dot(cam.up)) > 1 - 1e-6) {
       dir.addScaledVector(this.core.isZUp ? new THREE7.Vector3(0, -1, 0) : new THREE7.Vector3(0, 0, 1), 1e-3).normalize();
     }
     if (opts.animate === false || offset.lengthSq() === 0) {
       this.cameraMove = null;
+      if (out) this._setFov(out.fov);
+      if (this.core.controls) this.core.controls.target.copy(target);
       this._placeCamera(target, dir.multiplyScalar(dist2));
       return;
     }
-    this._moveCamera(dir, target.clone(), dist2, this._orthoCam.zoom);
+    this._moveCamera(dir, target.clone(), dist2, this._orthoCam.zoom, out?.fov);
+  }
+  /**
+   * Stand inside: the camera at `eye`, looking at `target`, with a wider lens (`fov`, default
+   * 75°), in perspective. The way out gives the lens back: the next `setView`, `orbitTo`,
+   * `fitTo` or `fitAll` restores the fov the camera had outside, and `setView` / `orbitTo`
+   * stand back to see the content rather than keeping the walker's distance.
+   */
+  walkTo(eye, target, opts = {}) {
+    if (this._isOrtho) this.setProjection("perspective");
+    this.outsideFov ?? (this.outsideFov = this.camera.fov);
+    const fov = opts.fov ?? 75;
+    const t = new THREE7.Vector3(target.x, target.y, target.z);
+    const offset = new THREE7.Vector3(eye.x, eye.y, eye.z).sub(t);
+    if (offset.lengthSq() === 0) throw new Error("walkTo: the eye and the target are the same point");
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      this._setFov(fov);
+      if (this.core.controls) this.core.controls.target.copy(t);
+      this._placeCamera(t, offset);
+      return;
+    }
+    this._moveCamera(offset.clone().normalize(), t, offset.length(), this._orthoCam.zoom, fov);
+  }
+  /** Is the camera standing inside (after `walkTo`, before a view or a fit takes it out)? */
+  get inside() {
+    return this.outsideFov !== null;
+  }
+  /** Leave the inside, if there: the lens to go back to, and a framing of the content. */
+  _leaveInside() {
+    if (this.outsideFov === null) return null;
+    const fov = this.outsideFov;
+    this.outsideFov = null;
+    const box = this.core.contentBox();
+    const sphere = box.isEmpty() ? new THREE7.Sphere(new THREE7.Vector3(), 5) : box.getBoundingSphere(new THREE7.Sphere());
+    return { fov, target: sphere.center, dist: fitRadius(Math.max(sphere.radius, 0.5), fov, this.camera.aspect, 1.3) };
+  }
+  _setFov(fov) {
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
   }
   fitTo(objects, opts = {}) {
     const box = new THREE7.Box3();
     for (const t of this.core.resolve(objects)) box.expandByObject(t);
     if (box.isEmpty()) return;
+    const out = this._leaveInside();
+    if (out) this._setFov(out.fov);
     const target = box.getCenter(new THREE7.Vector3());
     const size = box.getSize(new THREE7.Vector3());
     const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
@@ -24374,7 +24543,7 @@ var CameraRig = class {
     this._moveCamera(dir, target, dist2, this._isOrtho ? zoom : this._orthoCam.zoom);
   }
   /** Start a move to `dir` from `target` at `dist` (and, in orthographic, `zoom`). */
-  _moveCamera(dir, target, dist2, zoom) {
+  _moveCamera(dir, target, dist2, zoom, fov = this.camera.fov) {
     const from = this.core.controls?.target.clone() ?? new THREE7.Vector3();
     const offset = this.activeCamera.position.clone().sub(from);
     this.cameraMove = {
@@ -24385,6 +24554,8 @@ var CameraRig = class {
       toDist: dist2,
       fromZoom: this._orthoCam.zoom,
       toZoom: zoom,
+      fromFov: this.camera.fov,
+      toFov: fov,
       start: performance.now(),
       ms: 340
     };
@@ -24426,6 +24597,7 @@ var CameraRig = class {
       this._orthoCam.zoom = THREE7.MathUtils.lerp(m.fromZoom, m.toZoom, t);
       this._orthoCam.updateProjectionMatrix();
     }
+    if (m.toFov !== m.fromFov) this._setFov(THREE7.MathUtils.lerp(m.fromFov, m.toFov, t));
     if (t >= 1) this.cameraMove = null;
     return true;
   }
@@ -24452,6 +24624,8 @@ var CameraRig = class {
     this.core.requestRender();
   }
   fitAll() {
+    const out = this._leaveInside();
+    if (out) this._setFov(out.fov);
     const box = new THREE7.Box3();
     for (const obj of this.core.objectMap.values()) {
       if (obj.visible) {
@@ -25322,7 +25496,15 @@ var Marks = class {
     const m = this.pocheMat;
     if (m && m.color.getHex() === colour && m.clippingPlanes?.[0] === plane) return m;
     m?.dispose();
-    this.pocheMat = new THREE9.MeshBasicMaterial({ color: colour, side: THREE9.BackSide, clippingPlanes: [plane], toneMapped: false });
+    this.pocheMat = new THREE9.MeshBasicMaterial({
+      color: colour,
+      side: THREE9.BackSide,
+      clippingPlanes: [plane],
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 0
+    });
     return this.pocheMat;
   }
   /** Is this world point on the side the section removed? */
@@ -25552,6 +25734,81 @@ var FadingGrid = class {
   }
 };
 
+// src/render/AmbientOcclusion.ts
+var THREE11 = __toESM(require("three"));
+var import_GTAOPass = require("three/examples/jsm/postprocessing/GTAOPass.js");
+var import_Pass = require("three/examples/jsm/postprocessing/Pass.js");
+var AmbientOcclusion = class {
+  constructor(core) {
+    this.core = core;
+    this.gtao = null;
+    this.quad = null;
+    this.target = null;
+    // GTAO's output, which it never writes (Off)
+    this.size = new THREE11.Vector2();
+    this.last = new THREE11.Vector2();
+    this.ratio = 0;
+    this.clip = null;
+    this.enabled = false;
+    this.radius = 0.6;
+    // a hand's breadth to a stride
+    this.intensity = 0.85;
+  }
+  set(on) {
+    this.enabled = on !== false;
+    if (typeof on === "object") {
+      if (on.radius !== void 0) {
+        if (!(on.radius > 0)) throw new Error(`setAmbientOcclusion: radius must be above 0, got ${on.radius}`);
+        this.radius = on.radius;
+      }
+      if (on.intensity !== void 0) this.intensity = Math.min(1, Math.max(0, on.intensity));
+      this.gtao?.updateGtaoMaterial({ radius: this.radius });
+    }
+    this.core.requestRender();
+  }
+  /** After the frame is on the screen: multiply the occlusion over it. */
+  apply(camera, clip) {
+    if (!this.enabled || !camera.isPerspectiveCamera) return;
+    const gl = this.core.renderer;
+    if (gl.getRenderTarget() !== null) return;
+    gl.getSize(this.size);
+    if (!this.gtao) {
+      this.gtao = new import_GTAOPass.GTAOPass(this.core.threeScene, camera, this.size.x, this.size.y);
+      this.gtao.updateGtaoMaterial({ radius: this.radius, distanceExponent: 1.5, thickness: 1, scale: 1, samples: 16 });
+      this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+      this.gtao.output = import_GTAOPass.GTAOPass.OUTPUT.Off;
+      this.quad = new import_Pass.FullScreenQuad(this.gtao.blendMaterial);
+      this.target = new THREE11.WebGLRenderTarget(1, 1);
+    }
+    const g = this.gtao;
+    if (!this.size.equals(this.last) || gl.getPixelRatio() !== this.ratio) {
+      this.last.copy(this.size);
+      this.ratio = gl.getPixelRatio();
+      g.setSize(this.size.x * this.ratio, this.size.y * this.ratio);
+    }
+    if (clip !== this.clip) {
+      this.clip = clip;
+      g.normalMaterial.clippingPlanes = clip ? [clip] : null;
+      g.normalMaterial.needsUpdate = true;
+    }
+    g.camera = camera;
+    g.render(gl, this.target, this.target, 0, false);
+    gl.setRenderTarget(null);
+    g.blendMaterial.uniforms.tDiffuse.value = g.gtaoMap;
+    g.blendMaterial.uniforms.intensity.value = this.intensity;
+    const clear = gl.autoClear;
+    gl.autoClear = false;
+    this.quad.render(gl);
+    gl.autoClear = clear;
+  }
+  dispose() {
+    this.quad?.dispose();
+    this.target?.dispose();
+    this.gtao?.dispose();
+    this.gtao = null;
+  }
+};
+
 // src/render/ThreeRenderer.ts
 var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
 var DEFAULTS5 = {
@@ -25596,18 +25853,18 @@ var ThreeRenderer = class {
     this.config = { ...DEFAULTS5, ...config };
     this.isZUp = this.config.up === "z";
     const cfg = this.config;
-    this.threeScene = new THREE11.Scene();
-    this.threeScene.background = new THREE11.Color(cfg.backgroundColor);
+    this.threeScene = new THREE12.Scene();
+    this.threeScene.background = new THREE12.Color(cfg.backgroundColor);
     const aspect = container.clientWidth / container.clientHeight || 1;
-    this.camera = new THREE11.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
+    this.camera = new THREE12.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
     if (this.isZUp) this.camera.up.set(0, 0, 1);
     this.camera.position.set(...cfg.cameraPosition);
     this.camera.lookAt(...cfg.cameraTarget);
-    const orthoCam = new THREE11.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
+    const orthoCam = new THREE12.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
     if (this.isZUp) orthoCam.up.set(0, 0, 1);
     orthoCam.position.set(...cfg.cameraPosition);
     orthoCam.lookAt(...cfg.cameraTarget);
-    this.renderer = new THREE11.WebGLRenderer({ antialias: cfg.antialias });
+    this.renderer = new THREE12.WebGLRenderer({ antialias: cfg.antialias });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
@@ -25634,6 +25891,7 @@ var ThreeRenderer = class {
     };
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
+    this.ao = new AmbientOcclusion(this.core);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
     if (cfg.showGrid && cfg.gridStyle === "fading") {
@@ -25641,13 +25899,13 @@ var ThreeRenderer = class {
       this.gridHelper = this.fadingGrid.mesh;
       this.threeScene.add(this.fadingGrid.mesh);
     } else if (cfg.showGrid) {
-      const grid = new THREE11.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
+      const grid = new THREE12.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
       if (this.isZUp) grid.rotation.x = Math.PI / 2;
       this.gridHelper = grid;
       this.threeScene.add(grid);
     }
     if (cfg.showAxes) {
-      this.axesHelper = new THREE11.AxesHelper(cfg.axesSize);
+      this.axesHelper = new THREE12.AxesHelper(cfg.axesSize);
       this.threeScene.add(this.axesHelper);
     }
     if (cfg.enableOrbitControls) {
@@ -25731,7 +25989,7 @@ var ThreeRenderer = class {
     if (this.lighting.currentLighting === "studio") {
       const cast = this.gScene.renderMode !== "ghost";
       t.traverse((child) => {
-        if (child instanceof THREE11.Mesh) {
+        if (child instanceof THREE12.Mesh) {
           child.castShadow = cast;
           child.receiveShadow = true;
         }
@@ -25868,7 +26126,7 @@ var ThreeRenderer = class {
   objectBounds(id) {
     const t = this.objectMap.get(id);
     if (!t) return null;
-    const b = new THREE11.Box3().setFromObject(t);
+    const b = new THREE12.Box3().setFromObject(t);
     if (b.isEmpty()) return null;
     return { min: new Vec3(b.min.x, b.min.y, b.min.z), max: new Vec3(b.max.x, b.max.y, b.max.z) };
   }
@@ -25886,7 +26144,7 @@ var ThreeRenderer = class {
   }
   /** Bounds of what the scene shows. */
   contentBox() {
-    const box = new THREE11.Box3();
+    const box = new THREE12.Box3();
     for (const t of this.objectMap.values()) if (t.visible) box.expandByObject(t);
     return box;
   }
@@ -25903,10 +26161,11 @@ var ThreeRenderer = class {
     if (this.gridDirty && this.fadingGrid) {
       this.gridDirty = false;
       const box = this.contentBox();
-      this.fadingGrid.fit(box.isEmpty() ? new THREE11.Sphere(new THREE11.Vector3(), 10) : box.getBoundingSphere(new THREE11.Sphere()));
+      this.fadingGrid.fit(box.isEmpty() ? new THREE12.Sphere(new THREE12.Vector3(), 10) : box.getBoundingSphere(new THREE12.Sphere()));
     }
     this.marks.followOutlines();
     this.renderer.render(this.threeScene, this.activeCamera);
+    this.ao.apply(this.activeCamera, this.marks.sectionClip);
     this._needsRender = false;
     this.rig.updateGizmo();
     this.marks.drawCallouts();
@@ -25980,7 +26239,7 @@ var ThreeRenderer = class {
   }
   /** Set the viewport background color. */
   setBackground(color) {
-    this.threeScene.background = new THREE11.Color(color);
+    this.threeScene.background = new THREE12.Color(color);
     this.config.backgroundColor = color;
     this.requestRender();
   }
@@ -26000,6 +26259,7 @@ var ThreeRenderer = class {
     this.unsub?.();
     this.clearThree();
     this.marks.dispose();
+    this.ao.dispose();
     this.fadingGrid?.dispose();
     this.pointer.dispose();
     this.lighting.dispose();
@@ -26052,6 +26312,48 @@ var ThreeRenderer = class {
     this.lighting.setSunDirection(direction, distance);
   }
   /**
+   * Lamps: a warm point light at each point (in the content's axes), in both lighting modes,
+   * without shadows (a point light's shadow is six renders, per lamp). One per room at
+   * pendant height carries an interior at dusk. Each takes a `colour` (default warm white
+   * 0xffd2a0), an `intensity` in candela (default 4) and a `distance` it reaches (m, default
+   * 8). Replaces the lamps there were; `[]` removes them.
+   */
+  setLamps(lamps) {
+    this.lighting.setLamps(lamps);
+  }
+  /**
+   * Let Studio's light follow the sun: with it on, the sun's colour and strength, the sky,
+   * the exposure and the background come from the sun's altitude (`setSunDirection`, which
+   * the shell's Sun popover drives by date and hour), so evening and dusk follow from the
+   * hour: noon as Studio is, a warm low sun, a blue dusk, night. Flat lighting is unchanged.
+   * Off by default.
+   */
+  setDaylight(on) {
+    this.lighting.setDaylight(on);
+  }
+  /** Whether Studio's light follows the sun (`setDaylight`). */
+  get daylight() {
+    return this.lighting.daylightOn;
+  }
+  /** The sun's altitude above the ground, in degrees (from `setSunDirection`). */
+  get sunAltitude() {
+    return this.lighting.sunAltitude();
+  }
+  /**
+   * Ambient occlusion: darken where surfaces meet and close in (corners, reveals, under
+   * decks and steps), with three's GTAO multiplied over the drawn frame, so tone mapping,
+   * background, grid and the section stay as they are; it follows the section. Perspective
+   * views only: the orthographic drawing views go without. `true`, `false`, or
+   * `{ radius, intensity }`: how far it reaches (m, default 0.6) and how dark (0..1, 0.85).
+   */
+  setAmbientOcclusion(on) {
+    this.ao.set(on);
+  }
+  /** Whether ambient occlusion is on. */
+  get ambientOcclusion() {
+    return this.ao.enabled;
+  }
+  /**
    * Set an equirectangular source texture for the environment (e.g. a loaded
    * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
    * The texture is PMREM-prefiltered here; the caller keeps ownership of it.
@@ -26073,6 +26375,19 @@ var ThreeRenderer = class {
    */
   setEnvironmentRotation(x, y, z) {
     this.lighting.setEnvironmentRotation(x, y, z);
+  }
+  /**
+   * A sky in one call: an equirectangular image (an .hdr from three's `HDRLoader`, or
+   * `RGBELoader` before r180, or a plain panorama as an image or a canvas) lights the scene
+   * (Studio's PBR materials) and, unless
+   * `background: false`, shows behind it. In a Z-up scene it is stood upright (an equirect's
+   * up is +Y). `intensity` (default 1) scales both: turn it down for an interior view, since
+   * image-based light ignores walls. `null` takes it away and brings the plain background back.
+   *
+   *   renderer.setSky(await new HDRLoader().loadAsync("sky.hdr"));
+   */
+  setSky(sky, opts = {}) {
+    this.lighting.setSky(sky, opts);
   }
   // ── Camera ──
   /**
@@ -26130,6 +26445,19 @@ var ThreeRenderer = class {
    */
   fitTo(objects, opts = {}) {
     this.rig.fitTo(objects, opts);
+  }
+  /**
+   * Stand inside: the camera at `eye` (say, 1.6 m above a floor) looking at `target`, with a
+   * wider lens (`fov`, default 75°), in perspective. Animated unless `{ animate: false }`.
+   * The next `setView`, `orbitTo`, `fitTo` or `fitAll` gives the lens back and, for a view,
+   * stands back to see the content again.
+   */
+  walkTo(eye, target, opts = {}) {
+    this.rig.walkTo(eye, target, opts);
+  }
+  /** Is the camera standing inside (after `walkTo`, until a view or a fit takes it out)? */
+  get inside() {
+    return this.rig.inside;
   }
   /**
    * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
@@ -29437,206 +29765,20 @@ function callSite() {
   return void 0;
 }
 
-// src/sketch/AppShell.ts
-function appShell(config) {
-  const t = getTheme(config.theme);
-  const panelWidth = config.panelWidth ?? 260;
-  const root = document.createElement("div");
-  root.style.cssText = `
-    display:grid; grid-template-columns:${panelWidth}px 1fr;
-    grid-template-rows:36px 1fr;
-    width:100%; height:100%; font-family:${t.font};
-    font-size:12px; color:${t.text}; background:${t.panelBg};
-  `;
-  const header = document.createElement("div");
-  header.style.cssText = `
-    grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
-    background:${t.panelBg}; border-bottom:1px solid ${t.border};
-  `;
-  header.innerHTML = `
-    <span style="font-weight:600;font-size:14px;color:${t.accent}">
-      &#x2B21; ${config.title ?? "Tekto App"}
-    </span>
-    <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-      background:${t.hoverBg};color:${t.accent}">LIVE</span>
-  `;
-  root.appendChild(header);
-  const panelEl = document.createElement("div");
-  panelEl.style.cssText = `
-    overflow-y:auto; overflow-x:hidden; padding:0;
-    background:${t.panelBg}; border-right:1px solid ${t.border};
-  `;
-  root.appendChild(panelEl);
-  const vpWrap = document.createElement("div");
-  vpWrap.style.cssText = "position:relative;overflow:hidden;";
-  const viewportEl = document.createElement("div");
-  viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
-  vpWrap.appendChild(viewportEl);
-  const statusEl = document.createElement("div");
-  statusEl.style.cssText = `
-    position:absolute; bottom:12px; left:12px;
-    padding:8px 12px; border-radius:6px;
-    background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
-    font-size:11px; line-height:1.7; color:${t.textDim};
-    pointer-events:none; max-width:340px;
-    border:1px solid rgba(22,24,42,.8);
-    white-space:pre; font-family:${t.font};
-    display:none;
-  `;
-  vpWrap.appendChild(statusEl);
-  root.appendChild(vpWrap);
-  config.container.appendChild(root);
-  const params = new ParamStore(config.params);
-  const panel = new ControlPanel({ store: params, theme: t });
-  const groups = config.groups ?? { Parameters: Object.keys(config.params) };
-  const items = [];
-  for (const [groupName, keys] of Object.entries(groups)) {
-    for (const key of keys) items.push({ key, group: groupName });
-  }
-  panel.render(items);
-  panelEl.appendChild(panel.el);
-  const scene = new Scene();
-  const renderer = new ThreeRenderer(scene, viewportEl, {
-    backgroundColor: config.background ?? 658196,
-    cameraPosition: config.camera ?? [6, 8, 10],
-    cameraTarget: config.target ?? [0, 0, 0],
-    // Z-up by default — matches the tekto convention (XY = ground plane) and
-    // the architectural / BIM / voxel geometry these apps usually build. Pass
-    // `up: "y"` if you're showing the Y-up built-in primitives (box/cylinder/sphere).
-    up: config.up ?? "z",
-    navGizmo: config.navGizmo ?? false,
-    ...config.renderer
-  });
-  const commands = new Commands();
-  commands.add(viewCommands(renderer));
-  const unbindKeys = commands.bindKeys();
-  if (config.topBar !== false) {
-    buildTopBar(header, scene, renderer, t, config.topBar === true || config.topBar === void 0 ? {} : config.topBar);
-  }
-  let buildFn = null;
-  let displayFn = null;
-  params.onChange((key) => {
-    const def = params.getDef(key);
-    if (def?.display) {
-      displayFn?.();
-    } else {
-      buildFn?.();
-      displayFn?.();
-    }
-  });
-  let animateFn = null;
-  let lastTime = performance.now();
-  let startTime = lastTime;
-  let disposed = false;
-  function loop() {
-    if (disposed) return;
-    const now2 = performance.now();
-    const dt = Math.min((now2 - lastTime) / 1e3, 1 / 15);
-    lastTime = now2;
-    if (animateFn) {
-      animateFn(dt, (now2 - startTime) / 1e3);
-      renderer.render();
-    } else {
-      renderer.renderIfNeeded();
-    }
-    requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
-  let statusText = "";
-  const overlays = [];
-  const instance = {
-    params,
-    scene,
-    renderer,
-    panel,
-    commands,
-    onAnimate(fn) {
-      animateFn = fn;
-    },
-    onBuild(fn) {
-      buildFn = fn;
-    },
-    onDisplay(fn) {
-      displayFn = fn;
-    },
-    rebuild() {
-      buildFn?.();
-      displayFn?.();
-    },
-    status(text) {
-      statusText = text;
-      if (text) {
-        statusEl.textContent = text;
-        statusEl.style.display = "block";
-      } else {
-        statusEl.style.display = "none";
-      }
-    },
-    overlay() {
-      return addOverlay(viewportEl, overlays);
-    },
-    dispose() {
-      disposed = true;
-      markup?.dispose();
-      bridge.dispose();
-      unbindKeys();
-      panel.dispose();
-      renderer.dispose();
-      config.container.removeChild(root);
-    }
-  };
-  const snapshotPng = () => snapshotWithOverlays(renderer, vpWrap);
-  const context = () => ({
-    harness: "appShell",
-    ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
-    up: config.up ?? "z",
-    params: params.getAll(),
-    logs: statusText ? [{ label: "status", value: statusText }] : [],
-    commands: commands.list(),
-    errors: bridge.errors()
-  });
-  const markup = config.markup === false ? null : new MarkupOverlay({
-    viewport: vpWrap,
-    title: config.title ?? "app",
-    hitAt: (x, y) => renderer.hitAt(x, y),
-    groundAt: (x, y) => renderer.groundAt(x, y),
-    snapshotPng: () => snapshotPng(),
-    describe: (id) => describeSceneObject(scene, id),
-    context,
-    setTracking: () => {
-    }
-  });
-  const bridge = installAgentBridge({
-    owner: instance,
-    commands,
-    harness: "appShell",
-    store: params,
-    snapshot: (opts) => markup ? markup.capture(opts) : plainBundle({
-      ...opts,
-      title: config.title ?? "app",
-      harness: "appShell",
-      png: snapshotPng(),
-      viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
-      context: context()
-    }),
-    camera: (pos, target) => {
-      renderer.setCameraPosition(pos[0], pos[1], pos[2]);
-      if (target) renderer.lookAt(target[0], target[1], target[2]);
-    }
-  });
-  return instance;
-}
-function buildTopBar(header, scene, renderer, t, show) {
+// src/sketch/ViewerToolbar.ts
+function viewerToolbar(scene, renderer, opts = {}) {
+  const t = opts.theme ?? getTheme();
+  const show = opts;
+  const offs = [];
   const bar = document.createElement("div");
   bar.style.cssText = "margin-left:auto; display:flex; align-items:center; gap:16px;";
-  header.appendChild(bar);
   const tag = (label) => {
     const el = document.createElement("span");
     el.textContent = label;
     el.style.cssText = `color:${t.textFaint}; text-transform:uppercase; letter-spacing:1px; font-size:9px;`;
     return el;
   };
-  function segmented(opts, initial, onSel, follow) {
+  function segmented(opts2, initial, onSel, follow) {
     const wrap = document.createElement("div");
     wrap.style.cssText = `display:flex; border:1px solid ${t.border}; border-radius:5px; overflow:hidden;`;
     const btns = [];
@@ -29647,7 +29789,7 @@ function buildTopBar(header, scene, renderer, t, show) {
         b.style.color = on ? t.panelBg : t.textDim;
       }
     };
-    for (const [label, val, icon] of opts) {
+    for (const [label, val, icon] of opts2) {
       const b = document.createElement("button");
       b.textContent = label;
       b.style.cssText = "padding:3px 9px; border:0; background:transparent; font:inherit; font-size:11px; cursor:pointer;";
@@ -29666,34 +29808,62 @@ function buildTopBar(header, scene, renderer, t, show) {
     follow?.(set);
     return wrap;
   }
+  const toggle = (label, title, initial, onSet) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.title = title;
+    let on = initial;
+    const paint = () => {
+      b.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; font:inherit; font-size:11px; cursor:pointer; ` + (on ? `background:${t.accent}; color:${t.panelBg};` : `background:transparent; color:${t.textDim};`);
+      b.setAttribute("aria-pressed", String(on));
+    };
+    b.onclick = () => {
+      on = !on;
+      paint();
+      onSet(on);
+    };
+    paint();
+    return b;
+  };
   const group = (label, control) => {
     const g = document.createElement("div");
     g.style.cssText = "display:flex; align-items:center; gap:6px;";
     g.append(tag(label), control);
     return g;
   };
-  if (show.light !== false) bar.appendChild(group("Light", segmented(
-    [["Flat", "flat"], ["Studio", "studio"]],
-    scene.lightingMode,
-    (v) => scene.setLightingMode(v),
-    (set) => scene.on((e) => {
-      if (e.type === "scene:lightingMode") set(e.mode);
-    })
-  )));
+  if (show.light !== false) {
+    const light = group("Light", segmented(
+      [["Flat", "flat"], ["Studio", "studio"]],
+      scene.lightingMode,
+      (v) => scene.setLightingMode(v),
+      (set) => offs.push(scene.on((e) => {
+        if (e.type === "scene:lightingMode") set(e.mode);
+      }))
+    ));
+    if (show.ao !== false) {
+      light.appendChild(toggle(
+        "AO",
+        "Ambient occlusion: darker where surfaces meet (perspective views)",
+        renderer.ambientOcclusion,
+        (on) => renderer.setAmbientOcclusion(on)
+      ));
+    }
+    bar.appendChild(light);
+  }
   if (show.mode !== false) bar.appendChild(group("Mode", segmented(
     [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]].map(([label, mode]) => [label, mode, viewModeIconSvg(mode, 14)]),
     scene.renderMode,
     (v) => scene.setRenderMode(v),
-    (set) => scene.on((e) => {
+    (set) => offs.push(scene.on((e) => {
       if (e.type === "scene:renderMode") set(e.mode);
-    })
+    }))
   )));
   if (show.camera !== false) {
     const cam = group("Cam", segmented(
       [["Persp", "perspective"], ["Ortho", "orthographic"]],
       renderer.projection,
       (v) => renderer.setProjection(v),
-      (set) => renderer.onProjection(set)
+      (set) => offs.push(renderer.onProjection(set))
     ));
     const iso = document.createElement("button");
     iso.textContent = "Iso";
@@ -29708,6 +29878,11 @@ function buildTopBar(header, scene, renderer, t, show) {
   }
   if (show.cut !== false) bar.appendChild(buildCut(renderer, t, segmented));
   if (show.sun !== false) bar.appendChild(buildSun(renderer, t));
+  return { el: bar, dispose() {
+    for (const off of offs) off();
+    offs.length = 0;
+    bar.remove();
+  } };
 }
 function buildCut(renderer, t, segmented) {
   const wrap = document.createElement("div");
@@ -29837,9 +30012,206 @@ function buildSun(renderer, t) {
     apply();
   };
   hourWrap.append(hourLabel, hour);
-  pop.append(hourWrap, readout);
+  const follow = document.createElement("label");
+  follow.style.cssText = `display:flex; align-items:center; gap:6px; font-size:11px; color:${t.textDim}; cursor:pointer;`;
+  const followBox = document.createElement("input");
+  followBox.type = "checkbox";
+  followBox.checked = renderer.daylight;
+  followBox.onchange = () => renderer.setDaylight(followBox.checked);
+  follow.append(followBox, "Light follows the sun (Studio)");
+  pop.append(hourWrap, readout, follow);
   apply();
   return wrap;
+}
+
+// src/sketch/AppShell.ts
+function appShell(config) {
+  const t = getTheme(config.theme);
+  const panelWidth = config.panelWidth ?? 260;
+  const root = document.createElement("div");
+  root.style.cssText = `
+    display:grid; grid-template-columns:${panelWidth}px 1fr;
+    grid-template-rows:36px 1fr;
+    width:100%; height:100%; font-family:${t.font};
+    font-size:12px; color:${t.text}; background:${t.panelBg};
+  `;
+  const header = document.createElement("div");
+  header.style.cssText = `
+    grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
+    background:${t.panelBg}; border-bottom:1px solid ${t.border};
+  `;
+  header.innerHTML = `
+    <span style="font-weight:600;font-size:14px;color:${t.accent}">
+      &#x2B21; ${config.title ?? "Tekto App"}
+    </span>
+    <span style="font-size:9px;padding:2px 6px;border-radius:3px;
+      background:${t.hoverBg};color:${t.accent}">LIVE</span>
+  `;
+  root.appendChild(header);
+  const panelEl = document.createElement("div");
+  panelEl.style.cssText = `
+    overflow-y:auto; overflow-x:hidden; padding:0;
+    background:${t.panelBg}; border-right:1px solid ${t.border};
+  `;
+  root.appendChild(panelEl);
+  const vpWrap = document.createElement("div");
+  vpWrap.style.cssText = "position:relative;overflow:hidden;";
+  const viewportEl = document.createElement("div");
+  viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
+  vpWrap.appendChild(viewportEl);
+  const statusEl = document.createElement("div");
+  statusEl.style.cssText = `
+    position:absolute; bottom:12px; left:12px;
+    padding:8px 12px; border-radius:6px;
+    background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
+    font-size:11px; line-height:1.7; color:${t.textDim};
+    pointer-events:none; max-width:340px;
+    border:1px solid rgba(22,24,42,.8);
+    white-space:pre; font-family:${t.font};
+    display:none;
+  `;
+  vpWrap.appendChild(statusEl);
+  root.appendChild(vpWrap);
+  config.container.appendChild(root);
+  const params = new ParamStore(config.params);
+  const panel = new ControlPanel({ store: params, theme: t });
+  const groups = config.groups ?? { Parameters: Object.keys(config.params) };
+  const items = [];
+  for (const [groupName, keys] of Object.entries(groups)) {
+    for (const key of keys) items.push({ key, group: groupName });
+  }
+  panel.render(items);
+  panelEl.appendChild(panel.el);
+  const scene = new Scene();
+  const renderer = new ThreeRenderer(scene, viewportEl, {
+    backgroundColor: config.background ?? 658196,
+    cameraPosition: config.camera ?? [6, 8, 10],
+    cameraTarget: config.target ?? [0, 0, 0],
+    // Z-up by default — matches the tekto convention (XY = ground plane) and
+    // the architectural / BIM / voxel geometry these apps usually build. Pass
+    // `up: "y"` if you're showing the Y-up built-in primitives (box/cylinder/sphere).
+    up: config.up ?? "z",
+    navGizmo: config.navGizmo ?? false,
+    ...config.renderer
+  });
+  const commands = new Commands();
+  commands.add(viewCommands(renderer));
+  const unbindKeys = commands.bindKeys();
+  const toolbar = config.topBar === false ? null : viewerToolbar(scene, renderer, { ...config.topBar === true || config.topBar === void 0 ? {} : config.topBar, theme: t });
+  if (toolbar) header.appendChild(toolbar.el);
+  let buildFn = null;
+  let displayFn = null;
+  params.onChange((key) => {
+    const def = params.getDef(key);
+    if (def?.display) {
+      displayFn?.();
+    } else {
+      buildFn?.();
+      displayFn?.();
+    }
+  });
+  let animateFn = null;
+  let lastTime = performance.now();
+  let startTime = lastTime;
+  let disposed = false;
+  function loop() {
+    if (disposed) return;
+    const now2 = performance.now();
+    const dt = Math.min((now2 - lastTime) / 1e3, 1 / 15);
+    lastTime = now2;
+    if (animateFn) {
+      animateFn(dt, (now2 - startTime) / 1e3);
+      renderer.render();
+    } else {
+      renderer.renderIfNeeded();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+  let statusText = "";
+  const overlays = [];
+  const instance = {
+    params,
+    scene,
+    renderer,
+    panel,
+    commands,
+    onAnimate(fn) {
+      animateFn = fn;
+    },
+    onBuild(fn) {
+      buildFn = fn;
+    },
+    onDisplay(fn) {
+      displayFn = fn;
+    },
+    rebuild() {
+      buildFn?.();
+      displayFn?.();
+    },
+    status(text) {
+      statusText = text;
+      if (text) {
+        statusEl.textContent = text;
+        statusEl.style.display = "block";
+      } else {
+        statusEl.style.display = "none";
+      }
+    },
+    overlay() {
+      return addOverlay(viewportEl, overlays);
+    },
+    dispose() {
+      disposed = true;
+      markup?.dispose();
+      bridge.dispose();
+      unbindKeys();
+      toolbar?.dispose();
+      panel.dispose();
+      renderer.dispose();
+      config.container.removeChild(root);
+    }
+  };
+  const snapshotPng = () => snapshotWithOverlays(renderer, vpWrap);
+  const context = () => ({
+    harness: "appShell",
+    ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
+    up: config.up ?? "z",
+    params: params.getAll(),
+    logs: statusText ? [{ label: "status", value: statusText }] : [],
+    commands: commands.list(),
+    errors: bridge.errors()
+  });
+  const markup = config.markup === false ? null : new MarkupOverlay({
+    viewport: vpWrap,
+    title: config.title ?? "app",
+    hitAt: (x, y) => renderer.hitAt(x, y),
+    groundAt: (x, y) => renderer.groundAt(x, y),
+    snapshotPng: () => snapshotPng(),
+    describe: (id) => describeSceneObject(scene, id),
+    context,
+    setTracking: () => {
+    }
+  });
+  const bridge = installAgentBridge({
+    owner: instance,
+    commands,
+    harness: "appShell",
+    store: params,
+    snapshot: (opts) => markup ? markup.capture(opts) : plainBundle({
+      ...opts,
+      title: config.title ?? "app",
+      harness: "appShell",
+      png: snapshotPng(),
+      viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
+      context: context()
+    }),
+    camera: (pos, target) => {
+      renderer.setCameraPosition(pos[0], pos[1], pos[2]);
+      if (target) renderer.lookAt(target[0], target[1], target[2]);
+    }
+  });
+  return instance;
 }
 
 // src/collab/PresenceBar.ts
@@ -30541,6 +30913,7 @@ var Sketch2DInstance = class {
   viewCommands,
   viewModeIconShapes,
   viewModeIconSvg,
+  viewerToolbar,
   writeDxf2D,
   writeDxf3D
 });

@@ -1,10 +1,12 @@
 import {
   VIEW_MODE_ICON_SVG,
-  viewModeIconShapes
-} from "./chunk-T72HXZNL.mjs";
+  viewModeIconShapes,
+  viewerToolbar
+} from "./chunk-MXU464SM.mjs";
+import "./chunk-J5JH6N4D.mjs";
 import {
   Scene
-} from "./chunk-IYZEH7EG.mjs";
+} from "./chunk-WINXAB7M.mjs";
 import "./chunk-VTSIDLJ7.mjs";
 
 // src/react/components.tsx
@@ -718,6 +720,20 @@ function ViewModeIcon({ mode, ...props }) {
     i
   )) });
 }
+
+// src/react/ViewerToolbar.tsx
+import { useEffect as useEffect2, useRef as useRef2 } from "react";
+import { jsx as jsx3 } from "react/jsx-runtime";
+function ViewerToolbar({ scene, renderer, options, theme, className, style }) {
+  const host = useRef2(null);
+  const key = JSON.stringify(options ?? {});
+  useEffect2(() => {
+    const bar = viewerToolbar(scene, renderer, { ...options, theme });
+    host.current?.appendChild(bar.el);
+    return () => bar.dispose();
+  }, [scene, renderer, theme, key]);
+  return /* @__PURE__ */ jsx3("div", { ref: host, className, style: { display: "flex", alignItems: "center", ...style } });
+}
 export {
   AccordionColumn,
   InfoHint,
@@ -726,6 +742,7 @@ export {
   TektoApp,
   Toolbar,
   ViewModeIcon,
+  ViewerToolbar,
   useParams,
   useScene,
   useSceneObjects,

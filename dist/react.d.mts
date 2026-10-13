@@ -1,7 +1,10 @@
 import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Params-op8yBPbB.mjs';
 import * as React from 'react';
 import React__default, { ReactNode, CSSProperties, SVGProps } from 'react';
-import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-CaG0H74_.mjs';
+import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-D1oqHdQy.mjs';
+import { T as ThreeRenderer, a as TopBarOptions, b as Theme } from './ViewerToolbar-BOYoZb7a.mjs';
+import 'three';
+import 'three/examples/jsm/controls/OrbitControls.js';
 
 /**
  * The `Scene` of the enclosing `<TektoApp>`; throws outside one.
@@ -188,4 +191,14 @@ declare function ViewModeIcon({ mode, ...props }: {
     mode: RenderMode;
 } & SVGProps<SVGSVGElement>): React.JSX.Element;
 
-export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, ViewModeIcon, useParams, useScene, useSceneObjects, useSelection };
+/** The viewer toolbar (`viewerToolbar`) as a component: `<ViewerToolbar scene={scene} renderer={renderer} options={{ cut: false }} />`. */
+declare function ViewerToolbar({ scene, renderer, options, theme, className, style }: {
+    scene: Scene;
+    renderer: ThreeRenderer;
+    options?: TopBarOptions;
+    theme?: Theme;
+    className?: string;
+    style?: CSSProperties;
+}): React.JSX.Element;
+
+export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, ViewModeIcon, ViewerToolbar, useParams, useScene, useSceneObjects, useSelection };
