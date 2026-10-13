@@ -6,6 +6,11 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`renderer.setDaylight(true)`**: Studio's sun colour and strength, sky, exposure and
+  background follow the sun's altitude, so dusk follows from the hour (the shell's Sun
+  popover drives it): Studio's own balance above 35°, a warm evening, a blue dusk, night.
+  A low sun gets more shadow normal bias. Off by default. `renderer.sunAltitude` reads it.
+  (#66)
 - **`renderer.setLamps([{ at, colour, intensity, distance }])`**: a warm point light at each
   point, without shadows; one per room at pendant height carries an interior at dusk.
   Replaces the lamps there were; `[]` removes them. (#66)

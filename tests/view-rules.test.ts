@@ -12,7 +12,7 @@ import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection, calloutSamples, occludes,
-  groundGrid, gridLineColour,
+  groundGrid, gridLineColour, daylight,
 } from "../src/render/viewRules";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
@@ -315,5 +315,27 @@ describe("fading grid ground", () => {
       expect(Math.sign(step)).toBe(luminance(page) > 127 ? -1 : 1);
       expect(Math.abs(step)).toBeLessThan(64);                          // a rule, not a drawing
     }
+  });
+});
+
+describe("daylight", () => {
+  it("is Studio's own balance at a high sun, and 7DHouse's evening at 20°", () => {
+    expect(daylight(60)).toMatchObject({ sun: 0xffffff, sunIntensity: 2.8, exposure: 1, backgroundAmount: 0 });
+    expect(daylight(20)).toMatchObject({ sun: 0xffc898, sky: 0x6a7ca6, exposure: 1.25 });
+    expect(daylight(NaN)).toEqual(daylight(90));
+  });
+
+  it("dims, warms and opens up steadily as the sun goes down, to night", () => {
+    let prev = daylight(90);
+    for (let a = 89; a >= -20; a--) {
+      const d = daylight(a);
+      expect(d.sunIntensity).toBeLessThanOrEqual(prev.sunIntensity + 1e-9);
+      expect(d.exposure).toBeGreaterThanOrEqual(prev.exposure - 1e-9);
+      expect(d.backgroundAmount).toBeGreaterThanOrEqual(prev.backgroundAmount - 1e-9);
+      prev = d;
+    }
+    expect(daylight(-20).sunIntensity).toBe(0);
+    const evening = daylight(10).sun;
+    expect((evening >> 16) & 255).toBeGreaterThan(evening & 255);      // warm: more red than blue
   });
 });
