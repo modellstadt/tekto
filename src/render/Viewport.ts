@@ -42,9 +42,9 @@ import { Callouts, layoutLabels, labelWidthFor, type CalloutItem } from "./Callo
 import {
   edgeStyle, modeBackground, sectionAppearance, groundAppearance, surfaceAppearance, lightBalance,
   standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut, fitRadius, orthoFrustum, DEFAULT_BACKGROUND, sectionPlane,
-  type ViewMode, type Projection, type StandardView, type Appearance,
+  type ViewMode, type Appearance,
 } from "./viewRules";
-import type { SectionRequest } from "../scene/Scene";
+import type { SectionRequest, Projection, StandardView } from "../scene/Scene";
 
 
 export interface ViewportOptions {

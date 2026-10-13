@@ -28,6 +28,7 @@ export default function (container: HTMLElement) {
     title: "Site Editor",
     container,
     topBar: false,
+    navGizmo: true,
     camera: [34, -40, 34],
     target: [11, 5, 4],
     params: {

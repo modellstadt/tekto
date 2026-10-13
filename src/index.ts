@@ -47,7 +47,7 @@ export {
   standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut,
   fitRadius, orthoFrustum, sectionPlane,
 } from "./render/viewRules";
-export type { ViewMode, Projection, StandardView, Appearance } from "./render/viewRules";
+export type { ViewMode, Appearance } from "./render/viewRules";
 // The axis widget the Viewport puts in its corner. Exported for an app that
 // wants one over a scene of its own; a Viewport already has it.
 export { NavGizmo } from "./render/NavGizmo";

@@ -15,7 +15,7 @@ import type { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import type { Algo } from "../core/algo/algorithms";
 import type { Scene, VisualStyle, FlatMeshData } from "../scene/Scene";
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
-import type { SectionRequest } from "../scene/Scene";
+import type { SectionRequest, StandardView } from "../scene/Scene";
 export type { LayerNode, LayerState, LayerMap } from "../gui/LayerPanel";
 import type { LayerState } from "../gui/LayerPanel";
 
@@ -52,6 +52,9 @@ export interface SketchConfig {
   showHeader?: boolean;
   /** Show the ✎ Markup button (draw instructions on the view; see Markup.ts). Default `true`. */
   markup?: boolean;
+  /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
+   *  toggle persp/ortho under it. Default `false`. */
+  navGizmo?: boolean;
 }
 
 // ─── Export / Import registrations (top-bar shell menus) ─────────────
@@ -330,6 +333,10 @@ export interface Lab {
   fitAll(): void;
   /** Switch between perspective and parallel (orthographic) projection. */
   setProjection(type: "perspective" | "orthographic"): void;
+  /** Look from a named side, keeping the distance: "top" (a plan), "front" / "back" /
+   *  "left" / "right" (elevations), "iso". Pair with `setProjection("orthographic")` for
+   *  a drawing. */
+  setView(view: StandardView, opts?: { animate?: boolean }): void;
   /** Cut the model: `{ axis: "z", coordinate: 1.2 }` is a plan cut at 1.2 m, `{ axis: "x",
    *  at: 0.5 }` a section through the middle; null clears. Stays across re-runs. */
   setSection(section: SectionRequest | null): void;

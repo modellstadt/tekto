@@ -70,6 +70,10 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   topBar?: boolean | TopBarOptions;
   /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
   markup?: boolean;
+  /** The axis widget in a viewport corner (`true` = bottom right): click an axis for a plan
+   *  or an elevation, toggle persp/ortho under it. Default `false` — an app may have its own
+   *  panels in that corner. */
+  navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 }
 
 // ─── App Shell instance ──────────────────────
@@ -182,7 +186,9 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
   vpWrap.style.cssText = "position:relative;overflow:hidden;";
 
   const viewportEl = document.createElement("div");
-  viewportEl.style.cssText = "width:100%;height:100%;";
+  // Its own stacking context: what the 3D view puts in its corners (the axis widget) stays
+  // with the 3D view, under any overlay() laid over it.
+  viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
   vpWrap.appendChild(viewportEl);
 
   // Status overlay
@@ -226,6 +232,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     // the architectural / BIM / voxel geometry these apps usually build. Pass
     // `up: "y"` if you're showing the Y-up built-in primitives (box/cylinder/sphere).
     up: config.up ?? "z",
+    navGizmo: config.navGizmo ?? false,
     ...config.renderer,
   });
 
@@ -391,7 +398,7 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
     return el;
   };
 
-  function segmented<T extends string>(opts: Array<[string, T]>, initial: T, onSel: (v: T) => void): HTMLElement {
+  function segmented<T extends string>(opts: Array<[string, T]>, initial: T, onSel: (v: T) => void, follow?: (set: (v: T) => void) => void): HTMLElement {
     const wrap = document.createElement("div");
     wrap.style.cssText = `display:flex; border:1px solid ${t.border}; border-radius:5px; overflow:hidden;`;
     const btns: Array<[HTMLButtonElement, T]> = [];
@@ -411,6 +418,7 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
       btns.push([b, val]);
     }
     set(initial);
+    follow?.(set);                       // the state can change elsewhere: show it when it does
     return wrap;
   }
 
@@ -425,25 +433,20 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
     [["Flat", "flat"], ["Studio", "studio"]], "flat", (v) => scene.setLightingMode(v))));
   if (show.mode !== false) bar.appendChild(group("Mode", segmented<RenderMode>(
     [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]], "solid", (v) => scene.setRenderMode(v))));
-  if (show.camera !== false) bar.appendChild(group("Cam", segmented<"persp" | "iso">(
-    [["Persp", "persp"], ["Iso", "iso"]], "persp", (v) => {
-      if (v === "iso") {
-        // True isometric: camera on the (1,-1,1) diagonal — equal foreshortening
-        // on X/Y/Z — at the current viewing distance, with orthographic projection.
-        // Orbiting afterwards stays orthographic (general axonometric).
-        renderer.setProjection("perspective"); // normalize: pose lives on the persp camera
-        const c = renderer.controls;
-        if (c) {
-          const target = c.target;
-          const step = renderer.camera.position.distanceTo(target) / Math.sqrt(3);
-          renderer.setCameraPosition(target.x + step, target.y - step, target.z + step);
-          c.update();
-        }
-        renderer.setProjection("orthographic");
-      } else {
-        renderer.setProjection("perspective");
-      }
-    })));
+  if (show.camera !== false) {
+    const cam = group("Cam", segmented<"perspective" | "orthographic">(
+      [["Persp", "perspective"], ["Ortho", "orthographic"]], renderer.projection,
+      (v) => renderer.setProjection(v), (set) => renderer.onProjection(set)));
+    // True isometric: orthographic, on the diagonal with equal foreshortening on X, Y and Z.
+    // Orbiting afterwards stays orthographic (a general axonometric).
+    const iso = document.createElement("button");
+    iso.textContent = "Iso";
+    iso.title = "Isometric: orthographic, from the diagonal";
+    iso.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
+    iso.onclick = () => { renderer.setProjection("orthographic"); renderer.setView("iso"); };
+    cam.appendChild(iso);
+    bar.appendChild(cam);
+  }
   if (show.cut !== false) bar.appendChild(buildCut(renderer, t, segmented));
   if (show.sun !== false) bar.appendChild(buildSun(renderer, t));
 }

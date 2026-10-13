@@ -39,6 +39,12 @@ export interface SectionRequest {
   flip?: boolean;
 }
 
+/** Perspective for looking at a building, orthographic for drawing one. */
+export type Projection = "perspective" | "orthographic";
+
+/** The six faces of the bounding box, plus the corner view. */
+export type StandardView = "iso" | "top" | "bottom" | "front" | "back" | "left" | "right";
+
 /**
  * High-level lighting / shading preset applied across the scene.
  *
