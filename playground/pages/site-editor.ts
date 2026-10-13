@@ -32,6 +32,8 @@ export default function (container: HTMLElement) {
     container,
     topBar: false,
     navGizmo: true,
+    // A site wants a sense of scale: a ground ruled in metres that fades out, fitted to the blocks.
+    renderer: { gridStyle: "fading" },
     camera: [34, -40, 34],
     target: [11, 5, 4],
     params: {

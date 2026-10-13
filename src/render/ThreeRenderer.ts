@@ -25,6 +25,7 @@ import { Lighting } from "./Lighting";
 import { CameraRig } from "./CameraRig";
 import { Pointer, type GizmoMode, type PickInfo } from "./Pointer";
 import { Marks } from "./Marks";
+import { FadingGrid } from "./FadingGrid";
 import { shown } from "./viewRules";
 
 export type { GizmoMode, PickInfo } from "./Pointer";
@@ -34,6 +35,13 @@ export interface ThreeRendererConfig {
   antialias: boolean;
   backgroundColor: number;
   showGrid: boolean;
+  /**
+   * How the grid is drawn: `"lines"`, a fixed `gridSize` grid of `gridDivisions` lines;
+   * `"fading"`, the ground ruled in round metres for the size of the content (1 m under a
+   * house, 10 m under a block, every fifth line stronger) that fades out with distance, so
+   * it gives a sense of scale and has no edge. It follows the content. Default `"lines"`.
+   */
+  gridStyle: "lines" | "fading";
   gridSize: number;
   gridDivisions: number;
   showAxes: boolean;
@@ -58,6 +66,7 @@ const DEFAULTS: ThreeRendererConfig = {
   antialias: true,
   backgroundColor: 0x0a0b14,
   showGrid: true,
+  gridStyle: "lines",
   gridSize: 20,
   gridDivisions: 20,
   showAxes: true,
@@ -101,6 +110,8 @@ export class ThreeRenderer {
   // that shows only solid meshes). Solid geometry is unaffected.
   private hideHelpers = false;
   private gridHelper: THREE.Object3D | null = null;
+  private fadingGrid: FadingGrid | null = null;
+  private gridDirty = true;
   private axesHelper: THREE.Object3D | null = null;
   // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
   // sketch re-runs (clearThree only touches objectMap-managed objects).
@@ -165,7 +176,11 @@ export class ThreeRenderer {
     this.builder = new ObjectBuilder(this.core, this.lighting);
 
     // Helpers
-    if (cfg.showGrid) {
+    if (cfg.showGrid && cfg.gridStyle === "fading") {
+      this.fadingGrid = new FadingGrid(cfg.backgroundColor, this.isZUp);
+      this.gridHelper = this.fadingGrid.mesh;
+      this.threeScene.add(this.fadingGrid.mesh);
+    } else if (cfg.showGrid) {
       const grid = new THREE.GridHelper(cfg.gridSize, cfg.gridDivisions, 0x3a3c5a, 0x2a2c4a);
       if (this.isZUp) grid.rotation.x = Math.PI / 2;
       this.gridHelper = grid;
@@ -209,6 +224,7 @@ export class ThreeRenderer {
     this._needsRender = true;
     this.lighting.sunDirty = true;
     this.marks.calloutsDirty = true;
+    this.gridDirty = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -461,6 +477,11 @@ export class ThreeRenderer {
 
   private _draw(): void {
     if (this.lighting.sunDirty && this.lighting.currentLighting === "studio") this.lighting.fitSun();
+    if (this.gridDirty && this.fadingGrid) {
+      this.gridDirty = false;
+      const box = this.contentBox();
+      this.fadingGrid.fit(box.isEmpty() ? new THREE.Sphere(new THREE.Vector3(), 10) : box.getBoundingSphere(new THREE.Sphere()));
+    }
     this.marks.followOutlines();
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
@@ -562,6 +583,7 @@ export class ThreeRenderer {
     this.unsub?.();
     this.clearThree();
     this.marks.dispose();
+    this.fadingGrid?.dispose();
     this.pointer.dispose();
     this.lighting.dispose();
     cancelAnimationFrame(this.rafId);

@@ -245,6 +245,33 @@ export function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box:
   return req.flip ? new THREE.Plane(a, -level) : new THREE.Plane(a.negate(), level);
 }
 
+/**
+ * The spacing and reach of a fading grid ground, for content of a given bounding radius in
+ * metres. The minor step is a power of ten, so a line always means a round number of
+ * metres: 1 m under a house, 10 m under a block; every fifth line is stronger. Solid out to
+ * twice the radius and gone by six times it, inside a sheet `size` across, so the model
+ * always stands on something and the edge is never seen.
+ */
+export function groundGrid(radius: number): { minor: number; major: number; fadeFrom: number; fadeTo: number; size: number } {
+  const r = Math.max(radius, 0.5);
+  const minor = 10 ** Math.floor(Math.log10(r / 4));
+  return { minor, major: minor * 5, fadeFrom: r * 2, fadeTo: r * 6, size: r * 14 };
+}
+
+/** The grid's line colour: a step off the background, lighter on a dark page and darker on
+ *  a light one, so a grid reads as a rule on the ground and never outshouts the model. */
+export function gridLineColour(background: THREE.ColorRepresentation): number {
+  // mixed in sRGB, as the eye steps it: in linear light a fifth of the way to white is mid grey
+  const hex = new THREE.Color(background).getHex();
+  const to = luminance(background) > 0.5 ? 0 : 255;
+  let out = 0;
+  for (const shift of [16, 8, 0]) {
+    const c = (hex >> shift) & 255;
+    out |= Math.round(c + (to - c) * 0.2) << shift;
+  }
+  return out;
+}
+
 /** Is this object drawn: itself and every parent visible? (The raycaster ignores it.) */
 export function shown(o: THREE.Object3D | null): boolean {
   for (; o; o = o.parent) if (!o.visible) return false;
