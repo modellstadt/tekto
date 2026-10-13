@@ -98,6 +98,7 @@ export class IfcWriter {
   // elements, emitted as one `IfcRelContainedInSpatialStructure` per
   // storey at save time.
   private storeyPlacementByRef = new Map<number, number>(); // storeyRef → placementRef
+  private storeyElevationByRef = new Map<number, number>(); // storeyRef → elevation
   private elementsByStorey = new Map<number, number[]>();   // storeyRef → contained element refs
 
   // Tracking.
@@ -151,7 +152,8 @@ export class IfcWriter {
    * line id. Pass that id as `opts.storey` on subsequent `addWall` /
    * `addSlab` / `addWallSystem` calls to attach elements to the new
    * storey. The bootstrap storey (created from `IfcWriterOptions`)
-   * stays the default for any call that omits `storey`.
+   * stays the default for any call that omits `storey`. Heights stay
+   * absolute: a wall on a storey at 3 m has `baseElevation: 3`.
    *
    * @example
    *   const writer = new IfcWriter({ storeyName: "Ground floor", storeyElevation: 0 });
@@ -285,11 +287,12 @@ export class IfcWriter {
     // Opening placement: origin at the centerline point at sill height; +X
     // along the wall tangent; +Z is global up. Body is a centered box of
     // (opWidth × opDepth × opHeight) at the local origin.
-    const z = wall.baseElevation + opening.sillHeight;
+    const frame = this.storeyFrame(storeyRef ?? this.storeyRef);
+    const z = wall.baseElevation + opening.sillHeight - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(opCenter.x)},${ifcReal(opCenter.y)},${ifcReal(z)}))`);
     const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(tangent.x)},${ifcReal(tangent.y)},0.))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${refDir})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storeyRef ?? this.storeyRef) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
 
     // Profile centred at local origin (so we don't need to offset).
@@ -357,8 +360,8 @@ export class IfcWriter {
   /**
    * Add a framed member (stud / plate / header / cripple / etc.) as an
    * IfcMember with a tessellated body (IfcTriangulatedFaceSet — efficient,
-   * IFC4-native). Aggregating under a wall is the caller's responsibility
-   * (see addWallSystem).
+   * IFC4-native). The mesh is in world coordinates. Aggregating under a
+   * wall is the caller's responsibility (see addWallSystem).
    */
   addMember(_parentWallRef: number, part: {
     name: string;
@@ -392,7 +395,9 @@ export class IfcWriter {
       `IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','Tessellation',(#${faceSet}))`,
     );
     const productShape = this.addEntity(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shapeRep}))`);
-    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.storeyPlacementRef},#${this.worldPlacementRef})`);
+    // The mesh is in world coordinates: place it relative to the building (identity), as a
+    // stair is, so no storey's elevation is added to it.
+    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.buildingPlacementRef},#${this.worldPlacementRef})`);
 
     const ifcType = part.ifcType ?? "IfcMember";
     const typeName = ifcType.toUpperCase();
@@ -481,10 +486,11 @@ export class IfcWriter {
     const profile = this.addEntity(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${polyline})`);
 
     // ── Local placement at the slab's bottom (so +Z extrusion fills up to `elevation`) ──
-    const bottomZ = slab.elevation - slab.thickness;
+    const frame = this.storeyFrame(storey);
+    const bottomZ = slab.elevation - slab.thickness - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(bottomZ)}))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${this.dirXRef})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storey) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
 
     // ── Body: extrude profile up by thickness ──
@@ -690,9 +696,10 @@ export class IfcWriter {
     const profile = this.addEntity(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${polyline})`);
 
     // Local placement at the floor level; extrude up by clear height.
-    const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(space.elevation)}))`);
+    const frame = this.storeyFrame(storey);
+    const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(space.elevation - frame.elevation)}))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${this.dirXRef})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storey) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
 
     const extrusion = this.addEntity(
@@ -853,7 +860,21 @@ export class IfcWriter {
     const storeyRef = this.addEntity(
       `IFCBUILDINGSTOREY(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(name)},$,$,#${placementRef},$,$,.ELEMENT.,${ifcReal(elevation)})`,
     );
+    this.storeyElevationByRef.set(storeyRef, elevation);
     return { storeyRef, placementRef };
+  }
+
+  /**
+   * Where an element on a storey is placed: in the storey's placement, which is already
+   * raised to the storey's elevation. Heights in the API are absolute (`Wall.baseElevation`,
+   * `Slab.elevation`, `Space.elevation`), so the element's local z is its height minus
+   * `elevation`.
+   */
+  private storeyFrame(storeyRef: number): { placement: number; elevation: number } {
+    return {
+      placement: this.storeyPlacementByRef.get(storeyRef) ?? this.storeyPlacementRef,
+      elevation: this.storeyElevationByRef.get(storeyRef) ?? 0,
+    };
   }
 
   // ── Wall geometry ────────────────────────────────────────────────
@@ -923,11 +944,12 @@ export class IfcWriter {
     const length = Math.hypot(endX - startX, endY - startY);
     if (length < 1e-9) throw new Error("IfcWriter: zero-length trimmed wall segment");
 
-    const z = wall.baseElevation;
+    const frame = this.storeyFrame(storeyRef ?? this.storeyRef);
+    const z = wall.baseElevation - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(startX)},${ifcReal(startY)},${ifcReal(z)}))`);
     const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(ux)},${ifcReal(uy)},0.))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${refDir})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storeyRef ?? this.storeyRef) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
 
     const profileOrigin = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(length / 2)},0.))`);
