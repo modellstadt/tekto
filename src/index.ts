@@ -76,6 +76,8 @@ export type {
 // App Shell (Level 2 — persistent-panel apps without React)
 export { appShell } from "./sketch/AppShell";
 export type { AppShellConfig, AppShellInstance } from "./sketch/AppShell";
+export { viewerToolbar } from "./sketch/ViewerToolbar";
+export type { TopBarOptions } from "./sketch/ViewerToolbar";
 
 export { PresenceBar } from "./collab/PresenceBar";
 export type { PresenceBarOptions } from "./collab/PresenceBar";

@@ -11,3 +11,4 @@ export type {
   ToolbarAction, AccordionSection, AccordionColumnProps,
 } from "./react/components";
 export { ViewModeIcon } from "./react/ViewModeIcon";
+export { ViewerToolbar } from "./react/ViewerToolbar";

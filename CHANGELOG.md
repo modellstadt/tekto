@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`viewerToolbar(scene, renderer, options)`**: the shell's top bar as one element any app
+  mounts (`{ el, dispose }`), and `tekto/react`'s `ViewerToolbar` mounts the same, so React
+  apps stop copying it. It gains an **AO** toggle beside the lighting and, in the Sun
+  popover, **Light follows the sun (Studio)**. `TopBarOptions` gains `ao`. (#66)
 - **`renderer.setSky(image | canvas | texture | null, { background, intensity })`**: a sky
   in one call, lighting the scene (Studio's PBR materials) and behind it, stood upright in a
   Z-up scene; `intensity` turns it down inside. An .hdr comes from the app's own

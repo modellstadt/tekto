@@ -37,15 +37,14 @@
  *   app.scene.addMesh(mesh);                      // geometry via the Scene
  */
 
-import { Scene, LightingMode, RenderMode } from "../scene/Scene";
+import { Scene } from "../scene/Scene";
 import { ThreeRenderer, ThreeRendererConfig } from "../render/ThreeRenderer";
 import { ParamStore, ParamSchema } from "../gui/Params";
 import { ControlPanel, ControlItem } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
-import { SunPosition } from "../core/solar/SunPosition";
 import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
 import { Commands, viewCommands } from "../gui/Commands";
-import { viewModeIconSvg } from "../gui/viewModeIcons";
+import { viewerToolbar, type TopBarOptions } from "./ViewerToolbar";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
 
 // ─── Config ──────────────────────────────────
@@ -80,20 +79,6 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
 }
 
 // ─── App Shell instance ──────────────────────
-
-/** The appShell top bar's controls; each is shown unless set to false. */
-export interface TopBarOptions {
-  /** Flat / Studio lighting. */
-  light?: boolean;
-  /** Solid / Wire / Hidden / Ghost. */
-  mode?: boolean;
-  /** Perspective / isometric. */
-  camera?: boolean;
-  /** A section through the model (`renderer.setSection`). */
-  cut?: boolean;
-  /** The sun for a place, date and hour. */
-  sun?: boolean;
-}
 
 /** What `appShell()` returns: its params, scene, renderer, panel and commands, the build/display/animate hooks, the status line and overlays, and `dispose`. */
 export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
@@ -255,10 +240,10 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
   commands.add(viewCommands(renderer));
   const unbindKeys = commands.bindKeys();
 
-  // ── Top bar: lighting (Flat / Studio) · render mode · camera · sun ──
-  if (config.topBar !== false) {
-    buildTopBar(header, scene, renderer, t, config.topBar === true || config.topBar === undefined ? {} : config.topBar);
-  }
+  // ── Top bar: lighting · render mode · camera · cut · sun (the viewer toolbar) ──
+  const toolbar = config.topBar === false ? null
+    : viewerToolbar(scene, renderer, { ...(config.topBar === true || config.topBar === undefined ? {} : config.topBar), theme: t });
+  if (toolbar) header.appendChild(toolbar.el);
 
   // ── Build / display passes ──
   // Two-tier invalidation: params flagged `display: true` only re-run the
@@ -334,6 +319,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       markup?.dispose();
       bridge.dispose();
       unbindKeys();
+      toolbar?.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
@@ -385,195 +371,4 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     },
   });
   return instance;
-}
-
-// ─── Top bar (lighting / render mode / camera / sun) ──
-//
-// The testbench's top-bar features for custom apps: Flat vs Studio (PBR +
-// soft shadows + ACES) lighting, render mode, perspective/iso camera, and a
-// Sun popover (date + lat/lon → SunPosition → directional light, for
-// solar/shadow studies).
-
-function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer, t: Theme, show: TopBarOptions): void {
-  const bar = document.createElement("div");
-  bar.style.cssText = "margin-left:auto; display:flex; align-items:center; gap:16px;";
-  header.appendChild(bar);
-
-  const tag = (label: string) => {
-    const el = document.createElement("span");
-    el.textContent = label;
-    el.style.cssText = `color:${t.textFaint}; text-transform:uppercase; letter-spacing:1px; font-size:9px;`;
-    return el;
-  };
-
-  /** Buttons of which one is on: [label, value, optional SVG icon before the label]. */
-  function segmented<T extends string>(opts: Array<[string, T, string?]>, initial: T, onSel: (v: T) => void, follow?: (set: (v: T) => void) => void): HTMLElement {
-    const wrap = document.createElement("div");
-    wrap.style.cssText = `display:flex; border:1px solid ${t.border}; border-radius:5px; overflow:hidden;`;
-    const btns: Array<[HTMLButtonElement, T]> = [];
-    const set = (val: T) => {
-      for (const [b, v] of btns) {
-        const on = v === val;
-        b.style.background = on ? t.accent : "transparent";
-        b.style.color = on ? t.panelBg : t.textDim;
-      }
-    };
-    for (const [label, val, icon] of opts) {
-      const b = document.createElement("button");
-      b.textContent = label;
-      b.style.cssText = "padding:3px 9px; border:0; background:transparent; font:inherit; font-size:11px; cursor:pointer;";
-      if (icon) {
-        b.insertAdjacentHTML("afterbegin", icon);
-        b.style.cssText += "display:flex; align-items:center; gap:4px; padding-left:6px;";
-      }
-      b.onclick = () => { set(val); onSel(val); };
-      wrap.appendChild(b);
-      btns.push([b, val]);
-    }
-    set(initial);
-    follow?.(set);                       // the state can change elsewhere: show it when it does
-    return wrap;
-  }
-
-  const group = (label: string, control: HTMLElement) => {
-    const g = document.createElement("div");
-    g.style.cssText = "display:flex; align-items:center; gap:6px;";
-    g.append(tag(label), control);
-    return g;
-  };
-
-  if (show.light !== false) bar.appendChild(group("Light", segmented<LightingMode>(
-    [["Flat", "flat"], ["Studio", "studio"]], scene.lightingMode, (v) => scene.setLightingMode(v),
-    (set) => scene.on((e) => { if (e.type === "scene:lightingMode") set(e.mode); }))));
-  if (show.mode !== false) bar.appendChild(group("Mode", segmented<RenderMode>(
-    ([["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]] as const)
-      .map(([label, mode]): [string, RenderMode, string] => [label, mode, viewModeIconSvg(mode, 14)]),
-    scene.renderMode, (v) => scene.setRenderMode(v),
-    (set) => scene.on((e) => { if (e.type === "scene:renderMode") set(e.mode); }))));
-  if (show.camera !== false) {
-    const cam = group("Cam", segmented<"perspective" | "orthographic">(
-      [["Persp", "perspective"], ["Ortho", "orthographic"]], renderer.projection,
-      (v) => renderer.setProjection(v), (set) => renderer.onProjection(set)));
-    // True isometric: orthographic, on the diagonal with equal foreshortening on X, Y and Z.
-    // Orbiting afterwards stays orthographic (a general axonometric).
-    const iso = document.createElement("button");
-    iso.textContent = "Iso";
-    iso.title = "Isometric: orthographic, from the diagonal";
-    iso.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
-    iso.onclick = () => { renderer.setProjection("orthographic"); renderer.setView("iso"); };
-    cam.appendChild(iso);
-    bar.appendChild(cam);
-  }
-  if (show.cut !== false) bar.appendChild(buildCut(renderer, t, segmented));
-  if (show.sun !== false) bar.appendChild(buildSun(renderer, t));
-}
-
-/** "Cut ▾": a section along an axis, its position through the model, which side stays. */
-function buildCut(
-  renderer: ThreeRenderer, t: Theme,
-  segmented: <T extends string>(opts: Array<[string, T]>, initial: T, onSel: (v: T) => void) => HTMLElement,
-): HTMLElement {
-  const wrap = document.createElement("div");
-  wrap.style.cssText = "position:relative;";
-  const btn = document.createElement("button");
-  btn.textContent = "Cut ▾";
-  btn.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
-  const pop = document.createElement("div");
-  pop.style.cssText = `position:absolute; top:130%; right:0; z-index:50; display:none; flex-direction:column; gap:8px;
-    padding:12px; border:1px solid ${t.border}; border-radius:8px; background:${t.panelBg};
-    box-shadow:0 8px 24px rgba(0,0,0,.45); width:228px; font-size:11px; color:${t.textDim};`;
-  btn.onclick = () => { pop.style.display = pop.style.display === "none" ? "flex" : "none"; };
-  wrap.append(btn, pop);
-
-  const state = { axis: "off" as "off" | "x" | "y" | "z", at: 50, flip: false };
-  const apply = () => {
-    renderer.setSection(state.axis === "off" ? null : { axis: state.axis, at: state.at / 100, flip: state.flip });
-    btn.style.color = state.axis === "off" ? t.textDim : t.accent;
-  };
-  const pos = document.createElement("input");
-  pos.type = "range"; pos.min = "0"; pos.max = "100"; pos.step = "1"; pos.value = "50";
-  pos.className = "tekto-slider";
-  pos.style.cssText = `cursor:pointer;--tekto-track:${t.controlBorder};--tekto-thumb:${t.accent};`;
-  pos.oninput = () => { state.at = Number(pos.value); apply(); };
-  const flip = document.createElement("label");
-  flip.style.cssText = "display:flex; align-items:center; gap:6px; cursor:pointer;";
-  const flipBox = document.createElement("input");
-  flipBox.type = "checkbox";
-  flipBox.onchange = () => { state.flip = flipBox.checked; apply(); };
-  flip.append(flipBox, "Keep the other side");
-  pop.append(
-    segmented<"off" | "x" | "y" | "z">([["Off", "off"], ["Plan", "z"], ["X", "x"], ["Y", "y"]], "off", (v) => { state.axis = v; apply(); }),
-    pos, flip,
-  );
-  return wrap;
-}
-
-function buildSun(renderer: ThreeRenderer, t: Theme): HTMLElement {
-  const wrap = document.createElement("div");
-  wrap.style.cssText = "position:relative;";
-
-  const btn = document.createElement("button");
-  btn.innerHTML = "&#x2600;&#xFE0E; Sun &#x25BE;";
-  btn.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
-  wrap.appendChild(btn);
-
-  const pop = document.createElement("div");
-  pop.style.cssText = `position:absolute; top:130%; right:0; z-index:50; display:none; flex-direction:column; gap:8px;
-    padding:12px; border:1px solid ${t.border}; border-radius:8px; background:${t.panelBg};
-    box-shadow:0 8px 24px rgba(0,0,0,.45); width:228px;`;
-  wrap.appendChild(pop);
-  btn.onclick = () => { pop.style.display = pop.style.display === "none" ? "flex" : "none"; };
-
-  // Default: Zürich, summer solstice, 13:00.
-  const state = { lat: 47.37, lon: 8.55, month: 6, day: 21, hour: 13 };
-
-  const readout = document.createElement("div");
-  readout.style.cssText = `font-size:10px; color:${t.textDim}; font-family:${t.font};`;
-
-  const apply = () => {
-    const date = new Date(Date.UTC(2025, state.month - 1, state.day, Math.floor(state.hour), Math.round((state.hour % 1) * 60)));
-    const sun = SunPosition.compute({ date, latitude: state.lat, longitude: state.lon });
-    renderer.setSunDirection(sun.direction);
-    const deg = (r: number) => Math.round((r * 180) / Math.PI);
-    readout.textContent = `alt ${deg(sun.altitude)}°  az ${deg(sun.azimuth)}°  ${sun.isDaytime ? "day" : "night"}`;
-  };
-
-  const num = (label: string, value: number, min: number, max: number, step: number, onCh: (v: number) => void) => {
-    const r = document.createElement("label");
-    r.style.cssText = `display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:11px; color:${t.textDim};`;
-    const sp = document.createElement("span"); sp.textContent = label;
-    const i = document.createElement("input");
-    i.type = "number"; i.value = String(value); i.min = String(min); i.max = String(max); i.step = String(step);
-    i.style.cssText = `width:84px; padding:2px 5px; background:${t.fieldBg}; border:1px solid ${t.border}; border-radius:4px; color:inherit; font:inherit; font-size:11px;`;
-    i.oninput = () => onCh(Number(i.value));
-    r.append(sp, i);
-    return r;
-  };
-
-  pop.append(
-    num("Latitude", state.lat, -90, 90, 0.1, (v) => { state.lat = v; apply(); }),
-    num("Longitude", state.lon, -180, 180, 0.1, (v) => { state.lon = v; apply(); }),
-    num("Month", state.month, 1, 12, 1, (v) => { state.month = v; apply(); }),
-    num("Day", state.day, 1, 31, 1, (v) => { state.day = v; apply(); }),
-  );
-
-  // Hour slider.
-  const hourWrap = document.createElement("label");
-  hourWrap.style.cssText = `display:flex; flex-direction:column; gap:4px; font-size:11px; color:${t.textDim};`;
-  const hourLabel = document.createElement("span"); hourLabel.textContent = "Hour 13:00";
-  const hour = document.createElement("input");
-  hour.type = "range"; hour.min = "0"; hour.max = "24"; hour.step = "0.25"; hour.value = "13";
-  hour.className = "tekto-slider";
-  hour.style.cssText = `cursor:pointer;--tekto-track:${t.controlBorder};--tekto-thumb:${t.accent};`;
-  hour.oninput = () => {
-    state.hour = Number(hour.value);
-    const h = Math.floor(state.hour), m = Math.round((state.hour % 1) * 60);
-    hourLabel.textContent = `Hour ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    apply();
-  };
-  hourWrap.append(hourLabel, hour);
-  pop.append(hourWrap, readout);
-
-  apply(); // seed an initial sun direction so Studio has a sensible light
-  return wrap;
 }

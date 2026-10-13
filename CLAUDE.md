@@ -109,7 +109,7 @@ A sketch participates in the shell by:
 - Calling `lab.registerExport({name, fileName, handler})` / `lab.registerImport({name, accept, handler})` to populate the menus. Sketches that don't register anything just hide those buttons.
 - The shell drives the directional light via `SketchInstance.setSunDirection(direction)` based on the popover's date/lat/lon — sketches don't need their own sun controls. They CAN call `lab.setSunDirection(dir)` inside the sketch fn to override per-frame (animated daily cycles).
 
-When you build a new custom app outside the testbench: use `appShell()` from [src/sketch/AppShell.ts](src/sketch/AppShell.ts) — it provides the panel (via the shared `ControlPanel`), the Scene + ThreeRenderer harness, and the top bar (lighting / render mode / camera / Sun popover). Do NOT copy panel/top-bar code into an app; if the shell lacks something, extend `AppShell.ts` in the library.
+When you build a new custom app outside the testbench: use `appShell()` from [src/sketch/AppShell.ts](src/sketch/AppShell.ts) — it provides the panel (via the shared `ControlPanel`), the Scene + ThreeRenderer harness, and the top bar (`viewerToolbar` in [src/sketch/ViewerToolbar.ts](src/sketch/ViewerToolbar.ts): lighting and AO / render mode / camera / Cut / Sun; a React app mounts the same bar as `tekto/react`'s `ViewerToolbar`). Do NOT copy panel/top-bar code into an app; if the shell lacks something, extend `AppShell.ts` or `ViewerToolbar.ts` in the library.
 
 ### Lighting + shadows
 
