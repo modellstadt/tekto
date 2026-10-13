@@ -126,6 +126,7 @@ choose between them, read llms.txt first.
   members: origin, twin, next, face, tag, destination, nextAtOrigin, prevAtOrigin, prev, direction, midpoint, length, angle, isSingle
 - `PGVertex` (class): Vertex in a 2D planar graph (DCEL).
   members: position, edge, tag, isIsolated, degree, outgoingEdges(), neighbors(), getEdgeTo(), isNeighbor()
+- `pickPrim` (function): The primitive at `p` (sheet coordinates): the topmost line, arc, circle or text within `tolerance` (sheet units — divide a pixel tolerance by the screen scale), else the topmost fill containing `p`…
 - `PixelView` (namespace): Discrete 2D shadow-casting visibility analysis (isovist).
   members: analyse(), analyseAll()
 - `PlanarGraph` (class)
@@ -230,7 +231,7 @@ choose between them, read llms.txt first.
   members: direction, length, lengthSquared, midpoint, pointAt(), closestPoint(), closestParameter(), distanceTo(), distanceSquaredTo(), bounds, static split(), closestPointsTo(), distanceToSegment(), reversed(), toString()
 - `segmentSegmentClosest` (function)
 - `Selection` (class): The selected records, by key (`"blocks/k3f9x2"` — the `key` every object of a record carries).
-  members: keys(), has(), size, ids(), select(), add(), remove(), toggle(), clear(), onChange()
+  members: keys(), has(), size, ids(), select(), add(), remove(), toggle(), clear(), click(), onChange()
 - `selectOnClick` (function): Click to select records in a viewport: a click selects the record an object shows, Shift/⌘/Ctrl-click adds or removes it, a click on the background clears.
 - `setClipSnap` (function): Set the coordinate snap grid used before boolean ops (mm).
 - `SharedStore` (class): A document of keyed records that several people (and agents) edit together: `set` applies locally at once and syncs through an adapter (`memoryAdapter`, `devServerAdapter`, `supabaseAdapter`); last…
@@ -291,7 +292,7 @@ choose between them, read llms.txt first.
 - `writeDxf2D` (function): Write a 2D drawing (plan, section, cut sheet) as DXF R12: POLYLINEs, LINEs, CIRCLEs, ARCs and TEXT on named layers — the same AutoCAD-safe writer as writeDxf3D (every layer declared, R12 names, pla…
 - `writeDxf3D` (function): Write a true-3D DXF (R12 / AC1009): 3D POLYLINEs, LINEs, POINTs, horizontal ARCs and CIRCLEs in world coordinates — unlike DxfExporter, which flattens geometry to a 2D view plane.
 
-Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `BalloonFrameOptions`, `BoolParam`, `Box`, `BspNode`, `BspPolygon`, `ButtonParam`, `CltOptions`, `CollabAdapter`, `CollabEvents`, `CollabStatus`, `CollabUser`, `ColoredMeshData`, `ColorParam`, `ConnectionType`, `Contact`, `CutListItem`, `Dash`, `DimOptions`, `DocChange`, `DocChangeSource`, `DocEditOptions`, `DocJSON`, `DocOptions`, `DocSchema`, `DoorOperation`, `DrawOptions`, `Dxf2DArc`, `Dxf2DCircle`, `Dxf2DContent`, `Dxf2DLine`, `Dxf2DLook`, `Dxf2DPoint`, `Dxf2DPolyline`, `Dxf2DSolid`, `Dxf2DText`, `Dxf3DArc`, `Dxf3DCircle`, `Dxf3DContent`, `Dxf3DLine`, `Dxf3DPoint`, `Dxf3DPolyline`, `DxfLayerDef`, `ExtrudedRibbonOptions`, `FilletResult`, `FlatMeshData`, `FloatParam`, `HolzrahmenBauOptions`, `ICurve`, `IfcElementData`, `IfcModelData`, `IfcParseElementsOptions`, `IfcParseOptions`, `IfcRelations`, `IfcSpatialNode`, `IfcWriterOptions`, `IMetricCurve`, `Intersect2DResult`, `IntParam`, `ISdf`, `JointKind`, `JointParticipant`, `JointStyle`, `JointTrim`, `JoistedSlabOptions`, `JoistOrientationOptions`, `LatticeType`, `LayerPosition`, `LegacyMeshJSON`, `LightingMode`, `LineStyle`, `MaterialLayer`, `MeshBuffers`, `MeshEdge`, `MeshFace`, `MeshJSON`, `MeshNode`, `MeshValidation`, `MicroPatternType`, `MultiPoly2`, `ObjMeshData`, `OpeningTypeOptions`, `ParamDef`, `ParamFolder`, `ParamLayout`, `ParamSchema`, `PartProfile`, `PerpSegment`, `PickingView`, `PointClassification`, `Poly2`, `Presence`, `PropertyMap`, `Pt`, `RealizedSlab`, `RealizedWall`, `RenderMode`, `ResolvedStyle`, `RigidBodyConfig`, `Ring2`, `SceneBinding`, `SceneEvent`, `SceneEventListener`, `SceneJSON`, `SceneObject`, `SceneObjectType`, `SeededRandom`, `SelectParam`, `SharedRecord`, `SharedStoreOptions`, `SheetOptions`, `SheetPrim`, `SlabConstruction`, `SlabContext`, `SlabOptions`, `SlabPart`, `SlabPartRole`, `SlabTypeOptions`, `SpaceOptions`, `Spring`, `SpringConfig`, `StairFlight`, `StairOptions`, `StairShape`, `StairTypeOptions`, `StreamlineOptions`, `StringParam`, `SunPositionInput`, `SunPositionResult`, `SupabaseLike`, `TextOptions`, `UpAxis`, `Vec3Param`, `VertexCurvature`, `ViewOptions`, `VisualStyle`, `WallConstruction`, `WallJointOptions`, `WallOptions`, `WallPart`, `WallPartRole`, `WindowPartitioning`
+Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `BalloonFrameOptions`, `BoolParam`, `Box`, `BspNode`, `BspPolygon`, `ButtonParam`, `CltOptions`, `CollabAdapter`, `CollabEvents`, `CollabStatus`, `CollabUser`, `ColoredMeshData`, `ColorParam`, `ConnectionType`, `Contact`, `CutListItem`, `Dash`, `DimOptions`, `DocChange`, `DocChangeSource`, `DocEditOptions`, `DocJSON`, `DocOptions`, `DocSchema`, `DoorOperation`, `DrawOptions`, `Dxf2DArc`, `Dxf2DCircle`, `Dxf2DContent`, `Dxf2DLine`, `Dxf2DLook`, `Dxf2DPoint`, `Dxf2DPolyline`, `Dxf2DSolid`, `Dxf2DText`, `Dxf3DArc`, `Dxf3DCircle`, `Dxf3DContent`, `Dxf3DLine`, `Dxf3DPoint`, `Dxf3DPolyline`, `DxfLayerDef`, `ExtrudedRibbonOptions`, `FilletResult`, `FlatMeshData`, `FloatParam`, `HolzrahmenBauOptions`, `ICurve`, `IfcElementData`, `IfcModelData`, `IfcParseElementsOptions`, `IfcParseOptions`, `IfcRelations`, `IfcSpatialNode`, `IfcWriterOptions`, `IMetricCurve`, `Intersect2DResult`, `IntParam`, `ISdf`, `JointKind`, `JointParticipant`, `JointStyle`, `JointTrim`, `JoistedSlabOptions`, `JoistOrientationOptions`, `LatticeType`, `LayerPosition`, `LegacyMeshJSON`, `LevelOptions`, `LightingMode`, `LineStyle`, `MaterialLayer`, `MeshBuffers`, `MeshEdge`, `MeshFace`, `MeshJSON`, `MeshNode`, `MeshValidation`, `MicroPatternType`, `MultiPoly2`, `ObjMeshData`, `OpeningTypeOptions`, `ParamDef`, `ParamFolder`, `ParamLayout`, `ParamSchema`, `PartProfile`, `PerpSegment`, `PickingView`, `PointClassification`, `Poly2`, `Presence`, `PropertyMap`, `Pt`, `RealizedSlab`, `RealizedWall`, `RenderMode`, `ResolvedStyle`, `RigidBodyConfig`, `Ring2`, `SceneBinding`, `SceneEvent`, `SceneEventListener`, `SceneJSON`, `SceneObject`, `SceneObjectType`, `SeededRandom`, `SelectParam`, `SharedRecord`, `SharedStoreOptions`, `SheetOptions`, `SheetPrim`, `SlabConstruction`, `SlabContext`, `SlabOptions`, `SlabPart`, `SlabPartRole`, `SlabTypeOptions`, `SpaceOptions`, `Spring`, `SpringConfig`, `StairFlight`, `StairOptions`, `StairShape`, `StairTypeOptions`, `StreamlineOptions`, `StringParam`, `SunPositionInput`, `SunPositionResult`, `SupabaseLike`, `TextOptions`, `UpAxis`, `Vec3Param`, `VertexCurvature`, `ViewOptions`, `VisualStyle`, `WallConstruction`, `WallJointOptions`, `WallOptions`, `WallPart`, `WallPartRole`, `WindowPartitioning`
 
 ## tekto — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (below: the browser layer only)
 
@@ -303,12 +304,14 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
   members: el, footer, dispose(), render(), applyValue(), getActiveTab()
 - `DEFAULT_BACKGROUND` (const): The page shaded and hidden-line are drawn on, when the host names none.
 - `download` (function): Download `data` as `fileName`.
+- `drawSheet` (function): Draw the sheet's primitives with `t`; the canvas transform (e.g.
 - `DxfExporter` (class): 2D DXF views of 3D meshes with hidden lines removed: add meshes and edges, then `toDxf({ viewDir })` (CPU) or `toDxfGpu` / `toSegmentsGpu` (WebGL id buffer).
   members: layer(), addMesh(), addOccluder(), addPolyline(), addEdge(), addBspTree(), toWorkerRequest(), toSegments(), toDxf(), toSegmentsGpu(), toDxfGpu(), toDxfFromSegments(), debugEdgeCounts(), clear()
 - `easeInOut` (function): Smoothstep.
 - `edgeStyle` (function): Crease colour and weight for a mode.
 - `extractVisiblePolylines` (function)
 - `fitRadius` (function): How far back to sit so a sphere of `boundingRadius` fits, on the tighter of the two field-of-view axes.
+- `fitSheet` (function): The transform that fits `bounds` into a `width` × `height` canvas with a pixel margin.
 - `getTheme` (function)
 - `groundAppearance` (function): The visible plane the content stands on.
 - `hiddenLineIdBuffer` (function): Compute hidden-line segments using GPU ID buffer rendering.
@@ -328,6 +331,8 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
   members: el, destroy(), render()
 - `processWorkerRequest` (function): Run hidden-line DXF computation — intended to be called from a Web Worker.
 - `sectionAppearance` (function): How a cut face is drawn.
+- `SheetCanvas` (class): A sheet in a container: fills it, fits the drawing, zooms with the wheel (about the cursor), pans by dragging, fits again on double-click.
+  members: canvas, sheet, primitives, transform, setSheet(), setTransform(), fit(), toSheet(), toScreen(), pick(), onPick(), setHighlight(), onDraw(), redraw(), paint(), dispose()
 - `shortestTurn` (function): The end angle to interpolate towards so a turn takes the short way round.
 - `sketch` (function): One function = one interactive 3D app.
 - `sketch2d` (function): One function = one interactive 2D canvas app, p5-style: controls in the panel, a `draw` callback with the canvas context, pointer events.
@@ -344,14 +349,17 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
 - `Viewport` (class): A three.js viewport for meshes the app built itself (an IFC model, a cut list), as opposed to a `Scene`: shaded / ghost / hidden-line modes, named views, sections, sun, nav gizmo.
   members: scene, camera, setContent(), clear(), static meshFrom(), viewMode, setViewMode(), projection, setProjection(), setView(), orbitTo(), setCallouts(), setSection(), setSectionColour(), sectionAt, setOutlined(), repaint(), shadowsOn, setShadows(), sunDescription, setSun(), fit(), fitTo(), dispose()
 
-Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `CalloutItem`, `ContentOptions`, `ControlItem`, `ControlPanelConfig`, `CustomRow`, `DrawFn`, `DxfEdgeOptions`, `DxfMeshOptions`, `DxfSegment`, `DxfView`, `DxfWorkerRequest`, `DxfWriteOptions`, `ExportRegistration`, `ExtraTab`, `IdBufferOptions`, `ImportRegistration`, `Lab`, `Lab2D`, `LayerMap`, `LayerNode`, `LayerState`, `LayoutOptions`, `LineHandle`, `MarkKind`, `MarkupBundle`, `MarkupCaptureOptions`, `MarkupObjectRef`, `MeshHandle`, `NavGizmoOptions`, `PanelButton`, `PickInfo`, `Placement`, `Pointer2D`, `PointerFn`, `PointHandle`, `PresenceBarOptions`, `ProjectedSegment`, `Projection`, `Reactive`, `SectionRequest`, `SelectOpts`, `ShapeHandle`, `ShapeMode`, `Sketch2DConfig`, `Sketch2DFn`, `SketchConfig`, `SliderOpts`, `StandardView`, `SVGOptions`, `SVGRendererConfig`, `Theme`, `ThreeRendererConfig`, `ViewMode`, `ViewportOptions`, `VisibilityOptions`, `VisibilityResult`, `VisibilityView`
+Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `CalloutItem`, `ContentOptions`, `ControlItem`, `ControlPanelConfig`, `CustomRow`, `DrawFn`, `DrawSheetOptions`, `DxfEdgeOptions`, `DxfMeshOptions`, `DxfSegment`, `DxfView`, `DxfWorkerRequest`, `DxfWriteOptions`, `ExportRegistration`, `ExtraTab`, `IdBufferOptions`, `ImportRegistration`, `Lab`, `Lab2D`, `LayerMap`, `LayerNode`, `LayerState`, `LayoutOptions`, `LineHandle`, `MarkKind`, `MarkupBundle`, `MarkupCaptureOptions`, `MarkupObjectRef`, `MeshHandle`, `NavGizmoOptions`, `PanelButton`, `PickInfo`, `Placement`, `Pointer2D`, `PointerFn`, `PointHandle`, `PresenceBarOptions`, `ProjectedSegment`, `Projection`, `Reactive`, `SectionRequest`, `SelectOpts`, `ShapeHandle`, `ShapeMode`, `SheetCanvasOptions`, `SheetTransform`, `Sketch2DConfig`, `Sketch2DFn`, `SketchConfig`, `SliderOpts`, `StandardView`, `SVGOptions`, `SVGRendererConfig`, `Theme`, `ThreeRendererConfig`, `ViewMode`, `ViewportOptions`, `VisibilityOptions`, `VisibilityResult`, `VisibilityView`
 
 ## tekto/2d — sketch2d and the 2D geometry a first sketch needs — no three.js
 
 - `closestPointOnSegment` (function)
 - `createRandom` (function): Create a seeded random number generator.
 - `download` (function): Download `data` as `fileName`.
+- `drawSheet` (function): Draw the sheet's primitives with `t`; the canvas transform (e.g.
+- `fitSheet` (function): The transform that fits `bounds` into a `width` × `height` canvas with a pixel margin.
 - `noise` (function): Perlin noise — 1D, 2D, or 3D.
+- `pickPrim` (function): The primitive at `p` (sheet coordinates): the topmost line, arc, circle or text within `tolerance` (sheet units — divide a pixel tolerance by the screen scale), else the topmost fill containing `p`…
 - `Polygon2D` (namespace): 2D polygon operations on open rings of `Vec2` (no repeated closing point): `area`, `signedArea`, `centroid2D`, `pointInPolygon`, `offset`, `simplify`, `convexHull2D`, `triangulate2D`, `filletRays`,…
   members: cross2D(), signedArea(), area(), perimeter(), polylineLength(), openRing(), closeRing(), isCCW(), averageCenter(), centroid2D(), pointInPolygon(), containsWinding(), closestVertexIndex(), closestPointOnEdge(), closestPointOnPolyline(), segmentIntersect2D(), offset(), simplify(), simplifyByAngle(), removeShortEdges(), subdivideEdges(), splitLongEdges(), normal3D(), createCircle(), createRect(), reverse(), filletRays(), convexHull2D(), triangulate2D(), minEnclosingCircle(), minAreaRect()
 - `PolygonBool` (namespace): Robust 2D booleans on polygons with holes: `union`, `intersection`, `difference` over multipolygons (`Ring2` → `Poly2` = [outer, …holes] → `MultiPoly2`), plus `fromRing`, `rings`, `area`.
@@ -359,6 +367,12 @@ Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `Callout
 - `Segment` (class)
   members: direction, length, lengthSquared, midpoint, pointAt(), closestPoint(), closestParameter(), distanceTo(), distanceSquaredTo(), bounds, static split(), closestPointsTo(), distanceToSegment(), reversed(), toString()
 - `segmentSegmentClosest` (function)
+- `Sheet` (class): A 2D drawing — views on a sheet at a scale — whose outputs (`toSVG`, `toDXF`) all draw the same exploded primitives.
+  members: scale, layer(), layers, view(), main, viewNames(), paper(), explode(), bounds(), style(), toSVG(), toDXF()
+- `SheetCanvas` (class): A sheet in a container: fills it, fits the drawing, zooms with the wheel (about the cursor), pans by dragging, fits again on double-click.
+  members: canvas, sheet, primitives, transform, setSheet(), setTransform(), fit(), toSheet(), toScreen(), pick(), onPick(), setHighlight(), onDraw(), redraw(), paint(), dispose()
+- `SheetView` (class): One view on the sheet: a plan, an elevation, an unrolled strip, a detail.
+  members: name, entities, options, polyline(), line(), rect(), circle(), arc(), fill(), text(), dim(), radius(), leader(), level(), segments(), sheetRef
 - `sketch2d` (function): One function = one interactive 2D canvas app, p5-style: controls in the panel, a `draw` callback with the canvas context, pointer events.
 - `Sketch2DInstance` (class)
   members: getParams(), setParams(), dispose()
@@ -369,4 +383,4 @@ Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `Callout
   members: static zero(), static one(), static unitX(), static unitY(), static unitZ(), static fromArray(), add(), sub(), mul(), div(), neg(), dot(), cross(), len(), lenSq(), normalize(), distTo(), distSqTo(), lerp(), project(), reflect(), almostEqual(), toArray(), toVec2(), xz(), toString(), clone(), toJSON(), static fromJSON()
 - `writeDxf2D` (function): Write a 2D drawing (plan, section, cut sheet) as DXF R12: POLYLINEs, LINEs, CIRCLEs, ARCs and TEXT on named layers — the same AutoCAD-safe writer as writeDxf3D (every layer declared, R12 names, pla…
 
-Types: `AnimateFn`, `DrawFn`, `Dxf2DArc`, `Dxf2DCircle`, `Dxf2DContent`, `Dxf2DLine`, `Dxf2DPoint`, `Dxf2DPolyline`, `Dxf2DText`, `DxfLayerDef`, `FilletResult`, `Lab2D`, `MultiPoly2`, `Pointer2D`, `PointerFn`, `Poly2`, `Reactive`, `Ring2`, `SeededRandom`, `SelectOpts`, `Sketch2DConfig`, `Sketch2DFn`, `SliderOpts`
+Types: `AnimateFn`, `DimOptions`, `DrawFn`, `DrawOptions`, `DrawSheetOptions`, `Dxf2DArc`, `Dxf2DCircle`, `Dxf2DContent`, `Dxf2DLine`, `Dxf2DPoint`, `Dxf2DPolyline`, `Dxf2DText`, `DxfLayerDef`, `FilletResult`, `Lab2D`, `LevelOptions`, `MultiPoly2`, `Pointer2D`, `PointerFn`, `Poly2`, `Reactive`, `Ring2`, `SeededRandom`, `SelectOpts`, `SheetCanvasOptions`, `SheetOptions`, `SheetPrim`, `SheetTransform`, `Sketch2DConfig`, `Sketch2DFn`, `SliderOpts`, `TextOptions`, `ViewOptions`

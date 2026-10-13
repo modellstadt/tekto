@@ -24,6 +24,12 @@ export { PolygonBool } from "./core/geometry/PolygonBool";
 export type { Ring2, Poly2, MultiPoly2 } from "./core/geometry/PolygonBool";
 export { Segment, closestPointOnSegment, segmentSegmentClosest } from "./core/geometry/Segment";
 
+// Drawings: a Sheet (views at a scale, dimensions) on screen and in SVG/DXF from one source
+export { Sheet, SheetView, pickPrim } from "./core/drawing/Sheet";
+export type { SheetPrim, ViewOptions, DrawOptions, TextOptions, DimOptions, LevelOptions, SheetOptions } from "./core/drawing/Sheet";
+export { SheetCanvas, drawSheet, fitSheet } from "./render/SheetCanvas";
+export type { SheetCanvasOptions, SheetTransform, DrawSheetOptions } from "./render/SheetCanvas";
+
 // Exporting a drawing: writeDxf2D(...) → download(..., "plan.dxf")
 export { writeDxf2D } from "./io/DxfWriter";
 export type { Dxf2DContent, Dxf2DPolyline, Dxf2DLine, Dxf2DCircle, Dxf2DArc, Dxf2DText, Dxf2DPoint, DxfLayerDef } from "./io/DxfWriter";

@@ -9,7 +9,8 @@
  * — and so are radius dimensions, leaders and level marks.
  */
 import { describe, it, expect } from "vitest";
-import { Sheet, type SheetPrim } from "../src/core/drawing/Sheet";
+import { Sheet, pickPrim, type SheetPrim } from "../src/core/drawing/Sheet";
+import { drawSheet, fitSheet } from "../src/render/SheetCanvas";
 import { aciFromHex } from "../src/io/DxfWriter";
 import { Vec3 } from "../src/core/math/vectors";
 
@@ -252,5 +253,87 @@ describe("aciFromHex", () => {
     expect(aciFromHex("#0000ff")).toBe(5);
     expect([8, 253]).toContain(aciFromHex("#808080"));
     expect(aciFromHex("nonsense")).toBe(7);
+  });
+});
+
+describe("on screen", () => {
+  /** A 2D context that records what is drawn. */
+  function recorder() {
+    const calls: { op: string; style?: unknown; width?: number; dash?: number[]; args?: unknown[] }[] = [];
+    const st = { strokeStyle: "", fillStyle: "", lineWidth: 1, dash: [] as number[] };
+    const ctx = new Proxy(st as Record<string, unknown>, {
+      get(t, k: string) {
+        if (k in t && k !== "dash") return t[k];
+        if (k === "setLineDash") return (d: number[]) => { st.dash = d; };
+        return (...args: unknown[]) => {
+          if (k === "stroke") calls.push({ op: k, style: st.strokeStyle, width: st.lineWidth, dash: st.dash });
+          else if (k === "fill" || k === "fillText" || k === "arc") calls.push({ op: k, style: st.fillStyle, args });
+        };
+      },
+      set(t, k: string, v) { t[k] = v; return true; },
+    });
+    return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
+  }
+
+  it("draws each primitive once: strokes, fills, text — pens and dashes at paper size", () => {
+    const sheet = new Sheet({ scale: 50, layers: { cut: { weight: 0.5 }, hidden: { dash: "hidden" } } });
+    sheet.main.rect(0, 0, 4, 3, { layer: "cut", fill: "#ddd" });
+    sheet.main.line([0, 1], [4, 1], { layer: "hidden" });
+    sheet.main.arc([0, 0], 1, 0, 90);
+    sheet.main.text("A", [1, 1]);
+    const prims = sheet.explode();
+    const { ctx, calls } = recorder();
+    const t = { scale: 100, x: 0, y: 0 };                                  // 100 px per metre → 1 paper mm = 5 px
+    drawSheet(ctx, sheet, t);
+    const n = (op: string) => calls.filter(c => c.op === op).length;
+    expect(n("stroke")).toBe(prims.filter(p => p.kind !== "fill" && p.kind !== "text").length);
+    expect(n("fill")).toBe(1);
+    expect(n("fillText")).toBe(1);
+    const strokes = calls.filter(c => c.op === "stroke");
+    expect(strokes[0].width).toBeCloseTo(2.5);                             // 0.5 mm
+    expect(strokes[1].dash).toEqual([7.5, 5]);                             // 1.5 mm, 1 mm
+    const arc = calls.find(c => c.op === "arc")!;
+    expect(arc.args!.slice(3)).toEqual([-0, -Math.PI / 2, true]);          // y flipped: anticlockwise from −start
+  });
+
+  it("highlights the primitives of the given keys", () => {
+    const sheet = new Sheet();
+    sheet.main.line([0, 0], [1, 0], { key: "walls/a" });
+    sheet.main.line([0, 1], [1, 1], { key: "walls/b" });
+    const { ctx, calls } = recorder();
+    drawSheet(ctx, sheet, { scale: 10, x: 0, y: 0 }, { highlight: ["walls/b"], highlightColor: "#f00" });
+    expect(calls.filter(c => c.op === "stroke").map(c => c.style)).toEqual(["#000000", "#f00"]);
+  });
+
+  it("fitSheet centres the drawing and keeps the margin", () => {
+    const t = fitSheet({ min: { x: 0, y: 0 }, max: { x: 10, y: 5 } }, 1000, 600, 50);
+    expect(t.scale).toBe(90);
+    expect(t.x + 5 * t.scale).toBe(500);
+    expect(t.y - 2.5 * t.scale).toBe(300);
+  });
+});
+
+describe("pickPrim", () => {
+  const sheet = new Sheet();
+  sheet.main.rect(0, 0, 4, 4, { fill: "#ccc", key: "rooms/r1" });
+  sheet.main.fill([[[5, 0], [9, 0], [9, 4], [5, 4]], [[6, 1], [8, 1], [8, 3], [6, 3]]], { key: "slabs/s1" });
+  sheet.main.line([0, 2], [4, 2], { key: "walls/w1" });
+  sheet.main.arc([10, 0], 1, 0, 90, { key: "doors/d1" });
+  sheet.main.text("Kitchen", [1, 3], { key: "rooms/r1" });
+  const prims = sheet.explode();
+
+  it("the topmost line within tolerance, else a fill around the point", () => {
+    expect(pickPrim(prims, { x: 2, y: 2.05 }, 0.1)?.key).toBe("walls/w1");
+    expect(pickPrim(prims, { x: 2, y: 1 }, 0.1)?.kind).toBe("fill");
+    expect(pickPrim(prims, { x: 2, y: 1 }, 0.1)?.key).toBe("rooms/r1");
+    expect(pickPrim(prims, { x: 7, y: 2 }, 0.1)).toBeNull();                // in the hole
+    expect(pickPrim(prims, { x: 5.5, y: 2 }, 0.1)?.key).toBe("slabs/s1");
+  });
+
+  it("arcs only along their sweep; text by its box", () => {
+    expect(pickPrim(prims, { x: 10 + Math.SQRT1_2, y: Math.SQRT1_2 }, 0.05)?.key).toBe("doors/d1");
+    expect(pickPrim(prims, { x: 10 - Math.SQRT1_2, y: -Math.SQRT1_2 }, 0.05)).toBeNull();
+    const t = pickPrim(prims, { x: 1.005, y: 3.001 }, 0.0001);            // 2.5 mm text at 1:1
+    expect(t?.kind).toBe("text");
   });
 });

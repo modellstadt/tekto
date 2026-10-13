@@ -500,6 +500,14 @@ export class Selection {
   remove(key: string): void { if (this.set.delete(key)) this.emit(); }
   toggle(key: string): void { if (!this.set.delete(key)) this.set.add(key); this.emit(); }
   clear(): void { if (this.set.size) { this.set.clear(); this.emit(); } }
+  /** A click on a record (`key`) or on nothing (null): it selects the record, Shift/⌘/Ctrl
+   *  adds or removes it, a plain click on nothing clears. The rule every view shares — a
+   *  3D viewport (`selectOnClick`), a drawing (`SheetCanvas.onPick`), a list. */
+  click(key: string | null | undefined, mods: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {}): void {
+    const adding = !!(mods.shiftKey || mods.metaKey || mods.ctrlKey);
+    if (!key) { if (!adding) this.clear(); return; }
+    if (adding) this.toggle(key); else this.select([key]);
+  }
 
   onChange(cb: (keys: string[]) => void): () => void {
     this.listeners.add(cb);
@@ -533,12 +541,7 @@ export function selectOnClick(view: PickingView, scene: Scene, selection: Select
     for (const o of scene.all()) if (o.key && selection.has(o.key)) ids.push(o.id);
     view.setSelectionHighlight(ids);
   };
-  const offPick = view.onPick((sceneId, info) => {
-    const key = sceneId ? scene.get(sceneId)?.key : undefined;
-    if (!key) { if (!info.shiftKey && !info.metaKey && !info.ctrlKey) selection.clear(); return; }
-    if (info.shiftKey || info.metaKey || info.ctrlKey) selection.toggle(key);
-    else selection.select([key]);
-  });
+  const offPick = view.onPick((sceneId, info) => selection.click(sceneId ? scene.get(sceneId)?.key : null, info));
   const offSel = selection.onChange(highlight);
   // A rebuilt record gets new scene objects: highlight them once the rebuild is done.
   let queued = false;

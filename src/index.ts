@@ -33,6 +33,8 @@ export type {
 export { ThreeRenderer } from "./render/ThreeRenderer";
 export type { ThreeRendererConfig, PickInfo } from "./render/ThreeRenderer";
 export { SVGRenderer } from "./render/SVGRenderer";
+export { SheetCanvas, drawSheet, fitSheet } from "./render/SheetCanvas";
+export type { SheetCanvasOptions, SheetTransform, DrawSheetOptions } from "./render/SheetCanvas";
 export type { SVGRendererConfig } from "./render/SVGRenderer";
 // A viewport for meshes an app built itself, as opposed to a Scene the library
 // owns: view modes, progressive creases, a real sun, camera projections.

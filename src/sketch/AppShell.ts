@@ -103,6 +103,13 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
   /** Update the status overlay text (cheap — just sets textContent) */
   status(text: string): void;
 
+  /**
+   * A new layer over the 3D view, under the status line and ✎ Markup — mount a 2D view
+   * there (`new SheetCanvas(app.overlay(), { sheet })`); hide it (`style.display = "none"`)
+   * to show the 3D view again. Its canvases marked `data-tekto-overlay` are in snapshots.
+   */
+  overlay(): HTMLElement;
+
   /** Dispose everything */
   dispose(): void;
 }
@@ -249,6 +256,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
   // ── window.__tekto for agents (tools/snap.mjs) ──
 
   let statusText = "";
+  const overlays: HTMLElement[] = [];
   const instance: AppShellInstance<S> = {
     params,
     scene,
@@ -271,6 +279,14 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       }
     },
 
+    overlay() {
+      const el = document.createElement("div");
+      el.style.cssText = "position:absolute;inset:0;";
+      (overlays[overlays.length - 1] ?? viewportEl).after(el);
+      overlays.push(el);
+      return el;
+    },
+
     dispose() {
       disposed = true;
       markup?.dispose();
@@ -279,6 +295,23 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       renderer.dispose();
       config.container.removeChild(root);
     },
+  };
+
+  // What the viewport shows: the 3D view, and the overlay canvases that are visible over it.
+  const snapshotPng = (): string => {
+    const base = renderer.snapshotPng();
+    const shown = [...vpWrap.querySelectorAll<HTMLCanvasElement>("canvas[data-tekto-overlay]")].filter(c => c.getClientRects().length > 0);
+    if (!shown.length) return base;
+    const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
+    const out = document.createElement("canvas");
+    out.width = src.width; out.height = src.height;
+    const g = out.getContext("2d")!;
+    g.drawImage(src, 0, 0);                     // drawn in the same task as the render, so the buffer still holds it
+    for (const c of shown) {
+      const r = c.getBoundingClientRect();
+      g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
+    }
+    return out.toDataURL("image/png");
   };
 
   // ✎ Markup: marks resolve to the objects they touch — and through `key` to document records.
@@ -295,7 +328,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     title: config.title ?? "app",
     hitAt: (x, y) => renderer.hitAt(x, y),
     groundAt: (x, y) => renderer.groundAt(x, y),
-    snapshotPng: () => renderer.snapshotPng(),
+    snapshotPng: () => snapshotPng(),
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => { /* retained scenes aren't re-run: objects carry their record key instead */ },
@@ -311,7 +344,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
           ...opts,
           title: config.title ?? "app",
           harness: "appShell",
-          png: renderer.snapshotPng(),
+          png: snapshotPng(),
           viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
           context: context(),
         }),
