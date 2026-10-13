@@ -573,6 +573,12 @@ const ACCORDION_MIN = 40;
  *  opposed to one whose stored number is a real pixel height. */
 const FLEXING = 1;
 
+/** A section's height before anyone touched it: open per `defaultOpen` (or `fill`), closed as 0. */
+function startHeight(s: AccordionSection): number {
+  const open = s.defaultOpen ?? !!s.fill;
+  return open ? (s.fill ? FLEXING : s.defaultHeight ?? FLEXING) : 0;
+}
+
 /**
  * A column of collapsible sections, one of which may take the leftover height.
  *
@@ -599,12 +605,12 @@ export function AccordionColumn({
 }: AccordionColumnProps) {
   const initial = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const s of sections) {
-      const open = s.defaultOpen ?? !!s.fill;
-      out[s.id] = open ? (s.fill ? FLEXING : s.defaultHeight ?? FLEXING) : 0;
-    }
+    for (const s of sections) out[s.id] = startHeight(s);
     return out;
   }, [sections]);
+  /** Its height: as left, or, for a section the state has never seen (one that appeared
+   *  after the first render), its own default. */
+  const heightOf = (s: AccordionSection) => state[s.id] ?? startHeight(s);
 
   const [state, setState] = useState<Record<string, number>>(() => {
     if (!storageKey) return initial;
@@ -624,7 +630,7 @@ export function AccordionColumn({
   const toggle = useCallback((s: AccordionSection) => {
     setState((v) => ({
       ...v,
-      [s.id]: v[s.id] > 0 ? 0 : (s.fill ? FLEXING : s.defaultHeight ?? FLEXING),
+      [s.id]: (v[s.id] ?? startHeight(s)) > 0 ? 0 : (s.fill ? FLEXING : s.defaultHeight ?? FLEXING),
     }));
   }, []);
 
@@ -655,7 +661,7 @@ export function AccordionColumn({
   }, []);
 
   /** The sections on screen, so a boundary knows which two it lies between. */
-  const open = sections.filter((s) => (state[s.id] ?? 0) > 0);
+  const open = sections.filter((s) => heightOf(s) > 0);
   /** A body sized by a number can be dragged; one sized by its content cannot. */
   const resizable = (s: AccordionSection) => !!s.fill || s.defaultHeight !== undefined;
 
@@ -665,10 +671,10 @@ export function AccordionColumn({
         display: "flex", flexDirection: "column", minHeight: 0, overflowY: "auto", ...style,
       }}>
       {sections.map((s) => {
-        const isOpen = (state[s.id] ?? 0) > 0;
+        const isOpen = heightOf(s) > 0;
         const at = open.indexOf(s);
         const above = isOpen && at > 0 ? open[at - 1] : undefined;
-        const flexing = !!s.fill && state[s.id] === FLEXING;
+        const flexing = !!s.fill && heightOf(s) === FLEXING;
         return (
           <React.Fragment key={s.id}>
             {above && resizable(above) && resizable(s) && (
@@ -738,7 +744,7 @@ export function AccordionColumn({
                   // the tree down to two rows before anyone has dragged anything
                   ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" }
                   : resizable(s)
-                    ? { flexShrink: 0, height: state[s.id], overflow: "auto" }
+                    ? { flexShrink: 0, height: heightOf(s), overflow: "auto" }
                     : { flexShrink: 0 }}>
                 {s.children}
               </div>
