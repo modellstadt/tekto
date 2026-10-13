@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- `buildCutList` takes slab parts (any part with a material, profile, length and role), so
+  a joisted floor's joists go on the same cut list as the walls' studs without a cast.
+  From BuildGraph.
 - **A fading grid ground**, `gridStyle: "fading"` (BuildGraph's grid ground, now on the one
   renderer, either up axis, any background): the ground ruled in round metres for the size
   of the content (1 m under a house, 10 m under a block, every fifth line stronger), fading

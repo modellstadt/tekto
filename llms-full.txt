@@ -21,7 +21,7 @@ still change — prefer the others when both would do.
 - `boxOf` (function): The box of a set of points, or null for no points.
 - `BspTree` (class): A BSP tree of convex polygons, for CSG on closed solids: build with `fromPolygons`/`fromMesh`, combine with `union`/`subtract`/`intersect` (new trees, inputs unchanged), read back with `toMesh()` (…
   members: static fromPolygons(), static fromMesh(), toPolygons(), toMesh(), toFlatMesh(), clone(), invert(), classifyPoint(), traverseFrontToBack(), traverseBackToFront(), static union(), static subtract(), static intersect()
-- `buildCutList` (function): Roll a list of parts (typically from a `RealizedWall.parts`) into a cut list keyed by (material × profile × length-bucket).
+- `buildCutList` (function): Roll a list of parts into a cut list keyed by (material × profile × length-bucket): a wall's (`RealizedWall.parts`), a slab's (`realizeSlab(…).parts`), or both together.
 - `Capsule2D` (class): 2D capsule (stadium): a segment of `2 × halfLength` through `center` at `angle` (radians), swept by a disk of `radius`.
   members: endpoints, totalLength, area, mass, inertia, handles, closestSegmentPoint(), distToPoint(), containsPoint(), hitTest(), clone()
 - `chooseJoistDirection` (function): Pick a joist direction for a slab.

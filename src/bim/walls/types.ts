@@ -367,11 +367,15 @@ export function realizeSystem(system: WallSystem): RealizedWall[] {
 // ─── Cut-list helpers ────────────────────────────────────────────────
 
 /**
- * Roll a list of parts (typically from a `RealizedWall.parts`) into a
- * cut list keyed by (material × profile × length-bucket). The default
+ * Roll a list of parts into a cut list keyed by (material × profile × length-bucket): a
+ * wall's (`RealizedWall.parts`), a slab's (`realizeSlab(…).parts`), or both together. Parts
+ * without a length, profile or material (sheathing, the envelope) are left out. The default
  * bucket is exact-millimetre — pass `roundMm` to coarsen.
  */
-export function buildCutList(parts: WallPart[], roundMm = 1): CutListItem[] {
+export function buildCutList(
+  parts: readonly Pick<WallPart, "material" | "profile" | "length" | "role">[],
+  roundMm = 1,
+): CutListItem[] {
   const buckets = new Map<string, CutListItem>();
   for (const p of parts) {
     if (p.length === undefined || !p.profile || !p.material) continue;
