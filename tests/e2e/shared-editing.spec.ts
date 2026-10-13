@@ -4,11 +4,22 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
+// The dev server persists every edit to .tekto/collab/<doc>.json and each run drags a point
+// 60 px, so runs on a shared document push it further each time until it is off screen. The
+// test edits its own document and resets it first: a null record means "start position".
+const DOC = "e2e-shared-editing";
+test.beforeEach(async ({ request }) => {
+  for (let i = 0; i < 4; i++) {
+    const res = await request.post("/__tekto/collab/put", { data: { doc: DOC, key: `p${i}`, value: null, by: "e2e" } });
+    expect(res.ok(), `reset p${i}`).toBe(true);
+  }
+});
+
 /** The page's log block ("Status online  Online Ann, Bob  Last change p1 by Bob"). */
 const log = (page: Page) => page.locator("div").filter({ hasText: /^Status/ }).last();
 
 async function open(page: Page) {
-  await page.goto("/testbench.html?page=shared-editing");
+  await page.goto(`/testbench.html?page=shared-editing&doc=${DOC}`);
   await expect(page.locator("canvas").first()).toBeVisible({ timeout: 15_000 });
   await expect(log(page)).toContainText(/Status\s*online/, { timeout: 15_000 });
 }
