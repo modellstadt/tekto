@@ -27,6 +27,9 @@ export type { Theme } from "./gui/theme";
 // Commands: what an app can do, with its keys — run by key, listed for a palette, run by agents.
 export { Commands, keyMatches, formatKeys, viewCommands } from "./gui/Commands";
 export type { Command, CommandInfo, ViewControl } from "./gui/Commands";
+// A cube per render mode, drawn the way the mode draws: for a mode switch.
+export { viewModeIconShapes, viewModeIconSvg, VIEW_MODE_ICON_SVG, VIEW_MODE_ICON_CORNERS } from "./gui/viewModeIcons";
+export type { IconShape } from "./gui/viewModeIcons";
 export { ControlPanel } from "./gui/ControlPanel";
 export type {
   ControlItem, PanelButton, CustomRow, ExtraTab, ControlPanelConfig,

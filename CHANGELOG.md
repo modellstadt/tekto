@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **View-mode icons** (BuildGraph's #22, now keyed by render mode): a cube drawn the way
+  each mode draws, solid, ghost, hidden line and wireframe. `viewModeIconSvg(mode, size)`
+  for a DOM app, `viewModeIconShapes(mode)` as data, and `ViewModeIcon` in `tekto/react`.
+  The appShell top bar's Mode buttons show them.
 - **Renderer fixes from 7DHouse** (#64, #65):
   - Studio lighting no longer logs five three.js warnings per object: materials get only
     the parameters that are set.
