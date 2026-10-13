@@ -16,6 +16,9 @@ import { Vec3 } from "../core/math/vectors";
 
 export type GizmoMode = "translate" | "rotate" | "scale" | "none";
 
+/** Modifier keys held during a pick (a click on the viewport). */
+export interface PickInfo { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean; altKey: boolean; }
+
 export interface ThreeRendererConfig {
   antialias: boolean;
   backgroundColor: number;
@@ -118,7 +121,7 @@ export class ThreeRenderer {
   // ── Picking + Gizmo ──
   private raycaster = new THREE.Raycaster();
   private pickEnabled = false;
-  private pickListeners = new Set<(id: string | null) => void>();
+  private pickListeners = new Set<(id: string | null, info: PickInfo) => void>();
   private transformControls: TransformControls | null = null;
   private gizmoMode: GizmoMode = "translate";
   private gizmoAttachedId: string | null = null;
@@ -1171,8 +1174,9 @@ export class ThreeRenderer {
     }
   }
 
-  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background. */
-  onPick(listener: (id: string | null) => void): () => void {
+  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
+   *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
+  onPick(listener: (id: string | null, info: PickInfo) => void): () => void {
     this.pickListeners.add(listener);
     return () => this.pickListeners.delete(listener);
   }
@@ -1223,7 +1227,8 @@ export class ThreeRenderer {
     if (this.selectedDragHandle !== null) this.setHandleSelected(null);
 
     const id = this.pickAt(e.clientX, e.clientY);
-    for (const l of this.pickListeners) l(id);
+    const info: PickInfo = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey };
+    for (const l of this.pickListeners) l(id, info);
   };
 
   private onPointerMoveDragging = (e: PointerEvent) => {
@@ -1569,7 +1574,8 @@ export class ThreeRenderer {
 
   // ── Selection visual feedback ──
 
-  setSelectionHighlight(id: string | null): void {
+  /** Highlight one object, several (a record's objects, a multi-selection), or none. */
+  setSelectionHighlight(ids: string | readonly string[] | null): void {
     this.requestRender();
     // Restore prior highlight.
     for (const [, info] of this.selectionMaterials) {
@@ -1578,21 +1584,23 @@ export class ThreeRenderer {
       m.emissiveIntensity = info.oldIntensity;
     }
     this.selectionMaterials.clear();
-    if (!id) return;
-    const t = this.objectMap.get(id);
-    if (!t) return;
-    t.traverse((child: THREE.Object3D) => {
-      const m = (child as THREE.Mesh).material as (THREE.MeshPhongMaterial | THREE.MeshStandardMaterial) | undefined;
-      if (m && (m as any).emissive instanceof THREE.Color) {
-        this.selectionMaterials.set(child.uuid, {
-          mat: m,
-          oldEmissive: m.emissive.clone(),
-          oldIntensity: m.emissiveIntensity ?? 0,
-        });
-        m.emissive = new THREE.Color(0x38d9a9);
-        m.emissiveIntensity = 0.35;
-      }
-    });
+    const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
+    for (const id of list) {
+      const t = this.objectMap.get(id);
+      if (!t) continue;
+      t.traverse((child: THREE.Object3D) => {
+        const m = (child as THREE.Mesh).material as (THREE.MeshPhongMaterial | THREE.MeshStandardMaterial) | undefined;
+        if (m && (m as any).emissive instanceof THREE.Color) {
+          this.selectionMaterials.set(child.uuid, {
+            mat: m,
+            oldEmissive: m.emissive.clone(),
+            oldIntensity: m.emissiveIntensity ?? 0,
+          });
+          m.emissive = new THREE.Color(0x38d9a9);
+          m.emissiveIntensity = 0.35;
+        }
+      });
+    }
   }
 
   // ── Render ──
