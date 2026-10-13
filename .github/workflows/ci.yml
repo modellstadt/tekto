@@ -24,6 +24,13 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      # Scripts and agents import tekto in plain Node, without a bundler: the built
+      # package must load there, ESM and CommonJS (three's addons need the `.js` path).
+      - name: the build loads in plain Node
+        run: |
+          node --input-type=module -e "const m = await import('./dist/index.mjs'); if (Math.abs(m.MeshFactory.box(1, 1, 1).volume() - 1) > 1e-9) throw new Error('box volume')"
+          node -e "const m = require('./dist/index.js'); if (typeof m.Mesh !== 'function') throw new Error('no Mesh')"
+
       # dist/ is committed so `github:` installs need no build step. It is rebuilt
       # ONLY in release PRs (branch release/vX.Y.Z); anywhere else, two open PRs
       # would conflict on generated files.
