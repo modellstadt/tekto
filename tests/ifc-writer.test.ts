@@ -299,6 +299,45 @@ describe("IfcWriter — multi-storey", () => {
   });
 });
 
+describe("IfcWriter — roofs and loose elements", () => {
+  /** The refs a storey's containment relation lists, or [] if it has none. */
+  const containedIn = (ifc: string, storey: number): number[] => {
+    const line = ifc.split("\n").find(l => l.includes("=IFCRELCONTAINEDINSPATIALSTRUCTURE(") && l.endsWith(`,#${storey});`));
+    return line ? [...stepArgs(line)[4].matchAll(/#(\d+)/g)].map(m => Number(m[1])) : [];
+  };
+
+  it("a member given a storey is contained in it; one without stays a part", () => {
+    const w = new IfcWriter({});
+    const first = w.addStorey({ name: "First", elevation: 3 });
+    const rail = w.addMember(0, { name: "Railing", role: "railing", mesh: MeshFactory.box(2, 0.05, 1), ifcType: "IfcRailing" }, { storey: first });
+    const stud = w.addMember(0, { name: "Stud", role: "stud", mesh: MeshFactory.box(0.06, 0.12, 2.5) });
+    const out = w.save();
+    expect(out).toContain(`#${rail}=IFCRAILING(`);
+    expect(containedIn(out, first)).toEqual([rail]);
+    expect(containedIn(out, w.getDefaultStorey())).not.toContain(stud);
+  });
+
+  it("addRoof gathers its parts and is contained in the storey in their place", () => {
+    const w = new IfcWriter({});
+    const top = w.addStorey({ name: "Roof", elevation: 6 });
+    const deck = w.addSlab(new Slab({ boundary: [new Vec2(0, 0), new Vec2(4, 0), new Vec2(4, 3), new Vec2(0, 3)], thickness: 0.2, elevation: 6.2, name: "Deck" }),
+      { predefinedType: "ROOF", storey: top, includeParts: false });
+    const rafter = w.addMember(0, { name: "Rafter", role: "rafter", mesh: MeshFactory.box(0.08, 4, 0.2) }, { storey: top });
+    const roof = w.addRoof([deck, rafter], { name: "Gable", storey: top, predefinedType: "GABLE_ROOF" });
+    const out = w.save();
+    expect(out).toMatch(new RegExp(`#${roof}=IFCROOF\\('[^']+',#\\d+,'Gable',\\$,\\$,#\\d+,\\$,\\$,\\.GABLE_ROOF\\.\\);`));
+    expect(out).toMatch(new RegExp(`=IFCRELAGGREGATES\\([^;]*,#${roof},\\(#${deck},#${rafter}\\)\\);`));
+    expect(containedIn(out, top)).toEqual([roof]);
+  });
+
+  it("a roof needs parts this writer wrote", () => {
+    const w = new IfcWriter({});
+    expect(() => w.addRoof([])).toThrow(/at least one part/);
+    expect(() => w.addRoof([w.getDefaultStorey()])).toThrow(/not a slab or member/);
+    expect(() => w.addMember(0, { name: "x", role: "x", mesh: MeshFactory.box(1, 1, 1) }, { storey: 99999 })).toThrow(/unknown storey ref/);
+  });
+});
+
 describe("standard property sets carry standard property names", () => {
   it("spells the IFC name inside a Pset_, and leaves a custom set alone", () => {
     // Pset_WallCommon is not a free-form bag. Every consumer asks for

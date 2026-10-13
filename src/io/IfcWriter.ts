@@ -100,6 +100,7 @@ export class IfcWriter {
   private storeyPlacementByRef = new Map<number, number>(); // storeyRef → placementRef
   private storeyElevationByRef = new Map<number, number>(); // storeyRef → elevation
   private elementsByStorey = new Map<number, number[]>();   // storeyRef → contained element refs
+  private partRefs = new Set<number>();                    // what addRoof may gather: addSlab / addMember results
 
   // Tracking.
   private wallRefs: number[] = [];
@@ -362,6 +363,12 @@ export class IfcWriter {
    * IfcMember with a tessellated body (IfcTriangulatedFaceSet — efficient,
    * IFC4-native). The mesh is in world coordinates. Aggregating under a
    * wall is the caller's responsibility (see addWallSystem).
+   *
+   * An element that stands on its own — a railing, a column — passes
+   * `opts.storey` and is contained in that storey. A part that a wall, slab
+   * or roof gathers leaves it out: it is contained through its whole.
+   *
+   *   ifc.addMember(0, { name: "Railing", role: "railing", mesh, ifcType: "IfcRailing" }, { storey: first });
    */
   addMember(_parentWallRef: number, part: {
     name: string;
@@ -372,8 +379,9 @@ export class IfcWriter {
     length?: number;
     ifcType?: string;
     properties?: PropertyMap;
-  }): number {
+  }, opts: { storey?: number } = {}): number {
     void _parentWallRef; // aggregation done by the caller
+    const storey = opts.storey === undefined ? null : this.resolveStorey(opts.storey);
     const mesh = part.mesh;
     const positions = mesh.positions;
     const indices = mesh.indices;
@@ -404,6 +412,8 @@ export class IfcWriter {
     const memberRef = this.addEntity(
       `${typeName}(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(part.name)},$,${ifcStr(part.role)},#${placement},#${productShape},$,.NOTDEFINED.)`,
     );
+    this.partRefs.add(memberRef);
+    if (storey !== null) this.attachToStorey(memberRef, storey);
 
     // Attach material if known.
     if (part.material) {
@@ -508,6 +518,7 @@ export class IfcWriter {
       `IFCSLAB(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(slabName)},$,$,#${localPlacement},#${productShape},$,.${predef}.)`,
     );
     this.slabRefs.push(slabRef);
+    this.partRefs.add(slabRef);
     this.attachToStorey(slabRef, storey);
 
     // ── Pset_SlabCommon ──
@@ -562,6 +573,47 @@ export class IfcWriter {
     );
     this.slabTypeRefs.set(type, typeRef);
     return typeRef;
+  }
+
+  // ── Roofs ────────────────────────────────────────────────────────
+
+  /**
+   * Add a roof: an `IfcRoof` that gathers its parts — slabs, members, plates,
+   * coverings already written with `addSlab` / `addMember` — and is contained
+   * in a storey (default: the bootstrap storey). The parts stop being
+   * contained in a storey themselves: in IFC a part belongs to its whole, and
+   * the whole to the storey.
+   *
+   *   const deck = ifc.addSlab(roofSlab, { predefinedType: "ROOF", storey: top });
+   *   const rafters = rafterParts.map((p) => ifc.addMember(0, p));
+   *   ifc.addRoof([deck, ...rafters], { storey: top, predefinedType: "GABLE_ROOF" });
+   */
+  addRoof(parts: readonly number[], opts: {
+    name?: string;
+    storey?: number;
+    predefinedType?: "FLAT_ROOF" | "SHED_ROOF" | "GABLE_ROOF" | "HIP_ROOF" | "HIPPED_GABLE_ROOF"
+      | "GAMBREL_ROOF" | "MANSARD_ROOF" | "BARREL_ROOF" | "RAINBOW_ROOF" | "BUTTERFLY_ROOF"
+      | "PAVILION_ROOF" | "DOME_ROOF" | "FREEFORM" | "NOTDEFINED";
+  } = {}): number {
+    const storey = this.resolveStorey(opts.storey);
+    if (parts.length === 0) throw new Error("IfcWriter.addRoof: a roof needs at least one part (a ref from addSlab or addMember).");
+    for (const p of parts) {
+      if (!this.partRefs.has(p)) throw new Error(`IfcWriter.addRoof: #${p} is not a slab or member this writer wrote (refs come from addSlab / addMember).`);
+    }
+    const gathered = new Set(parts);
+    for (const [ref, list] of this.elementsByStorey) this.elementsByStorey.set(ref, list.filter((e) => !gathered.has(e)));
+
+    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.storeyFrame(storey).placement},#${this.worldPlacementRef})`);
+    // IfcRoof(GlobalId,OwnerHistory,Name,Description,ObjectType,ObjectPlacement,Representation,Tag,PredefinedType):
+    // no body of its own, its parts carry the geometry.
+    const roofRef = this.addEntity(
+      `IFCROOF(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(opts.name ?? "Roof")},$,$,#${placement},$,$,.${opts.predefinedType ?? "NOTDEFINED"}.)`,
+    );
+    this.attachToStorey(roofRef, storey);
+    this.addEntity(
+      `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${roofRef},(${parts.map((r) => `#${r}`).join(",")}))`,
+    );
+    return roofRef;
   }
 
   // ── Stairs ───────────────────────────────────────────────────────

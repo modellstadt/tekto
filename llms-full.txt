@@ -71,7 +71,7 @@ still change — prefer the others when both would do.
 - `IfcModel` (namespace): IFC import per element: each keeps its mesh, IFC class, property and quantity sets and stated relations, so an app can select and inspect it.
   members: parse()
 - `IfcWriter` (class): Writes an IFC4 file as STEP text — no web-ifc needed.
-  members: addStorey(), getDefaultStorey(), addWallSystem(), addWall(), addOpening(), addMember(), addJoint(), addSlab(), addStair(), addSpace(), save(), saveBytes(), saveBlob()
+  members: addStorey(), getDefaultStorey(), addWallSystem(), addWall(), addOpening(), addMember(), addJoint(), addSlab(), addRoof(), addStair(), addSpace(), save(), saveBytes(), saveBlob()
 - `Intersections` (namespace, experimental): 2D and 3D intersection tests: ray vs segment/triangle/plane/sphere/AABB, segments, lines and rays in 2D, circles, planes, a ray through a polygon, plus closest points on segments and lines.
   members: raySegment(), rayTriangle(), pointInTriangle3D(), closestPointOnSegment(), closestPointsLineLine(), rayPlane(), raySphere(), rayAABB(), segmentIntersect2D(), segmentSegment2D(), lineLine2D(), raySegment2D(), rayLine2D(), segmentLine2D(), rayRay2D(), circleLine(), circleCircle(), circleSegment(), segmentPlane(), linePlane(), planePlane(), polygonRay2D()
 - `joistDirectionFromBounds` (function): Method 1 — joists span the SHORTER dimension of the slab's axis-aligned bounding box.
