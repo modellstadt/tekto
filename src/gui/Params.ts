@@ -298,7 +298,11 @@ export class ParamStore<S extends ParamSchema = ParamSchema> {
   }
 }
 
-/** Convenience factory */
+/**
+ * Convenience factory
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function createParams<S extends ParamSchema>(schema: S): ParamStore<S> {
   return new ParamStore(schema);
 }
@@ -317,7 +321,11 @@ export interface ParamLayout {
   folders: ParamFolder[];
 }
 
-/** Create a layout that groups params into collapsible folders */
+/**
+ * Create a layout that groups params into collapsible folders
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export function createLayout(folders: ParamFolder[]): ParamLayout {
   return { folders };
 }

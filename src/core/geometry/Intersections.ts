@@ -13,7 +13,11 @@ import { AABB } from "./AABB";
 const EPS = 1e-8;
 const EPS2D = 1e-10;
 
-/** Hit of two 2D segments: `t` along the first (0..1), `u` along the second (0..1), and the `point`. */
+/**
+ * Hit of two 2D segments: `t` along the first (0..1), `u` along the second (0..1), and the `point`.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export interface Intersect2DResult {
   t: number;
   u: number;
@@ -24,6 +28,8 @@ export interface Intersect2DResult {
  * 2D and 3D intersection tests: ray vs segment/triangle/plane/sphere/AABB, segments, lines and rays in 2D,
  * circles, planes, a ray through a polygon, plus closest points on segments and lines. A miss gives `null` (lists: `[]`),
  * except `raySegment`, which clamps and always returns a point.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export const Intersections = {
 

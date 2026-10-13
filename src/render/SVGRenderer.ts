@@ -41,6 +41,8 @@ const DEFAULTS: SVGRendererConfig = {
 /**
  * Draws a `Scene`'s points, segments, polygons, circles and meshes as SVG, projected onto one plane (`xz` by default), and redraws on every scene change.
  * `setViewBox` pans/zooms; `dispose()` unsubscribes and removes the SVG.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SVGRenderer {
   private gScene: GScene;

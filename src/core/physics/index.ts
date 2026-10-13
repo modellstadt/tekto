@@ -25,6 +25,8 @@ export interface Spring {
  * Spring-mass simulation of a `Mesh`: `initFromMesh` makes a particle per node with edge, quad-diagonal and hinge
  * springs (optionally a second truss layer), `step(dt)` integrates in substeps, `updateMesh` writes positions back.
  * Set `gravity` and `floorPlane` for your up axis: the defaults are gravity −Y and a floor at z = 10 facing +Z.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 export class SpringSystem3D {
   pos: Vec3[] = [];

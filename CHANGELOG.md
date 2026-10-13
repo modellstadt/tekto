@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Unused exports are marked `@experimental`, and kept.**
+  - 51 exports had no user in the library, the playground, the tests, tekto-apps or
+    buchholz-stair. They are 46 values (most of the SDF family, the React components,
+    `SVGRenderer`, `Intersections`, `SpringSystem3D`, `MarchingSquares`, `createParams` …)
+    and 5 types that only those values use.
+  - Option types of used functions don't count as unused, even if no app names them.
+  - The tag says "no app uses this yet; it may still change", and `llms-full.txt` shows it,
+    so an agent prefers the established API. Drop the tag when an app adopts one.
+
 - **Every export is documented.**
   - The 219 exports without JSDoc have it now, including `Mesh`, `Vec3`, `ThreeRenderer`, the
     Scene types, the BIM and IO types, the SDF family and the React components.

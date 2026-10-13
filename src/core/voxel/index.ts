@@ -403,7 +403,11 @@ export class VoxelGrid {
 // MarchingSquares
 // ═════════════════════════════════════════════
 
-/** Iso-contour of a 2D scalar grid as loose line segments in world coordinates (marching squares). */
+/**
+ * Iso-contour of a 2D scalar grid as loose line segments in world coordinates (marching squares).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 export const MarchingSquares = {
   extract(
     values: ArrayLike<number>, nx: number, ny: number,
