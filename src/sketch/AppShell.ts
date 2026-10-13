@@ -107,7 +107,12 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
    *  (`view.top`, `view.fitAll`, …) are there from the start, without keys. */
   commands: Commands;
 
-  /** Register an animation callback (called every frame with dt in seconds) */
+  /**
+   * Register an animation callback, called every frame with dt in seconds. While one is set
+   * the view draws every frame; without one it draws only when something changed (the
+   * scene, the camera, a param), so an idle app costs nothing. Changed three.js objects
+   * yourself outside it? Call `app.renderer.requestRender()`.
+   */
   onAnimate(fn: (dt: number, time: number) => void): void;
 
   /**
@@ -283,8 +288,13 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     const now = performance.now();
     const dt = Math.min((now - lastTime) / 1000, 1 / 15);
     lastTime = now;
-    if (animateFn) animateFn(dt, (now - startTime) / 1000);
-    renderer.render();
+    // An animating app draws every frame; otherwise only when something asked for a frame.
+    if (animateFn) {
+      animateFn(dt, (now - startTime) / 1000);
+      renderer.render();
+    } else {
+      renderer.renderIfNeeded();
+    }
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

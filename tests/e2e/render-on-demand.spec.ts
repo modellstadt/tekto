@@ -134,3 +134,31 @@ test("colour, layer and pickTag restyle the existing three object", async ({ pag
   expect(r).toEqual({ same: true, color: "ff0000", opacity: 0.5, transparent: true, pickable: false, rebuiltForDash: true });
   expect(errors).toEqual([]);
 });
+
+test("an idle appShell stops drawing; a param, the top bar and callouts still draw", async ({ page }) => {
+  const errors = watchErrors(page);
+  await open(page, "framed-wall");                                  // appShell, callouts, axis widget
+  const draws = await countDraws(page);
+  await expect.poll(async () => {
+    await draws.reset();
+    await page.waitForTimeout(500);
+    return draws.get();
+  }, { message: "draws while idle", timeout: 10_000 }).toBe(0);
+
+  await page.evaluate(() => (window as any).__tekto.setParams({ "Stud spacing": 0.45 }));
+  await page.waitForTimeout(200);
+  expect(await draws.get(), "draws after a param change").toBeGreaterThan(0);
+
+  await draws.reset();
+  await page.getByRole("button", { name: "Ghost" }).click();
+  await page.waitForTimeout(200);
+  expect(await draws.get(), "draws after a top-bar change").toBeGreaterThan(0);
+  // …and the callouts are worked out once the view is still, then drawing stops again.
+  await expect.poll(() => page.locator("button[title]").filter({ hasText: /×/ }).filter({ visible: true }).count()).toBeGreaterThan(0);
+  await expect.poll(async () => {
+    await draws.reset();
+    await page.waitForTimeout(500);
+    return draws.get();
+  }, { message: "draws once idle again", timeout: 10_000 }).toBe(0);
+  expect(errors).toEqual([]);
+});
