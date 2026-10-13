@@ -231,13 +231,15 @@ export class Callouts {
   update(placements: Placement[], unplaced = 0, upTo = false) {
     const placed = new Set(placements.map((p) => p.id));
     for (const [id, el] of this.labels) {
-      if (!placed.has(id)) { el.box.hidden = true; el.leader.setAttribute("points", ""); }
+      // display, not the hidden attribute: the box's own display:block would override that,
+      // and a label whose element went out of sight stayed on screen without its leader.
+      if (!placed.has(id)) { el.box.style.display = "none"; el.leader.setAttribute("points", ""); }
     }
     for (const p of placements) {
       const item = this.items.get(p.id);
       if (!item) continue;
       const el = this.labels.get(p.id) ?? this.make(p.id, item);
-      el.box.hidden = false;
+      el.box.style.display = "block";
       el.box.style.left = `${p.x}px`;
       el.box.style.top = `${p.y}px`;
       // an elbow rather than a straight line: a horizontal run out of the

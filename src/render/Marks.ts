@@ -4,7 +4,7 @@
  */
 import * as THREE from "three";
 import type { SectionRequest } from "../scene/Scene";
-import { sectionPlane, sectionAppearance, calloutSamples, occludes } from "./viewRules";
+import { sectionPlane, sectionAppearance, calloutSamples, occludes, shown } from "./viewRules";
 import { Callouts, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem } from "./Callouts";
 import type { RendererCore } from "./RendererCore";
 
@@ -61,10 +61,13 @@ export class Marks {
     core.threeScene.add(this.outlineGroup);
   }
 
-  /** Keep outlines on their objects (a gizmo drag moves them without a rebuild). */
+  /** Keep outlines on their objects (a gizmo drag moves them without a rebuild), and hidden
+   *  with them: a hidden object shows no outline. */
   followOutlines(): void {
-    for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
-    for (const o of this.presenceLines) o.line.matrix.copy(o.source.matrixWorld);
+    for (const o of [...this.outlined, ...this.presenceLines]) {
+      o.line.matrix.copy(o.source.matrixWorld);
+      o.line.visible = shown(o.source);
+    }
   }
 
   setSelectionStyle(style: "tint" | "outline"): void {

@@ -25,6 +25,7 @@ import { Lighting } from "./Lighting";
 import { CameraRig } from "./CameraRig";
 import { Pointer, type GizmoMode, type PickInfo } from "./Pointer";
 import { Marks } from "./Marks";
+import { shown } from "./viewRules";
 
 export type { GizmoMode, PickInfo } from "./Pointer";
 
@@ -429,10 +430,8 @@ export class ThreeRenderer {
 
   /** Is the scene object currently shown (its own style and every parent)? */
   isObjectShown(id: string): boolean {
-    let cur: THREE.Object3D | null = this.objectMap.get(id) ?? null;
-    if (!cur) return false;
-    for (; cur; cur = cur.parent) if (!cur.visible) return false;
-    return true;
+    const t = this.objectMap.get(id);
+    return !!t && shown(t);
   }
 
   /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
