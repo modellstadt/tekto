@@ -285,9 +285,9 @@ export function extractVisiblePolylines(
 
 // ─── SVG helper ───────────────────────────────
 
-/** Options for `polylinesToSVG`: stroke width in SVG user units, which are model units (default 0.5), stroke colour (default "#000") and viewBox padding as a fraction of its size (default 0.02). */
+/** Options for `polylinesToSVG`: stroke width in SVG user units, which are model units (default 0.2 % of the drawing's larger side), stroke colour (default "#000") and viewBox padding as a fraction of its size (default 0.02). */
 export interface SVGOptions {
-  /** Stroke width in SVG user units. Default 0.5. */
+  /** Stroke width in SVG user units (= model units). Default: 0.2 % of the drawing's larger side. */
   strokeWidth?: number;
   /** Stroke color (any CSS color). Default "#000". */
   stroke?: string;
@@ -302,7 +302,8 @@ export function polylinesToSVG(
   options?: SVGOptions,
 ): string {
   const stroke = options?.stroke ?? "#000";
-  const sw = options?.strokeWidth ?? 0.5;
+  // Model units: a fixed default would be a hairline on a site plan and a slab on a detail.
+  const sw = options?.strokeWidth ?? 0.002 * Math.max(bounds.maxU - bounds.minU, bounds.maxV - bounds.minV, 1e-9);
   const pad = options?.padFraction ?? 0.02;
 
   const w = bounds.maxU - bounds.minU;

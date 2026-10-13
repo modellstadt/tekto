@@ -405,7 +405,6 @@ export class SdfMirror implements ISdf {
 
 /**
  * `count` copies of `input` around the Z axis, 360°/count apart, taken from the sector around +X.
- * The fold reflects (angle a → −a) rather than rotates, so copies are mirrored in y unless `input` is symmetric about XZ.
  *
  * @experimental No app uses this yet; it may still change.
  */
@@ -418,7 +417,7 @@ export class SdfRadialArray implements ISdf {
     let angle = Math.atan2(p.y, p.x);
     if (angle < 0) angle += TWO_PI;
     const closest = Math.round(angle / this.deltaAngle) * this.deltaAngle;
-    const rot = closest - angle;
+    const rot = angle - closest;                 // rotate into the +X sector (a reflection would mirror the copies)
     const r = Math.sqrt(p.x * p.x + p.y * p.y);
     return this.input.distance(new Vec3(r * Math.cos(rot), r * Math.sin(rot), p.z));
   }

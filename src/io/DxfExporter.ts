@@ -74,7 +74,7 @@ export interface DxfEdgeOptions {
 export interface DxfWriteOptions {
   /** Scale multiplier applied to all coordinates. Default 1000 (meters→mm). */
   scale?: number;
-  /** Decimal places in output. Default 3. */
+  /** Decimal places in output. Default 3, or 6 when `scale` is below 100 (metres stay precise). */
   precision?: number;
   /**
    * Run hidden-line removal. Default true.
@@ -87,11 +87,7 @@ export interface DxfWriteOptions {
    * Overrides hiddenLine when true.
    */
   debugLayers?: boolean;
-  /**
-   * Depth bias for hidden-line self-occlusion prevention, in world units.
-   * Must exceed tessellation error of curved surfaces but be smaller than
-   * the thinnest geometry. Default 0.01.
-   */
+  /** Ignored: the hidden-line pass works out its own tolerance. Kept so existing calls compile. */
   depthBias?: number;
 }
 

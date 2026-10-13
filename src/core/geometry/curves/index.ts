@@ -623,8 +623,10 @@ export const CurveUtils = {
       ? ccwSweep
       : -(Math.PI * 2 - ccwSweep);
 
+    // ArcCurve counts angles from its `forward` (−X for a +Z normal), not from +X as atan2
+    // does: half a turn apart.
     return new ArcCurve(
-      new Vec3(cx, cy, 0), radius, startAngle, sweepAngle, Vec3.unitZ(),
+      new Vec3(cx, cy, 0), radius, startAngle - Math.PI, sweepAngle, Vec3.unitZ(),
     );
   },
 };

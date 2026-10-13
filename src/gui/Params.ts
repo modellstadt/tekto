@@ -159,6 +159,10 @@ export class ParamStore<S extends ParamSchema = ParamSchema> {
       value = Math.max(def.min, Math.min(def.max, value));
       if (def.type === "int") value = Math.round(value);
     }
+    if (def.type === "vec3" && Array.isArray(value)) {
+      const lo = def.min, hi = def.max;
+      value = value.map((v: number, i: number) => Math.max(lo?.[i] ?? -Infinity, Math.min(hi?.[i] ?? Infinity, v)));
+    }
     if (def.type === "select" && !def.options.includes(value)) return;
 
     this.values[key as string] = value;

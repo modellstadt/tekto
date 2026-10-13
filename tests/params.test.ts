@@ -84,3 +84,11 @@ describe("ParamStore values are typed from the schema", () => {
     expect(s.get("radius") + s.get("count")).toBe(4);   // no casts needed
   });
 });
+
+describe("vec3 params", () => {
+  it("clamp each component to min / max, like a slider", () => {
+    const store = new ParamStore({ p: { type: "vec3", default: [0, 0, 0], min: [-1, 0, 0], max: [1, 2, 10] } });
+    store.set("p", [5, -3, 4]);
+    expect(store.get("p")).toEqual([1, 0, 4]);
+  });
+});

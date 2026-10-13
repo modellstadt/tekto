@@ -281,16 +281,16 @@ function traverseFTB(node: BspNode | null, eye: Vec3, visit: TraversalCallback):
   if (!node) return;
   const d = node.plane.distToPoint(eye);
   if (d > 0) {
-    // Eye in front: back first (farther), then coplanars, then front (closer)
-    traverseFTB(node.back, eye, visit);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
+    // Eye in front: the front side first (closer), then the coplanars, then the back (farther)
     traverseFTB(node.front, eye, visit);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    traverseFTB(node.back, eye, visit);
   } else {
-    traverseFTB(node.front, eye, visit);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
     traverseFTB(node.back, eye, visit);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    traverseFTB(node.front, eye, visit);
   }
 }
 
@@ -298,16 +298,16 @@ function traverseBTF(node: BspNode | null, eye: Vec3, visit: TraversalCallback):
   if (!node) return;
   const d = node.plane.distToPoint(eye);
   if (d > 0) {
-    // Eye in front: front first (closer), then coplanars, then back (farther)
-    traverseBTF(node.front, eye, visit);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
+    // Eye in front: the back side first (farther — painter's order), then the coplanars, then the front
     traverseBTF(node.back, eye, visit);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    traverseBTF(node.front, eye, visit);
   } else {
-    traverseBTF(node.back, eye, visit);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
     traverseBTF(node.front, eye, visit);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    traverseBTF(node.back, eye, visit);
   }
 }
 

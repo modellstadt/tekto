@@ -6,6 +6,24 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fixes found while documenting every export** (each with a test that failed before):
+  - `CurveUtils.arcFromPointTangentPoint` returned its arc turned half a turn about the
+    centre: it measured angles from +X, but `ArcCurve` measures them from its `forward`
+    (−X for a +Z normal).
+  - `SdfRadialArray` folded by reflection, so its copies came out mirrored. They are
+    rotated now.
+  - `BspTree.traverseFrontToBack` visited back to front and `traverseBackToFront` front to
+    back.
+  - `SpringSystem3D`'s default floor was the plane z = 10 facing +Z, under gravity along −Y,
+    so the first step pushed everything to z = 10. It is now y = −10 (Y-up); a Z-up model
+    sets both.
+  - `polylinesToSVG`'s default stroke was 0.5 model units (half a metre). It is now 0.2 % of
+    the drawing's larger side.
+  - `vec3` params ignored their `min` / `max`; each component is clamped now.
+  - `SVGRenderer` drew no polylines.
+  - Docs: `DxfWriteOptions.precision` defaults to 6 below scale 100, and `depthBias` is
+    ignored. CLAUDE.md wrongly said `BspTree.toMesh()` builds a `Mesh`; it returns typed arrays.
+
 - **Shared selection.** `shareSelection(selection, doc.store, renderer, scene)` puts this
   client's selected record keys into its presence. Each window outlines what the others have
   selected, in their presence colour, so people (and agents) see who is on what before they
