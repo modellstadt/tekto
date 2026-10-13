@@ -556,7 +556,30 @@ declare const ObjFile: {
  */
 
 type SceneObjectType = "point" | "segment" | "polyline" | "polygon" | "mesh" | "circle" | "plane" | "group";
-type RenderMode = "solid" | "wireframe" | "hiddenline";
+/** How meshes are drawn: lit surfaces, wireframe, a hidden-line drawing, or ghost —
+ *  every surface translucent in its own colour with its creases, so what is inside reads
+ *  through (a selection is drawn opaque). */
+type RenderMode = "solid" | "wireframe" | "hiddenline" | "ghost";
+/**
+ * Where to cut, in the content's own axes. The side below the cut along `axis` is kept
+ * (a plan cut on `"z"` removes what is above); `flip` keeps the other side.
+ *
+ * Give the cut either as `coordinate`, a position along the axis in model units ("cut at
+ * 1.2 m"), or as `at`, a fraction of the content's extent along it, so 0.5 is halfway
+ * through whatever is loaded and the caller needs to know nothing about the model's
+ * coordinates. `coordinate` wins when both are set; neither means `at: 0.5`.
+ */
+interface SectionRequest {
+    axis: "x" | "y" | "z";
+    at?: number;
+    coordinate?: number;
+    /** keep the far side instead of the near one */
+    flip?: boolean;
+}
+/** Perspective for looking at a building, orthographic for drawing one. */
+type Projection = "perspective" | "orthographic";
+/** The six faces of the bounding box, plus the corner view. */
+type StandardView = "iso" | "top" | "bottom" | "front" | "back" | "left" | "right";
 /**
  * High-level lighting / shading preset applied across the scene.
  *
@@ -800,4 +823,4 @@ interface SceneJSON {
     objects: any[];
 }
 
-export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, Vec2 as b, type MeshData$1 as c, type LegacyMeshJSON as d, Mat4 as e, type MeshEdge as f, type MeshFace as g, type MeshJSON as h, type MeshNode as i, type MeshValidation as j, type MeshData as k, type SceneEvent as l, type SceneEventListener as m, type SceneJSON as n, type SceneObjectType as o, Vec4 as p, type VisualStyle as q };
+export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type Projection as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, Vec2 as b, type SectionRequest as c, type StandardView as d, type MeshData$1 as e, type LegacyMeshJSON as f, Mat4 as g, type MeshEdge as h, type MeshFace as i, type MeshJSON as j, type MeshNode as k, type MeshValidation as l, type MeshData as m, type SceneEvent as n, type SceneEventListener as o, type SceneJSON as p, type SceneObjectType as q, Vec4 as r, type VisualStyle as s };

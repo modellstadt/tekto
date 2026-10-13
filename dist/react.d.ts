@@ -1,6 +1,6 @@
 import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Params-C5uOYti3.js';
 import React, { ReactNode, CSSProperties } from 'react';
-import { S as Scene, a as SceneObject } from './Scene-CVb27q1H.js';
+import { S as Scene, a as SceneObject } from './Scene-BsMmRZP7.js';
 
 declare function useScene(): Scene;
 declare function TektoApp({ scene: extScene, children, }: {

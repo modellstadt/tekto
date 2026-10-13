@@ -1,15 +1,15 @@
-import { V as Vec3, M as Mesh, S as Scene, R as RenderMode, L as LightingMode } from './Scene-CVb27q1H.js';
-export { A as AABB, F as ColoredMeshData, c as FlatMeshData, d as LegacyMeshJSON, e as Mat4, f as MeshEdge, g as MeshFace, h as MeshJSON, i as MeshNode, j as MeshValidation, O as ObjFile, k as ObjMeshData, l as SceneEvent, m as SceneEventListener, n as SceneJSON, a as SceneObject, o as SceneObjectType, T as Triangle, b as Vec2, p as Vec4, q as VisualStyle } from './Scene-CVb27q1H.js';
-import { D as DxfLayerDef } from './download-BhsA6Zpm.js';
-export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-BhsA6Zpm.js';
+import { V as Vec3, M as Mesh, S as Scene, c as SectionRequest, d as StandardView, R as RenderMode, L as LightingMode } from './Scene-BsMmRZP7.js';
+export { A as AABB, F as ColoredMeshData, e as FlatMeshData, f as LegacyMeshJSON, g as Mat4, h as MeshEdge, i as MeshFace, j as MeshJSON, k as MeshNode, l as MeshValidation, O as ObjFile, m as ObjMeshData, P as Projection, n as SceneEvent, o as SceneEventListener, p as SceneJSON, a as SceneObject, q as SceneObjectType, T as Triangle, b as Vec2, r as Vec4, s as VisualStyle } from './Scene-BsMmRZP7.js';
+import { D as DxfLayerDef } from './download-CwBYbhgR.js';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-CwBYbhgR.js';
 import { BspTree, SharedStore, Presence } from './core.js';
 export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BalloonFrame, BalloonFrameOptions, BlobDetect, Box, BspNode, BspPolygon, Capsule2D, CltConstruction, CltOptions, CollabAdapter, CollabEvents, CollabStatus, CollabUser, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, Doc, DocChange, DocChangeSource, DocEditOptions, DocJSON, DocOptions, DocSchema, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, PerpSegment, PickingView, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PropertyMap, Ray, RealizedSlab, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, SceneBinding, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Selection, SharedRecord, SharedStoreOptions, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOptions, SlabPart, SlabPartRole, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOptions, StairShape, StairType, StairTypeOptions, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, SupabaseLike, UpAxis, VecMath, VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallSystem, WallType, WindowPartitioning, bindScene, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, localAdapter, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverseContact, selectOnClick, supabaseAdapter } from './core.js';
 import { P as ParamStore, b as ParamSchema } from './Params-C5uOYti3.js';
 export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-C5uOYti3.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-aEcAc41G.js';
-export { A as AnimateFn, D as DrawFn, a as DrawSheetOptions, b as Lab2D, c as LayerMap, d as LayerNode, e as LayerPanel, f as LayerState, g as LineHandle, M as MeshHandle, P as PointHandle, h as Pointer2D, i as PointerFn, j as SelectOpts, k as ShapeHandle, l as ShapeMode, m as SheetCanvas, n as SheetCanvasOptions, o as SheetTransform, p as Sketch2DConfig, q as Sketch2DFn, r as Sketch2DInstance, s as SliderOpts, t as computeEffectiveVisibility, u as drawSheet, v as fitSheet, w as sketch2d } from './2d-aEcAc41G.js';
+import { E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-C3Zglzc6.js';
+export { A as AnimateFn, D as DrawFn, a as DrawSheetOptions, b as Lab2D, c as LayerMap, d as LayerNode, e as LayerPanel, f as LayerState, g as LineHandle, M as MeshHandle, P as PointHandle, h as Pointer2D, i as PointerFn, j as SelectOpts, k as ShapeHandle, l as ShapeMode, m as SheetCanvas, n as SheetCanvasOptions, o as SheetTransform, p as Sketch2DConfig, q as Sketch2DFn, r as Sketch2DInstance, s as SliderOpts, t as computeEffectiveVisibility, u as drawSheet, v as fitSheet, w as sketch2d } from './2d-C3Zglzc6.js';
 
 /**
  * GPU-accelerated hidden-line removal using ID buffer rendering.
@@ -446,6 +446,131 @@ declare class ControlPanel {
     private buildControl;
 }
 
+/** What the host wants said about one thing in the scene. */
+interface CalloutItem {
+    id: string;
+    /** the line that is read. Keep it short: this is a margin, not a panel. */
+    text: string;
+    /** a quieter second line, for a grade or a count */
+    detail?: string;
+    /** a swatch, so a callout and the element it points at agree by colour */
+    colour?: string;
+    /** What it points at: scene object ids, or record keys (`"walls/w1"`, which follow their
+     *  record through rebuilds). The anchor is the centre of their combined bounds. */
+    objects: readonly string[];
+}
+/** One label, placed. Pixel coordinates within the host. */
+interface Placement {
+    id: string;
+    side: "left" | "right";
+    /** where the label's own box sits */
+    x: number;
+    y: number;
+    /** where its leader ends */
+    anchorX: number;
+    anchorY: number;
+}
+/**
+ * How wide a label may be in a host of this width.
+ *
+ * Fixed at 150 px this was fine in a full-window viewport and useless in a
+ * panel: two 150 px margins in a 374 px column leave 74 px of drawing, so the
+ * annotation covered the thing it annotated. A share of the width instead,
+ * floored at something a product code still fits in and capped so a wide
+ * viewport does not grow billboards.
+ */
+declare function labelWidthFor(hostWidth: number): number;
+interface LayoutOptions {
+    width: number;
+    height: number;
+    /** vertical pitch between labels, which is a label's height plus its gap */
+    rowHeight?: number;
+    /** how wide a label is allowed to be */
+    labelWidth?: number;
+    /** clearance from the host's edges */
+    inset?: number;
+}
+/** What a layout could place, and what it could not. */
+interface Layout {
+    placed: Placement[];
+    /**
+     * Ids there was no room for, in the order they were given.
+     *
+     * Reported rather than clipped. A margin holds a fixed number of rows, and
+     * the first version of this let the surplus run off the bottom edge into an
+     * `overflow: hidden`, so eleven of thirty labels simply were not there and
+     * nothing said so. A reader counting labelled elements would have counted
+     * wrong. The caller is expected to say how many are missing.
+     */
+    dropped: string[];
+}
+/**
+ * Stack labels into the left and right margins without overlapping.
+ *
+ * Each label wants to sit level with its own anchor and is pushed down until
+ * it clears the one above; if that runs the column off the bottom, the whole
+ * column is lifted back inside. Labels keep the vertical order of their
+ * anchors, which is what makes the leaders readable: leaders that cross each
+ * other are worse than no leaders, because the reader follows the wrong one
+ * and believes the answer.
+ *
+ * Anchors on the left half of the screen get the left margin. Not because the
+ * side matters, but because a leader that crosses the whole drawing to reach
+ * the far margin passes over everything in between.
+ *
+ * More labels than rows is resolved by *input order*, which is the caller's
+ * priority, and never by compressing the pitch: labels printed on top of each
+ * other are not more information, they are less.
+ */
+declare function layoutLabels(anchors: {
+    id: string;
+    x: number;
+    y: number;
+}[], opts: LayoutOptions): Layout;
+/**
+ * The DOM layer: labels, leaders, and clicks.
+ *
+ * Knows nothing about cameras or meshes. It is handed placements in pixels and
+ * renders them, which is what keeps the layout rule above testable.
+ */
+declare class Callouts {
+    private opts;
+    private root;
+    private svg;
+    private labels;
+    private items;
+    private overflow;
+    private labelWidth;
+    constructor(host: HTMLElement, opts?: {
+        labelWidth?: number;
+        onPick?: (id: string) => void;
+        onHover?: (id: string | null) => void;
+    });
+    /** What there is to say. Placements arrive separately, each frame. */
+    setItems(items: CalloutItem[]): void;
+    /** Track the host's width, so labels stay a share of it rather than a
+     *  constant that only suits one panel size. */
+    setLabelWidth(px: number): void;
+    /** The objects a caller must measure to anchor each callout. */
+    objectsOf(id: string): readonly string[];
+    get ids(): string[];
+    /**
+     * Draw this frame's placements. Anything not placed is hidden, not removed:
+     * an element that comes back into view keeps its element rather than
+     * flickering a new one in.
+     *
+     * `unplaced` is how many the margins had no room for, and it is shown. A
+     * reader who can see fifteen labels and is not told there were twenty-two
+     * has been given a wrong count, quietly, which is the failure this whole
+     * project is arranged against.
+     */
+    update(placements: Placement[], unplaced?: number): void;
+    private showOverflow;
+    private make;
+    setVisible(on: boolean): void;
+    dispose(): void;
+}
+
 /**
  * Tekto Three.js Renderer
  *
@@ -476,6 +601,9 @@ interface ThreeRendererConfig {
     fov: number;
     /** Coordinate system up-axis: "y" (Three.js default) or "z" (CAD convention). */
     up: "y" | "z";
+    /** The axis widget in a corner (`true` = bottom right): click an axis for a plan or an
+     *  elevation, drag it to orbit, double-click to square up, toggle persp/ortho under it. */
+    navGizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 }
 declare class ThreeRenderer {
     readonly threeScene: THREE.Scene;
@@ -532,6 +660,30 @@ declare class ThreeRenderer {
     private selectedDragHandle;
     private dragPlane;
     private dragSeenThisRun;
+    private sectionReq;
+    private sectionClip;
+    private sectionColour;
+    private pocheMat;
+    private navGizmo;
+    private cameraMove;
+    private callouts;
+    private calloutAnchors;
+    private calloutVisible;
+    private calloutCheckedAt;
+    private calloutRecheck;
+    private calloutsDirty;
+    private calloutHandlers;
+    private projectionListeners;
+    private edgeQueue;
+    private sunDir;
+    private sunMinDistance;
+    private sunDirty;
+    private selectionStyle;
+    private outlineGroup;
+    private outlined;
+    private hoverListeners;
+    private hovered;
+    private hoverAt;
     constructor(gScene: Scene, container: HTMLElement, config?: Partial<ThreeRendererConfig>);
     private handleEvent;
     private addToThree;
@@ -568,11 +720,6 @@ declare class ThreeRenderer {
     setStudioMaterial(metalness: number, roughness: number, color?: string | null, flatShading?: boolean): void;
     private _isHelper;
     /**
-     * Show/hide line + point "helper" objects (axes, construction lines, markers,
-     * labels). Solid meshes are unaffected. Applies immediately to existing
-     * objects and to all future ones until changed.
-     */
-    /**
      * Show/hide the studio shadow-catcher plane at the world origin. Hide it when
      * the app supplies its own ground mesh to receive shadows (avoids a duplicate
      * shadow at z=0).
@@ -585,22 +732,27 @@ declare class ThreeRenderer {
      */
     addExternalObject(obj: THREE.Object3D, id: string): void;
     removeExternalObject(id: string): void;
-    setHelpersVisible(visible: boolean): void;
     /**
-     * Aim the main directional light at the origin from the given unit
-     * direction (FROM origin TO light). Input is in Z-up scene coords
-     * (+X east, +Y north, +Z up) — typical sun-vector convention; the
-     * renderer remaps internally if the scene is Y-up.
-     *
-     * @param direction Unit vector pointing toward the light source.
-     * @param distance  How far back to place the light (m). Default 50.
+     * Show/hide line + point "helper" objects (axes, construction lines, markers,
+     * labels). Solid meshes are unaffected. Applies immediately to existing
+     * objects and to all future ones until changed.
      */
+    setHelpersVisible(visible: boolean): void;
     /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
      *  useful range at building scale. */
     setFog(color: string, density?: number): void;
     /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
     setExposure(v: number): void;
+    /**
+     * Light the model from `direction` (FROM the model TO the sun), in Z-up scene coords
+     * (+X east, +Y north, +Z up) — the `SunPosition` convention; a Y-up scene is remapped.
+     * In Studio the shadow camera is framed to whatever the scene shows, so a 1 m object
+     * and a 100 m site both get sharp, complete shadows. `distance` is how far back the
+     * light sits at least (m).
+     */
     setSunDirection(direction: Vec3, distance?: number): void;
+    /** Aim the sun at the content's centre and fit its shadow camera around it. */
+    private _fitSun;
     /**
      * Reconfigure renderer + lights + scene shadow flags for the given mode.
      * Material swapping happens after this returns, via `rebuildAllMeshes`.
@@ -730,10 +882,64 @@ declare class ThreeRenderer {
     private ensureGizmo;
     /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */
     private writeBackTransform;
+    /**
+     * How `setSelectionHighlight` marks a selection: `"tint"` (default) lights it up in the
+     * accent colour; `"outline"` draws its edges on top of everything instead and leaves its
+     * fill alone — for apps whose colours mean something (a product, a state, a grade), and
+     * so a selection behind other parts still shows.
+     */
+    setSelectionStyle(style: "tint" | "outline"): void;
+    private highlightIds;
     /** Highlight one object, several (a record's objects, a multi-selection), or none. */
     setSelectionHighlight(ids: string | readonly string[] | null): void;
+    /** Remove the outlines traced from `root`'s meshes (all of them for null). */
+    private _dropOutlines;
+    private outlineMat;
+    private _outlineMaterial;
+    /** Crease lines for `geo`, built on a later frame (see `_buildEdges`): a mode switch on a
+     *  model of thousands of meshes no longer stalls the tab, it draws the creases in. */
+    private _edgeLines;
+    /** Build queued crease lines for up to `budgetMs`. Lines whose object is gone are skipped. */
+    private _buildEdges;
+    /** Crease lines still to be drawn (hidden line and ghost build them a frame at a time). */
+    get pendingEdges(): number;
+    /**
+     * Hear which object the pointer is over (null over nothing): reported only when it
+     * changes, never while a button is held (an orbit), at most every 40 ms — so an app can
+     * light what a click would select without a raycast per frame. Returns the unsubscribe.
+     */
+    onHover(listener: (id: string | null) => void): () => void;
+    private onHoverMove;
+    private onHoverLeave;
+    private _hover;
+    /**
+     * Cut the model with a plane and fill the cut, so it reads as solid: `{ axis: "z",
+     * coordinate: 1.2 }` is a plan cut at 1.2 m (what is above goes), `{ axis: "x", at: 0.5 }`
+     * a section through the middle of the content, `flip` keeps the other side. Null clears.
+     * Everything the scene draws is clipped (grid, axes, handles and the gizmo are not); a
+     * click picks what is still there. The cut stays while the scene is rebuilt — a `sketch()`
+     * re-run keeps it; `at` is measured against the content present when it is set.
+     *
+     * The cut face is the meshes' inside — their back faces, painted flat (poché) — not a
+     * capped polygon, so it needs nothing of the geometry: no closed solids, no winding. Only
+     * opaque surfaces get it: through a translucent one the inside would show uncut too.
+     */
+    setSection(section: SectionRequest | null): void;
+    /** The section in force, or null. */
+    get section(): SectionRequest | null;
+    /** Paint the cut this colour; null follows the render mode (dark, pale in ghost). */
+    setSectionColour(colour: number | string | null): void;
+    /** Clip one object's materials with the live section (or unclip it) and give its
+     *  surfaces their poché. */
+    private _dressSection;
+    private _poche;
+    /** Is this world point on the side the section removed? */
+    private _cutAway;
+    /** Bounds of what the scene shows. */
+    private _contentBox;
     /** Draw now, unconditionally. */
     render(): void;
+    private _draw;
     /**
      * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
      * lights, drag handles, the gizmo, orbit controls and resizes already ask; call
@@ -764,6 +970,67 @@ declare class ThreeRenderer {
      * Transfers the current camera position/orientation so the view is continuous.
      */
     setProjection(type: "perspective" | "orthographic"): void;
+    /** Hear about projection changes from anywhere (the axis widget, a toolbar, code), so
+     *  every control that shows the projection stays true. Returns the unsubscribe. */
+    onProjection(listener: (projection: "perspective" | "orthographic") => void): () => void;
+    /** "perspective" or "orthographic". */
+    get projection(): "perspective" | "orthographic";
+    /**
+     * Look at the model from a named side, keeping the distance: `"top"` is a plan,
+     * `"front"` / `"back"` / `"left"` / `"right"` are elevations, `"iso"` the diagonal. With
+     * `setProjection("orthographic")` they are drawings rather than pictures. Turns there
+     * (about a third of a second) unless `{ animate: false }`.
+     */
+    setView(view: StandardView, opts?: {
+        animate?: boolean;
+    }): void;
+    /** Put the camera on `direction` from the target, looking back along it, at the same
+     *  distance. What `setView` and the axis widget do. */
+    orbitTo(direction: {
+        x: number;
+        y: number;
+        z: number;
+    }, opts?: {
+        animate?: boolean;
+    }): void;
+    /**
+     * Frame part of the model — a selection, a storey, one element: centre on it and come
+     * close enough that it fills the view with room around it (`margin`, default 1.8, so the
+     * surroundings still say which part it is). `objects` are scene ids or record keys.
+     * Animated unless `{ animate: false }`, keeping the direction you look from.
+     */
+    fitTo(objects: readonly string[], opts?: {
+        margin?: number;
+        animate?: boolean;
+    }): void;
+    /** Start a move to `dir` from `target` at `dist` (and, in orthographic, `zoom`). */
+    private _moveCamera;
+    /** Scene ids, or record keys resolved through the scene, to the three objects drawn for them. */
+    private _resolve;
+    /** Orbit by a pointer travel in pixels — the axis widget's drag. */
+    private orbitBy;
+    private _placeCamera;
+    /** Advance a camera move, if one is running. True while it moves the camera. */
+    private _stepCameraMove;
+    /**
+     * Labels in the margins with leaders to what they name, the way a drawing is annotated:
+     * they never overlap and don't swim as the model turns; a label whose thing is hidden
+     * behind other things is left out; what doesn't fit is counted, not dropped silently.
+     * `objects` are scene ids or record keys (a key follows its record through rebuilds).
+     * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
+     */
+    setCallouts(items: CalloutItem[], handlers?: {
+        onPick?: (id: string) => void;
+        onHover?: (id: string | null) => void;
+    }): void;
+    /** Re-measure each callout's anchor: the centre of its objects' bounds. */
+    private _measureCallouts;
+    /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
+    private _checkCalloutVisibility;
+    /** Project, cull and lay out this frame's labels. */
+    private _drawCallouts;
+    /** Where the camera sits, as a direction from its target. */
+    private _viewOffset;
     /**
      * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
      * and restore (0,0,1) for side/elevation views.
@@ -841,185 +1108,9 @@ declare class SVGRenderer {
 }
 
 /**
- * Labels that point at elements, laid out the way a drawing does.
- *
- * The distinction that decides everything here: a tag in a modelling tool
- * names what you drew and floats where the thing is. A callout on a drawing
- * sits in the margin, in a column, with a leader to the thing it is about. The
- * second reads at a glance and stays readable while you turn the model,
- * because the labels never overlap and never swim; the first turns into a
- * heap the moment two elements line up behind each other, which on a building
- * is most of the time.
- *
- * So this is not "billboard some text at a world position". It is: project the
- * anchors, drop the ones you cannot see, stack what is left into the two
- * margins in the order their anchors run down the screen, and draw a leader
- * from each label to its anchor.
- *
- * The layout is a pure function of screen positions (`layoutLabels`), so the
- * rule that two labels never overlap is checked without a browser.
- */
-
-/** What the host wants said about one thing in the scene. */
-interface CalloutItem {
-    id: string;
-    /** the line that is read. Keep it short: this is a margin, not a panel. */
-    text: string;
-    /** a quieter second line, for a grade or a count */
-    detail?: string;
-    /** a swatch, so a callout and the element it points at agree by colour */
-    colour?: string;
-    /** what it points at. The anchor is the centre of their combined bounds. */
-    objects: THREE.Object3D[];
-}
-/** One label, placed. Pixel coordinates within the host. */
-interface Placement {
-    id: string;
-    side: "left" | "right";
-    /** where the label's own box sits */
-    x: number;
-    y: number;
-    /** where its leader ends */
-    anchorX: number;
-    anchorY: number;
-}
-/**
- * How wide a label may be in a host of this width.
- *
- * Fixed at 150 px this was fine in a full-window viewport and useless in a
- * panel: two 150 px margins in a 374 px column leave 74 px of drawing, so the
- * annotation covered the thing it annotated. A share of the width instead,
- * floored at something a product code still fits in and capped so a wide
- * viewport does not grow billboards.
- */
-declare function labelWidthFor(hostWidth: number): number;
-interface LayoutOptions {
-    width: number;
-    height: number;
-    /** vertical pitch between labels, which is a label's height plus its gap */
-    rowHeight?: number;
-    /** how wide a label is allowed to be */
-    labelWidth?: number;
-    /** clearance from the host's edges */
-    inset?: number;
-}
-/** What a layout could place, and what it could not. */
-interface Layout {
-    placed: Placement[];
-    /**
-     * Ids there was no room for, in the order they were given.
-     *
-     * Reported rather than clipped. A margin holds a fixed number of rows, and
-     * the first version of this let the surplus run off the bottom edge into an
-     * `overflow: hidden`, so eleven of thirty labels simply were not there and
-     * nothing said so. A reader counting labelled elements would have counted
-     * wrong. The caller is expected to say how many are missing.
-     */
-    dropped: string[];
-}
-/**
- * Stack labels into the left and right margins without overlapping.
- *
- * Each label wants to sit level with its own anchor and is pushed down until
- * it clears the one above; if that runs the column off the bottom, the whole
- * column is lifted back inside. Labels keep the vertical order of their
- * anchors, which is what makes the leaders readable: leaders that cross each
- * other are worse than no leaders, because the reader follows the wrong one
- * and believes the answer.
- *
- * Anchors on the left half of the screen get the left margin. Not because the
- * side matters, but because a leader that crosses the whole drawing to reach
- * the far margin passes over everything in between.
- *
- * More labels than rows is resolved by *input order*, which is the caller's
- * priority, and never by compressing the pitch: labels printed on top of each
- * other are not more information, they are less.
- */
-declare function layoutLabels(anchors: {
-    id: string;
-    x: number;
-    y: number;
-}[], opts: LayoutOptions): Layout;
-/**
- * The DOM layer: labels, leaders, and clicks.
- *
- * Knows nothing about cameras or meshes. It is handed placements in pixels and
- * renders them, which is what keeps the layout rule above testable.
- */
-declare class Callouts {
-    private opts;
-    private root;
-    private svg;
-    private labels;
-    private items;
-    private overflow;
-    private labelWidth;
-    constructor(host: HTMLElement, opts?: {
-        labelWidth?: number;
-        onPick?: (id: string) => void;
-        onHover?: (id: string | null) => void;
-    });
-    /** What there is to say. Placements arrive separately, each frame. */
-    setItems(items: CalloutItem[]): void;
-    /** Track the host's width, so labels stay a share of it rather than a
-     *  constant that only suits one panel size. */
-    setLabelWidth(px: number): void;
-    /** The objects a caller must measure to anchor each callout. */
-    objectsOf(id: string): THREE.Object3D[];
-    get ids(): string[];
-    /**
-     * Draw this frame's placements. Anything not placed is hidden, not removed:
-     * an element that comes back into view keeps its element rather than
-     * flickering a new one in.
-     *
-     * `unplaced` is how many the margins had no room for, and it is shown. A
-     * reader who can see fifteen labels and is not told there were twenty-two
-     * has been given a wrong count, quietly, which is the failure this whole
-     * project is arranged against.
-     */
-    update(placements: Placement[], unplaced?: number): void;
-    private showOverflow;
-    private make;
-    setVisible(on: boolean): void;
-    dispose(): void;
-}
-
-/**
- * A viewport for looking at a building.
- *
- * ThreeRenderer draws a `Scene` of `SceneObject`s and is the right thing when
- * the library owns the model. This is the other case: an app that has already
- * built its own meshes (from IFC, from a cut list, from a supplier's geometry)
- * and wants somewhere honest to put them. It takes `THREE.Mesh`es and gives
- * back the five things every such app has otherwise rewritten:
- *
- *  - **view modes** that answer different questions. Shaded says what a thing
- *    is made of; ghost says where a part sits inside the whole; hidden line is
- *    the drawing convention, and with an orthographic camera it is a plan or an
- *    elevation rather than a picture.
- *  - **creases built progressively.** EdgesGeometry runs per mesh on the main
- *    thread, so a project-scale model either stalls the tab or (worse, and this
- *    is what actually happened) silently gets no outlines at all and hidden
- *    line comes out as a white silhouette. Above a threshold they are built
- *    when a mode asks, a few hundred meshes per frame, reporting as they go.
- *  - **a real sun.** `SunPosition` is a Michalsky solar position accurate to
- *    about a hundredth of a degree; what was missing was the part between it
- *    and a light: frame the shadow camera to the content, put a catcher under
- *    the lowest point, and say out loud what was assumed.
- *  - **navigation the reader can reach.** The axis gizmo in the corner is not
- *    decoration: without it the named views and the orthographic camera above
- *    were public API that no application built on this class had ever called,
- *    so the plan and elevation this viewport can draw were unreachable by
- *    anyone using it. It also answers, before you click anything, which way is
- *    up and which face you are looking at.
- *  - **teardown that releases the WebGL context.** `renderer.dispose()` does
- *    not, and a browser allows only a handful of contexts. A couple of
- *    viewports times every hot reload exhausts them, after which new canvases
- *    come back black and nothing says why.
- *
- * What it deliberately does not know: what your meshes mean. Colour by IFC
- * class, by framing role, by whether a decision has been made against it, all
- * of that is the app's, supplied through `appearanceOf`.
+ * The rules a 3D view draws by — what each render mode paints, where a named view puts the
+ * camera, how far back to sit to fit, where a section cuts — as plain functions, so they
+ * can be tested without a GPU. `ThreeRenderer` draws by them.
  */
 
 /**
@@ -1031,23 +1122,6 @@ declare class Callouts {
  *              lines hidden by the surfaces in front of them
  */
 type ViewMode = "shaded" | "ghost" | "hidden-line";
-/**
- * Where to cut, in the content's own axes.
- *
- * `at` is a fraction of the content's extent along that axis, so 0.5 is
- * halfway through whatever is loaded and the caller needs to know nothing
- * about the model's coordinates.
- */
-interface SectionRequest {
-    axis: "x" | "y" | "z";
-    at: number;
-    /** keep the far side instead of the near one */
-    flip?: boolean;
-}
-/** Perspective for looking at a building, orthographic for drawing one. */
-type Projection = "perspective" | "orthographic";
-/** The six faces of the bounding box, plus the corner view. */
-type StandardView = "iso" | "top" | "bottom" | "front" | "back" | "left" | "right";
 /** How one mesh is painted. Colours are hex integers, as three.js takes them. */
 interface Appearance {
     colour: number;
@@ -1055,81 +1129,12 @@ interface Appearance {
     depthWrite: boolean;
     polygonOffset: boolean;
 }
-interface ViewportOptions {
-    background?: number;
-    /**
-     * Whether the content stands on a visible ground. True by default, because a
-     * building floating in a void reads as floating. Turn it off for a viewport
-     * showing one component rather than a building: a product on a thumbnail is
-     * not standing anywhere, and the horizon behind it is noise.
-     */
-    ground?: boolean;
-    /**
-     * Up axis of the meshes handed over. Tekto and IFC are both Z-up, but
-     * web-ifc returns geometry already turned to three.js Y-up, so an app can
-     * have both in play. Getting this wrong lays a storey-height wall on the floor.
-     */
-    up?: "y" | "z";
-    /** The corner the camera starts in. */
-    view?: StandardView;
-    /**
-     * The axis widget in the corner: which way is up, and a click target for
-     * every face view. True by default, because without it this class's named
-     * views and its orthographic camera are unreachable by anybody using it, and
-     * a reader has no way to tell a plan from a steep look down.
-     *
-     * Turn it off for a viewport showing one component rather than a building,
-     * where the same reasoning as `ground` applies: a product on a thumbnail has
-     * no north and the widget is noise.
-     */
-    gizmo?: boolean;
-    /** Corner for that widget. Bottom right by default, out of the way of the
-     *  toolbars apps put along the top. */
-    gizmoCorner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
-    /**
-     * The projection changed, which the host cannot otherwise know: the gizmo
-     * offers the toggle, so a host that only ever called `setProjection` itself
-     * would still be out of date the moment a reader used the widget.
-     */
-    onProjection?: (projection: Projection) => void;
-    /** A click on a callout label. See `setCallouts`. */
-    onPickCallout?: (id: string) => void;
-    /** The pointer over a callout label, so a host can light the element it
-     *  points at. Null on leaving. */
-    onHoverCallout?: (id: string | null) => void;
-    /** A click that hit nothing reports null. A drag orbits and reports nothing. */
-    onPick?: (mesh: THREE.Mesh | null, event: PointerEvent) => void;
-    /**
-     * What the pointer is over, as it moves. Reported only when it changes, and
-     * never while orbiting, so a host can paint a hover without a raycast per
-     * frame. Without this a model reads as a picture: nothing answers until you
-     * have already clicked, and you cannot tell what a click would select.
-     */
-    onHover?: (mesh: THREE.Mesh | null) => void;
-    /**
-     * The app's last word on how one mesh looks, asked before the mode decides.
-     * Return null to let the mode paint it. This is where a selection colour, or
-     * "this part is spoken for", belongs: the viewport has no opinion on either.
-     */
-    appearanceOf?: (mesh: THREE.Mesh, mode: ViewMode) => Partial<Appearance> | null;
-}
-interface ContentOptions {
-    /** Overrides the viewport's own setting for this content only. */
-    up?: "y" | "z";
-    /**
-     * Which meshes get a crease outline: all of them, none, or a predicate. A
-     * translucent sheet usually wants none, because an outline around something
-     * you can see through reads as a box drawn over the thing that matters.
-     */
-    outline?: boolean | ((mesh: THREE.Mesh) => boolean);
-    /** Crease angle in degrees. 30 keeps a curved surface from turning into wireframe. */
-    creaseAngle?: number;
-}
 /** The page shaded and hidden-line are drawn on, when the host names none. */
 declare const DEFAULT_BACKGROUND = 16119802;
 /** Crease colour and weight for a mode. Hidden line draws them at full strength
- *  because in that mode the lines are the drawing. */
-declare function edgeStyle(mode: ViewMode): {
+ *  because in that mode the lines are the drawing. `background` (default: the dark ground
+ *  ghost brings with it) turns ghost's pale creases dark on a light page. */
+declare function edgeStyle(mode: ViewMode, background?: THREE.ColorRepresentation): {
     colour: number;
     opacity: number;
 };
@@ -1231,6 +1236,13 @@ declare function nearestAxis(direction: {
     y: number;
     z: number;
 }): THREE.Vector3;
+/**
+ * The clipping plane for a section, in the frame `axisWorld` was given in (the content's
+ * axis turned into the scene's). Three.js keeps what lies on the plane's positive side, so
+ * the plane faces back down the axis: everything below the cut stays, or above with `flip`.
+ * Null when the cut is a fraction (`at`) and there is no content to measure.
+ */
+declare function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box: THREE.Box3 | null): THREE.Plane | null;
 /** Smoothstep. A camera that starts and stops abruptly reads as a cut, and a
  *  cut is exactly what an animated view change exists to avoid. */
 declare function easeInOut(t: number): number;
@@ -1251,279 +1263,15 @@ declare function orthoFrustum(distance: number, fovDeg: number, aspect: number):
     top: number;
     bottom: number;
 };
-/**
- * A three.js viewport for meshes the app built itself (an IFC model, a cut list), as
- * opposed to a `Scene`: shaded / ghost / hidden-line modes, named views, sections, sun,
- * nav gizmo. Takes `THREE.Mesh[]` via `setContent`. For tekto `Scene`s use `ThreeRenderer`.
- */
-declare class Viewport {
-    private host;
-    private opts;
-    readonly scene: THREE.Scene;
-    private renderer;
-    private perspective;
-    private orthographic;
-    private projectionMode;
-    private root;
-    private meshGroup;
-    private outlines;
-    /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
-    private highlight;
-    /**
-     * The poché: one back-faced copy of each mesh while a section is live.
-     *
-     * Under `root`, sharing geometry and local matrices with the meshes, so it
-     * inherits the up-axis rotation exactly as they do.
-     */
-    private sectionGroup;
-    /** kept so a colour change can rebuild the same cut */
-    private sectionRequest;
-    private section;
-    /** null means "whatever the view mode says", which is the usual case. */
-    private sectionColour;
-    private frame;
-    private mode;
-    private outlinesBuilt;
-    private buildingOutlines;
-    private content;
-    private sun;
-    private sky;
-    /** Catches the cast shadow and is otherwise invisible: ShadowMaterial draws
-     *  nothing where nothing falls on it, so no ground slab appears. */
-    private ground;
-    /**
-     * A visible plane under the shadow catcher, so the building stands on
-     * something rather than floating in a void with a smudge beneath it. Sized
-     * and placed with the shadow catcher; hidden in hidden line, where a grey
-     * plate is not what a drawing is.
-     */
-    private groundPlane;
-    private shadows;
-    private hovered;
-    private lastHover;
-    /** Where the light comes from, in three.js Y-up. Replaced by a real solar
-     *  position through setSun; this is the fallback for a sun below the horizon,
-     *  and for a viewport nobody has told a date. */
-    private sunDir;
-    private sunNote;
-    private target;
-    private spherical;
-    private gizmo;
-    private callouts;
-    /** World-space anchor per callout, remeasured only when the content changes:
-     *  a bounding box costs a walk of the geometry and nothing in the scene
-     *  moves except the camera. */
-    private calloutAnchors;
-    /** Which callouts the reader can actually see, recomputed on a timer rather
-     *  than per frame, because it costs a raycast each. */
-    private calloutVisible;
-    private calloutCheckedAt;
-    /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
-     *  every one of the frames a still camera also renders. */
-    private gizmoAt;
-    /**
-     * A camera move in progress. Any input from the reader drops it: a view
-     * animation that fights an orbit is worse than no animation at all.
-     */
-    private move;
-    constructor(host: HTMLElement, opts?: ViewportOptions);
-    /** The camera currently in use. Follows setProjection. */
-    get camera(): THREE.Camera;
-    private setUp;
-    private bind;
-    /** Orbit by a pointer travel in pixels. Shared by the canvas and the gizmo,
-     *  so dragging the widget turns the model exactly as dragging the model does. */
-    private orbitBy;
-    /** The mesh under the pointer, at most every other animation frame.
-     *  Reported only on a change, so the host repaints on a crossing and not on
-     *  every pixel of travel. */
-    private hover;
-    private meshAt;
-    private pick;
-    /**
-     * Show these meshes, replacing whatever was there.
-     *
-     * The meshes are the app's: build them however the app colours things, and
-     * put the unpainted colour on `mesh.userData.baseColour` so shaded mode can
-     * return to it.
-     */
-    setContent(meshes: THREE.Mesh[], opts?: ContentOptions): void;
-    /** Which meshes the content options ask for an outline around. */
-    private wantsOutlines;
-    clear(): void;
-    /** Convenience for the common case: a mesh from raw buffers, which is what
-     *  every Tekto generator and every IFC reader hands over. */
-    static meshFrom(buffers: {
-        positions: Float32Array;
-        normals?: Float32Array;
-        indices: Uint32Array | Uint16Array;
-    }, material: THREE.Material): THREE.Mesh;
-    get viewMode(): ViewMode;
-    /**
-     * The mode a reader chose. Unlike the internal apply, this will go and build
-     * the outlines the mode needs if large content was loaded without them.
-     */
-    setViewMode(mode: ViewMode, onProgress?: (message: string | null) => void): void;
-    get projection(): Projection;
-    /** Perspective or orthographic. Orthographic with hidden line and a face view
-     *  is a plan or an elevation; that pairing is the point of having both. */
-    setProjection(projection: Projection): void;
-    /**
-     * Point the camera at a named face, keeping the distance.
-     *
-     * Animated by default. A view change that jumps is read as the model having
-     * been replaced rather than turned, and the reader loses which face they are
-     * now looking at, which is the one thing the change was for. Pass
-     * `{ animate: false }` where a jump is wanted (restoring a stored view, or a
-     * test that wants the end state now).
-     */
-    setView(view: StandardView, opts?: {
-        animate?: boolean;
-    }): void;
-    /**
-     * Look down a direction given in the content's own axes, so a caller with a
-     * Z-up model asks for `(0, 0, 1)` and gets a plan whichever way the viewport
-     * has turned the content to face three.js.
-     */
-    orbitTo(direction: THREE.Vector3, opts?: {
-        animate?: boolean;
-    }): void;
-    /** Which way the camera currently lies from the subject, in content axes. */
-    private viewDirection;
-    private orbit;
-    /** Start a camera move to a partial end state, holding whatever it omits. */
-    private animate;
-    /** Advance a camera move, if one is running. Called once per frame. */
-    private step;
-    /**
-     * Label these things, in the margins, with leaders to them.
-     *
-     * What a label says is the host's business, as colour is: this class knows
-     * how a drawing is annotated and nothing about what the annotation means.
-     * Pass an empty array to clear.
-     *
-     * Anchors are measured here and once, because a bounding box costs a walk of
-     * the geometry and nothing in this scene moves except the camera.
-     */
-    setCallouts(items: CalloutItem[]): void;
-    /**
-     * Which anchors the reader can actually see.
-     *
-     * A leader pointing confidently at a wall that is behind three other walls
-     * is worse than no leader: on a face view half the building is occluded, and
-     * without this every one of those elements would still be labelled and the
-     * reader would have no way to tell which. One raycast per callout, on a
-     * timer, because the answer only changes when the camera moves.
-     */
-    private checkCalloutVisibility;
-    /** Project, cull and lay out this frame's labels. */
-    private drawCallouts;
-    /**
-     * Cut the model with a plane, and cap the cut so it reads as solid.
-     *
-     * `axis` is in the content's own frame, so a Z-up model asks for "z" and
-     * gets a horizontal cut whichever way the viewport has turned the content to
-     * face three.js. `at` is a fraction of the content's extent along that axis,
-     * so 0.5 is halfway through whatever is loaded. Pass null to clear.
-     *
-     * The capping is the whole point and the reason this is not three lines. A
-     * clipping plane on its own leaves the cut hollow: you see the far side from
-     * the inside and the building reads as a shell, which is wrong about the one
-     * thing a section exists to show. How the cut is filled is explained where
-     * it is done, below.
-     */
-    setSection(section: SectionRequest | null): void;
-    /** Override what the cut face is painted. Pass null to go back to following
-     *  the view mode, which is what a section normally wants. */
-    setSectionColour(colour: number | null): void;
-    /** The section in force, or null. */
-    get sectionAt(): SectionRequest | null;
-    private clearSection;
-    /** Clipping is per material in three, so it has to reach every one the app
-     *  handed over as well as the ones this class makes. */
-    private applyClipping;
-    /**
-     * Draw a bright outline around these meshes, on top of everything.
-     *
-     * The way to mark a set of elements without spending their fill colour,
-     * which matters once an app paints by something (a product, a state, an
-     * evidence grade) and still needs to say "these ones". Dimming everything
-     * else says the same thing by destroying the rest of the picture.
-     *
-     * Drawn with `depthTest` off, so an outlined element reads through the
-     * fabric in front of it. That is not a compromise: the usual reason to
-     * highlight a set is that some of it is behind something, and an outline you
-     * can only see when nothing is in the way answers the easy half of the
-     * question.
-     *
-     * One pixel wide. `LineBasicMaterial.linewidth` is ignored by every WebGL
-     * implementation worth naming, and this machine reports an aliased line
-     * width range of exactly [1, 1]. Thickness would mean the instanced-quad
-     * line from three's examples, which this library already imports elsewhere
-     * for its controls, so it is available; it is not used here because drawing
-     * over the top is what makes the highlight legible, and a saturated line at
-     * one pixel over the fabric reads better than a thick one behind it. If a
-     * host wants weight as well, that is the change to make.
-     */
-    setOutlined(meshes: THREE.Object3D[], colour?: number): void;
-    /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
-    repaint(): void;
-    /** Apply the current mode to one mesh. The app's hook has the first word. */
-    private paint;
-    private applyMode;
-    /**
-     * Creases for the content, a chunk per frame.
-     *
-     * One LineSegments per chunk rather than per mesh: a few thousand line
-     * objects is a few thousand draw calls, and merging costs nothing here
-     * because the outlines are styled as one anyway.
-     */
-    private buildOutlines;
-    get shadowsOn(): boolean;
-    /** Sun shadows on or off. Off by default: they are a presentation choice, and
-     *  in hidden line they are a departure from the drawing convention. */
-    setShadows(on: boolean): void;
-    get sunDescription(): string;
-    /**
-     * Put a real sun in the sky, for a place and an instant.
-     *
-     * Two honest limits, both reported through `sunDescription`: the content's
-     * +Y (or +Z, for Z-up content) is assumed to be north, because a viewport
-     * cannot know a project's true north; and a sun below the horizon falls back
-     * to a generic light rather than showing a black building.
-     */
-    setSun(date: Date, latitude: number, longitude: number, place?: string): void;
-    /** Sun and ground, framed to whatever is in the scene. Cheap, and only run
-     *  when the contents or the light change. */
-    private frameSun;
-    /** Frame the contents: centre on the bounding box and pull back far enough
-     *  that it fits the tighter of the two field-of-view axes. */
-    fit(margin?: number): void;
-    /**
-     * Frame part of the content: a selection, a storey, one component.
-     *
-     * Animated, unlike `fit`, because the reader is going somewhere within a
-     * model they can already see and needs to keep hold of where. The margin is
-     * looser than `fit`'s for the same reason: a part framed edge to edge loses
-     * the surroundings that say which part it is.
-     */
-    fitTo(objects: THREE.Object3D[], opts?: {
-        margin?: number;
-        animate?: boolean;
-    }): void;
-    private radiusFor;
-    private resize;
-    private tick;
-    dispose(): void;
-}
 
 /**
  * The axis widget in the corner of a viewport.
  *
- * It exists because the Viewport already knew how to be a plan or an
- * elevation and no user could ask it to: `setView` and `setProjection` were
- * public, tested, and unreachable from every application built on them. A
- * capability with no affordance is a capability nobody has.
+ * It exists because a renderer that knows how to be a plan or an elevation is
+ * no use if no reader can ask it to: `setView` and `setProjection` were public,
+ * tested, and unreachable from every application built on them. A capability
+ * with no affordance is a capability nobody has. ThreeRenderer shows it with
+ * `navGizmo: true`.
  *
  * Drawn as SVG rather than a second WebGL scene. It stays crisp at any device
  * pixel ratio, it costs no context (a browser allows only a handful, and this
@@ -1531,9 +1279,10 @@ declare class Viewport {
  * living: each ball is an element, so a click is a click rather than a
  * raycast.
  *
- * What it shows is the *content's* axes, not the world's. A Z-up model is
- * rotated into a Y-up scene by `setUp`, and a gizmo that reported the scene's
- * axes would tell an engineer their Z was horizontal.
+ * What it shows is the *content's* axes, not the world's: `update` takes the
+ * turn between the two, so a renderer that rotated a Z-up model into a Y-up
+ * scene would still not tell an engineer their Z was horizontal. ThreeRenderer
+ * keeps the content's axes (it turns the camera's up), so its turn is none.
  */
 
 interface NavGizmoOptions {
@@ -1740,8 +1489,10 @@ declare class SketchInstance {
      * with `addExternalObject`). Scene, camera and Lab calls already do.
      */
     requestRender(): void;
-    /** Change the scene render mode (solid / wireframe / hiddenline). */
+    /** Change the scene render mode (solid / wireframe / hiddenline / ghost). */
     setRenderMode(mode: RenderMode): void;
+    /** Cut the model with a section (see `ThreeRenderer.setSection`); null clears. */
+    setSection(section: SectionRequest | null): void;
     /**
      * Switch shading preset. `"studio"` enables PBR materials, sun-style
      * shadows, and ACES tonemapping; `"flat"` is the lightweight default.
@@ -1891,10 +1642,29 @@ interface AppShellConfig<S extends ParamSchema = ParamSchema> {
     panelWidth?: number;
     /** Renderer config overrides */
     renderer?: Partial<ThreeRendererConfig>;
-    /** Top bar with Lighting / Render-mode / Camera / Sun controls. Default: true. */
-    topBar?: boolean;
+    /** Top bar with Lighting / Render-mode / Camera / Cut / Sun controls. Default: true.
+     *  An object turns single controls off where they don't make sense for the app
+     *  (`{ cut: false, sun: false }`). */
+    topBar?: boolean | TopBarOptions;
     /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
     markup?: boolean;
+    /** The axis widget in a viewport corner (`true` = bottom right): click an axis for a plan
+     *  or an elevation, toggle persp/ortho under it. Default `false` — an app may have its own
+     *  panels in that corner. */
+    navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+}
+/** The appShell top bar's controls; each is shown unless set to false. */
+interface TopBarOptions {
+    /** Flat / Studio lighting. */
+    light?: boolean;
+    /** Solid / Wire / Hidden / Ghost. */
+    mode?: boolean;
+    /** Perspective / isometric. */
+    camera?: boolean;
+    /** A section through the model (`renderer.setSection`). */
+    cut?: boolean;
+    /** The sun for a place, date and hour. */
+    sun?: boolean;
 }
 interface AppShellInstance<S extends ParamSchema = ParamSchema> {
     params: ParamStore<S>;
@@ -2016,4 +1786,4 @@ interface MarkupBundle {
     dir?: string;
 }
 
-export { type AppShellConfig, type AppShellInstance, type Appearance, BspTree, type CalloutItem, Callouts, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, DEFAULT_BACKGROUND, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IdBufferOptions, ImportRegistration, Lab, type LayoutOptions, LightingMode, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mesh, NavGizmo, type NavGizmoOptions, type PanelButton, ParamSchema, ParamStore, type PickInfo, type Placement, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, type Projection, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, type SectionRequest, SharedStore, SketchConfig, SketchInstance, type StandardView, type Theme, ThreeRenderer, type ThreeRendererConfig, Vec3, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, easeInOut, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, labelWidthFor, layoutLabels, lightBalance, modeBackground, nearestAxis, orbitFor, orthoFrustum, polylinesToSVG, processWorkerRequest, sectionAppearance, shortestTurn, sketch, standardOrbit, surfaceAppearance };
+export { type AppShellConfig, type AppShellInstance, type Appearance, BspTree, type CalloutItem, Callouts, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, DEFAULT_BACKGROUND, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IdBufferOptions, ImportRegistration, Lab, type LayoutOptions, LightingMode, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mesh, NavGizmo, type NavGizmoOptions, type PanelButton, ParamSchema, ParamStore, type PickInfo, type Placement, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SectionRequest, SharedStore, SketchConfig, SketchInstance, StandardView, type Theme, ThreeRenderer, type ThreeRendererConfig, Vec3, type ViewMode, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, easeInOut, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, labelWidthFor, layoutLabels, lightBalance, modeBackground, nearestAxis, orbitFor, orthoFrustum, polylinesToSVG, processWorkerRequest, sectionAppearance, sectionPlane, shortestTurn, sketch, standardOrbit, surfaceAppearance };
