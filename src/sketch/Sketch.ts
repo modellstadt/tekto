@@ -40,7 +40,7 @@ import { Mesh } from "../core/geometry/mesh/Mesh";
 import { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import { Algo } from "../core/algo/algorithms";
 import { Scene, VisualStyle, FlatMeshData, RenderMode } from "../scene/Scene";
-import { LayerPanel, LayerMap, LayerNode } from "../gui/LayerPanel";
+import { LayerPanel, LayerMap, LayerNode, LayerState } from "../gui/LayerPanel";
 import { ParamStore } from "../gui/Params";
 import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
@@ -612,7 +612,13 @@ export class SketchInstance {
       }
     }
     this.renderer.upsertDragHandle(name, cur.x, cur.y, cur.z, opts?.color, opts?.size, opts?.constrain, opts?.plane);
-    return { value: cur };
+    return {
+      value: cur,
+      set: (v: Vec3) => {
+        this._dragHandles.set(name, v);
+        if (!this._running) this.runSketch();
+      },
+    };
   }
 
   setHandleSelected(name: string | null): void {
@@ -790,7 +796,7 @@ export class SketchInstance {
         this.items.set(key, item);
       }
       const store = this.store;
-      return { get value() { return store.get(key); } };
+      return { get value() { return store.get(key) as T; }, set(v: T) { store.set(key, v as any); } };
     };
 
     const lab: Lab = {
@@ -865,7 +871,18 @@ export class SketchInstance {
           lt.panel.update(nodes, lt.value);
         }
         const state = lt;
-        return { get value() { return state.value; } };
+        return {
+          get value() { return state.value; },
+          set(update) {
+            const next = { ...state.value };
+            for (const [id, v] of Object.entries(update)) next[id] = { ...next[id], ...v } as LayerState;
+            state.value = next;
+            state.panel.update(state.nodes, state.value);
+            if (self._running) return;
+            if (state.display && self._onDisplayFns.length > 0) self.runDisplayPass();
+            else self.runSketch();
+          },
+        };
       },
 
       // ── Actions ──
@@ -1700,6 +1717,15 @@ export class SketchInstance {
       errors: this.bridge?.errors() ?? [],
     };
   }
+
+  /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
+  getParams(): Record<string, unknown> { return { ...this.store.getAll() }; }
+
+  /**
+   * Set controls by label ("Radius"), "Group:Label" or key — e.g. the object `getParams()`
+   * returned — and re-run once. Reports names it could not apply instead of dropping them.
+   */
+  setParams(values: Record<string, unknown>) { return this.store.setByName(values); }
 
   /** Destroy the sketch and clean up */
   dispose() {

@@ -474,7 +474,7 @@ export class Sketch2DInstance {
         self.store.define(key, def);
         self.items.set(key, item);
       }
-      return { get value() { return self.store.get(key); } };
+      return { get value() { return self.store.get(key) as T; }, set(v: T) { self.store.set(key, v as any); } };
     }
 
     return {
@@ -597,6 +597,12 @@ export class Sketch2DInstance {
   }
 
   /** Tear down the sketch */
+  /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
+  getParams(): Record<string, unknown> { return { ...this.store.getAll() }; }
+
+  /** Set controls by label, "Group:Label" or key, and re-run once; reports what it couldn't apply. */
+  setParams(values: Record<string, unknown>) { return this.store.setByName(values); }
+
   dispose() {
     this.disposed = true;
     this.bridge?.dispose();

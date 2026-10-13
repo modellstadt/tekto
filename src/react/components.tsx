@@ -114,11 +114,11 @@ export function ParamPanel({ store, layout, title, style, className }: ParamPane
               min={def.min}
               max={def.max}
               step={def.step ?? (def.type === "int" ? 1 : (def.max - def.min) / 100)}
-              value={values[key]}
+              value={values[key] as string | number}
               onChange={e => set(key, parseFloat(e.target.value))}
               style={sliderStyle}
             />
-            <span style={valueStyle}>{def.type === "int" ? values[key] : values[key]?.toFixed(2)}</span>
+            <span style={valueStyle}>{def.type === "int" ? (values[key] as number) : (values[key] as number | undefined)?.toFixed(2)}</span>
           </div>
         );
 
@@ -128,7 +128,7 @@ export function ParamPanel({ store, layout, title, style, className }: ParamPane
             <label style={labelStyle}>{label}</label>
             <input
               type="checkbox"
-              checked={values[key]}
+              checked={values[key] as boolean}
               onChange={e => set(key, e.target.checked)}
               style={checkStyle}
             />
@@ -140,7 +140,7 @@ export function ParamPanel({ store, layout, title, style, className }: ParamPane
           <div key={key} style={rowStyle}>
             <label style={labelStyle}>{label}</label>
             <select
-              value={values[key]}
+              value={values[key] as string | number}
               onChange={e => set(key, e.target.value)}
               style={selectStyle}
             >
@@ -155,7 +155,7 @@ export function ParamPanel({ store, layout, title, style, className }: ParamPane
             <label style={labelStyle}>{label}</label>
             <input
               type="color"
-              value={values[key]}
+              value={values[key] as string | number}
               onChange={e => set(key, e.target.value)}
               style={colorStyle}
             />
@@ -169,7 +169,7 @@ export function ParamPanel({ store, layout, title, style, className }: ParamPane
             <label style={labelStyle}>{label}</label>
             <input
               type="text"
-              value={values[key]}
+              value={values[key] as string | number}
               placeholder={def.placeholder}
               onChange={e => set(key, e.target.value)}
               style={textStyle}

@@ -526,7 +526,7 @@ export class ControlPanel {
         const rawDec = isInt ? 0 : Math.max(2, -Math.floor(Math.log10(step) - 0.001));
         const decimals = Math.min(Math.max(0, rawDec), 20);
         const fmt = (v: number) => isInt ? String(Math.round(v)) : Number(v).toFixed(decimals);
-        valueSpan.textContent = fmt(this.store.get(it.key));
+        valueSpan.textContent = fmt(this.store.get(it.key) as number);
 
         input.addEventListener("input", () => {
           this.store.set(it.key, parseFloat(input.value));
@@ -594,11 +594,11 @@ export class ControlPanel {
       case "color": {
         const input = document.createElement("input");
         input.type = "color";
-        input.value = this.store.get(it.key);
+        input.value = this.store.get(it.key) as string;
         input.style.cssText = `width:32px;height:24px;border:1px solid ${t.controlBorder};border-radius:4px;padding:0;cursor:pointer;background:none;`;
         const valueSpan = document.createElement("span");
         valueSpan.style.cssText = `font-size:10px;color:${t.textDim};`;
-        valueSpan.textContent = this.store.get(it.key);
+        valueSpan.textContent = this.store.get(it.key) as string;
         input.addEventListener("input", () => {
           this.store.set(it.key, input.value);
           this.cfg.onCommit?.(it.key);
@@ -611,7 +611,7 @@ export class ControlPanel {
       case "string": {
         const input = document.createElement("input");
         input.type = "text";
-        input.value = this.store.get(it.key) ?? "";
+        input.value = (this.store.get(it.key) as string | undefined) ?? "";
         input.placeholder = def.placeholder ?? "";
         input.style.cssText = `
           flex:1;padding:4px 8px;background:${t.fieldBg};
@@ -631,7 +631,7 @@ export class ControlPanel {
           const input = document.createElement("input");
           input.type = "number";
           if (def.step != null) input.step = String(def.step);
-          input.value = String((this.store.get(it.key) ?? def.default)[i]);
+          input.value = String(((this.store.get(it.key) as [number, number, number] | undefined) ?? def.default)[i]);
           input.style.cssText = `
             flex:1;width:0;padding:3px 4px;background:${t.fieldBg};
             border:1px solid ${t.controlBorder};border-radius:4px;color:inherit;

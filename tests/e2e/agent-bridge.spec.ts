@@ -47,3 +47,22 @@ test("errors the page hits land in the bridge (and so in markup.json)", async ({
   const m = await page.evaluate(() => (window as any).__tekto.snapshot({ save: false }).then((b: any) => b.markup));
   expect(m.errors.some((e: string) => e.includes("boom from the test"))).toBe(true);
 });
+
+test("controls can be set from code, and a design round-trips through getParams/setParams", async ({ page }) => {
+  await page.goto("/testbench.html?page=mesh-factory");
+  await page.waitForFunction(() => !!(window as any).__tekto?.owner);
+  const level = () => page.evaluate(() => (window as any).__tekto.params()["slider::Subdivision Levels"]);
+  expect(await level()).toBe(1);
+
+  // Reactive.set from a button: the stored value changes and the sketch re-runs.
+  await page.getByRole("button", { name: "Smoothest" }).click();
+  await expect.poll(level).toBe(3);
+
+  // Save, change, reopen — without a page reload.
+  const saved = await page.evaluate(() => (window as any).__tekto.owner.getParams());
+  await page.evaluate(() => (window as any).__tekto.owner.setParams({ "Subdivision Levels": 0 }));
+  await expect.poll(level).toBe(0);
+  const r = await page.evaluate((v) => (window as any).__tekto.owner.setParams(v), saved);
+  expect(r.unknown).toEqual([]);
+  await expect.poll(level).toBe(3);
+});

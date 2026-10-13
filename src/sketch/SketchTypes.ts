@@ -16,6 +16,7 @@ import type { Algo } from "../core/algo/algorithms";
 import type { Scene, VisualStyle, FlatMeshData } from "../scene/Scene";
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 export type { LayerNode, LayerState, LayerMap } from "../gui/LayerPanel";
+import type { LayerState } from "../gui/LayerPanel";
 
 // ─── SketchConfig ────────────────────────────────────────────────────
 
@@ -72,8 +73,14 @@ export interface ImportRegistration {
 // ─── Reactive value ──────────────────────────────────────────────────
 
 /** A reactive value — reads .value, triggers sketch re-run on change */
-export interface Reactive<T> {
+/**
+ * A control's value. Read `.value` in the sketch. `.set(v)` changes the control from
+ * code — a button, a key, a loaded file — moves the panel with it, and re-runs the
+ * sketch; called during a run it only stores the value for the next one.
+ */
+export interface Reactive<T, S = T> {
   readonly value: T;
+  set(value: S): void;
 }
 
 // ─── Control options ────────────────────────────────────────────────
@@ -237,7 +244,8 @@ export interface Lab {
    * The panel instance is persistent: collapsed state and scroll position
    * survive sketch re-runs. Nodes can change between runs (e.g. async loads).
    */
-  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean }): Reactive<LayerMap>;
+  /** `.set({ beams: { visible: false } })` updates layers in place (partial per layer). */
+  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean }): Reactive<LayerMap, Record<string, Partial<LayerState>>>;
 
   // ── Actions ──
   /** `display: true` marks a display-only action (camera preset, restyle):

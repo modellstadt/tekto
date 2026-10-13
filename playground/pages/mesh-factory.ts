@@ -7,6 +7,8 @@ import { sketch, SketchInstance, MeshFactory, Vec2, Vec3 } from "../../src";
 export default function (container: HTMLElement): SketchInstance {
   return sketch((lab) => {
     const subLevels = lab.slider("Subdivision Levels", 0, 3, 1, { step: 1 });
+    // A control set from code: the slider moves and the sketch re-runs.
+    lab.button("Smoothest", () => subLevels.set(3));
     const sp = 3.5;
 
     // Box

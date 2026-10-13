@@ -96,6 +96,19 @@ export type ParamDef = (
 
 export type ParamSchema = Record<string, ParamDef>;
 
+/** The value a param definition holds: `float`/`int` → number, `bool` → boolean,
+ *  `select`/`color`/`string` → string, `vec3` → [x, y, z], `button` → undefined. */
+export type ParamValue<D> =
+  D extends { type: "float" | "int" } ? number :
+  D extends { type: "bool" } ? boolean :
+  D extends { type: "select" | "color" | "string" } ? string :
+  D extends { type: "vec3" } ? [number, number, number] :
+  D extends { type: "button" } ? undefined :
+  unknown;
+
+/** Every value of a schema, typed: `{ radius: number, wireframe: boolean, … }`. */
+export type ParamValues<S extends ParamSchema> = { [K in keyof S]: ParamValue<S[K]> };
+
 // ─── Param Store ─────────────────────────────
 
 export type ParamChangeListener = (key: string, value: any, allValues: Record<string, any>) => void;
@@ -116,7 +129,7 @@ export class ParamStore<S extends ParamSchema = ParamSchema> {
     }
   }
 
-  get<K extends keyof S>(key: K): any {
+  get<K extends keyof S>(key: K): ParamValue<S[K]> {
     return this.values[key as string];
   }
 
@@ -170,8 +183,8 @@ export class ParamStore<S extends ParamSchema = ParamSchema> {
   }
 
   /** Get all current values */
-  getAll(): Record<string, any> {
-    return { ...this.values };
+  getAll(): ParamValues<S> {
+    return { ...this.values } as ParamValues<S>;
   }
 
   /** Get the schema for a specific key */

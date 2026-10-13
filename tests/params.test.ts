@@ -6,7 +6,7 @@
  * snapshots the unchanged design and believes its change landed. `setByName` resolves
  * labels and reports what it could not apply; these tests hold it to that.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
 import { ParamStore, type ParamSchema } from "../src/gui/Params";
 
 /** The keys sketch() declares: `type:group:label`. */
@@ -62,5 +62,25 @@ describe("ParamStore.setByName", () => {
     expect(s.setByName({ Radius: 3, segments: 8 }).applied).toEqual(["radius", "segments"]);
     expect(s.get("radius")).toBe(3);
     expect(s.names()).toEqual(["Radius", "segments"]);
+  });
+});
+
+describe("ParamStore values are typed from the schema", () => {
+  it("get() and getAll() return the value type each param holds", () => {
+    const s = new ParamStore({
+      radius: { type: "float", min: 0, max: 5, default: 1 },
+      count: { type: "int", min: 1, max: 9, default: 3 },
+      wire: { type: "bool", default: false },
+      mode: { type: "select", options: ["a", "b"], default: "a" },
+      tint: { type: "color", default: "#ffffff" },
+      at: { type: "vec3", default: [0, 0, 0] },
+    });
+    expectTypeOf(s.get("radius")).toEqualTypeOf<number>();
+    expectTypeOf(s.get("count")).toEqualTypeOf<number>();
+    expectTypeOf(s.get("wire")).toEqualTypeOf<boolean>();
+    expectTypeOf(s.get("mode")).toEqualTypeOf<string>();
+    expectTypeOf(s.get("at")).toEqualTypeOf<[number, number, number]>();
+    expectTypeOf(s.getAll().tint).toEqualTypeOf<string>();
+    expect(s.get("radius") + s.get("count")).toBe(4);   // no casts needed
   });
 });
