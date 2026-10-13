@@ -55,7 +55,7 @@ Mixing them is the classic mistake: a Y-up primitive in a Z-up app lies on its s
 - **Use `MeshFactory`** for procedural meshes; `Mesh` carries connectivity at every size, so there is no separate "big mesh" path. For data that arrives as arrays (a scan, an IFC), `new Mesh(positions, indices)` — 1M triangles load in under 100 ms.
 - **Hot loops read arrays, not views.** `mesh.faceVerts(id)`, `mesh.positions`, `mesh.indices` cost nothing; `mesh.node(id).position` allocates a view and a `Vec3`. Fine for a pass over a few thousand nodes, not for an inner loop over a million.
 - **Use `sketch(...)`** to build a runnable demo. Don't reach for the React app shell unless you specifically need persistent state, multiple panels, or routing.
-- **`three` is allowed only in `src/render/`** (`ThreeRenderer`, `viewRules`, `Callouts`, `NavGizmo`) **and the two GPU-assisted exporters in `src/io/`** (`IdBufferHiddenLine`, `PolylineVisibility`). Never in `core/`, `scene/`, `sketch/`, `gui/` or `bim/` — those must run without WebGL (tests, workers, the 2D sketch). It's an externalised peer dep; a sketch reaches the renderer through the `Lab` / `SketchInstance` API, not by importing three itself.
+- **`three` is allowed only in `src/render/`** (`ThreeRenderer` and its parts, `viewRules`, `Callouts`, `NavGizmo`) **and the two GPU-assisted exporters in `src/io/`** (`IdBufferHiddenLine`, `PolylineVisibility`). Never in `core/`, `scene/`, `sketch/`, `gui/` or `bim/` — those must run without WebGL (tests, workers, the 2D sketch). It's an externalised peer dep; a sketch reaches the renderer through the `Lab` / `SketchInstance` API, not by importing three itself.
 - **Avoid** adding new files when an existing file is a good home. The library prefers a handful of larger, well-organised modules over many tiny ones.
 
 ## Editing checklist
@@ -117,7 +117,9 @@ Two presets toggled from the top bar:
 - **Flat** (default) — `MeshPhongMaterial`, 3 cheap lights, no shadows, no tonemapping. Fast. Use for inspection.
 - **Studio** — `MeshStandardMaterial` (PBR), one sun-style directional light with PCF-soft 2048² shadows on a 30 m frustum, ACES filmic tonemapping, sRGB output, an invisible `ShadowMaterial` ground plane that catches the contact shadows. ~2-3× slower per frame.
 
-Shadow flags are applied in `addToThree` based on the current lighting mode, so sketch re-runs preserve shadow behaviour. `_makeMaterial(opts)` in `ThreeRenderer.ts` picks Phong vs Standard; if you add a new material site, route it through this helper.
+Shadow flags are applied in `addToThree` based on the current lighting mode, so sketch re-runs preserve shadow behaviour. `makeMaterial(opts)` in `ObjectBuilder.ts` picks Phong vs Standard; if you add a new material site, route it through this helper.
+
+`ThreeRenderer` is the public class; its work is split into parts that share a `RendererCore` — `ObjectBuilder` (scene objects → three.js), `Lighting`, `CameraRig` (projection, views, fitTo, the axis widget), `Pointer` (picking, hover, drag handles, transform gizmo) and `Marks` (selection, section, callouts). Add a feature to the part it belongs to, and expose it on `ThreeRenderer` with a one-line delegate that carries the JSDoc.
 
 ## When you're stuck
 

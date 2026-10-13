@@ -28,7 +28,7 @@ async function open(page: Page) {
 async function handleAt(page: Page, key: string) {
   return page.evaluate((key) => {
     const r = (window as any).__tekto.owner.renderer;
-    const h = r.dragHandles.get(key);
+    const h = r.pointer.dragHandles.get(key);
     const w = h.getWorldPosition(h.position.clone());
     const s = r.worldToScreen({ x: w.x, y: w.y, z: w.z });
     const rect = r.renderer.domElement.getBoundingClientRect();
