@@ -44,7 +44,7 @@ import { ControlPanel, ControlItem } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
 import { SunPosition } from "../core/solar/SunPosition";
 import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject } from "./AgentBridge";
-import type { MarkupCaptureOptions } from "./Markup";
+import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
 
 // ─── Config ──────────────────────────────────
 
@@ -66,6 +66,8 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   renderer?: Partial<ThreeRendererConfig>;
   /** Top bar with Lighting / Render-mode / Camera / Sun controls. Default: true. */
   topBar?: boolean;
+  /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
+  markup?: boolean;
 }
 
 // ─── App Shell instance ──────────────────────
@@ -271,6 +273,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
     dispose() {
       disposed = true;
+      markup?.dispose();
       bridge.dispose();
       panel.dispose();
       renderer.dispose();
@@ -278,24 +281,40 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     },
   };
 
+  // ✎ Markup: marks resolve to the objects they touch — and through `key` to document records.
+  const context = () => ({
+    harness: "appShell",
+    ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
+    up: config.up ?? "z",
+    params: params.getAll(),
+    logs: statusText ? [{ label: "status", value: statusText }] : [],
+    errors: bridge.errors(),
+  });
+  const markup = config.markup === false ? null : new MarkupOverlay({
+    viewport: vpWrap,
+    title: config.title ?? "app",
+    hitAt: (x, y) => renderer.hitAt(x, y),
+    groundAt: (x, y) => renderer.groundAt(x, y),
+    snapshotPng: () => renderer.snapshotPng(),
+    describe: (id) => describeSceneObject(scene, id),
+    context,
+    setTracking: () => { /* retained scenes aren't re-run: objects carry their record key instead */ },
+  });
+
   const bridge = installAgentBridge({
     owner: instance,
     harness: "appShell",
     store: params,
-    snapshot: (opts?: MarkupCaptureOptions) => plainBundle({
-      ...opts,
-      title: config.title ?? "app",
-      harness: "appShell",
-      png: renderer.snapshotPng(),
-      viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
-      context: {
-        ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
-        up: config.up ?? "z",
-        params: params.getAll(),
-        logs: statusText ? [{ label: "status", value: statusText }] : [],
-        errors: bridge.errors(),
-      },
-    }),
+    snapshot: (opts?: MarkupCaptureOptions) => markup
+      ? markup.capture(opts)
+      : plainBundle({
+          ...opts,
+          title: config.title ?? "app",
+          harness: "appShell",
+          png: renderer.snapshotPng(),
+          viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
+          context: context(),
+        }),
     camera: (pos, target) => {
       renderer.setCameraPosition(pos[0], pos[1], pos[2]);
       if (target) renderer.lookAt(target[0], target[1], target[2]);

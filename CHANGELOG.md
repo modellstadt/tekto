@@ -28,6 +28,9 @@ before 1.0, breaking changes bump the minor version. See
   selected record is highlighted, again after `bindScene` rebuilds it. `ThreeRenderer`:
   `setSelectionHighlight` takes a list of ids, and `onPick` listeners get the modifier keys
   (`PickInfo`).
+- **✎ Markup in `appShell()`** — the same overlay as in `sketch()` (opt out with
+  `markup: false`). Marks resolve to the objects they touch and, through `key`, to the document
+  records they show; `window.__tekto.snapshot()` (and so `snap`) includes the marks.
 
 ## 0.7.0 — 2026-10-13
 
