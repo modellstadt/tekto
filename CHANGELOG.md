@@ -6,6 +6,38 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Breaking: `Viewport` is removed. tekto has one renderer.** Everything the separate
+  `Viewport` did is on `ThreeRenderer` (#48–#50 and this release). So every `sketch()` and
+  `appShell()` app has it, along with picking, selection, Markup and snapshots, which
+  `Viewport` never had. Migration:
+  - **Content:** `new Viewport(host, { up: "z" })` + `setContent(meshes)` → an
+    `appShell({ container, navGizmo: true })` (or `new ThreeRenderer(scene, host, { up: "z",
+    navGizmo: true })`), with each mesh as `scene.addMesh(new Mesh(positions, indices),
+    { color })`. `Viewport.meshFrom(buffers)` → `new Mesh(buffers.positions, buffers.indices)`.
+  - **Modes:** `setViewMode("shaded" | "ghost" | "hidden-line")` →
+    `scene.setRenderMode("solid" | "ghost" | "hiddenline")`.
+  - **Same names on the renderer:** `setView`, `orbitTo`, `setProjection`, `setSection` /
+    `setSectionColour`, `fitTo`, `setCallouts`. Objects are now scene ids or record keys
+    instead of three.js objects.
+  - **Picking and hover:** `onPick` / `onHover` options → `renderer.onPick` / `renderer.onHover`.
+  - **Highlighting:** `setOutlined(meshes)` → `setSelectionStyle("outline")` +
+    `setSelectionHighlight(ids)`.
+  - **Colours:** `appearanceOf` → the object's style (`scene.setStyle`).
+  - **Sun:** `setSun(date, lat, lon)` / `setShadows` → Studio lighting +
+    `setSunDirection(SunPosition.compute({ date, latitude, longitude }).direction)`.
+  - `ViewportOptions` and `ContentOptions` are gone. `CalloutItem.objects` holds scene ids
+    or record keys (it held `THREE.Object3D[]`). The view rules (`edgeStyle`,
+    `standardOrbit`, …) stay exported.
+- **New on `ThreeRenderer`:**
+  - `setCallouts(items, { onPick, onHover })`: labels in the margins with leaders to what
+    they name. They never overlap. Ones whose subject is hidden are left out, and what
+    doesn't fit is counted. A record key follows its record through rebuilds.
+  - `fitTo(objects, { margin, animate })`: frames a selection or a part. It glides there
+    keeping the viewing direction; in orthographic it sets the zoom.
+- appShell top bar: **Light** and **Mode** now follow changes made in code, as Cam does.
+- Playground: **Framed Wall** replaces the Viewport page. It shows a framed wall with every
+  mode, Cut, views, the axis widget, callouts, outline selection, hover and Frame selection.
+
 - **One renderer, part 3: render quality on `ThreeRenderer`** (from `Viewport`).
   - Hidden-line and ghost creases are built a frame at a time (8 ms budget), so a mode
     switch on a large model no longer stalls. `pendingEdges` counts what is left;

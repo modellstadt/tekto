@@ -1,5 +1,5 @@
 /**
- * The renderer's quality features, folded in from Viewport: crease lines built a frame at a
+ * The renderer's quality features (once the separate Viewport's): crease lines built a frame at a
  * time (and finished for a snapshot), the sun's shadow camera framed to the content,
  * selection as outlines, and hover.
  */

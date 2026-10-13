@@ -54,7 +54,7 @@ const CITIES: City[] = [
 
 /**
  * What a page hands back. The shell only ever needs to be able to tear it
- * down, so a page that owns its own renderer (the Viewport one does) is welcome
+ * down, so a page that owns its own renderer (an appShell page does) is welcome
  * here too; the sun and render-mode controls key off `as3D()` and no-op for it.
  */
 type MountedPage = SketchInstance | Sketch2DInstance | { dispose(): void };
@@ -105,7 +105,7 @@ const GROUPS: PageGroup[] = [
   ]},
   { name: "BIM", pages: [
     { slug: "timber",   label: "Timber + IFC", load: () => import("./pages/timber") },
-    { slug: "viewport", label: "Viewport",     load: () => import("./pages/viewport") },
+    { slug: "framed-wall", label: "Framed Wall (modes, cut, views)", load: () => import("./pages/framed-wall") },
     { slug: "dxf-test", label: "DXF Test",     load: () => import("./pages/dxf-test") },
     { slug: "dxf-3d",   label: "DXF 3D Writer", load: () => import("./pages/dxf-3d") },
   ]},

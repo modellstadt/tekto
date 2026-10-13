@@ -13,8 +13,9 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 import { Scene as GScene, SceneObject, SceneEvent, type SectionRequest, type StandardView } from "../scene/Scene";
 import { Mesh as GMesh } from "../core/geometry/mesh/Mesh";
 import { Vec3 } from "../core/math/vectors";
-import { sectionPlane, sectionAppearance, surfaceAppearance, edgeStyle, viewDirection, nearestAxis, easeInOut } from "./viewRules";
+import { sectionPlane, sectionAppearance, surfaceAppearance, edgeStyle, viewDirection, nearestAxis, easeInOut, fitRadius } from "./viewRules";
 import { NavGizmo } from "./NavGizmo";
+import { Callouts, layoutLabels, labelWidthFor, type CalloutItem } from "./Callouts";
 
 export type GizmoMode = "translate" | "rotate" | "scale" | "none";
 
@@ -167,7 +168,19 @@ export class ThreeRenderer {
   // ── Named views (setView / orbitTo) and the axis widget ──
   private navGizmo: NavGizmo | null = null;
   // A camera turn in progress: the offset from the target it started at, the full turn.
-  private cameraMove: { from: THREE.Vector3; turn: THREE.Quaternion; start: number; ms: number } | null = null;
+  // A camera move in progress: a turn about the target, and a glide of the target and the distance.
+  private cameraMove: {
+    from: THREE.Vector3; turn: THREE.Quaternion; fromTarget: THREE.Vector3; toTarget: THREE.Vector3;
+    toDist: number; fromZoom: number; toZoom: number; start: number; ms: number;
+  } | null = null;
+  // ── Callouts (setCallouts) ──
+  private callouts: Callouts | null = null;
+  private calloutAnchors = new Map<string, THREE.Vector3>();
+  private calloutVisible = new Set<string>();
+  private calloutCheckedAt = 0;
+  private calloutRecheck = 0;
+  private calloutsDirty = false;
+  private calloutHandlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {};
   private projectionListeners = new Set<(projection: "perspective" | "orthographic") => void>();
 
   // ── Edges built a frame at a time (hidden line, ghost) ──
@@ -289,6 +302,7 @@ export class ThreeRenderer {
   private handleEvent(event: SceneEvent) {
     this._needsRender = true;
     this.sunDirty = true;
+    this.calloutsDirty = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -1923,6 +1937,7 @@ export class ThreeRenderer {
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
     this.navGizmo?.update(this.activeCamera, NO_TURN);
+    this._drawCallouts();
   }
 
   /**
@@ -2101,9 +2116,60 @@ export class ThreeRenderer {
       this._placeCamera(target, dir.multiplyScalar(dist));
       return;
     }
-    const turn = new THREE.Quaternion().setFromUnitVectors(offset.clone().normalize(), dir);
-    this.cameraMove = { from: offset.setLength(dist), turn, start: performance.now(), ms: 340 };
+    this._moveCamera(dir, target.clone(), dist, this._orthoCam.zoom);
+  }
+
+  /**
+   * Frame part of the model — a selection, a storey, one element: centre on it and come
+   * close enough that it fills the view with room around it (`margin`, default 1.8, so the
+   * surroundings still say which part it is). `objects` are scene ids or record keys.
+   * Animated unless `{ animate: false }`, keeping the direction you look from.
+   */
+  fitTo(objects: readonly string[], opts: { margin?: number; animate?: boolean } = {}): void {
+    const box = new THREE.Box3();
+    for (const t of this._resolve(objects)) box.expandByObject(t);
+    if (box.isEmpty()) return;
+    const target = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+    const margin = opts.margin ?? 1.8;
+    const dist = fitRadius(radius, this.camera.fov, this.camera.aspect, margin);
+    // Orthographic framing is the zoom: the frustum came from the perspective distance.
+    const halfH = (this._orthoCam.top - this._orthoCam.bottom) / 2;
+    const halfW = (this._orthoCam.right - this._orthoCam.left) / 2;
+    const zoom = Math.min(halfH, halfW) / (radius * margin);
+    const dir = this._viewOffset();
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      if (this.controls) this.controls.target.copy(target);
+      if (this._isOrtho) { this._orthoCam.zoom = zoom; this._orthoCam.updateProjectionMatrix(); }
+      this._placeCamera(target, dir.multiplyScalar(dist));
+      return;
+    }
+    this._moveCamera(dir, target, dist, this._isOrtho ? zoom : this._orthoCam.zoom);
+  }
+
+  /** Start a move to `dir` from `target` at `dist` (and, in orthographic, `zoom`). */
+  private _moveCamera(dir: THREE.Vector3, target: THREE.Vector3, dist: number, zoom: number): void {
+    const from = this.controls?.target.clone() ?? new THREE.Vector3();
+    const offset = this.activeCamera.position.clone().sub(from);
+    this.cameraMove = {
+      from: offset, turn: new THREE.Quaternion().setFromUnitVectors(offset.clone().normalize(), dir.clone().normalize()),
+      fromTarget: from, toTarget: target, toDist: dist, fromZoom: this._orthoCam.zoom, toZoom: zoom,
+      start: performance.now(), ms: 340,
+    };
     this.requestRender();
+  }
+
+  /** Scene ids, or record keys resolved through the scene, to the three objects drawn for them. */
+  private _resolve(objects: readonly string[]): THREE.Object3D[] {
+    const out: THREE.Object3D[] = [];
+    for (const s of objects) {
+      const t = this.objectMap.get(s);
+      if (t) { out.push(t); continue; }
+      for (const o of this.gScene.byKey(s)) { const k = this.objectMap.get(o.id); if (k) out.push(k); }
+    }
+    return out;
   }
 
   /** Orbit by a pointer travel in pixels — the axis widget's drag. */
@@ -2128,18 +2194,110 @@ export class ThreeRenderer {
     this.requestRender();
   }
 
-  /** Advance a camera turn, if one is running. True while it moves the camera. */
+  /** Advance a camera move, if one is running. True while it moves the camera. */
   private _stepCameraMove(): boolean {
     const m = this.cameraMove;
     if (!m) return false;
     const t = easeInOut((performance.now() - m.start) / m.ms);
     const q = new THREE.Quaternion().slerpQuaternions(NO_TURN, m.turn, t);
-    const target = this.controls?.target ?? new THREE.Vector3();
+    const target = new THREE.Vector3().lerpVectors(m.fromTarget, m.toTarget, t);
+    const dist = THREE.MathUtils.lerp(m.from.length(), m.toDist, t);
+    if (this.controls) this.controls.target.copy(target);
     const cam = this.activeCamera;
-    cam.position.copy(target).add(m.from.clone().applyQuaternion(q));
+    cam.position.copy(target).add(m.from.clone().applyQuaternion(q).setLength(dist));
     cam.lookAt(target);
+    if (m.toZoom !== m.fromZoom) {
+      this._orthoCam.zoom = THREE.MathUtils.lerp(m.fromZoom, m.toZoom, t);
+      this._orthoCam.updateProjectionMatrix();
+    }
     if (t >= 1) this.cameraMove = null;
     return true;
+  }
+
+  // ── Callouts ──
+
+  /**
+   * Labels in the margins with leaders to what they name, the way a drawing is annotated:
+   * they never overlap and don't swim as the model turns; a label whose thing is hidden
+   * behind other things is left out; what doesn't fit is counted, not dropped silently.
+   * `objects` are scene ids or record keys (a key follows its record through rebuilds).
+   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
+   */
+  setCallouts(items: CalloutItem[], handlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {}): void {
+    this.calloutHandlers = handlers;
+    if (!items.length && !this.callouts) return;
+    this.callouts ??= new Callouts(this.container, {
+      onPick: (id) => this.calloutHandlers.onPick?.(id),
+      onHover: (id) => this.calloutHandlers.onHover?.(id),
+    });
+    this.callouts.setItems(items);
+    this.calloutsDirty = true;
+    this.requestRender();
+  }
+
+  /** Re-measure each callout's anchor: the centre of its objects' bounds. */
+  private _measureCallouts(): void {
+    this.calloutsDirty = false;
+    this.calloutAnchors.clear();
+    const box = new THREE.Box3();
+    for (const id of this.callouts?.ids ?? []) {
+      box.makeEmpty();
+      for (const t of this._resolve(this.callouts!.objectsOf(id))) if (t.visible) box.expandByObject(t);
+      if (!box.isEmpty()) this.calloutAnchors.set(id, box.getCenter(new THREE.Vector3()));
+    }
+    this.calloutCheckedAt = 0;
+  }
+
+  /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
+  private _checkCalloutVisibility(): void {
+    this.calloutVisible.clear();
+    const cam = this.activeCamera;
+    const meshes = [...this.objectMap.values()].filter(t => t.visible);
+    const ray = new THREE.Raycaster();
+    const eye = cam.getWorldPosition(new THREE.Vector3());
+    for (const [id, anchor] of this.calloutAnchors) {
+      const own = new Set(this._resolve(this.callouts!.objectsOf(id)));
+      const dir = anchor.clone().sub(eye);
+      const dist = dir.length();
+      if ((cam as THREE.OrthographicCamera).isOrthographicCamera) {
+        cam.getWorldDirection(dir);                       // parallel rays: along the view
+        ray.set(anchor.clone().addScaledVector(dir, -1e4), dir);
+        ray.far = 1e4;
+      } else { ray.set(eye, dir.normalize()); ray.far = dist; }
+      const hit = ray.intersectObjects(meshes, true).find(h => !this._cutAway(h.point));
+      let owner: THREE.Object3D | null = hit?.object ?? null;
+      while (owner && !own.has(owner)) owner = owner.parent;
+      if (!hit || owner || hit.distance >= ray.far - 1e-3) this.calloutVisible.add(id);
+    }
+  }
+
+  /** Project, cull and lay out this frame's labels. */
+  private _drawCallouts(): void {
+    if (!this.callouts) return;
+    if (this.calloutsDirty) this._measureCallouts();
+    const w = this.container.clientWidth || 1, h = this.container.clientHeight || 1;
+    const now = performance.now();
+    if (now - this.calloutCheckedAt > 180) {
+      this._checkCalloutVisibility();
+      this.calloutCheckedAt = now;
+    } else if (!this.calloutRecheck) {
+      // The camera may stop before the next check is due: look once more when it is.
+      this.calloutRecheck = window.setTimeout(() => { this.calloutRecheck = 0; this.calloutCheckedAt = 0; this.requestRender(); }, 200);
+    }
+    const cam = this.activeCamera;
+    cam.updateMatrixWorld();
+    const v = new THREE.Vector3();
+    const anchors: { id: string; x: number; y: number }[] = [];
+    for (const [id, anchor] of this.calloutAnchors) {
+      if (!this.calloutVisible.has(id)) continue;
+      v.copy(anchor).project(cam);
+      if (v.z > 1) continue;
+      anchors.push({ id, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+    }
+    const labelWidth = labelWidthFor(w);
+    this.callouts.setLabelWidth(labelWidth);
+    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
+    this.callouts.update(placed, dropped.length);
   }
 
   /** Where the camera sits, as a direction from its target. */
@@ -2300,6 +2458,8 @@ export class ThreeRenderer {
     this.envMap = null;
     cancelAnimationFrame(this.rafId);
     this.navGizmo?.dispose();
+    this.callouts?.dispose();
+    clearTimeout(this.calloutRecheck);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.controls?.dispose();

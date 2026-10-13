@@ -30,8 +30,9 @@ export interface CalloutItem {
   detail?: string;
   /** a swatch, so a callout and the element it points at agree by colour */
   colour?: string;
-  /** what it points at. The anchor is the centre of their combined bounds. */
-  objects: THREE.Object3D[];
+  /** What it points at: scene object ids, or record keys (`"walls/w1"`, which follow their
+   *  record through rebuilds). The anchor is the centre of their combined bounds. */
+  objects: readonly string[];
 }
 
 /** One label, placed. Pixel coordinates within the host. */
@@ -197,7 +198,7 @@ export class Callouts {
   }
 
   /** The objects a caller must measure to anchor each callout. */
-  objectsOf(id: string): THREE.Object3D[] { return this.items.get(id)?.objects ?? []; }
+  objectsOf(id: string): readonly string[] { return this.items.get(id)?.objects ?? []; }
 
   get ids(): string[] { return [...this.items.keys()]; }
 

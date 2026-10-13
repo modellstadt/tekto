@@ -36,11 +36,7 @@ export { SVGRenderer } from "./render/SVGRenderer";
 export { SheetCanvas, drawSheet, fitSheet } from "./render/SheetCanvas";
 export type { SheetCanvasOptions, SheetTransform, DrawSheetOptions } from "./render/SheetCanvas";
 export type { SVGRendererConfig } from "./render/SVGRenderer";
-// A viewport for meshes an app built itself, as opposed to a Scene the library
-// owns: view modes, progressive creases, a real sun, camera projections.
-export { Viewport } from "./render/Viewport";
-export type { ViewportOptions, ContentOptions } from "./render/Viewport";
-// The rules both draw by, as plain functions: mode looks, named views, fitting, sections.
+// The rules the renderer draws by, as plain functions: mode looks, named views, fitting, sections.
 export {
   edgeStyle, surfaceAppearance, lightBalance, modeBackground,
   groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
@@ -48,8 +44,8 @@ export {
   fitRadius, orthoFrustum, sectionPlane,
 } from "./render/viewRules";
 export type { ViewMode, Appearance } from "./render/viewRules";
-// The axis widget the Viewport puts in its corner. Exported for an app that
-// wants one over a scene of its own; a Viewport already has it.
+// The axis widget ThreeRenderer puts in a corner (`navGizmo: true`). Exported for an app
+// that wants one over a renderer of its own.
 export { NavGizmo } from "./render/NavGizmo";
 export type { NavGizmoOptions } from "./render/NavGizmo";
 // Labels in the margins with leaders to what they name, laid out the way a

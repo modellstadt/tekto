@@ -1,7 +1,7 @@
 /**
  * The rules a 3D view draws by — what each render mode paints, where a named view puts the
  * camera, how far back to sit to fit, where a section cuts — as plain functions, so they
- * can be tested without a GPU. `ThreeRenderer` and `Viewport` both draw by them.
+ * can be tested without a GPU. `ThreeRenderer` draws by them.
  */
 import * as THREE from "three";
 import type { SectionRequest, Projection, StandardView } from "../scene/Scene";

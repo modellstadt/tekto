@@ -1,10 +1,11 @@
 /**
  * The axis widget in the corner of a viewport.
  *
- * It exists because the Viewport already knew how to be a plan or an
- * elevation and no user could ask it to: `setView` and `setProjection` were
- * public, tested, and unreachable from every application built on them. A
- * capability with no affordance is a capability nobody has.
+ * It exists because a renderer that knows how to be a plan or an elevation is
+ * no use if no reader can ask it to: `setView` and `setProjection` were public,
+ * tested, and unreachable from every application built on them. A capability
+ * with no affordance is a capability nobody has. ThreeRenderer shows it with
+ * `navGizmo: true`.
  *
  * Drawn as SVG rather than a second WebGL scene. It stays crisp at any device
  * pixel ratio, it costs no context (a browser allows only a handful, and this
@@ -12,9 +13,10 @@
  * living: each ball is an element, so a click is a click rather than a
  * raycast.
  *
- * What it shows is the *content's* axes, not the world's. A Z-up model is
- * rotated into a Y-up scene by `setUp`, and a gizmo that reported the scene's
- * axes would tell an engineer their Z was horizontal.
+ * What it shows is the *content's* axes, not the world's: `update` takes the
+ * turn between the two, so a renderer that rotated a Z-up model into a Y-up
+ * scene would still not tell an engineer their Z was horizontal. ThreeRenderer
+ * keeps the content's axes (it turns the camera's up), so its turn is none.
  */
 import * as THREE from "three";
 
