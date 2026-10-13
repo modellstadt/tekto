@@ -79,3 +79,35 @@ test("a standalone sketch shows its registered exports and downloads them", asyn
   expect(dl.suggestedFilename()).toBe("playground-plan.dxf");
   expect(await dl.failure()).toBeNull();                   // the file arrived whole (content: tests/dxf-2d)
 });
+
+test("appShell has ✎ Markup: a loop drawn on the view resolves to the objects inside", async ({ page }) => {
+  await page.goto("/testbench.html?page=app-shell");
+  await page.waitForFunction(() => !!(window as any).__tekto?.owner);
+  await page.getByRole("button", { name: "✎ Markup" }).click();
+  const overlay = page.locator('canvas[style*="crosshair"]');
+  await expect(overlay).toBeVisible();
+  // Where the middle of the tower is on screen (canvas coordinates → page coordinates).
+  const at = await page.evaluate(() => {
+    const r = (window as any).__tekto.owner.renderer;
+    const p = r.worldToScreen({ x: 0, y: 0, z: 4 });
+    const rect = r.canvasEl.getBoundingClientRect();
+    return { x: rect.left + p.x, y: rect.top + p.y };
+  });
+  const R = 70;
+  await page.mouse.move(at.x + R, at.y);
+  await page.mouse.down();
+  for (let a = 0; a <= Math.PI * 2 + 0.2; a += 0.2) await page.mouse.move(at.x + R * Math.cos(a), at.y + R * Math.sin(a));
+  await page.mouse.up();
+  // The note field opens at the mark; Enter there keeps the mark (Esc on the overlay would close Markup).
+  const note = page.getByPlaceholder("note for 1…");
+  await expect(note).toBeFocused();
+  await note.fill("thicker slabs");
+  await note.press("Enter");
+
+  const m = await page.evaluate(() => (window as any).__tekto.snapshot({ save: false }).then((b: any) => b.markup));
+  expect(m.harness).toBe("appShell");
+  expect(m.marks.length).toBe(1);
+  expect(m.marks[0].kind).toBe("loop");
+  expect(m.marks[0].note).toBe("thicker slabs");
+  expect(m.marks[0].hits.some((h: any) => /^floor \d+$/.test(h.label))).toBe(true);
+});
