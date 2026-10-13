@@ -100,7 +100,7 @@ test("selection as outlines leaves the colour alone; outlines go with their obje
 
 test("Studio: no warnings, a cut shows its poché on double-sided meshes and drops its shadows; the flat sky is up", async ({ page }) => {
   const warnings: string[] = [];
-  page.on("console", (m) => { if (/THREE\.Material: parameter/.test(m.text())) warnings.push(m.text()); });
+  page.on("console", (m) => { if (/THREE\.Material: parameter|deprecated/.test(m.text())) warnings.push(m.text()); });
   await page.goto("/testbench.html?page=site-editor");
   await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
   // appShell is Z-up: the hemisphere's sky comes from +Z, not from the side.
