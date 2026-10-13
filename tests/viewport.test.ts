@@ -11,7 +11,7 @@ import * as THREE from "three";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
-  orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane,
+  orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection,
 } from "../src/render/viewRules";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
@@ -244,5 +244,33 @@ describe("section planes", () => {
   it("ghost creases go dark on a light page, so they can still be seen", () => {
     expect(luminance(edgeStyle("ghost").colour)).toBeGreaterThan(200);
     expect(luminance(edgeStyle("ghost", 0xffffff).colour)).toBeLessThan(60);
+  });
+});
+
+describe("named views on the renderer", () => {
+  const r = (v: THREE.Vector3) => v.toArray().map(x => Math.round(x * 1000) / 1000 + 0);
+  it("a Z-up plan looks down with north up; elevations look level from their side", () => {
+    expect(r(viewDirection("top", "z"))).toEqual([0, -0.001, 1]);
+    expect(r(viewDirection("front", "z"))).toEqual([0, -1, 0]);
+    expect(r(viewDirection("right", "z"))).toEqual([1, 0, 0]);
+    expect(r(viewDirection("back", "z"))).toEqual([0, 1, 0]);
+  });
+  it("Y-up keeps three.js's own front (+Z) and looks down -Y for a plan", () => {
+    expect(r(viewDirection("top", "y"))).toEqual([0, 1, 0.001]);
+    expect(r(viewDirection("front", "y"))).toEqual([0, 0, 1]);
+  });
+  it("iso foreshortens all three axes alike", () => {
+    const [x, y, z] = viewDirection("iso", "z").toArray().map(Math.abs);
+    expect(x).toBeCloseTo(y, 12);
+    expect(y).toBeCloseTo(z, 12);
+    expect(viewDirection("iso", "z").length()).toBeCloseTo(1, 12);
+  });
+  it("matches the Viewport's own named views once its Z-up turn is undone", () => {
+    for (const v of ["top", "front", "right", "back", "left"] as const) {
+      const o = standardOrbit(v);
+      const world = new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, o.phi, o.theta));
+      const content = new THREE.Vector3(world.x, -world.z, world.y);      // Viewport turns Z-up content by -90° about X
+      expect(r(content)).toEqual(r(viewDirection(v, "z")));
+    }
   });
 });

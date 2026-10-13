@@ -509,6 +509,7 @@ export class SketchInstance {
       cameraPosition: this.config.camera ?? (zUp ? [8, -10, 6] : [5, 6, 8]),
       cameraTarget: this.config.target ?? [0, 0, 0],
       up: this.config.up ?? "y",
+      navGizmo: this.config.navGizmo ?? false,
     });
   }
 
@@ -1006,6 +1007,7 @@ export class SketchInstance {
       fitAll() { self.renderer.fitAll(); },
       setProjection(type) { self.renderer.setProjection(type); },
       setSection(section) { self.renderer.setSection(section); },
+      setView(view, opts) { self.renderer.setView(view, opts); },
       cameraUp(x, y, z) { self.renderer.setCameraUp(x, y, z); },
 
       // ── Info ──

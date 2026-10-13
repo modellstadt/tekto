@@ -13,6 +13,7 @@ export default function (container: HTMLElement) {
     title: "App Shell",
     container,
     topBar: true,               // the shell's own bar: light, mode, camera, cut, sun
+    navGizmo: true,             // the axis widget: plans and elevations a click away
     camera: [14, -16, 12],
     target: [0, 0, 4],
     params: {

@@ -10,10 +10,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 // @ts-ignore — TransformControls typings vary across Three.js versions
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-import { Scene as GScene, SceneObject, SceneEvent, type SectionRequest } from "../scene/Scene";
+import { Scene as GScene, SceneObject, SceneEvent, type SectionRequest, type StandardView } from "../scene/Scene";
 import { Mesh as GMesh } from "../core/geometry/mesh/Mesh";
 import { Vec3 } from "../core/math/vectors";
-import { sectionPlane, sectionAppearance, surfaceAppearance, edgeStyle } from "./viewRules";
+import { sectionPlane, sectionAppearance, surfaceAppearance, edgeStyle, viewDirection, nearestAxis, easeInOut } from "./viewRules";
+import { NavGizmo } from "./NavGizmo";
 
 export type GizmoMode = "translate" | "rotate" | "scale" | "none";
 
@@ -35,6 +36,9 @@ export interface ThreeRendererConfig {
   fov: number;
   /** Coordinate system up-axis: "y" (Three.js default) or "z" (CAD convention). */
   up: "y" | "z";
+  /** The axis widget in a corner (`true` = bottom right): click an axis for a plan or an
+   *  elevation, drag it to orbit, double-click to square up, toggle persp/ortho under it. */
+  navGizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 }
 
 // Style keys that never change the three.js object: layer is metadata, WebGL
@@ -55,7 +59,11 @@ const DEFAULTS: ThreeRendererConfig = {
   cameraTarget: [0, 0, 0],
   fov: 55,
   up: "y",
+  navGizmo: false,
 };
+
+/** ThreeRenderer keeps the content's axes (it turns the camera's up, not the model). */
+const NO_TURN = new THREE.Quaternion();
 
 /** A material you can see through (its back faces would show without a cut). */
 function seeThrough(m: THREE.Material | THREE.Material[]): boolean {
@@ -153,6 +161,12 @@ export class ThreeRenderer {
   // One poché material for every cut mesh; its colour follows the render mode.
   private pocheMat: THREE.MeshBasicMaterial | null = null;
 
+  // ── Named views (setView / orbitTo) and the axis widget ──
+  private navGizmo: NavGizmo | null = null;
+  // A camera turn in progress: the offset from the target it started at, the full turn.
+  private cameraMove: { from: THREE.Vector3; turn: THREE.Quaternion; start: number; ms: number } | null = null;
+  private projectionListeners = new Set<(projection: "perspective" | "orthographic") => void>();
+
   constructor(gScene: GScene, container: HTMLElement, config?: Partial<ThreeRendererConfig>) {
     this.gScene = gScene;
     this.container = container;
@@ -222,6 +236,18 @@ export class ThreeRenderer {
       this.controls.target.set(...cfg.cameraTarget);
       // Fires on user orbit/pan/zoom (the pointer handlers call update() themselves).
       this.controls.addEventListener("change", () => this.requestRender());
+      // The reader outranks an animation: a view turn that fights an orbit is worse than none.
+      this.controls.addEventListener("start", () => { this.cameraMove = null; });
+    }
+
+    if (cfg.navGizmo) {
+      this.navGizmo = new NavGizmo(container, {
+        corner: typeof cfg.navGizmo === "string" ? cfg.navGizmo : "bottom-right",
+        onAxis: (direction) => this.orbitTo(direction),
+        onDrag: (dx, dy) => this.orbitBy(dx, dy),
+        onSnap: () => this.orbitTo(nearestAxis(this._viewOffset())),
+        onProjection: () => this.setProjection(this._isOrtho ? "perspective" : "orthographic"),
+      });
     }
 
     // A restored context comes back blank; nothing else would ask for a draw.
@@ -1741,9 +1767,15 @@ export class ThreeRenderer {
 
   /** Draw now, unconditionally. */
   render() {
+    this._stepCameraMove();
     this.controls?.update();
+    this._draw();
+  }
+
+  private _draw(): void {
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
+    this.navGizmo?.update(this.activeCamera, NO_TURN);
   }
 
   /**
@@ -1762,12 +1794,12 @@ export class ThreeRenderer {
    * objects otherwise costs a full draw on every animation frame.
    */
   renderIfNeeded(): boolean {
+    const turning = this._stepCameraMove();
     // update() advances damping and reports whether the camera moved.
     const moved = this.controls?.update() ?? false;
     const settling = this._settleDamping();
-    if (!moved && !settling && !this._needsRender) return false;
-    this.renderer.render(this.threeScene, this.activeCamera);
-    this._needsRender = false;
+    if (!moved && !settling && !turning && !this._needsRender) return false;
+    this._draw();
     return true;
   }
 
@@ -1876,7 +1908,95 @@ export class ThreeRenderer {
       (this.controls as any).object = this.activeCamera;
       this.controls.update();
     }
+    this.navGizmo?.setProjection(type);
+    if (wasOrtho !== this._isOrtho) for (const l of this.projectionListeners) l(type);
     this.requestRender();
+  }
+
+  /** Hear about projection changes from anywhere (the axis widget, a toolbar, code), so
+   *  every control that shows the projection stays true. Returns the unsubscribe. */
+  onProjection(listener: (projection: "perspective" | "orthographic") => void): () => void {
+    this.projectionListeners.add(listener);
+    return () => this.projectionListeners.delete(listener);
+  }
+
+  /** "perspective" or "orthographic". */
+  get projection(): "perspective" | "orthographic" { return this._isOrtho ? "orthographic" : "perspective"; }
+
+  // ── Named views ──
+
+  /**
+   * Look at the model from a named side, keeping the distance: `"top"` is a plan,
+   * `"front"` / `"back"` / `"left"` / `"right"` are elevations, `"iso"` the diagonal. With
+   * `setProjection("orthographic")` they are drawings rather than pictures. Turns there
+   * (about a third of a second) unless `{ animate: false }`.
+   */
+  setView(view: StandardView, opts: { animate?: boolean } = {}): void {
+    this.orbitTo(viewDirection(view, this.isZUp ? "z" : "y"), opts);
+  }
+
+  /** Put the camera on `direction` from the target, looking back along it, at the same
+   *  distance. What `setView` and the axis widget do. */
+  orbitTo(direction: { x: number; y: number; z: number }, opts: { animate?: boolean } = {}): void {
+    const target = this.controls?.target ?? new THREE.Vector3();
+    const cam = this.activeCamera;
+    const offset = cam.position.clone().sub(target);
+    const dist = offset.length() || 10;
+    const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
+    // Looking exactly along the up axis leaves the roll undefined: hold a hair off the pole,
+    // towards the viewer's south, so a plan keeps its north up.
+    if (Math.abs(dir.dot(cam.up)) > 1 - 1e-6) {
+      dir.addScaledVector(this.isZUp ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 0, 1), 1e-3).normalize();
+    }
+    if (opts.animate === false || offset.lengthSq() === 0) {
+      this.cameraMove = null;
+      this._placeCamera(target, dir.multiplyScalar(dist));
+      return;
+    }
+    const turn = new THREE.Quaternion().setFromUnitVectors(offset.clone().normalize(), dir);
+    this.cameraMove = { from: offset.setLength(dist), turn, start: performance.now(), ms: 340 };
+    this.requestRender();
+  }
+
+  /** Orbit by a pointer travel in pixels — the axis widget's drag. */
+  private orbitBy(dx: number, dy: number): void {
+    this.cameraMove = null;
+    const target = this.controls?.target ?? new THREE.Vector3();
+    const cam = this.activeCamera;
+    const up = cam.up.clone().normalize();
+    const offset = cam.position.clone().sub(target).applyAxisAngle(up, -dx * 0.005);
+    const polar = offset.angleTo(up);
+    const next = THREE.MathUtils.clamp(polar - dy * 0.005, 0.05, Math.PI - 0.05);
+    const side = new THREE.Vector3().crossVectors(offset, up);
+    if (side.lengthSq() > 0) offset.applyAxisAngle(side.normalize(), polar - next);
+    this._placeCamera(target, offset);
+  }
+
+  private _placeCamera(target: THREE.Vector3, offset: THREE.Vector3): void {
+    const cam = this.activeCamera;
+    cam.position.copy(target).add(offset);
+    cam.lookAt(target);
+    this.controls?.update();
+    this.requestRender();
+  }
+
+  /** Advance a camera turn, if one is running. True while it moves the camera. */
+  private _stepCameraMove(): boolean {
+    const m = this.cameraMove;
+    if (!m) return false;
+    const t = easeInOut((performance.now() - m.start) / m.ms);
+    const q = new THREE.Quaternion().slerpQuaternions(NO_TURN, m.turn, t);
+    const target = this.controls?.target ?? new THREE.Vector3();
+    const cam = this.activeCamera;
+    cam.position.copy(target).add(m.from.clone().applyQuaternion(q));
+    cam.lookAt(target);
+    if (t >= 1) this.cameraMove = null;
+    return true;
+  }
+
+  /** Where the camera sits, as a direction from its target. */
+  private _viewOffset(): THREE.Vector3 {
+    return this.activeCamera.position.clone().sub(this.controls?.target ?? new THREE.Vector3()).normalize();
   }
 
   /**
@@ -2027,6 +2147,7 @@ export class ThreeRenderer {
     this.envMap?.dispose();
     this.envMap = null;
     cancelAnimationFrame(this.rafId);
+    this.navGizmo?.dispose();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.controls?.dispose();

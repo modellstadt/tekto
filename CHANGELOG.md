@@ -6,6 +6,23 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **One renderer, part 2: named views and the axis widget on `ThreeRenderer`** (from
+  `Viewport`).
+  - `setView("top" | "front" | "back" | "left" | "right" | "bottom" | "iso")`: a plan (north
+    up) or an elevation at the same distance. The camera turns there unless
+    `{ animate: false }`; an orbit cancels the turn.
+  - `orbitTo(direction)`, `projection`, and `onProjection(listener)`, so every control that
+    shows the projection stays true.
+  - In a sketch: `lab.setView`. New `viewDirection(view, up)` in the view rules.
+  - `navGizmo`: the axis widget. Click an axis, drag to orbit, double-click to square up,
+    persp/ortho toggle. Opt-in with `navGizmo: true` (or a corner) in `appShell()`,
+    `sketch()` or the renderer config; off by default, because an app may have its own
+    panels in that corner. It stays under an `app.overlay()`.
+  - appShell top bar: Cam is now **Persp | Ortho**, kept in step with the widget, plus an
+    **Iso** button (orthographic from the diagonal, as before).
+  - `Projection` and `StandardView` move to the Scene types, which keeps `tekto/2d` free of
+    three.js.
+
 - **One renderer, part 1: section cuts and ghost on `ThreeRenderer`** (from `Viewport`), so
   every `sketch()` and `appShell()` app has them.
   - `renderer.setSection({ axis, coordinate | at, flip })` cuts the model with a plane and

@@ -180,7 +180,7 @@ lists that every edit maintains incrementally. Both old APIs live on it.
 ### Three access levels
 
 1. **Sketch API** — `sketch()` (3D) / `sketch2d()` (2D canvas): one function, zero framework knowledge. For students and quick experiments. The function re-runs on every parameter change.
-2. **App Shell** — `appShell()`: a persistent sidebar + viewer for real apps. The panel is built ONCE from a declarative `params` schema and updated in place, so animation loops never fight the GUI. Comes with the top bar (lighting / render mode / camera / Cut / Sun; `topBar: { cut: false }` drops a control the app has no use for). Subscribe with `app.params.onChange(...)`.
+2. **App Shell** — `appShell()`: a persistent sidebar + viewer for real apps. The panel is built ONCE from a declarative `params` schema and updated in place, so animation loops never fight the GUI. Comes with the top bar (lighting / render mode / camera / Cut / Sun; `topBar: { cut: false }` drops a control the app has no use for) and the axis widget for plans and elevations. Subscribe with `app.params.onChange(...)`.
 3. **React components** *(optional)* — `<ParamPanel>`, `<InspectorPanel>`, hooks, imported from **`tekto/react`** (install `react` + `react-dom`). Only reach for this when you need React ecosystem integration; levels 1–2 cover most apps. The core `tekto` barrel is React-free.
 
 All three levels share the same GUI foundation: values live in a `ParamStore`, panels are rendered by the shared `ControlPanel`, colors come from `getTheme()`. A control type added there appears everywhere.
@@ -361,6 +361,19 @@ renderer.setSection(null);
 In a `sketch()` it is `lab.setSection(…)`, and it stays across re-runs. Clicks pick what is
 still there. The cut face is the solids' inside drawn flat (poché) on opaque surfaces, so it
 needs no closed meshes; translucent ones are just clipped. Both cost nothing until used.
+
+### Named views and the axis widget
+
+`renderer.setView("top")` is a plan (north up), `"front"`, `"back"`, `"left"`, `"right"` are
+elevations, `"iso"` the diagonal; the camera turns there at the same distance (pass
+`{ animate: false }` to jump). With `setProjection("orthographic")` they are drawings. In a
+`sketch()`: `lab.setView("front")`.
+
+The **axis widget** (`navGizmo`) sits in a corner: click an axis for that view, drag it to
+orbit, double-click to square up to the nearest axis, and toggle persp/ortho under it.
+Ask for it with `navGizmo: true` in `appShell()` or `sketch()` (or a corner, `"top-left"`);
+it is off by default because an app may have its own panels in that corner. The top bar's Cam control follows the projection
+wherever it is changed (`renderer.onProjection`).
 
 ## Markup — instructions for an AI, drawn on the view
 

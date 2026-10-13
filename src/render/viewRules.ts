@@ -4,7 +4,7 @@
  * can be tested without a GPU. `ThreeRenderer` and `Viewport` both draw by them.
  */
 import * as THREE from "three";
-import type { SectionRequest } from "../scene/Scene";
+import type { SectionRequest, Projection, StandardView } from "../scene/Scene";
 
 /**
  * How the content is drawn. Not decoration: each answers a different question.
@@ -15,12 +15,6 @@ import type { SectionRequest } from "../scene/Scene";
  *              lines hidden by the surfaces in front of them
  */
 export type ViewMode = "shaded" | "ghost" | "hidden-line";
-
-/** Perspective for looking at a building, orthographic for drawing one. */
-export type Projection = "perspective" | "orthographic";
-
-/** The six faces of the bounding box, plus the corner view. */
-export type StandardView = "iso" | "top" | "bottom" | "front" | "back" | "left" | "right";
 
 /** How one mesh is painted. Colours are hex integers, as three.js takes them. */
 export interface Appearance {
@@ -160,6 +154,28 @@ export function standardOrbit(view: StandardView): { phi: number; theta: number 
     case "right": return { phi: H, theta: H };
     case "left": return { phi: H, theta: -H };
     default: return { phi: Math.PI / 3, theta: Math.PI / 4 };
+  }
+}
+
+/**
+ * Where the camera sits for a named view, as a unit direction from what it looks at, in the
+ * content's own axes; `up` says which of them is up. Top looks straight down (a plan), the
+ * four sides look level (elevations: front from −Y in a Z-up model, from +Z in a Y-up one,
+ * as three.js has it), iso sits on the diagonal with equal foreshortening on all three axes.
+ * Top and bottom are held a hair off the pole, as `standardOrbit` does, so a plan keeps a
+ * north instead of rolling to whatever floating point decides.
+ */
+export function viewDirection(view: StandardView, up: "y" | "z"): THREE.Vector3 {
+  const c = Math.cos(POLE), s = Math.sin(POLE), k = 1 / Math.sqrt(3);
+  const z = up === "z";
+  switch (view) {
+    case "top": return z ? new THREE.Vector3(0, -s, c) : new THREE.Vector3(0, c, s);
+    case "bottom": return z ? new THREE.Vector3(0, -s, -c) : new THREE.Vector3(0, -c, s);
+    case "front": return z ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 0, 1);
+    case "back": return z ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, -1);
+    case "right": return new THREE.Vector3(1, 0, 0);
+    case "left": return new THREE.Vector3(-1, 0, 0);
+    default: return z ? new THREE.Vector3(k, -k, k) : new THREE.Vector3(k, k, k);
   }
 }
 
