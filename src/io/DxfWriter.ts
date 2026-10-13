@@ -12,7 +12,7 @@ export interface DxfLayerDef {
   name: string;
   /** AutoCAD Color Index (ACI): 1=red 2=yellow 3=green 4=cyan 5=blue 7=white */
   color?: number;
-  /** Currently ignored: the R12 writer emits every layer as CONTINUOUS (the only linetype it defines). */
+  /** R12 line type for the layer: "CONTINUOUS" (default), "DASHED", "HIDDEN", "DOTTED" or "CENTER". */
   lineType?: string;
 }
 
@@ -75,7 +75,18 @@ export function _resolveLayers(defs: DxfLayerDef[], used: Iterable<string>): { n
 }
 
 /** Emit HEADER + TABLES(LTYPE, LAYER) + empty BLOCKS — the R12 prologue AutoCAD expects. */
-export function _writeR12Prologue(lines: string[], names: string[], colorOf: Map<string, number>, scale = 1000): void {
+/** R12 line types tekto writes: pattern in paper millimetres (dash +, gap −). */
+const LINETYPES: Record<string, { desc: string; pattern: number[] }> = {
+  DASHED: { desc: "Dashed __ __ __", pattern: [3, -1.5] },
+  HIDDEN: { desc: "Hidden _ _ _ _", pattern: [1.5, -1] },
+  DOTTED: { desc: "Dotted . . . .", pattern: [0, -1] },
+  CENTER: { desc: "Center ____ _ ____", pattern: [6, -1.2, 1, -1.2] },
+};
+
+export function _writeR12Prologue(lines: string[], names: string[], colorOf: Map<string, number>, scale = 1000,
+  linetypes: { used?: Iterable<string>; layerType?: Map<string, string>; patternScale?: number } = {}): void {
+  const used = [...new Set([...(linetypes.used ?? []), ...(linetypes.layerType?.values() ?? [])])].filter(n => n in LINETYPES);
+  const ps = linetypes.patternScale ?? 1;
   // Declare the drawing unit so CAD doesn't guess: model space is metres, so
   // scale 1 exports metres ($INSUNITS 6); any other scale is treated as the
   // classic mm output ($INSUNITS 4). $MEASUREMENT 1 = metric.
@@ -85,11 +96,17 @@ export function _writeR12Prologue(lines: string[], names: string[], colorOf: Map
     '9', '$MEASUREMENT', '70', '1',
     '0', 'ENDSEC');
   lines.push('0', 'SECTION', '2', 'TABLES');
-  lines.push('0', 'TABLE', '2', 'LTYPE', '70', '1');
+  lines.push('0', 'TABLE', '2', 'LTYPE', '70', String(1 + used.length));
   lines.push('0', 'LTYPE', '2', 'CONTINUOUS', '70', '0', '3', 'Solid line', '72', '65', '73', '0', '40', '0');
+  for (const name of used) {
+    const { desc, pattern } = LINETYPES[name];
+    const total = pattern.reduce((a, b) => a + Math.abs(b), 0) * ps;
+    lines.push('0', 'LTYPE', '2', name, '70', '0', '3', desc, '72', '65', '73', String(pattern.length), '40', _real(total));
+    for (const d of pattern) lines.push('49', _real(d * ps));
+  }
   lines.push('0', 'ENDTAB');
   lines.push('0', 'TABLE', '2', 'LAYER', '70', String(names.length));
-  for (const name of names) lines.push('0', 'LAYER', '2', name, '70', '0', '62', String(colorOf.get(name) ?? 7), '6', 'CONTINUOUS');
+  for (const name of names) lines.push('0', 'LAYER', '2', name, '70', '0', '62', String(colorOf.get(name) ?? 7), '6', linetypes.layerType?.get(name) ?? 'CONTINUOUS');
   lines.push('0', 'ENDTAB', '0', 'ENDSEC');
   lines.push('0', 'SECTION', '2', 'BLOCKS', '0', 'ENDSEC');
 }
@@ -177,13 +194,23 @@ export function writeDxf3D(content: Dxf3DContent): string {
 /** A point in the drawing plane. `Vec2`, or anything with x and y. */
 export interface Dxf2DPoint { x: number; y: number; }
 /** A polyline in the drawing plane; emitted as an R12 2D POLYLINE (closed = the ring is shut). */
-export interface Dxf2DPolyline { layer: string; points: Dxf2DPoint[]; closed?: boolean; }
-export interface Dxf2DLine { layer: string; start: Dxf2DPoint; end: Dxf2DPoint; }
-export interface Dxf2DCircle { layer: string; center: Dxf2DPoint; radius: number; }
+/** What a 2D entity may set beyond its layer: an ACI colour (1 red … 7 white/black) and an R12
+ *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. */
+export interface Dxf2DLook { color?: number; linetype?: "DASHED" | "HIDDEN" | "DOTTED" | "CENTER"; }
+export interface Dxf2DPolyline extends Dxf2DLook { layer: string; points: Dxf2DPoint[]; closed?: boolean; }
+export interface Dxf2DLine extends Dxf2DLook { layer: string; start: Dxf2DPoint; end: Dxf2DPoint; }
+export interface Dxf2DCircle extends Dxf2DLook { layer: string; center: Dxf2DPoint; radius: number; }
+/** A filled triangle (or quad), e.g. one piece of a poché. */
+export interface Dxf2DSolid { layer: string; points: Dxf2DPoint[]; color?: number; }
 /** CCW arc, angles in degrees; a full sweep is written as a CIRCLE (AutoCAD drops a 0→360 ARC). */
-export interface Dxf2DArc { layer: string; center: Dxf2DPoint; radius: number; startDeg: number; endDeg: number; }
+export interface Dxf2DArc extends Dxf2DLook { layer: string; center: Dxf2DPoint; radius: number; startDeg: number; endDeg: number; }
 /** Single-line text at `at` (its baseline start), `height` in drawing units, rotated CCW. */
-export interface Dxf2DText { layer: string; at: Dxf2DPoint; text: string; height: number; rotationDeg?: number; }
+export interface Dxf2DText {
+  layer: string; at: Dxf2DPoint; text: string; height: number; rotationDeg?: number; color?: number;
+  /** Which point of the text `at` is: horizontally (default left) and vertically (default baseline). */
+  align?: "left" | "center" | "right";
+  valign?: "baseline" | "bottom" | "middle" | "top";
+}
 /** Input to {@link writeDxf2D}. Any layer an entity uses but `layers` doesn't list is declared colour 7. */
 export interface Dxf2DContent {
   polylines?: Dxf2DPolyline[];
@@ -191,6 +218,7 @@ export interface Dxf2DContent {
   circles?: Dxf2DCircle[];
   arcs?: Dxf2DArc[];
   texts?: Dxf2DText[];
+  solids?: Dxf2DSolid[];
   layers?: DxfLayerDef[];
 }
 
@@ -208,7 +236,7 @@ export interface Dxf2DContent {
  *     texts: [{ layer: "text", at: { x: 0, y: -0.5 }, text: "Plan 1:50", height: 0.25 }] },
  *     { scale: 1000 }), "plan.dxf");
  */
-export function writeDxf2D(content: Dxf2DContent, opts: { scale?: number } = {}): string {
+export function writeDxf2D(content: Dxf2DContent, opts: { scale?: number; linetypeScale?: number } = {}): string {
   const scale = opts.scale ?? 1;
   if (!(Number.isFinite(scale) && scale > 0)) throw new Error(`writeDxf2D: scale must be a positive number, got ${scale}`);
   const polylines = content.polylines ?? [];
@@ -216,6 +244,7 @@ export function writeDxf2D(content: Dxf2DContent, opts: { scale?: number } = {})
   const circles = content.circles ?? [];
   const arcs = content.arcs ?? [];
   const texts = content.texts ?? [];
+  const solids = content.solids ?? [];
   const okR = (r: number) => Number.isFinite(r) && r > 1e-9;
   const finite = (p: Dxf2DPoint) => Number.isFinite(p.x) && Number.isFinite(p.y);
   const bad = (what: string, i: number, layer: string, why = "a non-finite coordinate") => {
@@ -236,37 +265,83 @@ export function writeDxf2D(content: Dxf2DContent, opts: { scale?: number } = {})
   for (const c of circles) if (okR(c.radius)) used.add(c.layer);
   for (const a of arcs) if (okR(a.radius)) used.add(a.layer);
   for (const t of texts) used.add(t.layer);
+  for (const so of solids) if (so.points.length >= 3) used.add(so.layer);
+  solids.forEach((so, i) => { if (!so.points.every(finite)) bad("solid", i, so.layer); });
   const lines: string[] = [];
   const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
-  _writeR12Prologue(lines, names, colorOf, scale);
+  const layerType = new Map<string, string>();
+  for (const d of content.layers ?? []) if (d.lineType && d.lineType !== "CONTINUOUS") layerType.set(_sanLayer(d.name), d.lineType.toUpperCase());
+  const usedTypes = [...polylines, ...lineSegs, ...circles, ...arcs].map(e => e.linetype).filter((t): t is NonNullable<typeof t> => !!t);
+  _writeR12Prologue(lines, names, colorOf, scale, { used: usedTypes, layerType, patternScale: opts.linetypeScale ?? 1 });
+  const look = (e: Dxf2DLook) => [...(e.linetype ? ['6', e.linetype] : []), ...(e.color !== undefined ? ['62', String(e.color)] : [])];
 
   const v = (n: number) => _real(n * scale);
   const xy = (p: Dxf2DPoint) => ['10', v(p.x), '20', v(p.y), '30', '0'];
-  const emitCircle = (layer: string, c: Dxf2DPoint, r: number) => lines.push('0', 'CIRCLE', '8', _sanLayer(layer), ...xy(c), '40', v(r));
+  const emitCircle = (e: Dxf2DLook & { layer: string }, c: Dxf2DPoint, r: number) => lines.push('0', 'CIRCLE', '8', _sanLayer(e.layer), ...look(e), ...xy(c), '40', v(r));
 
   lines.push('0', 'SECTION', '2', 'ENTITIES');
   for (const poly of polylines) {
     if (poly.points.length < 2) continue;
     const layer = _sanLayer(poly.layer);
-    lines.push('0', 'POLYLINE', '8', layer, '66', '1', '70', poly.closed ? '1' : '0', '10', '0', '20', '0', '30', '0');
+    lines.push('0', 'POLYLINE', '8', layer, ...look(poly), '66', '1', '70', poly.closed ? '1' : '0', '10', '0', '20', '0', '30', '0');
     for (const p of poly.points) lines.push('0', 'VERTEX', '8', layer, ...xy(p), '70', '0');
     lines.push('0', 'SEQEND', '8', layer);
   }
   for (const l of lineSegs) {
-    lines.push('0', 'LINE', '8', _sanLayer(l.layer), ...xy(l.start), '11', v(l.end.x), '21', v(l.end.y), '31', '0');
+    lines.push('0', 'LINE', '8', _sanLayer(l.layer), ...look(l), ...xy(l.start), '11', v(l.end.x), '21', v(l.end.y), '31', '0');
   }
-  for (const c of circles) if (okR(c.radius)) emitCircle(c.layer, c.center, c.radius);
+  for (const c of circles) if (okR(c.radius)) emitCircle(c, c.center, c.radius);
   for (const a of arcs) {
     if (!okR(a.radius)) continue;
-    if (Math.abs(a.endDeg - a.startDeg) >= 360 - 1e-6) { emitCircle(a.layer, a.center, a.radius); continue; }
+    if (Math.abs(a.endDeg - a.startDeg) >= 360 - 1e-6) { emitCircle(a, a.center, a.radius); continue; }
     const norm = (d: number) => { let x = d % 360; if (x < 0) x += 360; return x; };
-    lines.push('0', 'ARC', '8', _sanLayer(a.layer), ...xy(a.center), '40', v(a.radius), '50', _real(norm(a.startDeg)), '51', _real(norm(a.endDeg)));
+    lines.push('0', 'ARC', '8', _sanLayer(a.layer), ...look(a), ...xy(a.center), '40', v(a.radius), '50', _real(norm(a.startDeg)), '51', _real(norm(a.endDeg)));
+  }
+  for (const so of solids) {
+    if (so.points.length < 3) continue;
+    // SOLID corners 1, 2, 4, 3 — a triangle repeats its third point.
+    const [p1, p2, p3, p4 = so.points[2]] = so.points;
+    lines.push('0', 'SOLID', '8', _sanLayer(so.layer), ...(so.color !== undefined ? ['62', String(so.color)] : []),
+      '10', v(p1.x), '20', v(p1.y), '30', '0', '11', v(p2.x), '21', v(p2.y), '31', '0',
+      '12', v(p4.x), '22', v(p4.y), '32', '0', '13', v(p3.x), '23', v(p3.y), '33', '0');
   }
   for (const t of texts) {
-    lines.push('0', 'TEXT', '8', _sanLayer(t.layer), ...xy(t.at), '40', v(t.height),
+    // R12 justification: 72 horizontal (0 left, 1 center, 2 right), 73 vertical (0 baseline,
+    // 1 bottom, 2 middle, 3 top); anything but left/baseline places the text by the second
+    // alignment point (11/21), which is then `at`.
+    const h = t.align === "center" ? 1 : t.align === "right" ? 2 : 0;
+    const vj = t.valign === "bottom" ? 1 : t.valign === "middle" ? 2 : t.valign === "top" ? 3 : 0;
+    lines.push('0', 'TEXT', '8', _sanLayer(t.layer), ...(t.color !== undefined ? ['62', String(t.color)] : []), ...xy(t.at), '40', v(t.height),
       '1', t.text.replace(/[\r\n]+/g, ' '), '50', _real(t.rotationDeg ?? 0));
+    if (h || vj) lines.push('72', String(h), '11', v(t.at.x), '21', v(t.at.y), '31', '0', '73', String(vj));
   }
   lines.push('0', 'ENDSEC', '0', 'EOF');
   return lines.join('\r\n') + '\r\n';
+}
+
+/** The AutoCAD Color Index entries tekto maps to: the primaries and a grey ramp (RGB). */
+const ACI: [number, number, number, number][] = [
+  [1, 255, 0, 0], [2, 255, 255, 0], [3, 0, 255, 0], [4, 0, 255, 255], [5, 0, 0, 255], [6, 255, 0, 255],
+  [7, 0, 0, 0], [8, 128, 128, 128], [9, 192, 192, 192],
+  [250, 51, 51, 51], [251, 80, 80, 80], [252, 105, 105, 105], [253, 130, 130, 130], [254, 190, 190, 190], [255, 255, 255, 255],
+  [30, 255, 127, 0], [140, 0, 127, 255], [210, 255, 0, 127], [94, 0, 127, 0], [14, 127, 0, 0],
+];
+
+/**
+ * The nearest AutoCAD Color Index for a CSS hex colour (`#rgb` / `#rrggbb`). Black and white
+ * both map to 7, which CAD shows as black on white paper and white on a dark screen.
+ */
+export function aciFromHex(hex: string): number {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return 7;
+  const h = m[1].length === 3 ? m[1].split("").map(c => c + c).join("") : m[1];
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  if (Math.max(r, g, b) - Math.min(r, g, b) < 24 && (r < 40 || r > 235)) return 7;   // near black or white
+  let best = 7, bestD = Infinity;
+  for (const [i, R, G, B] of ACI) {
+    const d = (R - r) ** 2 + (G - g) ** 2 + (B - b) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
 }
 

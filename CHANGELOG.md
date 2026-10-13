@@ -6,6 +6,21 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **New `Sheet` — drawings that look the same on screen, in SVG and in DXF** (`tekto/core`).
+  Views placed on a sheet at a scale (`new Sheet({ scale: 50 })` = 1:50; `sheet.view("east",
+  { at, rotation, scale, project })`), where `project` projects 3D points into an elevation or
+  section — by two axes, or by a function for an unrolled strip. Entities: `polyline` / `line` /
+  `rect` (with `fill` for poché), `circle`, `arc`, `fill` (with holes), `text`, `dim` (aligned,
+  horizontal, vertical: extension lines, ticks, the length in mm, text upright and above),
+  `radius`, `leader`, `level` ("+2.450"), and `segments` from `DxfExporter.toSegments`. Geometry
+  is in model metres; annotation is in paper mm, so 2.5 mm text stays 2.5 mm in a 1:10 detail.
+  Layers carry colour, pen weight and dash. `explode()` gives the primitives every output draws;
+  `toSVG()` writes them sized in mm with `data-layer` / `data-key`, `toDXF()` as R12 with
+  dashed line types scaled for paper, colours, aligned text and fills as SOLIDs.
+- **`writeDxf2D`**: per-entity colour and line type, `solids`, text alignment (`align`,
+  `valign`), layers' `lineType` written with a pattern (`linetypeScale` sizes it), and
+  `aciFromHex` (CSS colour → nearest AutoCAD colour index).
+
 ## 0.7.1 — 2026-10-13
 
 The retained CAD model: a document, a scene that follows it, selection, Markup, and an example.
