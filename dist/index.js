@@ -101,7 +101,7 @@ __export(index_exports, {
   RibbonSystem: () => RibbonSystem,
   RigidBody2D: () => RigidBody2D,
   SVGRenderer: () => SVGRenderer,
-  Scene: () => Scene3,
+  Scene: () => Scene,
   SdfBlend: () => SdfBlend,
   SdfBoundedExtrude: () => SdfBoundedExtrude,
   SdfBox: () => SdfBox,
@@ -179,6 +179,7 @@ __export(index_exports, {
   createParams: () => createParams,
   createRandom: () => createRandom,
   devServerAdapter: () => devServerAdapter,
+  download: () => download,
   easeInOut: () => easeInOut,
   edgeOutwardVisibility: () => edgeOutwardVisibility,
   edgeStyle: () => edgeStyle,
@@ -219,9 +220,11 @@ __export(index_exports, {
   shortestTurn: () => shortestTurn,
   sketch: () => sketch,
   sketch2d: () => sketch2d,
+  stampName: () => stampName,
   standardOrbit: () => standardOrbit,
   supabaseAdapter: () => supabaseAdapter,
   surfaceAppearance: () => surfaceAppearance,
+  writeDxf2D: () => writeDxf2D,
   writeDxf3D: () => writeDxf3D
 });
 module.exports = __toCommonJS(index_exports);
@@ -2436,7 +2439,18 @@ var Polygon2D = {
    * Simple miter-join approach; may produce artifacts on very sharp angles
    * (the miter is clamped to 4× the offset distance to avoid spikes).
    */
+  /**
+   * Offset a simple polygon by moving each vertex along its corner bisector: positive
+   * `distance` grows it, negative shrinks it, whichever way it winds. A ring that repeats
+   * its first point comes back closed the same way. Insetting past the polygon's inner
+   * radius returns `[]` (the polygon is gone) instead of an inverted shape. Vertex offset
+   * only — no clean-up of self-intersections at deep concave insets; for those use
+   * `PolygonBool`.
+   */
   offset(polygon, distance) {
+    if (!Number.isFinite(distance)) throw new Error(`Polygon2D.offset: distance must be a finite number, got ${distance}`);
+    const closed = polygon.length > 3 && polygon[0].distSqTo(polygon[polygon.length - 1]) <= 1e-24;
+    if (closed) polygon = Polygon2D.openRing(polygon);
     const n = polygon.length;
     if (n < 3) return [...polygon];
     const d = distance;
@@ -2460,6 +2474,16 @@ var Polygon2D = {
         result.push(polygon[i].add(bisNorm.mul(scale)));
       }
     }
+    if (d < 0) {
+      let reversed = 0;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        if (polygon[j].sub(polygon[i]).dot(result[j].sub(result[i])) < 0) reversed++;
+      }
+      const a0 = Polygon2D.signedArea(polygon), a1 = Polygon2D.signedArea(result);
+      if (reversed === n || Math.sign(a1) !== Math.sign(a0) || Math.abs(a1) < 1e-12 * Math.max(1, Math.abs(a0))) return [];
+    }
+    if (closed) result.push(result[0]);
     return result;
   },
   // ================================================================
@@ -3427,6 +3451,9 @@ var Mesh = class _Mesh {
     return new Vec3(this._pos[o], this._pos[o + 1], this._pos[o + 2]);
   }
   setPosition(id, p) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+      throw new Error(`Mesh.setPosition: node ${id} would get a non-finite position (${p.x}, ${p.y}, ${p.z})`);
+    }
     const o = id * 3;
     this._pos[o] = p.x;
     this._pos[o + 1] = p.y;
@@ -3478,6 +3505,9 @@ var Mesh = class _Mesh {
     return out;
   }
   addNode(position, data) {
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(position.z)) {
+      throw new Error(`Mesh.addNode: non-finite position (${position.x}, ${position.y}, ${position.z}) \u2014 check the inputs that computed it`);
+    }
     const id = this._addNodeXYZ(position.x, position.y, position.z);
     if (data) (this._nodeData ?? (this._nodeData = /* @__PURE__ */ new Map())).set(id, data);
     return id;
@@ -3703,6 +3733,12 @@ var Mesh = class _Mesh {
   }
   addFace(nodeIds, data) {
     const n = nodeIds.length;
+    if (n < 3) throw new Error(`Mesh.addFace: a face needs at least 3 nodes, got ${n}`);
+    for (let i = 0; i < n; i++) {
+      if (!this.isNodeAlive(nodeIds[i])) {
+        throw new Error(`Mesh.addFace: node ${nodeIds[i]} does not exist (the mesh has ${this._nodeLive} nodes, ids 0\u2026${this._nodeN - 1})`);
+      }
+    }
     const id = this._faceN;
     this._needFaces(id + 1);
     const start = this._cornerN;
@@ -4017,6 +4053,123 @@ var Mesh = class _Mesh {
   eulerCharacteristic() {
     return this._nodeLive - this._edgeLive + this._faceLive;
   }
+  /**
+   * Check the mesh for what silently breaks rendering, volumes and exports, in one pass:
+   * non-finite positions, faces that reference missing nodes or repeat one, degenerate
+   * (zero-area) faces, non-manifold edges, faces wound against their neighbours, and a
+   * closed mesh that is inside-out. `issues` is empty when the mesh is sound; open
+   * (boundary) edges are counted but are not an issue — plenty of good meshes are open.
+   */
+  validate() {
+    const issues = [];
+    const first = {};
+    const note = (k, s) => {
+      if (!(k in first)) first[k] = s;
+    };
+    let nonFinite = 0, badRefs = 0, repeated = 0, degenerate = 0;
+    const pos = this._pos, cv = this._cVert;
+    for (let i = 0; i < this._nodeN; i++) {
+      if (!this._nodeAlive[i]) continue;
+      if (!Number.isFinite(pos[i * 3]) || !Number.isFinite(pos[i * 3 + 1]) || !Number.isFinite(pos[i * 3 + 2])) {
+        nonFinite++;
+        note("nonFinite", `node ${i}`);
+      }
+    }
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const s0 = this._faceStart[f2], s1 = this._faceStart[f2 + 1], n = s1 - s0;
+      let bad = false;
+      for (let c = s0; c < s1; c++) {
+        if (!this.isNodeAlive(cv[c])) {
+          bad = true;
+          note("badRefs", `face ${f2} \u2192 node ${cv[c]}`);
+        }
+        if (cv[c] === cv[s0 + (c - s0 + 1) % n]) {
+          repeated++;
+          note("repeated", `face ${f2}`);
+          break;
+        }
+      }
+      if (bad) {
+        badRefs++;
+        continue;
+      }
+      let finiteFace = true;
+      for (let c = s0; c < s1 && finiteFace; c++) {
+        const o = cv[c] * 3;
+        finiteFace = Number.isFinite(pos[o]) && Number.isFinite(pos[o + 1]) && Number.isFinite(pos[o + 2]);
+      }
+      if (!finiteFace) continue;
+      let nx = 0, ny = 0, nz = 0;
+      for (let i = 0; i < n; i++) {
+        const a = cv[s0 + i] * 3, b = cv[s0 + (i + 1) % n] * 3;
+        nx += (pos[a + 1] - pos[b + 1]) * (pos[a + 2] + pos[b + 2]);
+        ny += (pos[a + 2] - pos[b + 2]) * (pos[a] + pos[b]);
+        nz += (pos[a] - pos[b]) * (pos[a + 1] + pos[b + 1]);
+      }
+      if (!(Math.hypot(nx, ny, nz) > 1e-14)) {
+        degenerate++;
+        note("degenerate", `face ${f2}`);
+      }
+    }
+    let boundary = 0, nonManifold = 0, inconsistent = 0;
+    for (let e = 0; e < this._edgeN; e++) {
+      if (!this._edgeAlive[e]) continue;
+      const k = this._edgeCornerCount(e);
+      if (k === 1) boundary++;
+      else if (k > 2) {
+        nonManifold++;
+        note("nonManifold", `edge ${e} (${this._edgeA[e]}\u2013${this._edgeB[e]}, ${k} faces)`);
+      } else if (k === 2) {
+        const c1 = this._edgeFirstCorner[e], c2 = this._cNextInEdge[c1];
+        if (cv[c1] === cv[c2]) {
+          inconsistent++;
+          note("inconsistent", `edge ${e} (${this._edgeA[e]}\u2013${this._edgeB[e]})`);
+        }
+      }
+    }
+    const closed = this._faceLive > 0 && boundary === 0 && nonManifold === 0 && badRefs === 0;
+    let signedVolume;
+    if (closed && nonFinite === 0) {
+      const idx = this.indices;
+      let v = 0;
+      for (let t = 0; t < idx.length; t += 3) {
+        const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+        v += (pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1]) + pos[a + 1] * (pos[b + 2] * pos[c] - pos[b] * pos[c + 2]) + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c])) / 6;
+      }
+      signedVolume = v;
+    }
+    const say = (count, what, key) => {
+      if (count) issues.push(`${count} ${what} (first: ${first[key]})`);
+    };
+    say(nonFinite, "nodes with a non-finite position", "nonFinite");
+    say(badRefs, "faces referencing missing nodes", "badRefs");
+    say(repeated, "faces repeating a node", "repeated");
+    say(degenerate, "degenerate (zero-area) faces", "degenerate");
+    say(nonManifold, "non-manifold edges", "nonManifold");
+    say(inconsistent, "edges between faces wound against each other", "inconsistent");
+    if (signedVolume !== void 0 && signedVolume < 0 && inconsistent === 0) {
+      issues.push(`closed but inside-out: signed volume ${signedVolume.toPrecision(4)} \u2014 faces point inward (MeshTransform.flipFaces)`);
+    }
+    return {
+      valid: issues.length === 0,
+      issues,
+      closed,
+      ...signedVolume !== void 0 ? { signedVolume } : {},
+      counts: {
+        nodes: this._nodeLive,
+        edges: this._edgeLive,
+        faces: this._faceLive,
+        boundaryEdges: boundary,
+        nonManifoldEdges: nonManifold,
+        inconsistentEdges: inconsistent,
+        nonFiniteNodes: nonFinite,
+        badFaces: badRefs,
+        repeatedFaces: repeated,
+        degenerateFaces: degenerate
+      }
+    };
+  }
   // ── In-place geometry ──
   translate(dx, dy, dz) {
     const pos = this._pos;
@@ -4259,7 +4412,10 @@ var Mesh = class _Mesh {
       const mesh2 = new _Mesh();
       const idMap = /* @__PURE__ */ new Map();
       for (const nj of json.nodes) idMap.set(nj.id, mesh2.addNode(Vec3.fromJSON(nj.position), nj.data && Object.keys(nj.data).length ? nj.data : void 0));
-      for (const fj of json.faces) mesh2.addFace(fj.nodes.map((n) => idMap.get(n)), fj.data && Object.keys(fj.data).length ? fj.data : void 0);
+      for (const fj of json.faces) {
+        if (fj.nodes.length < 3) continue;
+        mesh2.addFace(fj.nodes.map((n) => idMap.get(n)), fj.data && Object.keys(fj.data).length ? fj.data : void 0);
+      }
       mesh2.computeVertexNormals();
       return mesh2;
     }
@@ -4907,9 +5063,15 @@ var CurveUtils = {
 };
 
 // src/core/geometry/mesh/MeshFactory.ts
+function need(ok, msg) {
+  if (!ok) throw new Error(`MeshFactory.${msg}`);
+}
+var isCount = (n, min) => Number.isInteger(n) && n >= min;
 var MeshFactory = {
   // ── Parametric Surfaces ──
   grid(width, depth, divisionsX, divisionsZ, heightFn = () => 0) {
+    need(isCount(divisionsX, 1) && isCount(divisionsZ, 1), `grid: divisions must be whole numbers \u2265 1, got ${divisionsX} \xD7 ${divisionsZ}`);
+    need(Number.isFinite(width) && Number.isFinite(depth), `grid: width and depth must be finite, got ${width} \xD7 ${depth}`);
     const mesh = new Mesh();
     const ids = [];
     for (let iz = 0; iz <= divisionsZ; iz++) {
@@ -4947,6 +5109,8 @@ var MeshFactory = {
    * seen from the tip of `direction` first.
    */
   extrude(polygon, direction, cap = true) {
+    need(polygon.length >= 2, `extrude: the outline needs at least 2 points, got ${polygon.length}`);
+    need(direction.lenSq() > 0 && Number.isFinite(direction.lenSq()), `extrude: the direction must be a finite, non-zero vector`);
     const mesh = new Mesh();
     const n = polygon.length;
     let nx = 0, ny = 0, nz = 0;
@@ -4971,6 +5135,8 @@ var MeshFactory = {
     return mesh;
   },
   revolve(profile, segments = 32, angleRange = Math.PI * 2) {
+    need(profile.length >= 2, `revolve: the profile needs at least 2 points, got ${profile.length}`);
+    need(isCount(segments, 1), `revolve: segments must be a whole number \u2265 1, got ${segments}`);
     const mesh = new Mesh();
     const n = profile.length;
     const ids = [];
@@ -4996,6 +5162,11 @@ var MeshFactory = {
     return mesh;
   },
   loft(profiles, closedProfile = true) {
+    need(profiles.length >= 2, `loft: needs at least 2 profiles, got ${profiles.length}`);
+    need(
+      profiles.every((p) => p.length === profiles[0].length && p.length >= 2),
+      `loft: every profile needs the same number of points (\u2265 2), got ${profiles.map((p) => p.length).join(", ")}`
+    );
     const mesh = new Mesh();
     const ids = [];
     for (let p = 0; p < profiles.length; p++) {
@@ -5038,6 +5209,7 @@ var MeshFactory = {
     return mesh;
   },
   sphere(radius = 1, segments = 24, rings = 16) {
+    need(isCount(segments, 3) && isCount(rings, 2), `sphere: needs whole numbers, segments \u2265 3 and rings \u2265 2, got ${segments} and ${rings}`);
     const mesh = new Mesh();
     const ids = [];
     for (let r = 0; r <= rings; r++) {
@@ -5068,6 +5240,7 @@ var MeshFactory = {
     return mesh;
   },
   cylinder(radiusTop = 1, radiusBottom = 1, height = 2, segments = 24, cap = true) {
+    need(isCount(segments, 3), `cylinder: segments must be a whole number \u2265 3, got ${segments}`);
     const mesh = new Mesh();
     const h2 = height / 2;
     const bottomIds = [];
@@ -5094,6 +5267,7 @@ var MeshFactory = {
     return mesh;
   },
   torus(majorRadius = 1, minorRadius = 0.3, segments = 32, sides = 16) {
+    need(isCount(segments, 3) && isCount(sides, 3), `torus: segments and sides must be whole numbers \u2265 3, got ${segments} and ${sides}`);
     const mesh = new Mesh();
     const ids = [];
     for (let s = 0; s <= segments; s++) {
@@ -5122,6 +5296,8 @@ var MeshFactory = {
    * Accepts uniform radius (number) or per-point varying radii (number[]).
    */
   pipe(path, radius, sides = 8) {
+    need(path.length >= 2, `pipe: the path needs at least 2 points, got ${path.length}`);
+    need(isCount(sides, 3), `pipe: sides must be a whole number \u2265 3, got ${sides}`);
     if (Array.isArray(radius) && radius.length !== path.length) {
       throw new Error(`MeshFactory.pipe: ${radius.length} radii for ${path.length} path points \u2014 need one radius per point (or a single number)`);
     }
@@ -14257,1262 +14433,7 @@ function parseObjIndex(block, pCount, tCount, nCount) {
   return { p, t, n };
 }
 
-// src/io/IdBufferHiddenLine.ts
-var THREE = __toESM(require("three"));
-var ID_VERTEX_SHADER = (
-  /* glsl */
-  `
-  attribute float objectId;
-  varying float vId;
-  void main() {
-    vId = objectId;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`
-);
-var ID_FRAGMENT_SHADER = (
-  /* glsl */
-  `
-  precision highp float;
-  varying float vId;
-  void main() {
-    int id = int(vId + 0.5);
-    float r = float(id - (id / 256) * 256) / 255.0;
-    int id2 = id / 256;
-    float g = float(id2 - (id2 / 256) * 256) / 255.0;
-    int id3 = id2 / 256;
-    float b = float(id3 - (id3 / 256) * 256) / 255.0;
-    gl_FragColor = vec4(r, g, b, 1.0);
-  }
-`
-);
-function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, options) {
-  const resolution = options?.resolution ?? 2048;
-  const debugLayers = options?.debugLayers ?? false;
-  const preserveSet = new Set(options?.preserveLayers ?? []);
-  const occludedLayer = options?.occludedLayer;
-  const upDir = view.upDir ?? new Vec3(0, 0, 1);
-  let fx = view.viewDir.x, fy = view.viewDir.y, fz = view.viewDir.z;
-  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1;
-  fx /= fl;
-  fy /= fl;
-  fz /= fl;
-  let rx = upDir.y * fz - upDir.z * fy;
-  let ry = upDir.z * fx - upDir.x * fz;
-  let rz = upDir.x * fy - upDir.y * fx;
-  const rl = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
-  rx /= rl;
-  ry /= rl;
-  rz /= rl;
-  const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
-  function proj(x, y, z) {
-    return {
-      u: x * rx + y * ry + z * rz,
-      v: x * ux + y * uy + z * uz,
-      d: x * fx + y * fy + z * fz
-    };
-  }
-  const nVerts = positions.length / 3;
-  let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
-  let minD = Infinity, maxD = -Infinity;
-  for (let i = 0; i < nVerts; i++) {
-    const p = proj(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
-    if (p.u < minU) minU = p.u;
-    if (p.u > maxU) maxU = p.u;
-    if (p.v < minV) minV = p.v;
-    if (p.v > maxV) maxV = p.v;
-    if (p.d < minD) minD = p.d;
-    if (p.d > maxD) maxD = p.d;
-  }
-  const margin = Math.max(maxU - minU, maxV - minV) * 0.02;
-  minU -= margin;
-  maxU += margin;
-  minV -= margin;
-  maxV += margin;
-  const depthRange = maxD - minD || 1;
-  minD -= depthRange * 0.1;
-  maxD += depthRange * 0.1;
-  const nTri = indices.length / 3;
-  const scene = new THREE.Scene();
-  const camZ = -minD + 1;
-  const farZ = -minD - -maxD + 2;
-  const camera = new THREE.OrthographicCamera(minU, maxU, maxV, minV, 0.5, farZ);
-  camera.position.set(0, 0, camZ);
-  camera.lookAt(0, 0, camZ - 1);
-  const triPositions = new Float32Array(nTri * 9);
-  const objectIds = new Float32Array(nTri * 3);
-  for (let ti = 0; ti < nTri; ti++) {
-    const origId = ti + 1;
-    for (let vi = 0; vi < 3; vi++) {
-      const srcVtx = indices[ti * 3 + vi];
-      const p = proj(positions[srcVtx * 3], positions[srcVtx * 3 + 1], positions[srcVtx * 3 + 2]);
-      triPositions[ti * 9 + vi * 3] = p.u;
-      triPositions[ti * 9 + vi * 3 + 1] = p.v;
-      triPositions[ti * 9 + vi * 3 + 2] = -p.d;
-      objectIds[ti * 3 + vi] = origId;
-    }
-  }
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute("position", new THREE.BufferAttribute(triPositions, 3));
-  geom.setAttribute("objectId", new THREE.BufferAttribute(objectIds, 1));
-  const material = new THREE.ShaderMaterial({
-    vertexShader: ID_VERTEX_SHADER,
-    fragmentShader: ID_FRAGMENT_SHADER,
-    side: THREE.DoubleSide,
-    // let GPU depth test decide, we already culled back-faces
-    depthTest: true,
-    depthWrite: true
-  });
-  scene.add(new THREE.Mesh(geom, material));
-  const renderer = new THREE.WebGLRenderer({ antialias: false });
-  renderer.setSize(resolution, resolution);
-  renderer.setClearColor(new THREE.Color(0, 0, 0), 0);
-  const renderTarget = new THREE.WebGLRenderTarget(resolution, resolution, {
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
-    format: THREE.RGBAFormat,
-    type: THREE.UnsignedByteType
-  });
-  renderer.setRenderTarget(renderTarget);
-  renderer.clear();
-  renderer.render(scene, camera);
-  const pixels = new Uint8Array(resolution * resolution * 4);
-  renderer.readRenderTargetPixels(renderTarget, 0, 0, resolution, resolution, pixels);
-  renderer.setRenderTarget(null);
-  renderTarget.dispose();
-  geom.dispose();
-  material.dispose();
-  try {
-    renderer.forceContextLoss();
-  } catch {
-  }
-  renderer.dispose();
-  function readId(px, py) {
-    if (px < 0 || px >= resolution || py < 0 || py >= resolution) return 0;
-    const idx = (py * resolution + px) * 4;
-    const a = pixels[idx + 3];
-    if (a === 0) return 0;
-    return pixels[idx] + (pixels[idx + 1] << 8) + (pixels[idx + 2] << 16);
-  }
-  function toPixel(u, v) {
-    const px = (u - minU) / (maxU - minU) * resolution;
-    const py = (v - minV) / (maxV - minV) * resolution;
-    return [px, py];
-  }
-  const result = [];
-  for (const edge of edges) {
-    let isVisibleAt2 = function(px, py) {
-      for (let oy = -1; oy <= 1; oy++) {
-        for (let ox = -1; ox <= 1; ox++) {
-          const id = readId(px + ox, py + oy);
-          if (id === 0) return true;
-          if (adjSet != null && adjSet.has(id - 1)) return true;
-        }
-      }
-      return false;
-    }, _emitRun2 = function(visible, t0, t1) {
-      if (t1 - t0 < 1e-7) return;
-      const u0 = ea.u + (eb.u - ea.u) * t0;
-      const v0 = ea.v + (eb.v - ea.v) * t0;
-      const u1 = ea.u + (eb.u - ea.u) * t1;
-      const v1 = ea.v + (eb.v - ea.v) * t1;
-      if (preserveSet.has(edge.layer)) {
-        if (visible) result.push({ u0, v0, u1, v1, layer: edge.layer });
-      } else if (visible) {
-        const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
-        result.push({ u0, v0, u1, v1, layer: lyr });
-      } else if (debugLayers || occludedLayer) {
-        result.push({ u0, v0, u1, v1, layer: debugLayers ? "occluded" : occludedLayer });
-      }
-    };
-    var isVisibleAt = isVisibleAt2, _emitRun = _emitRun2;
-    const ea = proj(edge.ax, edge.ay, edge.az);
-    const eb = proj(edge.bx, edge.by, edge.bz);
-    const adjN = edge.adjNormals;
-    let isSilhouette = false;
-    if (adjN && adjN.length > 1) {
-      const hasFrontFace = adjN.some((n) => n[0] * fx + n[1] * fy + n[2] * fz <= 0.087);
-      const hasBackFace = adjN.some((n) => n[0] * fx + n[1] * fy + n[2] * fz > 0.087);
-      if (!hasFrontFace) {
-        if (debugLayers) {
-          result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: "occluded" });
-        } else if (occludedLayer) {
-          result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: occludedLayer });
-        }
-        continue;
-      }
-      isSilhouette = hasFrontFace && hasBackFace;
-    }
-    const [px0, py0] = toPixel(ea.u, ea.v);
-    const [px1, py1] = toPixel(eb.u, eb.v);
-    const dx = px1 - px0, dy = py1 - py0;
-    const steps = Math.max(Math.abs(dx), Math.abs(dy));
-    if (steps < 1) {
-      const id = readId(Math.round(px0), Math.round(py0));
-      const adj2 = edge.adjTris;
-      const isVis = id === 0 || adj2 != null && adj2.indexOf(id - 1) >= 0;
-      if (preserveSet.has(edge.layer)) {
-        if (isVis) result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: edge.layer });
-      } else if (isVis) {
-        const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
-        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: lyr });
-      } else if (debugLayers || occludedLayer) {
-        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: debugLayers ? "occluded" : occludedLayer });
-      }
-      continue;
-    }
-    const adj = edge.adjTris;
-    const adjSet = adj ? new Set(adj) : null;
-    const nSamples = Math.ceil(steps);
-    let prevVis = false;
-    let runStart = 0;
-    let firstSample = true;
-    for (let s = 0; s <= nSamples; s++) {
-      const t = Math.min(s / nSamples, 1);
-      const px = Math.round(px0 + dx * t);
-      const py = Math.round(py0 + dy * t);
-      const isVis = isVisibleAt2(px, py);
-      if (firstSample) {
-        prevVis = isVis;
-        runStart = t;
-        firstSample = false;
-        continue;
-      }
-      if (isVis !== prevVis) {
-        const tEnd = t;
-        _emitRun2(prevVis, runStart, tEnd);
-        runStart = tEnd;
-        prevVis = isVis;
-      }
-    }
-    _emitRun2(prevVis, runStart, 1);
-  }
-  if (options?.flipU) {
-    for (const s of result) {
-      s.u0 = -s.u0;
-      s.u1 = -s.u1;
-    }
-  }
-  return result;
-}
-
-// src/io/DxfExporter.ts
-var DxfExporter = class {
-  constructor() {
-    this._tris = [];
-    /** Per-triangle face normal (parallel to _tris). null = normals unavailable. */
-    this._triNormals = null;
-    this._edges = [];
-    /** Edges whose visibility depends on view direction (silhouette candidates). */
-    this._silhouetteEdges = [];
-    this._layers = /* @__PURE__ */ new Map();
-  }
-  /** Define a layer with color and line type. */
-  layer(def) {
-    this._layers.set(def.name, def);
-    return this;
-  }
-  /**
-   * Add a triangulated mesh. Extracts triangles for occlusion and
-   * feature / boundary edges for drawing.
-   */
-  addMesh(positions, indices, options) {
-    const layer = options?.layer ?? "0";
-    const featAngle = options?.featureAngle ?? 30;
-    const boundary = options?.boundary ?? true;
-    const softEdgeLayer = options?.softEdgeLayer;
-    const silhouettes = options?.silhouettes ?? false;
-    const cosThresh = Math.cos(featAngle * Math.PI / 180);
-    const nTri = indices.length / 3;
-    const triBase = this._tris.length;
-    for (let i = 0; i < nTri; i++) {
-      const i0 = indices[i * 3] * 3, i1 = indices[i * 3 + 1] * 3, i2 = indices[i * 3 + 2] * 3;
-      this._tris.push({
-        ax: positions[i0],
-        ay: positions[i0 + 1],
-        az: positions[i0 + 2],
-        bx: positions[i1],
-        by: positions[i1 + 1],
-        bz: positions[i1 + 2],
-        cx: positions[i2],
-        cy: positions[i2 + 1],
-        cz: positions[i2 + 2]
-      });
-    }
-    const QUANT = 1e6;
-    const posKey = (vi) => {
-      const o = vi * 3;
-      return `${Math.round(positions[o] * QUANT)}:${Math.round(positions[o + 1] * QUANT)}:${Math.round(positions[o + 2] * QUANT)}`;
-    };
-    const weldMap = /* @__PURE__ */ new Map();
-    const weld = (vi) => {
-      const k = posKey(vi);
-      const existing = weldMap.get(k);
-      if (existing !== void 0) return existing;
-      weldMap.set(k, vi);
-      return vi;
-    };
-    const vtxTris = /* @__PURE__ */ new Map();
-    const edgeMap = /* @__PURE__ */ new Map();
-    const eKey = (a, b) => a < b ? `${a}:${b}` : `${b}:${a}`;
-    for (let i = 0; i < nTri; i++) {
-      const a = weld(indices[i * 3]), b = weld(indices[i * 3 + 1]), c = weld(indices[i * 3 + 2]);
-      for (const v of [a, b, c]) {
-        const arr = vtxTris.get(v);
-        if (arr) arr.push(i);
-        else vtxTris.set(v, [i]);
-      }
-      for (const [p, q] of [[a, b], [b, c], [c, a]]) {
-        const k = eKey(p, q);
-        const arr = edgeMap.get(k) ?? [];
-        arr.push(i);
-        edgeMap.set(k, arr);
-      }
-    }
-    if (!this._triNormals) this._triNormals = new Array(this._tris.length - nTri).fill([0, 0, 0]);
-    const fn = [];
-    for (let i = 0; i < nTri; i++) {
-      const i0 = indices[i * 3] * 3, i1 = indices[i * 3 + 1] * 3, i2 = indices[i * 3 + 2] * 3;
-      const ux = positions[i1] - positions[i0], uy = positions[i1 + 1] - positions[i0 + 1], uz = positions[i1 + 2] - positions[i0 + 2];
-      const vx = positions[i2] - positions[i0], vy = positions[i2 + 1] - positions[i0 + 1], vz = positions[i2 + 2] - positions[i0 + 2];
-      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-      const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-      const n = [nx / l, ny / l, nz / l];
-      fn.push(n);
-      this._triNormals.push(n);
-    }
-    for (const [key, tris] of edgeMap) {
-      const [as, bs] = key.split(":");
-      const aVtx = +as, bVtx = +bs;
-      const ai = aVtx * 3, bi = bVtx * 3;
-      let include = false;
-      let kind;
-      let edgeLayer = layer;
-      let asSilhouette = false;
-      const uniqueNormals = [];
-      for (const t of tris) {
-        const n = fn[t];
-        const isDup = uniqueNormals.some((u) => {
-          const nu = fn[u];
-          return n[0] * nu[0] + n[1] * nu[1] + n[2] * nu[2] > 0.999;
-        });
-        if (!isDup) uniqueNormals.push(t);
-      }
-      if (tris.length === 1) {
-        if (boundary) {
-          include = true;
-          kind = "boundary";
-        }
-      } else if (uniqueNormals.length === 1) {
-        if (!silhouettes && softEdgeLayer) {
-          include = true;
-          kind = "feature";
-          edgeLayer = softEdgeLayer;
-        }
-      } else if (featAngle < 0) {
-        include = true;
-        kind = "feature";
-      } else {
-        let minDot = 1;
-        for (let i = 0; i < uniqueNormals.length; i++) {
-          for (let j = i + 1; j < uniqueNormals.length; j++) {
-            const ni = fn[uniqueNormals[i]], nj = fn[uniqueNormals[j]];
-            const d = ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2];
-            if (d < minDot) minDot = d;
-          }
-        }
-        if (minDot < cosThresh) {
-          include = true;
-          kind = "feature";
-        } else if (silhouettes) {
-          include = true;
-          kind = "silhouette";
-          asSilhouette = true;
-        } else if (softEdgeLayer) {
-          include = true;
-          kind = "feature";
-          edgeLayer = softEdgeLayer;
-        }
-      }
-      if (include) {
-        const ring1 = /* @__PURE__ */ new Set();
-        const aTris = vtxTris.get(aVtx);
-        if (aTris) for (const t of aTris) ring1.add(t);
-        const bTris = vtxTris.get(bVtx);
-        if (bTris) for (const t of bTris) ring1.add(t);
-        const ring2 = /* @__PURE__ */ new Set();
-        ring1.forEach((t) => ring2.add(t));
-        ring1.forEach((t) => {
-          const va = weld(indices[t * 3]), vb = weld(indices[t * 3 + 1]), vc = weld(indices[t * 3 + 2]);
-          for (const v of [va, vb, vc]) {
-            const vt = vtxTris.get(v);
-            if (vt) for (const tt of vt) ring2.add(tt);
-          }
-        });
-        const adjArr = [];
-        ring2.forEach((t) => adjArr.push(triBase + t));
-        const edge = {
-          ax: positions[ai],
-          ay: positions[ai + 1],
-          az: positions[ai + 2],
-          bx: positions[bi],
-          by: positions[bi + 1],
-          bz: positions[bi + 2],
-          layer: edgeLayer,
-          kind,
-          adjTris: adjArr,
-          adjNormals: uniqueNormals.map((t) => fn[t]),
-          meshTriRange: [triBase, triBase + nTri]
-        };
-        if (asSilhouette) {
-          const n0 = fn[uniqueNormals[0]], n1 = fn[uniqueNormals[1]];
-          this._silhouetteEdges.push({ ...edge, n0x: n0[0], n0y: n0[1], n0z: n0[2], n1x: n1[0], n1y: n1[1], n1z: n1[2] });
-        } else {
-          this._edges.push(edge);
-        }
-      }
-    }
-    return this;
-  }
-  /** Add triangles for occlusion only — edges NOT drawn. */
-  addOccluder(positions, indices) {
-    const nTri = indices.length / 3;
-    for (let i = 0; i < nTri; i++) {
-      const i0 = indices[i * 3] * 3, i1 = indices[i * 3 + 1] * 3, i2 = indices[i * 3 + 2] * 3;
-      this._tris.push({
-        ax: positions[i0],
-        ay: positions[i0 + 1],
-        az: positions[i0 + 2],
-        bx: positions[i1],
-        by: positions[i1 + 1],
-        bz: positions[i1 + 2],
-        cx: positions[i2],
-        cy: positions[i2 + 1],
-        cz: positions[i2 + 2]
-      });
-    }
-    return this;
-  }
-  /** Add a polyline as a sequence of edges. */
-  addPolyline(pts, options) {
-    const layer = options?.layer ?? "0";
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      this._edges.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, layer });
-    }
-    return this;
-  }
-  /** Add a single edge. */
-  addEdge(a, b, options) {
-    this._edges.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, layer: options?.layer ?? "0" });
-    return this;
-  }
-  /**
-   * Add geometry from a BSP tree. Extracts occluder triangles, feature/boundary
-   * edges, and silhouette edge candidates (view-dependent, resolved at export).
-   *
-   * BSP polygons have reliable normals, enabling back-face culling and silhouette
-   * detection in the hidden-line pass.
-   */
-  addBspTree(bsp, options) {
-    const layer = options?.layer ?? "0";
-    const featAngle = options?.featureAngle ?? 30;
-    const boundary = options?.boundary ?? true;
-    const cosThresh = Math.cos(featAngle * Math.PI / 180);
-    const polys = bsp.toPolygons();
-    if (!this._triNormals) this._triNormals = new Array(this._tris.length).fill([0, 0, 0]);
-    for (const p of polys) {
-      const vs = p.vertices;
-      if (vs.length < 3) continue;
-      const n = p.plane.normal;
-      const nArr = [n.x, n.y, n.z];
-      for (let j = 1; j < vs.length - 1; j++) {
-        this._tris.push({
-          ax: vs[0].x,
-          ay: vs[0].y,
-          az: vs[0].z,
-          bx: vs[j].x,
-          by: vs[j].y,
-          bz: vs[j].z,
-          cx: vs[j + 1].x,
-          cy: vs[j + 1].y,
-          cz: vs[j + 1].z
-        });
-        this._triNormals.push(nArr);
-      }
-    }
-    const QUANT = 1e5;
-    const vKey = (v) => `${Math.round(v.x * QUANT)}:${Math.round(v.y * QUANT)}:${Math.round(v.z * QUANT)}`;
-    const edgeMap = /* @__PURE__ */ new Map();
-    for (let pi = 0; pi < polys.length; pi++) {
-      const vs = polys[pi].vertices;
-      for (let i = 0; i < vs.length; i++) {
-        const j = (i + 1) % vs.length;
-        const ka = vKey(vs[i]), kb = vKey(vs[j]);
-        const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-        let entry = edgeMap.get(key);
-        if (!entry) {
-          entry = { a: vs[i], b: vs[j], pis: [] };
-          edgeMap.set(key, entry);
-        }
-        entry.pis.push(pi);
-      }
-    }
-    for (const entry of edgeMap.values()) {
-      const { a, b, pis } = entry;
-      const ea = { ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, layer };
-      if (pis.length === 1) {
-        if (boundary) this._edges.push(ea);
-      } else if (pis.length >= 2) {
-        const n0 = polys[pis[0]].plane.normal;
-        const n1 = polys[pis[1]].plane.normal;
-        const dot = n0.x * n1.x + n0.y * n1.y + n0.z * n1.z;
-        if (featAngle < 0 || dot < cosThresh) {
-          this._edges.push(ea);
-        } else {
-          this._silhouetteEdges.push({
-            ...ea,
-            n0x: n0.x,
-            n0y: n0.y,
-            n0z: n0.z,
-            n1x: n1.x,
-            n1y: n1.y,
-            n1z: n1.z
-          });
-        }
-      }
-    }
-    return this;
-  }
-  /** Returns a serializable request object for Web Worker hidden-line computation. */
-  toWorkerRequest(view, options) {
-    const trisFlat = [];
-    for (const t of this._tris) trisFlat.push(t.ax, t.ay, t.az, t.bx, t.by, t.bz, t.cx, t.cy, t.cz);
-    const triNormalsFlat = this._triNormals ? this._triNormals.flatMap((n) => n) : void 0;
-    const upDir = view.upDir ?? new Vec3(0, 0, 1);
-    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
-    return {
-      trisFlat,
-      triNormalsFlat,
-      edges: [...allEdges],
-      layers: [...this._layers.values()],
-      viewDir: [view.viewDir.x, view.viewDir.y, view.viewDir.z],
-      upDir: [upDir.x, upDir.y, upDir.z],
-      scale: options?.scale ?? 1e3,
-      precision: options?.precision ?? _defaultPrecision(options?.scale ?? 1e3),
-      depthBias: options?.depthBias
-    };
-  }
-  /** Return raw projected segments with layer classification (for live preview). */
-  toSegments(view, options) {
-    const bias = options?.depthBias;
-    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
-    if (options?.debugLayers) {
-      return _hiddenLineDebug(this._tris, allEdges, view, this._triNormals, bias);
-    }
-    if (options?.hiddenLine !== false) {
-      return _hiddenLine(this._tris, allEdges, view, void 0, this._triNormals, bias);
-    }
-    const upDir = view.upDir ?? new Vec3(0, 0, 1);
-    const b = _basis(view.viewDir, upDir);
-    const segs = [];
-    for (const e of allEdges) {
-      const u0 = e.ax * b.rx + e.ay * b.ry + e.az * b.rz;
-      const v0 = e.ax * b.ux + e.ay * b.uy + e.az * b.uz;
-      const u1 = e.bx * b.rx + e.by * b.ry + e.bz * b.rz;
-      const v1 = e.bx * b.ux + e.by * b.uy + e.bz * b.uz;
-      const du = u1 - u0, dv = v1 - v0;
-      if (du * du + dv * dv < 1e-12) continue;
-      segs.push({ u0, v0, u1, v1, layer: e.layer });
-    }
-    return segs;
-  }
-  /** Project edges and write DXF. Runs hidden-line removal unless hiddenLine=false. */
-  toDxf(view, options) {
-    const scale = options?.scale ?? 1e3;
-    const prec = options?.precision ?? _defaultPrecision(scale);
-    const doHL = options?.hiddenLine !== false;
-    const bias = options?.depthBias ?? 0.01;
-    if (options?.debugLayers) {
-      const allEdges2 = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
-      const debugSegs = _hiddenLineDebug(this._tris, allEdges2, view, this._triNormals, bias);
-      const debugLayerDefs = [
-        ...this._layers.values(),
-        { name: "visible", color: 3 },
-        // green
-        { name: "occluded", color: 1 },
-        // red
-        { name: "feature", color: 5 },
-        // blue
-        { name: "boundary", color: 2 },
-        // yellow
-        { name: "silhouette", color: 4 }
-        // cyan
-      ];
-      return _writeDxf(debugSegs, debugLayerDefs, scale, prec);
-    }
-    if (doHL) {
-      const allEdges2 = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
-      const segs2 = _hiddenLine(this._tris, allEdges2, view, void 0, this._triNormals, bias);
-      return _writeDxf(segs2, [...this._layers.values()], scale, prec);
-    }
-    const upDir = view.upDir ?? new Vec3(0, 0, 1);
-    const b = _basis(view.viewDir, upDir);
-    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
-    const segs = [];
-    for (const e of allEdges) {
-      const u0 = e.ax * b.rx + e.ay * b.ry + e.az * b.rz;
-      const v0 = e.ax * b.ux + e.ay * b.uy + e.az * b.uz;
-      const u1 = e.bx * b.rx + e.by * b.ry + e.bz * b.rz;
-      const v1 = e.bx * b.ux + e.by * b.uy + e.bz * b.uz;
-      const du = u1 - u0, dv = v1 - v0;
-      if (du * du + dv * dv < 1e-12) continue;
-      segs.push({ u0, v0, u1, v1, layer: e.layer });
-    }
-    return _writeDxf(segs, [...this._layers.values()], scale, prec);
-  }
-  /**
-   * GPU-accelerated hidden-line removal using ID buffer rendering.
-   * Returns projected segments — same output as toSegments() but uses the GPU
-   * for visibility, which handles intersecting/overlapping meshes naturally.
-   * Requires Three.js.
-   */
-  toSegmentsGpu(view, options) {
-    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
-    const nTri = this._tris.length;
-    const positions = new Float32Array(nTri * 9);
-    const indices = new Uint32Array(nTri * 3);
-    for (let i = 0; i < nTri; i++) {
-      const t = this._tris[i];
-      const o = i * 9;
-      positions[o] = t.ax;
-      positions[o + 1] = t.ay;
-      positions[o + 2] = t.az;
-      positions[o + 3] = t.bx;
-      positions[o + 4] = t.by;
-      positions[o + 5] = t.bz;
-      positions[o + 6] = t.cx;
-      positions[o + 7] = t.cy;
-      positions[o + 8] = t.cz;
-      indices[i * 3] = i * 3;
-      indices[i * 3 + 1] = i * 3 + 1;
-      indices[i * 3 + 2] = i * 3 + 2;
-    }
-    return hiddenLineIdBuffer(positions, indices, allEdges, this._triNormals, view, options);
-  }
-  /**
-   * GPU-accelerated hidden-line DXF export.
-   * Same as toDxf() but uses GPU ID buffer for visibility testing.
-   * Requires Three.js.
-   */
-  toDxfGpu(view, options) {
-    const scale = options?.scale ?? 1e3;
-    const prec = options?.precision ?? _defaultPrecision(scale);
-    const segs = this.toSegmentsGpu(view, {
-      resolution: options?.resolution ?? 4096,
-      debugLayers: options?.debugLayers,
-      flipU: options?.flipU
-    });
-    const layers = [...this._layers.values()];
-    if (options?.debugLayers) {
-      layers.push(
-        { name: "visible", color: 3 },
-        { name: "occluded", color: 1 },
-        { name: "feature", color: 5 },
-        { name: "boundary", color: 2 },
-        { name: "silhouette", color: 4 }
-      );
-    }
-    return _writeDxf(segs, layers, scale, prec);
-  }
-  /** Write DXF from pre-computed segments (e.g. merged from multiple sources). */
-  toDxfFromSegments(segs, options) {
-    return _writeDxf(segs, [...this._layers.values()], options?.scale ?? 1e3, options?.precision ?? _defaultPrecision(options?.scale ?? 1e3));
-  }
-  /** Return edge counts grouped by layer name. Useful for debugging edge classification. */
-  debugEdgeCounts() {
-    const counts = {};
-    for (const e of this._edges) counts[e.layer] = (counts[e.layer] ?? 0) + 1;
-    return counts;
-  }
-  /** Clear all geometry (reuse the exporter for a different view). */
-  clear() {
-    this._tris = [];
-    this._triNormals = null;
-    this._edges = [];
-    this._silhouetteEdges = [];
-    return this;
-  }
-};
-function _defaultPrecision(scale) {
-  return scale >= 100 ? 3 : 6;
-}
-function _withSilhouettes(edges, silhouettes, viewDir) {
-  if (silhouettes.length === 0) return edges;
-  const vx = viewDir.x, vy = viewDir.y, vz = viewDir.z;
-  const result = [...edges];
-  for (const s of silhouettes) {
-    const d0 = s.n0x * vx + s.n0y * vy + s.n0z * vz;
-    const d1 = s.n1x * vx + s.n1y * vy + s.n1z * vz;
-    if (d0 < 0 !== d1 < 0) {
-      result.push(s);
-    }
-  }
-  return result;
-}
-function _basis(viewDir, upDir) {
-  let fx = viewDir.x, fy = viewDir.y, fz = viewDir.z;
-  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1;
-  fx /= fl;
-  fy /= fl;
-  fz /= fl;
-  let rx = upDir.y * fz - upDir.z * fy;
-  let ry = upDir.z * fx - upDir.x * fz;
-  let rz = upDir.x * fy - upDir.y * fx;
-  const rl = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
-  rx /= rl;
-  ry /= rl;
-  rz /= rl;
-  const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
-  return { rx, ry, rz, ux, uy, uz, fx, fy, fz };
-}
-function _proj(x, y, z, b) {
-  return {
-    u: x * b.rx + y * b.ry + z * b.rz,
-    v: x * b.ux + y * b.uy + z * b.uz,
-    d: x * b.fx + y * b.fy + z * b.fz
-  };
-}
-var _c2 = (ax, ay, bx, by) => ax * by - ay * bx;
-function _clipTri(p0u, p0v, p1u, p1v, t0u, t0v, t1u, t1v, t2u, t2v) {
-  const du = p1u - p0u, dv = p1v - p0v;
-  let tEn = 0, tEx = 1;
-  const edges = [
-    [t0u, t0v, t1u, t1v],
-    [t1u, t1v, t2u, t2v],
-    [t2u, t2v, t0u, t0v]
-  ];
-  for (const [qu, qv, ru, rv] of edges) {
-    const nx = -(rv - qv), ny = ru - qu;
-    const num = nx * (qu - p0u) + ny * (qv - p0v);
-    const den = nx * du + ny * dv;
-    if (Math.abs(den) < 1e-12) {
-      if (num < -1e-8) return null;
-      continue;
-    }
-    const t = num / den;
-    if (den > 0) tEn = Math.max(tEn, t);
-    else tEx = Math.min(tEx, t);
-    if (tEn > tEx + 1e-8) return null;
-  }
-  tEn = Math.max(0, tEn);
-  tEx = Math.min(1, tEx);
-  return tEn < tEx - 1e-6 ? [tEn, tEx] : null;
-}
-function _subInterval(vis, a, b) {
-  const out = [];
-  for (const [lo, hi] of vis) {
-    if (b <= lo + 1e-7 || a >= hi - 1e-7) {
-      out.push([lo, hi]);
-      continue;
-    }
-    if (a > lo + 1e-7) out.push([lo, a]);
-    if (b < hi - 1e-7) out.push([b, hi]);
-  }
-  return out;
-}
-function processWorkerRequest(req, onProgress) {
-  const tris = [];
-  for (let i = 0; i < req.trisFlat.length; i += 9) {
-    tris.push({
-      ax: req.trisFlat[i],
-      ay: req.trisFlat[i + 1],
-      az: req.trisFlat[i + 2],
-      bx: req.trisFlat[i + 3],
-      by: req.trisFlat[i + 4],
-      bz: req.trisFlat[i + 5],
-      cx: req.trisFlat[i + 6],
-      cy: req.trisFlat[i + 7],
-      cz: req.trisFlat[i + 8]
-    });
-  }
-  let triNormals = null;
-  if (req.triNormalsFlat) {
-    triNormals = [];
-    for (let i = 0; i < req.triNormalsFlat.length; i += 3) {
-      triNormals.push([req.triNormalsFlat[i], req.triNormalsFlat[i + 1], req.triNormalsFlat[i + 2]]);
-    }
-  }
-  const view = {
-    viewDir: new Vec3(req.viewDir[0], req.viewDir[1], req.viewDir[2]),
-    upDir: new Vec3(req.upDir[0], req.upDir[1], req.upDir[2])
-  };
-  const segs = _hiddenLine(tris, req.edges, view, onProgress, triNormals, req.depthBias);
-  return _writeDxf(segs, req.layers, req.scale, req.precision);
-}
-var BVH_LEAF_MAX = 8;
-function _buildBvh2D(stris) {
-  const n = stris.length;
-  const triOrder = new Array(n);
-  for (let i = 0; i < n; i++) triOrder[i] = i;
-  const nodes = [];
-  function build(start, count) {
-    let minU = Infinity, minV = Infinity, maxU = -Infinity, maxV = -Infinity;
-    for (let i = start; i < start + count; i++) {
-      const t = stris[triOrder[i]];
-      if (t.minU < minU) minU = t.minU;
-      if (t.maxU > maxU) maxU = t.maxU;
-      if (t.minV < minV) minV = t.minV;
-      if (t.maxV > maxV) maxV = t.maxV;
-    }
-    if (count <= BVH_LEAF_MAX) {
-      const idx2 = nodes.length;
-      nodes.push({ minU, minV, maxU, maxV, rightOff: 0, start, count });
-      return idx2;
-    }
-    const splitU = maxU - minU >= maxV - minV;
-    const mid = start + (count >> 1);
-    _nthElement(triOrder, start, start + count - 1, mid, stris, splitU);
-    const idx = nodes.length;
-    nodes.push({ minU, minV, maxU, maxV, rightOff: 0, start: 0, count: 0 });
-    build(start, mid - start);
-    const rightIdx = build(mid, start + count - mid);
-    nodes[idx].rightOff = rightIdx - idx;
-    return idx;
-  }
-  if (n > 0) build(0, n);
-  return { nodes, triOrder };
-}
-function _triCentroid(stris, idx, splitU) {
-  const t = stris[idx];
-  return splitU ? t.minU + t.maxU : t.minV + t.maxV;
-}
-function _nthElement(order, lo, hi, nth, stris, splitU) {
-  while (lo < hi) {
-    const mid = lo + hi >> 1;
-    if (_triCentroid(stris, order[lo], splitU) > _triCentroid(stris, order[mid], splitU)) {
-      const tmp = order[lo];
-      order[lo] = order[mid];
-      order[mid] = tmp;
-    }
-    if (_triCentroid(stris, order[lo], splitU) > _triCentroid(stris, order[hi], splitU)) {
-      const tmp = order[lo];
-      order[lo] = order[hi];
-      order[hi] = tmp;
-    }
-    if (_triCentroid(stris, order[mid], splitU) > _triCentroid(stris, order[hi], splitU)) {
-      const tmp = order[mid];
-      order[mid] = order[hi];
-      order[hi] = tmp;
-    }
-    {
-      const tmp = order[mid];
-      order[mid] = order[hi - 1];
-      order[hi - 1] = tmp;
-    }
-    const pivotVal = _triCentroid(stris, order[hi - 1], splitU);
-    let i = lo, j = hi - 1;
-    for (; ; ) {
-      while (_triCentroid(stris, order[++i], splitU) < pivotVal) {
-      }
-      while (_triCentroid(stris, order[--j], splitU) > pivotVal) {
-      }
-      if (i >= j) break;
-      {
-        const tmp = order[i];
-        order[i] = order[j];
-        order[j] = tmp;
-      }
-    }
-    {
-      const tmp = order[i];
-      order[i] = order[hi - 1];
-      order[hi - 1] = tmp;
-    }
-    if (i === nth) return;
-    if (nth < i) hi = i - 1;
-    else lo = i + 1;
-  }
-}
-function _queryBvh(bvh, qMinU, qMinV, qMaxU, qMaxV, out) {
-  const { nodes, triOrder } = bvh;
-  if (nodes.length === 0) return;
-  const stack = [0];
-  while (stack.length > 0) {
-    const ni = stack.pop();
-    const nd = nodes[ni];
-    if (qMaxU < nd.minU || qMinU > nd.maxU || qMaxV < nd.minV || qMinV > nd.maxV) continue;
-    if (nd.rightOff === 0) {
-      for (let i = nd.start, end = nd.start + nd.count; i < end; i++) {
-        out.push(triOrder[i]);
-      }
-    } else {
-      stack.push(ni + 1);
-      stack.push(ni + nd.rightOff);
-    }
-  }
-}
-function _buildBvh3D(tris, indices) {
-  const n = indices.length;
-  const triOrder = indices.slice();
-  const nodes = [];
-  const cx = new Float64Array(tris.length);
-  const cy = new Float64Array(tris.length);
-  const cz = new Float64Array(tris.length);
-  for (let i = 0; i < tris.length; i++) {
-    const t = tris[i];
-    cx[i] = (t.ax + t.bx + t.cx) / 3;
-    cy[i] = (t.ay + t.by + t.cy) / 3;
-    cz[i] = (t.az + t.bz + t.cz) / 3;
-  }
-  function build(start, count) {
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = start; i < start + count; i++) {
-      const t = tris[triOrder[i]];
-      minX = Math.min(minX, t.ax, t.bx, t.cx);
-      minY = Math.min(minY, t.ay, t.by, t.cy);
-      minZ = Math.min(minZ, t.az, t.bz, t.cz);
-      maxX = Math.max(maxX, t.ax, t.bx, t.cx);
-      maxY = Math.max(maxY, t.ay, t.by, t.cy);
-      maxZ = Math.max(maxZ, t.az, t.bz, t.cz);
-    }
-    if (count <= BVH_LEAF_MAX) {
-      const idx2 = nodes.length;
-      nodes.push({ minX, minY, minZ, maxX, maxY, maxZ, rightOff: 0, start, count });
-      return idx2;
-    }
-    const sx = maxX - minX, sy = maxY - minY, sz = maxZ - minZ;
-    const axis = sx >= sy && sx >= sz ? 0 : sy >= sz ? 1 : 2;
-    const cArr = axis === 0 ? cx : axis === 1 ? cy : cz;
-    const mid = start + (count >> 1);
-    _nthElement3D(triOrder, start, start + count - 1, mid, cArr);
-    const idx = nodes.length;
-    nodes.push({ minX, minY, minZ, maxX, maxY, maxZ, rightOff: 0, start: 0, count: 0 });
-    build(start, mid - start);
-    const rightIdx = build(mid, start + count - mid);
-    nodes[idx].rightOff = rightIdx - idx;
-    return idx;
-  }
-  if (n > 0) build(0, n);
-  return { nodes, triOrder };
-}
-function _nthElement3D(order, lo, hi, nth, vals) {
-  while (lo < hi) {
-    const mid = lo + hi >> 1;
-    if (vals[order[lo]] > vals[order[mid]]) {
-      const t = order[lo];
-      order[lo] = order[mid];
-      order[mid] = t;
-    }
-    if (vals[order[lo]] > vals[order[hi]]) {
-      const t = order[lo];
-      order[lo] = order[hi];
-      order[hi] = t;
-    }
-    if (vals[order[mid]] > vals[order[hi]]) {
-      const t = order[mid];
-      order[mid] = order[hi];
-      order[hi] = t;
-    }
-    {
-      const t = order[mid];
-      order[mid] = order[hi - 1];
-      order[hi - 1] = t;
-    }
-    const pivotVal = vals[order[hi - 1]];
-    let i = lo, j = hi - 1;
-    for (; ; ) {
-      while (vals[order[++i]] < pivotVal) {
-      }
-      while (vals[order[--j]] > pivotVal) {
-      }
-      if (i >= j) break;
-      {
-        const t = order[i];
-        order[i] = order[j];
-        order[j] = t;
-      }
-    }
-    {
-      const t = order[i];
-      order[i] = order[hi - 1];
-      order[hi - 1] = t;
-    }
-    if (i === nth) return;
-    if (nth < i) hi = i - 1;
-    else lo = i + 1;
-  }
-}
-function _rayAabb(ox, oy, oz, invDx, invDy, invDz, node) {
-  let tmin = ((invDx >= 0 ? node.minX : node.maxX) - ox) * invDx;
-  let tmax = ((invDx >= 0 ? node.maxX : node.minX) - ox) * invDx;
-  const tymin = ((invDy >= 0 ? node.minY : node.maxY) - oy) * invDy;
-  const tymax = ((invDy >= 0 ? node.maxY : node.minY) - oy) * invDy;
-  if (tmin > tymax || tymin > tmax) return false;
-  if (tymin > tmin) tmin = tymin;
-  if (tymax < tmax) tmax = tymax;
-  const tzmin = ((invDz >= 0 ? node.minZ : node.maxZ) - oz) * invDz;
-  const tzmax = ((invDz >= 0 ? node.maxZ : node.minZ) - oz) * invDz;
-  if (tmin > tzmax || tzmin > tmax) return false;
-  if (tzmin > tmin) tmin = tzmin;
-  if (tzmax < tmax) tmax = tzmax;
-  return tmax >= 0 && tmin <= tmax;
-}
-function _rayTri(ox, oy, oz, dx, dy, dz, t) {
-  const e1x = t.bx - t.ax, e1y = t.by - t.ay, e1z = t.bz - t.az;
-  const e2x = t.cx - t.ax, e2y = t.cy - t.ay, e2z = t.cz - t.az;
-  const hx = dy * e2z - dz * e2y, hy = dz * e2x - dx * e2z, hz = dx * e2y - dy * e2x;
-  const a = e1x * hx + e1y * hy + e1z * hz;
-  if (a > -1e-10 && a < 1e-10) return -1;
-  const f2 = 1 / a;
-  const sx = ox - t.ax, sy = oy - t.ay, sz = oz - t.az;
-  const u = f2 * (sx * hx + sy * hy + sz * hz);
-  if (u < -1e-6 || u > 1 + 1e-6) return -1;
-  const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
-  const v = f2 * (dx * qx + dy * qy + dz * qz);
-  if (v < -1e-6 || u + v > 1 + 1e-6) return -1;
-  const tt = f2 * (e2x * qx + e2y * qy + e2z * qz);
-  return tt > 1e-6 ? tt : -1;
-}
-function _isOccluded3D(ox, oy, oz, dx, dy, dz, bvh, allTris, adjTris) {
-  const { nodes, triOrder } = bvh;
-  if (nodes.length === 0) return false;
-  const invDx = 1 / dx, invDy = 1 / dy, invDz = 1 / dz;
-  const stack = [0];
-  while (stack.length > 0) {
-    const ni = stack.pop();
-    const nd = nodes[ni];
-    if (!_rayAabb(ox, oy, oz, invDx, invDy, invDz, nd)) continue;
-    if (nd.rightOff === 0) {
-      for (let i = nd.start, end = nd.start + nd.count; i < end; i++) {
-        const ti = triOrder[i];
-        if (adjTris && adjTris.indexOf(ti) >= 0) continue;
-        const t = _rayTri(ox, oy, oz, dx, dy, dz, allTris[ti]);
-        if (t > 0) return true;
-      }
-    } else {
-      stack.push(ni + 1);
-      stack.push(ni + nd.rightOff);
-    }
-  }
-  return false;
-}
-function _hiddenLine(tris, edges, view, onProgress, triNormals, _depthBias) {
-  const upDir = view.upDir ?? new Vec3(0, 0, 1);
-  const b = _basis(view.viewDir, upDir);
-  const hasNormals = triNormals != null && triNormals.length === tris.length;
-  const frontIdx = [];
-  const stris = [];
-  for (let ti = 0; ti < tris.length; ti++) {
-    if (hasNormals) {
-      const n = triNormals[ti];
-      if (n[0] * b.fx + n[1] * b.fy + n[2] * b.fz > 0) continue;
-    }
-    frontIdx.push(ti);
-    const tri = tris[ti];
-    const pa = _proj(tri.ax, tri.ay, tri.az, b);
-    const pb = _proj(tri.bx, tri.by, tri.bz, b);
-    const pc = _proj(tri.cx, tri.cy, tri.cz, b);
-    const cross = _c2(pb.u - pa.u, pb.v - pa.v, pc.u - pa.u, pc.v - pa.v);
-    if (Math.abs(cross) < 1e-10) continue;
-    const p1 = cross > 0 ? pb : pc;
-    const p2 = cross > 0 ? pc : pb;
-    stris.push({
-      p: [pa, p1, p2],
-      avgD: (pa.d + pb.d + pc.d) / 3,
-      minU: Math.min(pa.u, pb.u, pc.u),
-      maxU: Math.max(pa.u, pb.u, pc.u),
-      minV: Math.min(pa.v, pb.v, pc.v),
-      maxV: Math.max(pa.v, pb.v, pc.v),
-      srcIdx: ti
-    });
-  }
-  stris.sort((a, z) => a.avgD - z.avgD);
-  const bvh2d = _buildBvh2D(stris);
-  const bvh3d = _buildBvh3D(tris, frontIdx);
-  const rdx = -b.fx, rdy = -b.fy, rdz = -b.fz;
-  const result = [];
-  const nEdges = edges.length;
-  const candBuf = [];
-  for (let ei = 0; ei < nEdges; ei++) {
-    if (onProgress && (ei & 63) === 0) onProgress(ei / nEdges);
-    const edge = edges[ei];
-    const ea = _proj(edge.ax, edge.ay, edge.az, b);
-    const eb = _proj(edge.bx, edge.by, edge.bz, b);
-    const adjN = edge.adjNormals;
-    const hasFrontFace = !adjN || adjN.length === 0 || adjN.some((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
-    const allFrontFaces = adjN && adjN.length > 0 && adjN.every((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
-    let vis;
-    if (!hasFrontFace) {
-      vis = [];
-    } else if (allFrontFaces) {
-      vis = [[0, 1]];
-    } else {
-      vis = [[0, 1]];
-    }
-    if (vis.length > 0 && !allFrontFaces) {
-      const adj = edge.adjTris;
-      const eMinU = Math.min(ea.u, eb.u), eMaxU = Math.max(ea.u, eb.u);
-      const eMinV = Math.min(ea.v, eb.v), eMaxV = Math.max(ea.v, eb.v);
-      candBuf.length = 0;
-      _queryBvh(bvh2d, eMinU, eMinV, eMaxU, eMaxV, candBuf);
-      for (let ci = 0; ci < candBuf.length; ci++) {
-        if (!vis.length) break;
-        const tri = stris[candBuf[ci]];
-        if (adj && adj.indexOf(tri.srcIdx) >= 0) continue;
-        const [ta, tb, tc] = tri.p;
-        const interval = _clipTri(
-          ea.u,
-          ea.v,
-          eb.u,
-          eb.v,
-          ta.u,
-          ta.v,
-          tb.u,
-          tb.v,
-          tc.u,
-          tc.v
-        );
-        if (!interval) continue;
-        const tM = (interval[0] + interval[1]) * 0.5;
-        const px = edge.ax + (edge.bx - edge.ax) * tM;
-        const py = edge.ay + (edge.by - edge.ay) * tM;
-        const pz = edge.az + (edge.bz - edge.az) * tM;
-        if (!_isOccluded3D(px, py, pz, rdx, rdy, rdz, bvh3d, tris, adj)) continue;
-        vis = _subInterval(vis, interval[0], interval[1]);
-      }
-    }
-    for (const [t0, t1] of vis) {
-      result.push({
-        u0: ea.u + (eb.u - ea.u) * t0,
-        v0: ea.v + (eb.v - ea.v) * t0,
-        u1: ea.u + (eb.u - ea.u) * t1,
-        v1: ea.v + (eb.v - ea.v) * t1,
-        layer: edge.layer
-      });
-    }
-  }
-  return result;
-}
-function _hiddenLineDebug(tris, edges, view, triNormals, _depthBias) {
-  const upDir = view.upDir ?? new Vec3(0, 0, 1);
-  const b = _basis(view.viewDir, upDir);
-  const hasNormals = triNormals != null && triNormals.length === tris.length;
-  const frontIdx = [];
-  const stris = [];
-  for (let ti = 0; ti < tris.length; ti++) {
-    if (hasNormals) {
-      const n = triNormals[ti];
-      if (n[0] * b.fx + n[1] * b.fy + n[2] * b.fz > 0) continue;
-    }
-    frontIdx.push(ti);
-    const tri = tris[ti];
-    const pa = _proj(tri.ax, tri.ay, tri.az, b);
-    const pb = _proj(tri.bx, tri.by, tri.bz, b);
-    const pc = _proj(tri.cx, tri.cy, tri.cz, b);
-    const cross = _c2(pb.u - pa.u, pb.v - pa.v, pc.u - pa.u, pc.v - pa.v);
-    if (Math.abs(cross) < 1e-10) continue;
-    const p1 = cross > 0 ? pb : pc;
-    const p2 = cross > 0 ? pc : pb;
-    stris.push({
-      p: [pa, p1, p2],
-      avgD: (pa.d + pb.d + pc.d) / 3,
-      minU: Math.min(pa.u, pb.u, pc.u),
-      maxU: Math.max(pa.u, pb.u, pc.u),
-      minV: Math.min(pa.v, pb.v, pc.v),
-      maxV: Math.max(pa.v, pb.v, pc.v),
-      srcIdx: ti
-    });
-  }
-  stris.sort((a, z) => a.avgD - z.avgD);
-  const bvh2d = _buildBvh2D(stris);
-  const bvh3d = _buildBvh3D(tris, frontIdx);
-  const rdx = -b.fx, rdy = -b.fy, rdz = -b.fz;
-  const result = [];
-  const candBuf = [];
-  for (const edge of edges) {
-    const ea = _proj(edge.ax, edge.ay, edge.az, b);
-    const eb = _proj(edge.bx, edge.by, edge.bz, b);
-    const kindLayer = edge.kind ?? "feature";
-    result.push({
-      u0: ea.u,
-      v0: ea.v,
-      u1: eb.u,
-      v1: eb.v,
-      layer: kindLayer
-    });
-    const adjN = edge.adjNormals;
-    const hasFrontFace = !adjN || adjN.length === 0 || adjN.some((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
-    const allFrontFaces = adjN && adjN.length > 0 && adjN.every((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
-    let vis;
-    if (!hasFrontFace) {
-      vis = [];
-    } else if (allFrontFaces) {
-      vis = [[0, 1]];
-    } else {
-      vis = [[0, 1]];
-    }
-    if (vis.length > 0 && !allFrontFaces) {
-      const adj = edge.adjTris;
-      candBuf.length = 0;
-      _queryBvh(
-        bvh2d,
-        Math.min(ea.u, eb.u),
-        Math.min(ea.v, eb.v),
-        Math.max(ea.u, eb.u),
-        Math.max(ea.v, eb.v),
-        candBuf
-      );
-      for (let ci = 0; ci < candBuf.length; ci++) {
-        if (!vis.length) break;
-        const tri = stris[candBuf[ci]];
-        if (adj && adj.indexOf(tri.srcIdx) >= 0) continue;
-        const [ta, tb, tc] = tri.p;
-        const interval = _clipTri(ea.u, ea.v, eb.u, eb.v, ta.u, ta.v, tb.u, tb.v, tc.u, tc.v);
-        if (!interval) continue;
-        const tM = (interval[0] + interval[1]) * 0.5;
-        const px = edge.ax + (edge.bx - edge.ax) * tM;
-        const py = edge.ay + (edge.by - edge.ay) * tM;
-        const pz = edge.az + (edge.bz - edge.az) * tM;
-        if (!_isOccluded3D(px, py, pz, rdx, rdy, rdz, bvh3d, tris, adj)) continue;
-        vis = _subInterval(vis, interval[0], interval[1]);
-      }
-    }
-    for (const [t0, t1] of vis) {
-      result.push({
-        u0: ea.u + (eb.u - ea.u) * t0,
-        v0: ea.v + (eb.v - ea.v) * t0,
-        u1: ea.u + (eb.u - ea.u) * t1,
-        v1: ea.v + (eb.v - ea.v) * t1,
-        layer: "visible"
-      });
-    }
-    let prev = 0;
-    for (const [t0, t1] of vis) {
-      if (t0 > prev + 1e-7) {
-        result.push({
-          u0: ea.u + (eb.u - ea.u) * prev,
-          v0: ea.v + (eb.v - ea.v) * prev,
-          u1: ea.u + (eb.u - ea.u) * t0,
-          v1: ea.v + (eb.v - ea.v) * t0,
-          layer: "occluded"
-        });
-      }
-      prev = t1;
-    }
-    if (prev < 1 - 1e-7) {
-      result.push({
-        u0: ea.u + (eb.u - ea.u) * prev,
-        v0: ea.v + (eb.v - ea.v) * prev,
-        u1: eb.u,
-        v1: eb.v,
-        layer: "occluded"
-      });
-    }
-  }
-  return result;
-}
+// src/io/DxfWriter.ts
 function _sanLayer(s) {
   return s.trim().replace(/[^A-Za-z0-9$_-]/g, "_").slice(0, 31) || "LAYER0";
 }
@@ -15571,37 +14492,6 @@ function _writeR12Prologue(lines, names, colorOf, scale = 1e3) {
   lines.push("0", "ENDTAB", "0", "ENDSEC");
   lines.push("0", "SECTION", "2", "BLOCKS", "0", "ENDSEC");
 }
-function _writeDxf(segs, layers, scale, prec) {
-  const f2 = (n) => Number.isFinite(n) ? (n * scale).toFixed(prec) : "0";
-  const lines = [];
-  const used = /* @__PURE__ */ new Set();
-  for (const s of segs) used.add(s.layer);
-  const { names, colorOf } = _resolveLayers(layers, used);
-  _writeR12Prologue(lines, names, colorOf, scale);
-  lines.push("0", "SECTION", "2", "ENTITIES");
-  for (const s of segs) {
-    lines.push(
-      "0",
-      "LINE",
-      "8",
-      _sanLayer(s.layer),
-      "10",
-      f2(s.u0),
-      "20",
-      f2(s.v0),
-      "30",
-      "0.0",
-      "11",
-      f2(s.u1),
-      "21",
-      f2(s.v1),
-      "31",
-      "0.0"
-    );
-  }
-  lines.push("0", "ENDSEC", "0", "EOF");
-  return lines.join("\r\n") + "\r\n";
-}
 function writeDxf3D(content) {
   const polylines = content.polylines ?? [];
   const lineSegs = content.lines ?? [];
@@ -15610,6 +14500,25 @@ function writeDxf3D(content) {
   const circles = content.circles ?? [];
   const lines = [];
   const okR = (r) => Number.isFinite(r) && r > 1e-9;
+  const finite = (v) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+  const bad = (what, i, layer) => {
+    throw new Error(`writeDxf3D: ${what} ${i} (layer "${layer}") has a non-finite coordinate`);
+  };
+  polylines.forEach((p, i) => {
+    if (!p.points.every(finite)) bad("polyline", i, p.layer);
+  });
+  lineSegs.forEach((l, i) => {
+    if (!finite(l.start) || !finite(l.end)) bad("line", i, l.layer);
+  });
+  points.forEach((pt, i) => {
+    if (!finite(pt.position)) bad("point", i, pt.layer);
+  });
+  arcs.forEach((a, i) => {
+    if (okR(a.radius) && (!finite(a.center) || !Number.isFinite(a.startDeg) || !Number.isFinite(a.endDeg))) bad("arc", i, a.layer);
+  });
+  circles.forEach((c, i) => {
+    if (okR(c.radius) && !finite(c.center)) bad("circle", i, c.layer);
+  });
   const used = /* @__PURE__ */ new Set();
   for (const p of polylines) if (p.points.length >= 2) used.add(p.layer);
   for (const s of lineSegs) used.add(s.layer);
@@ -15687,227 +14596,122 @@ function writeDxf3D(content) {
   lines.push("0", "ENDSEC", "0", "EOF");
   return lines.join("\r\n") + "\r\n";
 }
-
-// src/io/PolylineVisibility.ts
-var THREE2 = __toESM(require("three"));
-var DEPTH_PACK = (
-  /* glsl */
-  `
-  vec4 packDepth(float d) {
-    const vec4 bitShift = vec4(256.0*256.0*256.0, 256.0*256.0, 256.0, 1.0);
-    const vec4 bitMask  = vec4(0.0, 1.0/256.0, 1.0/256.0, 1.0/256.0);
-    vec4 res = fract(d * bitShift);
-    res -= res.xxyz * bitMask;
-    return res;
-  }
-`
-);
-var VS = (
-  /* glsl */
-  `
-  varying float vDepth01;
-  uniform float uMinD;
-  uniform float uMaxD;
-  void main() {
-    // CPU side stored position.z = -d (negated so the ortho camera looking
-    // along -Z renders closer-to-camera as nearer). Un-flip here to read
-    // the original view-space depth.
-    float vd = -position.z;
-    vDepth01 = clamp((vd - uMinD) / (uMaxD - uMinD), 0.0, 1.0);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`
-);
-var FS = (
-  /* glsl */
-  `
-  precision highp float;
-  varying float vDepth01;
-  ${DEPTH_PACK}
-  void main() { gl_FragColor = packDepth(vDepth01); }
-`
-);
-function extractVisiblePolylines(mesh, polylines, view, options) {
-  const resolution = options?.resolution ?? 1024;
-  const biasFraction = options?.bias ?? 5e-3;
-  const up = view.upDir ?? new Vec3(0, 1, 0);
-  let fx = view.viewDir.x, fy = view.viewDir.y, fz = view.viewDir.z;
-  {
-    const l = Math.hypot(fx, fy, fz) || 1;
-    fx /= l;
-    fy /= l;
-    fz /= l;
-  }
-  let rx = up.y * fz - up.z * fy;
-  let ry = up.z * fx - up.x * fz;
-  let rz = up.x * fy - up.y * fx;
-  {
-    const l = Math.hypot(rx, ry, rz) || 1;
-    rx /= l;
-    ry /= l;
-    rz /= l;
-  }
-  const ux = fy * rz - fz * ry;
-  const uy = fz * rx - fx * rz;
-  const uz = fx * ry - fy * rx;
-  const proj = (x, y, z) => ({
-    u: x * rx + y * ry + z * rz,
-    v: x * ux + y * uy + z * uz,
-    d: x * fx + y * fy + z * fz
+function writeDxf2D(content, opts = {}) {
+  const scale = opts.scale ?? 1;
+  if (!(Number.isFinite(scale) && scale > 0)) throw new Error(`writeDxf2D: scale must be a positive number, got ${scale}`);
+  const polylines = content.polylines ?? [];
+  const lineSegs = content.lines ?? [];
+  const circles = content.circles ?? [];
+  const arcs = content.arcs ?? [];
+  const texts = content.texts ?? [];
+  const okR = (r) => Number.isFinite(r) && r > 1e-9;
+  const finite = (p) => Number.isFinite(p.x) && Number.isFinite(p.y);
+  const bad = (what, i, layer, why = "a non-finite coordinate") => {
+    throw new Error(`writeDxf2D: ${what} ${i} (layer "${layer}") has ${why}`);
+  };
+  polylines.forEach((p, i) => {
+    if (!p.points.every(finite)) bad("polyline", i, p.layer);
   });
-  let minU = Infinity, maxU = -Infinity;
-  let minV = Infinity, maxV = -Infinity;
-  let minD = Infinity, maxD = -Infinity;
-  const verts = [];
-  for (const face of mesh.faces()) {
-    if (face.nodes.length < 3) continue;
-    const ps = face.nodes.map((id) => mesh.node(id).position);
-    const p0 = ps[0];
-    for (let i = 1; i < ps.length - 1; i++) {
-      const a = p0, b = ps[i], c = ps[i + 1];
-      for (const p of [a, b, c]) {
-        const pr = proj(p.x, p.y, p.z);
-        verts.push(pr.u, pr.v, pr.d);
-        if (pr.u < minU) minU = pr.u;
-        if (pr.u > maxU) maxU = pr.u;
-        if (pr.v < minV) minV = pr.v;
-        if (pr.v > maxV) maxV = pr.v;
-        if (pr.d < minD) minD = pr.d;
-        if (pr.d > maxD) maxD = pr.d;
-      }
-    }
-  }
-  if (verts.length === 0) {
-    return { segments: [], bounds: { minU: 0, maxU: 0, minV: 0, maxV: 0 } };
-  }
-  const sceneSize = Math.max(maxU - minU, maxV - minV);
-  const margin = sceneSize * 0.02;
-  minU -= margin;
-  maxU += margin;
-  minV -= margin;
-  maxV += margin;
-  const depthRange = maxD - minD || 1;
-  const depthPad = depthRange * 0.1;
-  minD -= depthPad;
-  maxD += depthPad;
-  const triPositions = new Float32Array(verts);
-  const geo = new THREE2.BufferGeometry();
-  geo.setAttribute("position", new THREE2.BufferAttribute(triPositions, 3));
-  for (let i = 2; i < triPositions.length; i += 3) triPositions[i] = -triPositions[i];
-  geo.attributes.position.needsUpdate = true;
-  const material = new THREE2.ShaderMaterial({
-    vertexShader: VS,
-    fragmentShader: FS,
-    side: THREE2.DoubleSide,
-    depthTest: true,
-    depthWrite: true,
-    uniforms: { uMinD: { value: minD }, uMaxD: { value: maxD } }
+  lineSegs.forEach((l, i) => {
+    if (!finite(l.start) || !finite(l.end)) bad("line", i, l.layer);
   });
-  const scene = new THREE2.Scene();
-  scene.add(new THREE2.Mesh(geo, material));
-  const camZ = -minD + 1;
-  const farZ = maxD - minD + 2;
-  const camera = new THREE2.OrthographicCamera(minU, maxU, maxV, minV, 0.5, farZ);
-  camera.position.set(0, 0, camZ);
-  camera.lookAt(0, 0, camZ - 1);
-  const renderer = new THREE2.WebGLRenderer({ antialias: false });
-  renderer.setSize(resolution, resolution);
-  renderer.setClearColor(new THREE2.Color(0, 0, 0), 0);
-  const rt = new THREE2.WebGLRenderTarget(resolution, resolution, {
-    minFilter: THREE2.NearestFilter,
-    magFilter: THREE2.NearestFilter,
-    format: THREE2.RGBAFormat,
-    type: THREE2.UnsignedByteType
+  circles.forEach((c, i) => {
+    if (okR(c.radius) && !finite(c.center)) bad("circle", i, c.layer);
   });
-  renderer.setRenderTarget(rt);
-  renderer.clear();
-  renderer.render(scene, camera);
-  const pixels = new Uint8Array(resolution * resolution * 4);
-  renderer.readRenderTargetPixels(rt, 0, 0, resolution, resolution, pixels);
-  renderer.setRenderTarget(null);
-  rt.dispose();
-  geo.dispose();
-  material.dispose();
-  renderer.dispose();
-  function unpackDepth01(px, py) {
-    if (px < 0 || px >= resolution || py < 0 || py >= resolution) return null;
-    const idx = (py * resolution + px) * 4;
-    if (pixels[idx + 3] === 0) return null;
-    const r = pixels[idx] / 255;
-    const g = pixels[idx + 1] / 255;
-    const b = pixels[idx + 2] / 255;
-    const a = pixels[idx + 3] / 255;
-    return r / (256 * 256 * 256) + g / (256 * 256) + b / 256 + a;
-  }
-  function toPixel(u, v) {
-    return [
-      Math.round((u - minU) / (maxU - minU) * (resolution - 1)),
-      Math.round((v - minV) / (maxV - minV) * (resolution - 1))
-    ];
-  }
-  const bias01 = biasFraction;
-  const segments = [];
-  function isVisible(p) {
-    const pr = proj(p.x, p.y, p.z);
-    const [px, py] = toPixel(pr.u, pr.v);
-    let best = null;
-    for (let oy = -1; oy <= 1; oy++) {
-      for (let ox = -1; ox <= 1; ox++) {
-        const s = unpackDepth01(px + ox, py + oy);
-        if (s !== null && (best === null || s < best)) best = s;
-      }
-    }
-    if (best === null) return true;
-    const d01 = (pr.d - minD) / (maxD - minD);
-    return d01 <= best + bias01;
-  }
+  arcs.forEach((a, i) => {
+    if (okR(a.radius) && (!finite(a.center) || !Number.isFinite(a.startDeg) || !Number.isFinite(a.endDeg))) bad("arc", i, a.layer);
+  });
+  texts.forEach((t, i) => {
+    if (!finite(t.at)) bad("text", i, t.layer);
+    if (!(Number.isFinite(t.height) && t.height > 0)) bad("text", i, t.layer, `a height of ${t.height} (needs > 0)`);
+  });
+  const used = /* @__PURE__ */ new Set();
+  for (const p of polylines) if (p.points.length >= 2) used.add(p.layer);
+  for (const l of lineSegs) used.add(l.layer);
+  for (const c of circles) if (okR(c.radius)) used.add(c.layer);
+  for (const a of arcs) if (okR(a.radius)) used.add(a.layer);
+  for (const t of texts) used.add(t.layer);
+  const lines = [];
+  const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
+  _writeR12Prologue(lines, names, colorOf, scale);
+  const v = (n) => _real(n * scale);
+  const xy = (p) => ["10", v(p.x), "20", v(p.y), "30", "0"];
+  const emitCircle = (layer, c, r) => lines.push("0", "CIRCLE", "8", _sanLayer(layer), ...xy(c), "40", v(r));
+  lines.push("0", "SECTION", "2", "ENTITIES");
   for (const poly of polylines) {
-    if (poly.length < 2) continue;
-    let run3 = [];
-    let run2 = [];
-    for (const p of poly) {
-      if (isVisible(p)) {
-        run3.push(p);
-        const pr = proj(p.x, p.y, p.z);
-        run2.push({ u: pr.u, v: pr.v });
-      } else if (run3.length >= 2) {
-        segments.push({ points3D: run3, points2D: run2 });
-        run3 = [];
-        run2 = [];
-      } else {
-        run3 = [];
-        run2 = [];
-      }
+    if (poly.points.length < 2) continue;
+    const layer = _sanLayer(poly.layer);
+    lines.push("0", "POLYLINE", "8", layer, "66", "1", "70", poly.closed ? "1" : "0", "10", "0", "20", "0", "30", "0");
+    for (const p of poly.points) lines.push("0", "VERTEX", "8", layer, ...xy(p), "70", "0");
+    lines.push("0", "SEQEND", "8", layer);
+  }
+  for (const l of lineSegs) {
+    lines.push("0", "LINE", "8", _sanLayer(l.layer), ...xy(l.start), "11", v(l.end.x), "21", v(l.end.y), "31", "0");
+  }
+  for (const c of circles) if (okR(c.radius)) emitCircle(c.layer, c.center, c.radius);
+  for (const a of arcs) {
+    if (!okR(a.radius)) continue;
+    if (Math.abs(a.endDeg - a.startDeg) >= 360 - 1e-6) {
+      emitCircle(a.layer, a.center, a.radius);
+      continue;
     }
-    if (run3.length >= 2) segments.push({ points3D: run3, points2D: run2 });
+    const norm = (d) => {
+      let x = d % 360;
+      if (x < 0) x += 360;
+      return x;
+    };
+    lines.push("0", "ARC", "8", _sanLayer(a.layer), ...xy(a.center), "40", v(a.radius), "50", _real(norm(a.startDeg)), "51", _real(norm(a.endDeg)));
   }
-  return { segments, bounds: { minU, maxU, minV, maxV } };
+  for (const t of texts) {
+    lines.push(
+      "0",
+      "TEXT",
+      "8",
+      _sanLayer(t.layer),
+      ...xy(t.at),
+      "40",
+      v(t.height),
+      "1",
+      t.text.replace(/[\r\n]+/g, " "),
+      "50",
+      _real(t.rotationDeg ?? 0)
+    );
+  }
+  lines.push("0", "ENDSEC", "0", "EOF");
+  return lines.join("\r\n") + "\r\n";
 }
-function polylinesToSVG(segments, bounds2, options) {
-  const stroke = options?.stroke ?? "#000";
-  const sw = options?.strokeWidth ?? 0.5;
-  const pad = options?.padFraction ?? 0.02;
-  const w = bounds2.maxU - bounds2.minU;
-  const h = bounds2.maxV - bounds2.minV;
-  const padX = w * pad;
-  const padY = h * pad;
-  const vbX = bounds2.minU - padX;
-  const vbY = -(bounds2.maxV + padY);
-  const vbW = w + 2 * padX;
-  const vbH = h + 2 * padY;
-  const parts = [];
-  parts.push(
-    `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX.toFixed(4)} ${vbY.toFixed(4)} ${vbW.toFixed(4)} ${vbH.toFixed(4)}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round">`
-  );
-  for (const seg of segments) {
-    if (seg.points2D.length < 2) continue;
-    const d = seg.points2D.map((p) => `${p.u.toFixed(4)},${(-p.v).toFixed(4)}`).join(" ");
-    parts.push(`<polyline points="${d}"/>`);
-  }
-  parts.push(`</svg>
-`);
-  return parts.join("\n");
+
+// src/io/download.ts
+function stampName(fileName, date = /* @__PURE__ */ new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp = `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}`;
+  const dot = fileName.lastIndexOf(".");
+  return dot > 0 ? `${fileName.slice(0, dot)}-${stamp}${fileName.slice(dot)}` : `${fileName}-${stamp}`;
+}
+var MIME = {
+  dxf: "application/dxf",
+  svg: "image/svg+xml",
+  json: "application/json",
+  obj: "model/obj",
+  ifc: "application/x-step",
+  csv: "text/csv",
+  txt: "text/plain",
+  png: "image/png",
+  stl: "model/stl"
+};
+function download(data, fileName, opts = {}) {
+  const name = opts.stamp ? stampName(fileName) : fileName;
+  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  const blob = data instanceof Blob ? data : new Blob([data], { type: opts.type ?? MIME[ext] ?? "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 6e4);
 }
 
 // src/io/IfcFile.ts
@@ -19757,7 +18561,7 @@ var DEFAULT_STYLE = {
   doubleSided: true,
   visible: true
 };
-var Scene3 = class _Scene {
+var Scene = class _Scene {
   constructor() {
     this.objects = /* @__PURE__ */ new Map();
     /** Per-scene, reset by clear(): see genId. */
@@ -20246,6 +19050,2016 @@ function createParams(schema) {
 }
 function createLayout(folders) {
   return { folders };
+}
+
+// src/bim/adjacency.ts
+function boxOf(positions) {
+  if (!positions.length) return null;
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      const v = positions[i + k];
+      if (v < min[k]) min[k] = v;
+      if (v > max[k]) max[k] = v;
+    }
+  }
+  return { min, max };
+}
+function share(aMin, aMax, bMin, bMax) {
+  return Math.min(aMax, bMax) - Math.max(aMin, bMin);
+}
+function contactBetween(a, b, opts = {}) {
+  const tol = opts.tolerance ?? 0.05;
+  const up = opts.up ?? 2;
+  const gaps = [0, 1, 2].map((k) => share(a.min[k], a.max[k], b.min[k], b.max[k]));
+  if (gaps.some((g) => g < -tol)) return null;
+  const flat = [0, 1, 2].filter((k) => k !== up);
+  const area = flat.reduce((p, k) => p * Math.max(0, gaps[k]), 1);
+  const footprint = (box) => flat.reduce((p, k) => p * (box.max[k] - box.min[k]), 1);
+  const smaller = Math.min(footprint(a), footprint(b));
+  const overlap = smaller > 0 ? Math.min(1, area / smaller) : 0;
+  const verticalTouch = gaps[up] <= tol;
+  if (verticalTouch) {
+    if (overlap < (opts.minOverlap ?? 0.02)) return null;
+    const aAbove = a.min[up] >= b.max[up] - tol;
+    const bAbove = b.min[up] >= a.max[up] - tol;
+    if (aAbove) return { contact: "supportedBy", overlap };
+    if (bAbove) return { contact: "supports", overlap };
+  }
+  if (flat.some((k) => gaps[k] <= tol)) return { contact: "abuts", overlap };
+  return { contact: "overlaps", overlap };
+}
+function reverse(contact) {
+  return contact === "supports" ? "supportedBy" : contact === "supportedBy" ? "supports" : contact;
+}
+function findAdjacent(elements, opts = {}) {
+  const tol = opts.tolerance ?? 0.05;
+  const up = opts.up ?? 2;
+  const sorted = [...elements].sort((p, q) => p.box.min[up] - q.box.min[up]);
+  const out = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const a = sorted[i];
+    for (let j = i + 1; j < sorted.length; j++) {
+      const b = sorted[j];
+      if (b.box.min[up] > a.box.max[up] + tol) break;
+      const met = contactBetween(a.box, b.box, opts);
+      if (!met) continue;
+      out.push({
+        a: a.id,
+        b: b.id,
+        contact: met.contact,
+        tolerance: tol,
+        overlap: met.overlap
+      });
+    }
+  }
+  return out;
+}
+function neighboursOf(id, all) {
+  const out = [];
+  for (const r of all) {
+    if (r.a === id) out.push({ id: r.b, contact: r.contact, overlap: r.overlap, tolerance: r.tolerance });
+    else if (r.b === id) out.push({ id: r.a, contact: reverse(r.contact), overlap: r.overlap, tolerance: r.tolerance });
+  }
+  return out;
+}
+
+// src/collab/SharedStore.ts
+var PALETTE = ["#e8590c", "#1c7ed6", "#2f9e44", "#ae3ec9", "#f08c00", "#0ca678", "#d6336c", "#4263eb"];
+function collabColor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = h * 31 + id.charCodeAt(i) | 0;
+  return PALETTE[Math.abs(h) % PALETTE.length];
+}
+function randomId() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
+var SharedStore = class {
+  constructor(opts) {
+    /** This client (tab). */
+    this.session = randomId();
+    this.records = /* @__PURE__ */ new Map();
+    /** Keys written here and not yet confirmed by the backend: remote versions wait … */
+    this.pending = /* @__PURE__ */ new Map();
+    /** … here (the newest per key), and the newer of it and ours wins on confirmation. */
+    this.deferred = /* @__PURE__ */ new Map();
+    this._status = "offline";
+    this._user = null;
+    this._presence = [];
+    this.myState = {};
+    this.unsub = null;
+    this.unsubUser = null;
+    this.changeL = /* @__PURE__ */ new Set();
+    this.presenceL = /* @__PURE__ */ new Set();
+    this.statusL = /* @__PURE__ */ new Set();
+    this.userL = /* @__PURE__ */ new Set();
+    this.broadcastL = /* @__PURE__ */ new Set();
+    this.errorL = /* @__PURE__ */ new Set();
+    this.doc = opts.doc;
+    this.adapter = opts.adapter;
+    this.color = opts.color;
+  }
+  /** Load the document and go live. Safe to call again after `disconnect()`. */
+  async connect() {
+    this.setStatus("connecting");
+    this._user = await this.adapter.user();
+    this.unsubUser = this.adapter.onUser?.((u) => {
+      this._user = u;
+      this.announce();
+      for (const l of this.userL) l(u);
+    }) ?? null;
+    this.unsub = this.adapter.subscribe(this.doc, this.session, {
+      record: (rec) => this.receive(rec),
+      presence: (list) => {
+        this._presence = list;
+        for (const l of this.presenceL) l(list);
+      },
+      broadcast: (event, payload, from) => {
+        if (from !== this.session) for (const l of this.broadcastL) l(event, payload, from);
+      },
+      status: (s, d) => this.setStatus(s, d)
+    });
+    try {
+      const all = await this.adapter.load(this.doc);
+      const keys = [];
+      for (const rec of all) if (this.take(rec)) keys.push(rec.key);
+      if (keys.length) this.emit(keys, "remote");
+    } catch (e) {
+      this.setStatus("error", String(e));
+      throw e;
+    }
+    this.announce();
+  }
+  disconnect() {
+    this.unsub?.();
+    this.unsub = null;
+    this.unsubUser?.();
+    this.unsubUser = null;
+    this.setStatus("offline");
+  }
+  // ── records ──
+  get(key) {
+    const r = this.records.get(key);
+    return r && r.value !== null ? r.value : void 0;
+  }
+  has(key) {
+    return this.get(key) !== void 0;
+  }
+  /** Live entries (removed records left out). */
+  entries() {
+    const out = [];
+    for (const [k, r] of this.records) if (r.value !== null) out.push([k, r.value]);
+    return out;
+  }
+  /** Who wrote a key last, and when (backend time). */
+  meta(key) {
+    const r = this.records.get(key);
+    return r && { by: r.by, at: r.at };
+  }
+  /** Write a key: applied here at once, then stored; on failure the stored version comes back. */
+  set(key, value) {
+    const before = this.records.get(key);
+    const ticket = (this.pending.get(key) ?? 0) + 1;
+    this.pending.set(key, ticket);
+    this.records.set(key, { key, value, by: this._user?.id ?? "", at: before?.at ?? 0 });
+    this.emit([key], "local");
+    const settle = () => {
+      if (this.pending.get(key) !== ticket) return false;
+      this.pending.delete(key);
+      const d = this.deferred.get(key);
+      this.deferred.delete(key);
+      return d ? this.take(d) : false;
+    };
+    this.adapter.put(this.doc, key, value).then(
+      (stored) => {
+        this.take(stored, true);
+        if (settle()) this.emit([key], "remote");
+      },
+      (err) => {
+        if (this.pending.get(key) === ticket) {
+          if (before) this.records.set(key, before);
+          else this.records.delete(key);
+          settle();
+          this.emit([key], "remote");
+        }
+        const msg = String(err?.message ?? err);
+        for (const l of this.errorL) l(key, msg);
+      }
+    );
+  }
+  delete(key) {
+    this.set(key, null);
+  }
+  // ── presence, broadcasts ──
+  get presence() {
+    return this._presence;
+  }
+  /** The other clients (this tab left out). */
+  get others() {
+    return this._presence.filter((p) => p.session !== this.session);
+  }
+  /** Merge into this client's presence state and announce it (only when something changed,
+   *  so calling it on every sketch run costs nothing). */
+  setPresence(state) {
+    const next = { ...this.myState, ...state };
+    if (JSON.stringify(next) === JSON.stringify(this.myState)) return;
+    this.myState = next;
+    this.announce();
+  }
+  broadcast(event, payload) {
+    this.adapter.broadcast(this.doc, this.session, event, payload);
+  }
+  // ── user, status ──
+  get user() {
+    return this._user;
+  }
+  get status() {
+    return this._status;
+  }
+  async signIn() {
+    await this.adapter.signIn?.();
+  }
+  async signOut() {
+    await this.adapter.signOut?.();
+  }
+  // ── listeners (each returns its unsubscribe) ──
+  onChange(cb) {
+    this.changeL.add(cb);
+    return () => this.changeL.delete(cb);
+  }
+  onPresence(cb) {
+    this.presenceL.add(cb);
+    return () => this.presenceL.delete(cb);
+  }
+  onStatus(cb) {
+    this.statusL.add(cb);
+    return () => this.statusL.delete(cb);
+  }
+  onUser(cb) {
+    this.userL.add(cb);
+    return () => this.userL.delete(cb);
+  }
+  onBroadcast(cb) {
+    this.broadcastL.add(cb);
+    return () => this.broadcastL.delete(cb);
+  }
+  /** A write the backend refused (e.g. not signed in / not an editor). */
+  onError(cb) {
+    this.errorL.add(cb);
+    return () => this.errorL.delete(cb);
+  }
+  // ── internals ──
+  receive(rec) {
+    if (this.take(rec)) this.emit([rec.key], "remote");
+  }
+  /** Take a backend version unless this one is as new (or newer); while a local write of the
+   *  key is pending, remote versions are held back (deferred). */
+  take(rec, own = false) {
+    if (!own && this.pending.has(rec.key)) {
+      const d = this.deferred.get(rec.key);
+      if (!d || d.at < rec.at) this.deferred.set(rec.key, rec);
+      return false;
+    }
+    const cur = this.records.get(rec.key);
+    if (cur && (own ? cur.at > rec.at : cur.at >= rec.at)) return false;
+    this.records.set(rec.key, rec);
+    return true;
+  }
+  emit(keys, source) {
+    for (const l of this.changeL) l(keys, source);
+  }
+  setStatus(s, detail) {
+    this._status = s;
+    for (const l of this.statusL) l(s, detail);
+  }
+  announce() {
+    if (!this.unsub) return;
+    const user = this._user ?? { id: `guest-${this.session}`, name: "Guest" };
+    this.adapter.setPresence(this.doc, { session: this.session, user, color: this.color ?? collabColor(user.id), state: this.myState });
+  }
+};
+function memoryAdapter(opts = {}) {
+  const docs = /* @__PURE__ */ new Map();
+  const subs = /* @__PURE__ */ new Map();
+  const presence = /* @__PURE__ */ new Map();
+  let clock = 0;
+  const now = () => clock = Math.max(clock + 1, Date.now());
+  const docOf = (m, doc) => m.get(doc) ?? m.set(doc, /* @__PURE__ */ new Map()).get(doc);
+  const make = (user) => ({
+    async load(doc) {
+      return [...docOf(docs, doc).values()].map((r) => ({ ...r }));
+    },
+    async put(doc, key, value) {
+      const rec = { key, value: value ?? null, by: user?.id ?? "guest", at: now() };
+      docOf(docs, doc).set(key, rec);
+      queueMicrotask(() => {
+        for (const s of docOf(subs, doc).values()) s.record({ ...rec });
+      });
+      return { ...rec };
+    },
+    subscribe(doc, session, on) {
+      docOf(subs, doc).set(session, on);
+      queueMicrotask(() => on.status("online"));
+      return () => {
+        docOf(subs, doc).delete(session);
+        docOf(presence, doc).delete(session);
+        const list = [...docOf(presence, doc).values()];
+        for (const s of docOf(subs, doc).values()) s.presence(list);
+      };
+    },
+    setPresence(doc, p) {
+      docOf(presence, doc).set(p.session, p);
+      const list = [...docOf(presence, doc).values()];
+      queueMicrotask(() => {
+        for (const s of docOf(subs, doc).values()) s.presence(list);
+      });
+    },
+    broadcast(doc, session, event, payload) {
+      queueMicrotask(() => {
+        for (const [sid, s] of docOf(subs, doc)) if (sid !== session) s.broadcast(event, payload, session);
+      });
+    },
+    async user() {
+      return user;
+    }
+  });
+  return Object.assign(make(opts.user ?? null), { withUser: make });
+}
+var DEV_ENDPOINT = "/__tekto/collab";
+var DEV_NAME_KEY = "tekto.collab.name";
+var DEV_ID_KEY = "tekto.collab.id";
+function devServerAdapter(opts = {}) {
+  const base = opts.endpoint ?? DEV_ENDPOINT;
+  const userL = /* @__PURE__ */ new Set();
+  const store = (k, v) => {
+    try {
+      if (v !== void 0) localStorage.setItem(k, v);
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  };
+  const currentUser = () => {
+    const name = store(DEV_NAME_KEY);
+    if (!name) return null;
+    const id = store(DEV_ID_KEY) ?? store(DEV_ID_KEY, `dev-${randomId()}`);
+    return { id, name };
+  };
+  const post = async (path, body) => {
+    const r = await fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+    return r.json();
+  };
+  return {
+    async load(doc) {
+      const r = await fetch(`${base}/records?doc=${encodeURIComponent(doc)}`);
+      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+      return r.json();
+    },
+    put(doc, key, value) {
+      return post("/put", { doc, key, value: value ?? null, by: currentUser()?.name ?? "guest" });
+    },
+    subscribe(doc, session, on) {
+      let es = null;
+      let closed = false;
+      const open = () => {
+        on.status("connecting");
+        es = new EventSource(`${base}/events?doc=${encodeURIComponent(doc)}&session=${session}`);
+        es.addEventListener("open", () => on.status("online"));
+        es.addEventListener("record", (e) => on.record(JSON.parse(e.data)));
+        es.addEventListener("presence", (e) => on.presence(JSON.parse(e.data)));
+        es.addEventListener("broadcast", (e) => {
+          const m = JSON.parse(e.data);
+          on.broadcast(m.event, m.payload, m.from);
+        });
+        es.addEventListener("error", () => {
+          if (!closed) on.status("connecting", "reconnecting");
+        });
+      };
+      open();
+      return () => {
+        closed = true;
+        es?.close();
+        on.status("offline");
+      };
+    },
+    setPresence(doc, presence) {
+      void post("/presence", { doc, presence }).catch(() => {
+      });
+    },
+    broadcast(doc, session, event, payload) {
+      void post("/broadcast", { doc, from: session, event, payload }).catch(() => {
+      });
+    },
+    async user() {
+      return currentUser();
+    },
+    async signIn() {
+      const name = window.prompt("Your name (shown to the others)", store(DEV_NAME_KEY) ?? "");
+      if (!name) return;
+      store(DEV_NAME_KEY, name.trim());
+      const u = currentUser();
+      for (const l of userL) l(u);
+    },
+    async signOut() {
+      try {
+        localStorage.removeItem(DEV_NAME_KEY);
+      } catch {
+      }
+      for (const l of userL) l(null);
+    },
+    onUser(cb) {
+      userL.add(cb);
+      return () => userL.delete(cb);
+    }
+  };
+}
+function supabaseUser(u) {
+  if (!u) return null;
+  const m = u.user_metadata ?? {};
+  return { id: m.user_name ?? m.preferred_username ?? u.email ?? u.id, name: m.full_name ?? m.name ?? m.user_name ?? u.email ?? "user", avatarUrl: m.avatar_url };
+}
+function fromRow(row) {
+  return { key: row.key, value: row.value ?? null, by: row.by ?? "", at: Date.parse(row.at) };
+}
+function supabaseAdapter(client, opts = {}) {
+  const table = opts.table ?? "tekto_records";
+  const channels = /* @__PURE__ */ new Map();
+  const joined = /* @__PURE__ */ new Set();
+  const lastPresence = /* @__PURE__ */ new Map();
+  return {
+    async load(doc) {
+      const { data, error } = await client.from(table).select("key,value,by,at").eq("doc", doc);
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(fromRow);
+    },
+    async put(doc, key, value) {
+      const { data, error } = await client.from(table).upsert({ doc, key, value: value ?? null }, { onConflict: "doc,key" }).select("key,value,by,at").single();
+      if (error) throw new Error(error.message);
+      return fromRow(data);
+    },
+    subscribe(doc, session, on) {
+      on.status("connecting");
+      const ch = client.channel(`tekto:${doc}`, { config: { presence: { key: session }, broadcast: { self: false } } });
+      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `doc=eq.${doc}` }, (p) => {
+        if (p.new?.key) on.record(fromRow(p.new));
+      });
+      ch.on("presence", { event: "sync" }, () => {
+        const state = ch.presenceState();
+        on.presence(Object.values(state).map((metas) => metas[metas.length - 1]).filter(Boolean));
+      });
+      ch.on("broadcast", { event: "tekto" }, (m) => on.broadcast(m.payload.event, m.payload.payload, m.payload.from));
+      ch.subscribe((status, err) => {
+        if (status === "SUBSCRIBED") {
+          joined.add(doc);
+          on.status("online");
+          const p = lastPresence.get(doc);
+          if (p) void ch.track(p);
+        } else if (status === "CLOSED") {
+          joined.delete(doc);
+          on.status("offline");
+        } else on.status(status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "error" : "connecting", err?.message ?? status);
+      });
+      channels.set(doc, ch);
+      return () => {
+        channels.delete(doc);
+        joined.delete(doc);
+        void client.removeChannel(ch);
+        on.status("offline");
+      };
+    },
+    setPresence(doc, presence) {
+      lastPresence.set(doc, presence);
+      if (joined.has(doc)) void channels.get(doc)?.track(presence);
+    },
+    broadcast(doc, session, event, payload) {
+      void channels.get(doc)?.send({ type: "broadcast", event: "tekto", payload: { event, payload, from: session } });
+    },
+    async user() {
+      return supabaseUser((await client.auth.getUser()).data.user);
+    },
+    async signIn() {
+      await client.auth.signInWithOAuth({ provider: opts.provider ?? "github", options: { redirectTo: location.href } });
+    },
+    async signOut() {
+      await client.auth.signOut();
+    },
+    onUser(cb) {
+      const { data } = client.auth.onAuthStateChange((_e, s) => cb(supabaseUser(s?.user)));
+      return () => data.subscription.unsubscribe();
+    }
+  };
+}
+
+// src/io/IdBufferHiddenLine.ts
+var THREE = __toESM(require("three"));
+var ID_VERTEX_SHADER = (
+  /* glsl */
+  `
+  attribute float objectId;
+  varying float vId;
+  void main() {
+    vId = objectId;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+);
+var ID_FRAGMENT_SHADER = (
+  /* glsl */
+  `
+  precision highp float;
+  varying float vId;
+  void main() {
+    int id = int(vId + 0.5);
+    float r = float(id - (id / 256) * 256) / 255.0;
+    int id2 = id / 256;
+    float g = float(id2 - (id2 / 256) * 256) / 255.0;
+    int id3 = id2 / 256;
+    float b = float(id3 - (id3 / 256) * 256) / 255.0;
+    gl_FragColor = vec4(r, g, b, 1.0);
+  }
+`
+);
+function hiddenLineIdBuffer(positions, indices, edges, _triNormals, view, options) {
+  const resolution = options?.resolution ?? 2048;
+  const debugLayers = options?.debugLayers ?? false;
+  const preserveSet = new Set(options?.preserveLayers ?? []);
+  const occludedLayer = options?.occludedLayer;
+  const upDir = view.upDir ?? new Vec3(0, 0, 1);
+  let fx = view.viewDir.x, fy = view.viewDir.y, fz = view.viewDir.z;
+  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1;
+  fx /= fl;
+  fy /= fl;
+  fz /= fl;
+  let rx = upDir.y * fz - upDir.z * fy;
+  let ry = upDir.z * fx - upDir.x * fz;
+  let rz = upDir.x * fy - upDir.y * fx;
+  const rl = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
+  rx /= rl;
+  ry /= rl;
+  rz /= rl;
+  const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+  function proj(x, y, z) {
+    return {
+      u: x * rx + y * ry + z * rz,
+      v: x * ux + y * uy + z * uz,
+      d: x * fx + y * fy + z * fz
+    };
+  }
+  const nVerts = positions.length / 3;
+  let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+  let minD = Infinity, maxD = -Infinity;
+  for (let i = 0; i < nVerts; i++) {
+    const p = proj(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+    if (p.u < minU) minU = p.u;
+    if (p.u > maxU) maxU = p.u;
+    if (p.v < minV) minV = p.v;
+    if (p.v > maxV) maxV = p.v;
+    if (p.d < minD) minD = p.d;
+    if (p.d > maxD) maxD = p.d;
+  }
+  const margin = Math.max(maxU - minU, maxV - minV) * 0.02;
+  minU -= margin;
+  maxU += margin;
+  minV -= margin;
+  maxV += margin;
+  const depthRange = maxD - minD || 1;
+  minD -= depthRange * 0.1;
+  maxD += depthRange * 0.1;
+  const nTri = indices.length / 3;
+  const scene = new THREE.Scene();
+  const camZ = -minD + 1;
+  const farZ = -minD - -maxD + 2;
+  const camera = new THREE.OrthographicCamera(minU, maxU, maxV, minV, 0.5, farZ);
+  camera.position.set(0, 0, camZ);
+  camera.lookAt(0, 0, camZ - 1);
+  const triPositions = new Float32Array(nTri * 9);
+  const objectIds = new Float32Array(nTri * 3);
+  for (let ti = 0; ti < nTri; ti++) {
+    const origId = ti + 1;
+    for (let vi = 0; vi < 3; vi++) {
+      const srcVtx = indices[ti * 3 + vi];
+      const p = proj(positions[srcVtx * 3], positions[srcVtx * 3 + 1], positions[srcVtx * 3 + 2]);
+      triPositions[ti * 9 + vi * 3] = p.u;
+      triPositions[ti * 9 + vi * 3 + 1] = p.v;
+      triPositions[ti * 9 + vi * 3 + 2] = -p.d;
+      objectIds[ti * 3 + vi] = origId;
+    }
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(triPositions, 3));
+  geom.setAttribute("objectId", new THREE.BufferAttribute(objectIds, 1));
+  const material = new THREE.ShaderMaterial({
+    vertexShader: ID_VERTEX_SHADER,
+    fragmentShader: ID_FRAGMENT_SHADER,
+    side: THREE.DoubleSide,
+    // let GPU depth test decide, we already culled back-faces
+    depthTest: true,
+    depthWrite: true
+  });
+  scene.add(new THREE.Mesh(geom, material));
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  renderer.setSize(resolution, resolution);
+  renderer.setClearColor(new THREE.Color(0, 0, 0), 0);
+  const renderTarget = new THREE.WebGLRenderTarget(resolution, resolution, {
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType
+  });
+  renderer.setRenderTarget(renderTarget);
+  renderer.clear();
+  renderer.render(scene, camera);
+  const pixels = new Uint8Array(resolution * resolution * 4);
+  renderer.readRenderTargetPixels(renderTarget, 0, 0, resolution, resolution, pixels);
+  renderer.setRenderTarget(null);
+  renderTarget.dispose();
+  geom.dispose();
+  material.dispose();
+  try {
+    renderer.forceContextLoss();
+  } catch {
+  }
+  renderer.dispose();
+  function readId(px, py) {
+    if (px < 0 || px >= resolution || py < 0 || py >= resolution) return 0;
+    const idx = (py * resolution + px) * 4;
+    const a = pixels[idx + 3];
+    if (a === 0) return 0;
+    return pixels[idx] + (pixels[idx + 1] << 8) + (pixels[idx + 2] << 16);
+  }
+  function toPixel(u, v) {
+    const px = (u - minU) / (maxU - minU) * resolution;
+    const py = (v - minV) / (maxV - minV) * resolution;
+    return [px, py];
+  }
+  const result = [];
+  for (const edge of edges) {
+    let isVisibleAt2 = function(px, py) {
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          const id = readId(px + ox, py + oy);
+          if (id === 0) return true;
+          if (adjSet != null && adjSet.has(id - 1)) return true;
+        }
+      }
+      return false;
+    }, _emitRun2 = function(visible, t0, t1) {
+      if (t1 - t0 < 1e-7) return;
+      const u0 = ea.u + (eb.u - ea.u) * t0;
+      const v0 = ea.v + (eb.v - ea.v) * t0;
+      const u1 = ea.u + (eb.u - ea.u) * t1;
+      const v1 = ea.v + (eb.v - ea.v) * t1;
+      if (preserveSet.has(edge.layer)) {
+        if (visible) result.push({ u0, v0, u1, v1, layer: edge.layer });
+      } else if (visible) {
+        const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
+        result.push({ u0, v0, u1, v1, layer: lyr });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0, v0, u1, v1, layer: debugLayers ? "occluded" : occludedLayer });
+      }
+    };
+    var isVisibleAt = isVisibleAt2, _emitRun = _emitRun2;
+    const ea = proj(edge.ax, edge.ay, edge.az);
+    const eb = proj(edge.bx, edge.by, edge.bz);
+    const adjN = edge.adjNormals;
+    let isSilhouette = false;
+    if (adjN && adjN.length > 1) {
+      const hasFrontFace = adjN.some((n) => n[0] * fx + n[1] * fy + n[2] * fz <= 0.087);
+      const hasBackFace = adjN.some((n) => n[0] * fx + n[1] * fy + n[2] * fz > 0.087);
+      if (!hasFrontFace) {
+        if (debugLayers) {
+          result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: "occluded" });
+        } else if (occludedLayer) {
+          result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: occludedLayer });
+        }
+        continue;
+      }
+      isSilhouette = hasFrontFace && hasBackFace;
+    }
+    const [px0, py0] = toPixel(ea.u, ea.v);
+    const [px1, py1] = toPixel(eb.u, eb.v);
+    const dx = px1 - px0, dy = py1 - py0;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    if (steps < 1) {
+      const id = readId(Math.round(px0), Math.round(py0));
+      const adj2 = edge.adjTris;
+      const isVis = id === 0 || adj2 != null && adj2.indexOf(id - 1) >= 0;
+      if (preserveSet.has(edge.layer)) {
+        if (isVis) result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: edge.layer });
+      } else if (isVis) {
+        const lyr = debugLayers ? isSilhouette ? "silhouette" : "visible" : edge.layer;
+        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: lyr });
+      } else if (debugLayers || occludedLayer) {
+        result.push({ u0: ea.u, v0: ea.v, u1: eb.u, v1: eb.v, layer: debugLayers ? "occluded" : occludedLayer });
+      }
+      continue;
+    }
+    const adj = edge.adjTris;
+    const adjSet = adj ? new Set(adj) : null;
+    const nSamples = Math.ceil(steps);
+    let prevVis = false;
+    let runStart = 0;
+    let firstSample = true;
+    for (let s = 0; s <= nSamples; s++) {
+      const t = Math.min(s / nSamples, 1);
+      const px = Math.round(px0 + dx * t);
+      const py = Math.round(py0 + dy * t);
+      const isVis = isVisibleAt2(px, py);
+      if (firstSample) {
+        prevVis = isVis;
+        runStart = t;
+        firstSample = false;
+        continue;
+      }
+      if (isVis !== prevVis) {
+        const tEnd = t;
+        _emitRun2(prevVis, runStart, tEnd);
+        runStart = tEnd;
+        prevVis = isVis;
+      }
+    }
+    _emitRun2(prevVis, runStart, 1);
+  }
+  if (options?.flipU) {
+    for (const s of result) {
+      s.u0 = -s.u0;
+      s.u1 = -s.u1;
+    }
+  }
+  return result;
+}
+
+// src/io/DxfExporter.ts
+var DxfExporter = class {
+  constructor() {
+    this._tris = [];
+    /** Per-triangle face normal (parallel to _tris). null = normals unavailable. */
+    this._triNormals = null;
+    this._edges = [];
+    /** Edges whose visibility depends on view direction (silhouette candidates). */
+    this._silhouetteEdges = [];
+    this._layers = /* @__PURE__ */ new Map();
+  }
+  /** Define a layer with color and line type. */
+  layer(def) {
+    this._layers.set(def.name, def);
+    return this;
+  }
+  /**
+   * Add a triangulated mesh. Extracts triangles for occlusion and
+   * feature / boundary edges for drawing.
+   */
+  addMesh(positions, indices, options) {
+    const layer = options?.layer ?? "0";
+    const featAngle = options?.featureAngle ?? 30;
+    const boundary = options?.boundary ?? true;
+    const softEdgeLayer = options?.softEdgeLayer;
+    const silhouettes = options?.silhouettes ?? false;
+    const cosThresh = Math.cos(featAngle * Math.PI / 180);
+    const nTri = indices.length / 3;
+    const triBase = this._tris.length;
+    for (let i = 0; i < nTri; i++) {
+      const i0 = indices[i * 3] * 3, i1 = indices[i * 3 + 1] * 3, i2 = indices[i * 3 + 2] * 3;
+      this._tris.push({
+        ax: positions[i0],
+        ay: positions[i0 + 1],
+        az: positions[i0 + 2],
+        bx: positions[i1],
+        by: positions[i1 + 1],
+        bz: positions[i1 + 2],
+        cx: positions[i2],
+        cy: positions[i2 + 1],
+        cz: positions[i2 + 2]
+      });
+    }
+    const QUANT = 1e6;
+    const posKey = (vi) => {
+      const o = vi * 3;
+      return `${Math.round(positions[o] * QUANT)}:${Math.round(positions[o + 1] * QUANT)}:${Math.round(positions[o + 2] * QUANT)}`;
+    };
+    const weldMap = /* @__PURE__ */ new Map();
+    const weld = (vi) => {
+      const k = posKey(vi);
+      const existing = weldMap.get(k);
+      if (existing !== void 0) return existing;
+      weldMap.set(k, vi);
+      return vi;
+    };
+    const vtxTris = /* @__PURE__ */ new Map();
+    const edgeMap = /* @__PURE__ */ new Map();
+    const eKey = (a, b) => a < b ? `${a}:${b}` : `${b}:${a}`;
+    for (let i = 0; i < nTri; i++) {
+      const a = weld(indices[i * 3]), b = weld(indices[i * 3 + 1]), c = weld(indices[i * 3 + 2]);
+      for (const v of [a, b, c]) {
+        const arr = vtxTris.get(v);
+        if (arr) arr.push(i);
+        else vtxTris.set(v, [i]);
+      }
+      for (const [p, q] of [[a, b], [b, c], [c, a]]) {
+        const k = eKey(p, q);
+        const arr = edgeMap.get(k) ?? [];
+        arr.push(i);
+        edgeMap.set(k, arr);
+      }
+    }
+    if (!this._triNormals) this._triNormals = new Array(this._tris.length - nTri).fill([0, 0, 0]);
+    const fn = [];
+    for (let i = 0; i < nTri; i++) {
+      const i0 = indices[i * 3] * 3, i1 = indices[i * 3 + 1] * 3, i2 = indices[i * 3 + 2] * 3;
+      const ux = positions[i1] - positions[i0], uy = positions[i1 + 1] - positions[i0 + 1], uz = positions[i1 + 2] - positions[i0 + 2];
+      const vx = positions[i2] - positions[i0], vy = positions[i2 + 1] - positions[i0 + 1], vz = positions[i2 + 2] - positions[i0 + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+      const n = [nx / l, ny / l, nz / l];
+      fn.push(n);
+      this._triNormals.push(n);
+    }
+    for (const [key, tris] of edgeMap) {
+      const [as, bs] = key.split(":");
+      const aVtx = +as, bVtx = +bs;
+      const ai = aVtx * 3, bi = bVtx * 3;
+      let include = false;
+      let kind;
+      let edgeLayer = layer;
+      let asSilhouette = false;
+      const uniqueNormals = [];
+      for (const t of tris) {
+        const n = fn[t];
+        const isDup = uniqueNormals.some((u) => {
+          const nu = fn[u];
+          return n[0] * nu[0] + n[1] * nu[1] + n[2] * nu[2] > 0.999;
+        });
+        if (!isDup) uniqueNormals.push(t);
+      }
+      if (tris.length === 1) {
+        if (boundary) {
+          include = true;
+          kind = "boundary";
+        }
+      } else if (uniqueNormals.length === 1) {
+        if (!silhouettes && softEdgeLayer) {
+          include = true;
+          kind = "feature";
+          edgeLayer = softEdgeLayer;
+        }
+      } else if (featAngle < 0) {
+        include = true;
+        kind = "feature";
+      } else {
+        let minDot = 1;
+        for (let i = 0; i < uniqueNormals.length; i++) {
+          for (let j = i + 1; j < uniqueNormals.length; j++) {
+            const ni = fn[uniqueNormals[i]], nj = fn[uniqueNormals[j]];
+            const d = ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2];
+            if (d < minDot) minDot = d;
+          }
+        }
+        if (minDot < cosThresh) {
+          include = true;
+          kind = "feature";
+        } else if (silhouettes) {
+          include = true;
+          kind = "silhouette";
+          asSilhouette = true;
+        } else if (softEdgeLayer) {
+          include = true;
+          kind = "feature";
+          edgeLayer = softEdgeLayer;
+        }
+      }
+      if (include) {
+        const ring1 = /* @__PURE__ */ new Set();
+        const aTris = vtxTris.get(aVtx);
+        if (aTris) for (const t of aTris) ring1.add(t);
+        const bTris = vtxTris.get(bVtx);
+        if (bTris) for (const t of bTris) ring1.add(t);
+        const ring2 = /* @__PURE__ */ new Set();
+        ring1.forEach((t) => ring2.add(t));
+        ring1.forEach((t) => {
+          const va = weld(indices[t * 3]), vb = weld(indices[t * 3 + 1]), vc = weld(indices[t * 3 + 2]);
+          for (const v of [va, vb, vc]) {
+            const vt = vtxTris.get(v);
+            if (vt) for (const tt of vt) ring2.add(tt);
+          }
+        });
+        const adjArr = [];
+        ring2.forEach((t) => adjArr.push(triBase + t));
+        const edge = {
+          ax: positions[ai],
+          ay: positions[ai + 1],
+          az: positions[ai + 2],
+          bx: positions[bi],
+          by: positions[bi + 1],
+          bz: positions[bi + 2],
+          layer: edgeLayer,
+          kind,
+          adjTris: adjArr,
+          adjNormals: uniqueNormals.map((t) => fn[t]),
+          meshTriRange: [triBase, triBase + nTri]
+        };
+        if (asSilhouette) {
+          const n0 = fn[uniqueNormals[0]], n1 = fn[uniqueNormals[1]];
+          this._silhouetteEdges.push({ ...edge, n0x: n0[0], n0y: n0[1], n0z: n0[2], n1x: n1[0], n1y: n1[1], n1z: n1[2] });
+        } else {
+          this._edges.push(edge);
+        }
+      }
+    }
+    return this;
+  }
+  /** Add triangles for occlusion only — edges NOT drawn. */
+  addOccluder(positions, indices) {
+    const nTri = indices.length / 3;
+    for (let i = 0; i < nTri; i++) {
+      const i0 = indices[i * 3] * 3, i1 = indices[i * 3 + 1] * 3, i2 = indices[i * 3 + 2] * 3;
+      this._tris.push({
+        ax: positions[i0],
+        ay: positions[i0 + 1],
+        az: positions[i0 + 2],
+        bx: positions[i1],
+        by: positions[i1 + 1],
+        bz: positions[i1 + 2],
+        cx: positions[i2],
+        cy: positions[i2 + 1],
+        cz: positions[i2 + 2]
+      });
+    }
+    return this;
+  }
+  /** Add a polyline as a sequence of edges. */
+  addPolyline(pts, options) {
+    const layer = options?.layer ?? "0";
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      this._edges.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, layer });
+    }
+    return this;
+  }
+  /** Add a single edge. */
+  addEdge(a, b, options) {
+    this._edges.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, layer: options?.layer ?? "0" });
+    return this;
+  }
+  /**
+   * Add geometry from a BSP tree. Extracts occluder triangles, feature/boundary
+   * edges, and silhouette edge candidates (view-dependent, resolved at export).
+   *
+   * BSP polygons have reliable normals, enabling back-face culling and silhouette
+   * detection in the hidden-line pass.
+   */
+  addBspTree(bsp, options) {
+    const layer = options?.layer ?? "0";
+    const featAngle = options?.featureAngle ?? 30;
+    const boundary = options?.boundary ?? true;
+    const cosThresh = Math.cos(featAngle * Math.PI / 180);
+    const polys = bsp.toPolygons();
+    if (!this._triNormals) this._triNormals = new Array(this._tris.length).fill([0, 0, 0]);
+    for (const p of polys) {
+      const vs = p.vertices;
+      if (vs.length < 3) continue;
+      const n = p.plane.normal;
+      const nArr = [n.x, n.y, n.z];
+      for (let j = 1; j < vs.length - 1; j++) {
+        this._tris.push({
+          ax: vs[0].x,
+          ay: vs[0].y,
+          az: vs[0].z,
+          bx: vs[j].x,
+          by: vs[j].y,
+          bz: vs[j].z,
+          cx: vs[j + 1].x,
+          cy: vs[j + 1].y,
+          cz: vs[j + 1].z
+        });
+        this._triNormals.push(nArr);
+      }
+    }
+    const QUANT = 1e5;
+    const vKey = (v) => `${Math.round(v.x * QUANT)}:${Math.round(v.y * QUANT)}:${Math.round(v.z * QUANT)}`;
+    const edgeMap = /* @__PURE__ */ new Map();
+    for (let pi = 0; pi < polys.length; pi++) {
+      const vs = polys[pi].vertices;
+      for (let i = 0; i < vs.length; i++) {
+        const j = (i + 1) % vs.length;
+        const ka = vKey(vs[i]), kb = vKey(vs[j]);
+        const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+        let entry = edgeMap.get(key);
+        if (!entry) {
+          entry = { a: vs[i], b: vs[j], pis: [] };
+          edgeMap.set(key, entry);
+        }
+        entry.pis.push(pi);
+      }
+    }
+    for (const entry of edgeMap.values()) {
+      const { a, b, pis } = entry;
+      const ea = { ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, layer };
+      if (pis.length === 1) {
+        if (boundary) this._edges.push(ea);
+      } else if (pis.length >= 2) {
+        const n0 = polys[pis[0]].plane.normal;
+        const n1 = polys[pis[1]].plane.normal;
+        const dot = n0.x * n1.x + n0.y * n1.y + n0.z * n1.z;
+        if (featAngle < 0 || dot < cosThresh) {
+          this._edges.push(ea);
+        } else {
+          this._silhouetteEdges.push({
+            ...ea,
+            n0x: n0.x,
+            n0y: n0.y,
+            n0z: n0.z,
+            n1x: n1.x,
+            n1y: n1.y,
+            n1z: n1.z
+          });
+        }
+      }
+    }
+    return this;
+  }
+  /** Returns a serializable request object for Web Worker hidden-line computation. */
+  toWorkerRequest(view, options) {
+    const trisFlat = [];
+    for (const t of this._tris) trisFlat.push(t.ax, t.ay, t.az, t.bx, t.by, t.bz, t.cx, t.cy, t.cz);
+    const triNormalsFlat = this._triNormals ? this._triNormals.flatMap((n) => n) : void 0;
+    const upDir = view.upDir ?? new Vec3(0, 0, 1);
+    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
+    return {
+      trisFlat,
+      triNormalsFlat,
+      edges: [...allEdges],
+      layers: [...this._layers.values()],
+      viewDir: [view.viewDir.x, view.viewDir.y, view.viewDir.z],
+      upDir: [upDir.x, upDir.y, upDir.z],
+      scale: options?.scale ?? 1e3,
+      precision: options?.precision ?? _defaultPrecision(options?.scale ?? 1e3),
+      depthBias: options?.depthBias
+    };
+  }
+  /** Return raw projected segments with layer classification (for live preview). */
+  toSegments(view, options) {
+    const bias = options?.depthBias;
+    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
+    if (options?.debugLayers) {
+      return _hiddenLineDebug(this._tris, allEdges, view, this._triNormals, bias);
+    }
+    if (options?.hiddenLine !== false) {
+      return _hiddenLine(this._tris, allEdges, view, void 0, this._triNormals, bias);
+    }
+    const upDir = view.upDir ?? new Vec3(0, 0, 1);
+    const b = _basis(view.viewDir, upDir);
+    const segs = [];
+    for (const e of allEdges) {
+      const u0 = e.ax * b.rx + e.ay * b.ry + e.az * b.rz;
+      const v0 = e.ax * b.ux + e.ay * b.uy + e.az * b.uz;
+      const u1 = e.bx * b.rx + e.by * b.ry + e.bz * b.rz;
+      const v1 = e.bx * b.ux + e.by * b.uy + e.bz * b.uz;
+      const du = u1 - u0, dv = v1 - v0;
+      if (du * du + dv * dv < 1e-12) continue;
+      segs.push({ u0, v0, u1, v1, layer: e.layer });
+    }
+    return segs;
+  }
+  /** Project edges and write DXF. Runs hidden-line removal unless hiddenLine=false. */
+  toDxf(view, options) {
+    const scale = options?.scale ?? 1e3;
+    const prec = options?.precision ?? _defaultPrecision(scale);
+    const doHL = options?.hiddenLine !== false;
+    const bias = options?.depthBias ?? 0.01;
+    if (options?.debugLayers) {
+      const allEdges2 = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
+      const debugSegs = _hiddenLineDebug(this._tris, allEdges2, view, this._triNormals, bias);
+      const debugLayerDefs = [
+        ...this._layers.values(),
+        { name: "visible", color: 3 },
+        // green
+        { name: "occluded", color: 1 },
+        // red
+        { name: "feature", color: 5 },
+        // blue
+        { name: "boundary", color: 2 },
+        // yellow
+        { name: "silhouette", color: 4 }
+        // cyan
+      ];
+      return _writeDxf(debugSegs, debugLayerDefs, scale, prec);
+    }
+    if (doHL) {
+      const allEdges2 = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
+      const segs2 = _hiddenLine(this._tris, allEdges2, view, void 0, this._triNormals, bias);
+      return _writeDxf(segs2, [...this._layers.values()], scale, prec);
+    }
+    const upDir = view.upDir ?? new Vec3(0, 0, 1);
+    const b = _basis(view.viewDir, upDir);
+    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
+    const segs = [];
+    for (const e of allEdges) {
+      const u0 = e.ax * b.rx + e.ay * b.ry + e.az * b.rz;
+      const v0 = e.ax * b.ux + e.ay * b.uy + e.az * b.uz;
+      const u1 = e.bx * b.rx + e.by * b.ry + e.bz * b.rz;
+      const v1 = e.bx * b.ux + e.by * b.uy + e.bz * b.uz;
+      const du = u1 - u0, dv = v1 - v0;
+      if (du * du + dv * dv < 1e-12) continue;
+      segs.push({ u0, v0, u1, v1, layer: e.layer });
+    }
+    return _writeDxf(segs, [...this._layers.values()], scale, prec);
+  }
+  /**
+   * GPU-accelerated hidden-line removal using ID buffer rendering.
+   * Returns projected segments — same output as toSegments() but uses the GPU
+   * for visibility, which handles intersecting/overlapping meshes naturally.
+   * Requires Three.js.
+   */
+  toSegmentsGpu(view, options) {
+    const allEdges = _withSilhouettes(this._edges, this._silhouetteEdges, view.viewDir);
+    const nTri = this._tris.length;
+    const positions = new Float32Array(nTri * 9);
+    const indices = new Uint32Array(nTri * 3);
+    for (let i = 0; i < nTri; i++) {
+      const t = this._tris[i];
+      const o = i * 9;
+      positions[o] = t.ax;
+      positions[o + 1] = t.ay;
+      positions[o + 2] = t.az;
+      positions[o + 3] = t.bx;
+      positions[o + 4] = t.by;
+      positions[o + 5] = t.bz;
+      positions[o + 6] = t.cx;
+      positions[o + 7] = t.cy;
+      positions[o + 8] = t.cz;
+      indices[i * 3] = i * 3;
+      indices[i * 3 + 1] = i * 3 + 1;
+      indices[i * 3 + 2] = i * 3 + 2;
+    }
+    return hiddenLineIdBuffer(positions, indices, allEdges, this._triNormals, view, options);
+  }
+  /**
+   * GPU-accelerated hidden-line DXF export.
+   * Same as toDxf() but uses GPU ID buffer for visibility testing.
+   * Requires Three.js.
+   */
+  toDxfGpu(view, options) {
+    const scale = options?.scale ?? 1e3;
+    const prec = options?.precision ?? _defaultPrecision(scale);
+    const segs = this.toSegmentsGpu(view, {
+      resolution: options?.resolution ?? 4096,
+      debugLayers: options?.debugLayers,
+      flipU: options?.flipU
+    });
+    const layers = [...this._layers.values()];
+    if (options?.debugLayers) {
+      layers.push(
+        { name: "visible", color: 3 },
+        { name: "occluded", color: 1 },
+        { name: "feature", color: 5 },
+        { name: "boundary", color: 2 },
+        { name: "silhouette", color: 4 }
+      );
+    }
+    return _writeDxf(segs, layers, scale, prec);
+  }
+  /** Write DXF from pre-computed segments (e.g. merged from multiple sources). */
+  toDxfFromSegments(segs, options) {
+    return _writeDxf(segs, [...this._layers.values()], options?.scale ?? 1e3, options?.precision ?? _defaultPrecision(options?.scale ?? 1e3));
+  }
+  /** Return edge counts grouped by layer name. Useful for debugging edge classification. */
+  debugEdgeCounts() {
+    const counts = {};
+    for (const e of this._edges) counts[e.layer] = (counts[e.layer] ?? 0) + 1;
+    return counts;
+  }
+  /** Clear all geometry (reuse the exporter for a different view). */
+  clear() {
+    this._tris = [];
+    this._triNormals = null;
+    this._edges = [];
+    this._silhouetteEdges = [];
+    return this;
+  }
+};
+function _defaultPrecision(scale) {
+  return scale >= 100 ? 3 : 6;
+}
+function _withSilhouettes(edges, silhouettes, viewDir) {
+  if (silhouettes.length === 0) return edges;
+  const vx = viewDir.x, vy = viewDir.y, vz = viewDir.z;
+  const result = [...edges];
+  for (const s of silhouettes) {
+    const d0 = s.n0x * vx + s.n0y * vy + s.n0z * vz;
+    const d1 = s.n1x * vx + s.n1y * vy + s.n1z * vz;
+    if (d0 < 0 !== d1 < 0) {
+      result.push(s);
+    }
+  }
+  return result;
+}
+function _basis(viewDir, upDir) {
+  let fx = viewDir.x, fy = viewDir.y, fz = viewDir.z;
+  const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1;
+  fx /= fl;
+  fy /= fl;
+  fz /= fl;
+  let rx = upDir.y * fz - upDir.z * fy;
+  let ry = upDir.z * fx - upDir.x * fz;
+  let rz = upDir.x * fy - upDir.y * fx;
+  const rl = Math.sqrt(rx * rx + ry * ry + rz * rz) || 1;
+  rx /= rl;
+  ry /= rl;
+  rz /= rl;
+  const ux = fy * rz - fz * ry, uy = fz * rx - fx * rz, uz = fx * ry - fy * rx;
+  return { rx, ry, rz, ux, uy, uz, fx, fy, fz };
+}
+function _proj(x, y, z, b) {
+  return {
+    u: x * b.rx + y * b.ry + z * b.rz,
+    v: x * b.ux + y * b.uy + z * b.uz,
+    d: x * b.fx + y * b.fy + z * b.fz
+  };
+}
+var _c2 = (ax, ay, bx, by) => ax * by - ay * bx;
+function _clipTri(p0u, p0v, p1u, p1v, t0u, t0v, t1u, t1v, t2u, t2v) {
+  const du = p1u - p0u, dv = p1v - p0v;
+  let tEn = 0, tEx = 1;
+  const edges = [
+    [t0u, t0v, t1u, t1v],
+    [t1u, t1v, t2u, t2v],
+    [t2u, t2v, t0u, t0v]
+  ];
+  for (const [qu, qv, ru, rv] of edges) {
+    const nx = -(rv - qv), ny = ru - qu;
+    const num = nx * (qu - p0u) + ny * (qv - p0v);
+    const den = nx * du + ny * dv;
+    if (Math.abs(den) < 1e-12) {
+      if (num < -1e-8) return null;
+      continue;
+    }
+    const t = num / den;
+    if (den > 0) tEn = Math.max(tEn, t);
+    else tEx = Math.min(tEx, t);
+    if (tEn > tEx + 1e-8) return null;
+  }
+  tEn = Math.max(0, tEn);
+  tEx = Math.min(1, tEx);
+  return tEn < tEx - 1e-6 ? [tEn, tEx] : null;
+}
+function _subInterval(vis, a, b) {
+  const out = [];
+  for (const [lo, hi] of vis) {
+    if (b <= lo + 1e-7 || a >= hi - 1e-7) {
+      out.push([lo, hi]);
+      continue;
+    }
+    if (a > lo + 1e-7) out.push([lo, a]);
+    if (b < hi - 1e-7) out.push([b, hi]);
+  }
+  return out;
+}
+function processWorkerRequest(req, onProgress) {
+  const tris = [];
+  for (let i = 0; i < req.trisFlat.length; i += 9) {
+    tris.push({
+      ax: req.trisFlat[i],
+      ay: req.trisFlat[i + 1],
+      az: req.trisFlat[i + 2],
+      bx: req.trisFlat[i + 3],
+      by: req.trisFlat[i + 4],
+      bz: req.trisFlat[i + 5],
+      cx: req.trisFlat[i + 6],
+      cy: req.trisFlat[i + 7],
+      cz: req.trisFlat[i + 8]
+    });
+  }
+  let triNormals = null;
+  if (req.triNormalsFlat) {
+    triNormals = [];
+    for (let i = 0; i < req.triNormalsFlat.length; i += 3) {
+      triNormals.push([req.triNormalsFlat[i], req.triNormalsFlat[i + 1], req.triNormalsFlat[i + 2]]);
+    }
+  }
+  const view = {
+    viewDir: new Vec3(req.viewDir[0], req.viewDir[1], req.viewDir[2]),
+    upDir: new Vec3(req.upDir[0], req.upDir[1], req.upDir[2])
+  };
+  const segs = _hiddenLine(tris, req.edges, view, onProgress, triNormals, req.depthBias);
+  return _writeDxf(segs, req.layers, req.scale, req.precision);
+}
+var BVH_LEAF_MAX = 8;
+function _buildBvh2D(stris) {
+  const n = stris.length;
+  const triOrder = new Array(n);
+  for (let i = 0; i < n; i++) triOrder[i] = i;
+  const nodes = [];
+  function build(start, count) {
+    let minU = Infinity, minV = Infinity, maxU = -Infinity, maxV = -Infinity;
+    for (let i = start; i < start + count; i++) {
+      const t = stris[triOrder[i]];
+      if (t.minU < minU) minU = t.minU;
+      if (t.maxU > maxU) maxU = t.maxU;
+      if (t.minV < minV) minV = t.minV;
+      if (t.maxV > maxV) maxV = t.maxV;
+    }
+    if (count <= BVH_LEAF_MAX) {
+      const idx2 = nodes.length;
+      nodes.push({ minU, minV, maxU, maxV, rightOff: 0, start, count });
+      return idx2;
+    }
+    const splitU = maxU - minU >= maxV - minV;
+    const mid = start + (count >> 1);
+    _nthElement(triOrder, start, start + count - 1, mid, stris, splitU);
+    const idx = nodes.length;
+    nodes.push({ minU, minV, maxU, maxV, rightOff: 0, start: 0, count: 0 });
+    build(start, mid - start);
+    const rightIdx = build(mid, start + count - mid);
+    nodes[idx].rightOff = rightIdx - idx;
+    return idx;
+  }
+  if (n > 0) build(0, n);
+  return { nodes, triOrder };
+}
+function _triCentroid(stris, idx, splitU) {
+  const t = stris[idx];
+  return splitU ? t.minU + t.maxU : t.minV + t.maxV;
+}
+function _nthElement(order, lo, hi, nth, stris, splitU) {
+  while (lo < hi) {
+    const mid = lo + hi >> 1;
+    if (_triCentroid(stris, order[lo], splitU) > _triCentroid(stris, order[mid], splitU)) {
+      const tmp = order[lo];
+      order[lo] = order[mid];
+      order[mid] = tmp;
+    }
+    if (_triCentroid(stris, order[lo], splitU) > _triCentroid(stris, order[hi], splitU)) {
+      const tmp = order[lo];
+      order[lo] = order[hi];
+      order[hi] = tmp;
+    }
+    if (_triCentroid(stris, order[mid], splitU) > _triCentroid(stris, order[hi], splitU)) {
+      const tmp = order[mid];
+      order[mid] = order[hi];
+      order[hi] = tmp;
+    }
+    {
+      const tmp = order[mid];
+      order[mid] = order[hi - 1];
+      order[hi - 1] = tmp;
+    }
+    const pivotVal = _triCentroid(stris, order[hi - 1], splitU);
+    let i = lo, j = hi - 1;
+    for (; ; ) {
+      while (_triCentroid(stris, order[++i], splitU) < pivotVal) {
+      }
+      while (_triCentroid(stris, order[--j], splitU) > pivotVal) {
+      }
+      if (i >= j) break;
+      {
+        const tmp = order[i];
+        order[i] = order[j];
+        order[j] = tmp;
+      }
+    }
+    {
+      const tmp = order[i];
+      order[i] = order[hi - 1];
+      order[hi - 1] = tmp;
+    }
+    if (i === nth) return;
+    if (nth < i) hi = i - 1;
+    else lo = i + 1;
+  }
+}
+function _queryBvh(bvh, qMinU, qMinV, qMaxU, qMaxV, out) {
+  const { nodes, triOrder } = bvh;
+  if (nodes.length === 0) return;
+  const stack = [0];
+  while (stack.length > 0) {
+    const ni = stack.pop();
+    const nd = nodes[ni];
+    if (qMaxU < nd.minU || qMinU > nd.maxU || qMaxV < nd.minV || qMinV > nd.maxV) continue;
+    if (nd.rightOff === 0) {
+      for (let i = nd.start, end = nd.start + nd.count; i < end; i++) {
+        out.push(triOrder[i]);
+      }
+    } else {
+      stack.push(ni + 1);
+      stack.push(ni + nd.rightOff);
+    }
+  }
+}
+function _buildBvh3D(tris, indices) {
+  const n = indices.length;
+  const triOrder = indices.slice();
+  const nodes = [];
+  const cx = new Float64Array(tris.length);
+  const cy = new Float64Array(tris.length);
+  const cz = new Float64Array(tris.length);
+  for (let i = 0; i < tris.length; i++) {
+    const t = tris[i];
+    cx[i] = (t.ax + t.bx + t.cx) / 3;
+    cy[i] = (t.ay + t.by + t.cy) / 3;
+    cz[i] = (t.az + t.bz + t.cz) / 3;
+  }
+  function build(start, count) {
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = start; i < start + count; i++) {
+      const t = tris[triOrder[i]];
+      minX = Math.min(minX, t.ax, t.bx, t.cx);
+      minY = Math.min(minY, t.ay, t.by, t.cy);
+      minZ = Math.min(minZ, t.az, t.bz, t.cz);
+      maxX = Math.max(maxX, t.ax, t.bx, t.cx);
+      maxY = Math.max(maxY, t.ay, t.by, t.cy);
+      maxZ = Math.max(maxZ, t.az, t.bz, t.cz);
+    }
+    if (count <= BVH_LEAF_MAX) {
+      const idx2 = nodes.length;
+      nodes.push({ minX, minY, minZ, maxX, maxY, maxZ, rightOff: 0, start, count });
+      return idx2;
+    }
+    const sx = maxX - minX, sy = maxY - minY, sz = maxZ - minZ;
+    const axis = sx >= sy && sx >= sz ? 0 : sy >= sz ? 1 : 2;
+    const cArr = axis === 0 ? cx : axis === 1 ? cy : cz;
+    const mid = start + (count >> 1);
+    _nthElement3D(triOrder, start, start + count - 1, mid, cArr);
+    const idx = nodes.length;
+    nodes.push({ minX, minY, minZ, maxX, maxY, maxZ, rightOff: 0, start: 0, count: 0 });
+    build(start, mid - start);
+    const rightIdx = build(mid, start + count - mid);
+    nodes[idx].rightOff = rightIdx - idx;
+    return idx;
+  }
+  if (n > 0) build(0, n);
+  return { nodes, triOrder };
+}
+function _nthElement3D(order, lo, hi, nth, vals) {
+  while (lo < hi) {
+    const mid = lo + hi >> 1;
+    if (vals[order[lo]] > vals[order[mid]]) {
+      const t = order[lo];
+      order[lo] = order[mid];
+      order[mid] = t;
+    }
+    if (vals[order[lo]] > vals[order[hi]]) {
+      const t = order[lo];
+      order[lo] = order[hi];
+      order[hi] = t;
+    }
+    if (vals[order[mid]] > vals[order[hi]]) {
+      const t = order[mid];
+      order[mid] = order[hi];
+      order[hi] = t;
+    }
+    {
+      const t = order[mid];
+      order[mid] = order[hi - 1];
+      order[hi - 1] = t;
+    }
+    const pivotVal = vals[order[hi - 1]];
+    let i = lo, j = hi - 1;
+    for (; ; ) {
+      while (vals[order[++i]] < pivotVal) {
+      }
+      while (vals[order[--j]] > pivotVal) {
+      }
+      if (i >= j) break;
+      {
+        const t = order[i];
+        order[i] = order[j];
+        order[j] = t;
+      }
+    }
+    {
+      const t = order[i];
+      order[i] = order[hi - 1];
+      order[hi - 1] = t;
+    }
+    if (i === nth) return;
+    if (nth < i) hi = i - 1;
+    else lo = i + 1;
+  }
+}
+function _rayAabb(ox, oy, oz, invDx, invDy, invDz, node) {
+  let tmin = ((invDx >= 0 ? node.minX : node.maxX) - ox) * invDx;
+  let tmax = ((invDx >= 0 ? node.maxX : node.minX) - ox) * invDx;
+  const tymin = ((invDy >= 0 ? node.minY : node.maxY) - oy) * invDy;
+  const tymax = ((invDy >= 0 ? node.maxY : node.minY) - oy) * invDy;
+  if (tmin > tymax || tymin > tmax) return false;
+  if (tymin > tmin) tmin = tymin;
+  if (tymax < tmax) tmax = tymax;
+  const tzmin = ((invDz >= 0 ? node.minZ : node.maxZ) - oz) * invDz;
+  const tzmax = ((invDz >= 0 ? node.maxZ : node.minZ) - oz) * invDz;
+  if (tmin > tzmax || tzmin > tmax) return false;
+  if (tzmin > tmin) tmin = tzmin;
+  if (tzmax < tmax) tmax = tzmax;
+  return tmax >= 0 && tmin <= tmax;
+}
+function _rayTri(ox, oy, oz, dx, dy, dz, t) {
+  const e1x = t.bx - t.ax, e1y = t.by - t.ay, e1z = t.bz - t.az;
+  const e2x = t.cx - t.ax, e2y = t.cy - t.ay, e2z = t.cz - t.az;
+  const hx = dy * e2z - dz * e2y, hy = dz * e2x - dx * e2z, hz = dx * e2y - dy * e2x;
+  const a = e1x * hx + e1y * hy + e1z * hz;
+  if (a > -1e-10 && a < 1e-10) return -1;
+  const f2 = 1 / a;
+  const sx = ox - t.ax, sy = oy - t.ay, sz = oz - t.az;
+  const u = f2 * (sx * hx + sy * hy + sz * hz);
+  if (u < -1e-6 || u > 1 + 1e-6) return -1;
+  const qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+  const v = f2 * (dx * qx + dy * qy + dz * qz);
+  if (v < -1e-6 || u + v > 1 + 1e-6) return -1;
+  const tt = f2 * (e2x * qx + e2y * qy + e2z * qz);
+  return tt > 1e-6 ? tt : -1;
+}
+function _isOccluded3D(ox, oy, oz, dx, dy, dz, bvh, allTris, adjTris) {
+  const { nodes, triOrder } = bvh;
+  if (nodes.length === 0) return false;
+  const invDx = 1 / dx, invDy = 1 / dy, invDz = 1 / dz;
+  const stack = [0];
+  while (stack.length > 0) {
+    const ni = stack.pop();
+    const nd = nodes[ni];
+    if (!_rayAabb(ox, oy, oz, invDx, invDy, invDz, nd)) continue;
+    if (nd.rightOff === 0) {
+      for (let i = nd.start, end = nd.start + nd.count; i < end; i++) {
+        const ti = triOrder[i];
+        if (adjTris && adjTris.indexOf(ti) >= 0) continue;
+        const t = _rayTri(ox, oy, oz, dx, dy, dz, allTris[ti]);
+        if (t > 0) return true;
+      }
+    } else {
+      stack.push(ni + 1);
+      stack.push(ni + nd.rightOff);
+    }
+  }
+  return false;
+}
+function _hiddenLine(tris, edges, view, onProgress, triNormals, _depthBias) {
+  const upDir = view.upDir ?? new Vec3(0, 0, 1);
+  const b = _basis(view.viewDir, upDir);
+  const hasNormals = triNormals != null && triNormals.length === tris.length;
+  const frontIdx = [];
+  const stris = [];
+  for (let ti = 0; ti < tris.length; ti++) {
+    if (hasNormals) {
+      const n = triNormals[ti];
+      if (n[0] * b.fx + n[1] * b.fy + n[2] * b.fz > 0) continue;
+    }
+    frontIdx.push(ti);
+    const tri = tris[ti];
+    const pa = _proj(tri.ax, tri.ay, tri.az, b);
+    const pb = _proj(tri.bx, tri.by, tri.bz, b);
+    const pc = _proj(tri.cx, tri.cy, tri.cz, b);
+    const cross = _c2(pb.u - pa.u, pb.v - pa.v, pc.u - pa.u, pc.v - pa.v);
+    if (Math.abs(cross) < 1e-10) continue;
+    const p1 = cross > 0 ? pb : pc;
+    const p2 = cross > 0 ? pc : pb;
+    stris.push({
+      p: [pa, p1, p2],
+      avgD: (pa.d + pb.d + pc.d) / 3,
+      minU: Math.min(pa.u, pb.u, pc.u),
+      maxU: Math.max(pa.u, pb.u, pc.u),
+      minV: Math.min(pa.v, pb.v, pc.v),
+      maxV: Math.max(pa.v, pb.v, pc.v),
+      srcIdx: ti
+    });
+  }
+  stris.sort((a, z) => a.avgD - z.avgD);
+  const bvh2d = _buildBvh2D(stris);
+  const bvh3d = _buildBvh3D(tris, frontIdx);
+  const rdx = -b.fx, rdy = -b.fy, rdz = -b.fz;
+  const result = [];
+  const nEdges = edges.length;
+  const candBuf = [];
+  for (let ei = 0; ei < nEdges; ei++) {
+    if (onProgress && (ei & 63) === 0) onProgress(ei / nEdges);
+    const edge = edges[ei];
+    const ea = _proj(edge.ax, edge.ay, edge.az, b);
+    const eb = _proj(edge.bx, edge.by, edge.bz, b);
+    const adjN = edge.adjNormals;
+    const hasFrontFace = !adjN || adjN.length === 0 || adjN.some((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
+    const allFrontFaces = adjN && adjN.length > 0 && adjN.every((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
+    let vis;
+    if (!hasFrontFace) {
+      vis = [];
+    } else if (allFrontFaces) {
+      vis = [[0, 1]];
+    } else {
+      vis = [[0, 1]];
+    }
+    if (vis.length > 0 && !allFrontFaces) {
+      const adj = edge.adjTris;
+      const eMinU = Math.min(ea.u, eb.u), eMaxU = Math.max(ea.u, eb.u);
+      const eMinV = Math.min(ea.v, eb.v), eMaxV = Math.max(ea.v, eb.v);
+      candBuf.length = 0;
+      _queryBvh(bvh2d, eMinU, eMinV, eMaxU, eMaxV, candBuf);
+      for (let ci = 0; ci < candBuf.length; ci++) {
+        if (!vis.length) break;
+        const tri = stris[candBuf[ci]];
+        if (adj && adj.indexOf(tri.srcIdx) >= 0) continue;
+        const [ta, tb, tc] = tri.p;
+        const interval = _clipTri(
+          ea.u,
+          ea.v,
+          eb.u,
+          eb.v,
+          ta.u,
+          ta.v,
+          tb.u,
+          tb.v,
+          tc.u,
+          tc.v
+        );
+        if (!interval) continue;
+        const tM = (interval[0] + interval[1]) * 0.5;
+        const px = edge.ax + (edge.bx - edge.ax) * tM;
+        const py = edge.ay + (edge.by - edge.ay) * tM;
+        const pz = edge.az + (edge.bz - edge.az) * tM;
+        if (!_isOccluded3D(px, py, pz, rdx, rdy, rdz, bvh3d, tris, adj)) continue;
+        vis = _subInterval(vis, interval[0], interval[1]);
+      }
+    }
+    for (const [t0, t1] of vis) {
+      result.push({
+        u0: ea.u + (eb.u - ea.u) * t0,
+        v0: ea.v + (eb.v - ea.v) * t0,
+        u1: ea.u + (eb.u - ea.u) * t1,
+        v1: ea.v + (eb.v - ea.v) * t1,
+        layer: edge.layer
+      });
+    }
+  }
+  return result;
+}
+function _hiddenLineDebug(tris, edges, view, triNormals, _depthBias) {
+  const upDir = view.upDir ?? new Vec3(0, 0, 1);
+  const b = _basis(view.viewDir, upDir);
+  const hasNormals = triNormals != null && triNormals.length === tris.length;
+  const frontIdx = [];
+  const stris = [];
+  for (let ti = 0; ti < tris.length; ti++) {
+    if (hasNormals) {
+      const n = triNormals[ti];
+      if (n[0] * b.fx + n[1] * b.fy + n[2] * b.fz > 0) continue;
+    }
+    frontIdx.push(ti);
+    const tri = tris[ti];
+    const pa = _proj(tri.ax, tri.ay, tri.az, b);
+    const pb = _proj(tri.bx, tri.by, tri.bz, b);
+    const pc = _proj(tri.cx, tri.cy, tri.cz, b);
+    const cross = _c2(pb.u - pa.u, pb.v - pa.v, pc.u - pa.u, pc.v - pa.v);
+    if (Math.abs(cross) < 1e-10) continue;
+    const p1 = cross > 0 ? pb : pc;
+    const p2 = cross > 0 ? pc : pb;
+    stris.push({
+      p: [pa, p1, p2],
+      avgD: (pa.d + pb.d + pc.d) / 3,
+      minU: Math.min(pa.u, pb.u, pc.u),
+      maxU: Math.max(pa.u, pb.u, pc.u),
+      minV: Math.min(pa.v, pb.v, pc.v),
+      maxV: Math.max(pa.v, pb.v, pc.v),
+      srcIdx: ti
+    });
+  }
+  stris.sort((a, z) => a.avgD - z.avgD);
+  const bvh2d = _buildBvh2D(stris);
+  const bvh3d = _buildBvh3D(tris, frontIdx);
+  const rdx = -b.fx, rdy = -b.fy, rdz = -b.fz;
+  const result = [];
+  const candBuf = [];
+  for (const edge of edges) {
+    const ea = _proj(edge.ax, edge.ay, edge.az, b);
+    const eb = _proj(edge.bx, edge.by, edge.bz, b);
+    const kindLayer = edge.kind ?? "feature";
+    result.push({
+      u0: ea.u,
+      v0: ea.v,
+      u1: eb.u,
+      v1: eb.v,
+      layer: kindLayer
+    });
+    const adjN = edge.adjNormals;
+    const hasFrontFace = !adjN || adjN.length === 0 || adjN.some((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
+    const allFrontFaces = adjN && adjN.length > 0 && adjN.every((n) => n[0] * b.fx + n[1] * b.fy + n[2] * b.fz <= 0);
+    let vis;
+    if (!hasFrontFace) {
+      vis = [];
+    } else if (allFrontFaces) {
+      vis = [[0, 1]];
+    } else {
+      vis = [[0, 1]];
+    }
+    if (vis.length > 0 && !allFrontFaces) {
+      const adj = edge.adjTris;
+      candBuf.length = 0;
+      _queryBvh(
+        bvh2d,
+        Math.min(ea.u, eb.u),
+        Math.min(ea.v, eb.v),
+        Math.max(ea.u, eb.u),
+        Math.max(ea.v, eb.v),
+        candBuf
+      );
+      for (let ci = 0; ci < candBuf.length; ci++) {
+        if (!vis.length) break;
+        const tri = stris[candBuf[ci]];
+        if (adj && adj.indexOf(tri.srcIdx) >= 0) continue;
+        const [ta, tb, tc] = tri.p;
+        const interval = _clipTri(ea.u, ea.v, eb.u, eb.v, ta.u, ta.v, tb.u, tb.v, tc.u, tc.v);
+        if (!interval) continue;
+        const tM = (interval[0] + interval[1]) * 0.5;
+        const px = edge.ax + (edge.bx - edge.ax) * tM;
+        const py = edge.ay + (edge.by - edge.ay) * tM;
+        const pz = edge.az + (edge.bz - edge.az) * tM;
+        if (!_isOccluded3D(px, py, pz, rdx, rdy, rdz, bvh3d, tris, adj)) continue;
+        vis = _subInterval(vis, interval[0], interval[1]);
+      }
+    }
+    for (const [t0, t1] of vis) {
+      result.push({
+        u0: ea.u + (eb.u - ea.u) * t0,
+        v0: ea.v + (eb.v - ea.v) * t0,
+        u1: ea.u + (eb.u - ea.u) * t1,
+        v1: ea.v + (eb.v - ea.v) * t1,
+        layer: "visible"
+      });
+    }
+    let prev = 0;
+    for (const [t0, t1] of vis) {
+      if (t0 > prev + 1e-7) {
+        result.push({
+          u0: ea.u + (eb.u - ea.u) * prev,
+          v0: ea.v + (eb.v - ea.v) * prev,
+          u1: ea.u + (eb.u - ea.u) * t0,
+          v1: ea.v + (eb.v - ea.v) * t0,
+          layer: "occluded"
+        });
+      }
+      prev = t1;
+    }
+    if (prev < 1 - 1e-7) {
+      result.push({
+        u0: ea.u + (eb.u - ea.u) * prev,
+        v0: ea.v + (eb.v - ea.v) * prev,
+        u1: eb.u,
+        v1: eb.v,
+        layer: "occluded"
+      });
+    }
+  }
+  return result;
+}
+function _writeDxf(segs, layers, scale, prec) {
+  const f2 = (n) => Number.isFinite(n) ? (n * scale).toFixed(prec) : "0";
+  const lines = [];
+  const used = /* @__PURE__ */ new Set();
+  for (const s of segs) used.add(s.layer);
+  const { names, colorOf } = _resolveLayers(layers, used);
+  _writeR12Prologue(lines, names, colorOf, scale);
+  lines.push("0", "SECTION", "2", "ENTITIES");
+  for (const s of segs) {
+    lines.push(
+      "0",
+      "LINE",
+      "8",
+      _sanLayer(s.layer),
+      "10",
+      f2(s.u0),
+      "20",
+      f2(s.v0),
+      "30",
+      "0.0",
+      "11",
+      f2(s.u1),
+      "21",
+      f2(s.v1),
+      "31",
+      "0.0"
+    );
+  }
+  lines.push("0", "ENDSEC", "0", "EOF");
+  return lines.join("\r\n") + "\r\n";
+}
+
+// src/io/PolylineVisibility.ts
+var THREE2 = __toESM(require("three"));
+var DEPTH_PACK = (
+  /* glsl */
+  `
+  vec4 packDepth(float d) {
+    const vec4 bitShift = vec4(256.0*256.0*256.0, 256.0*256.0, 256.0, 1.0);
+    const vec4 bitMask  = vec4(0.0, 1.0/256.0, 1.0/256.0, 1.0/256.0);
+    vec4 res = fract(d * bitShift);
+    res -= res.xxyz * bitMask;
+    return res;
+  }
+`
+);
+var VS = (
+  /* glsl */
+  `
+  varying float vDepth01;
+  uniform float uMinD;
+  uniform float uMaxD;
+  void main() {
+    // CPU side stored position.z = -d (negated so the ortho camera looking
+    // along -Z renders closer-to-camera as nearer). Un-flip here to read
+    // the original view-space depth.
+    float vd = -position.z;
+    vDepth01 = clamp((vd - uMinD) / (uMaxD - uMinD), 0.0, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+);
+var FS = (
+  /* glsl */
+  `
+  precision highp float;
+  varying float vDepth01;
+  ${DEPTH_PACK}
+  void main() { gl_FragColor = packDepth(vDepth01); }
+`
+);
+function extractVisiblePolylines(mesh, polylines, view, options) {
+  const resolution = options?.resolution ?? 1024;
+  const biasFraction = options?.bias ?? 5e-3;
+  const up = view.upDir ?? new Vec3(0, 1, 0);
+  let fx = view.viewDir.x, fy = view.viewDir.y, fz = view.viewDir.z;
+  {
+    const l = Math.hypot(fx, fy, fz) || 1;
+    fx /= l;
+    fy /= l;
+    fz /= l;
+  }
+  let rx = up.y * fz - up.z * fy;
+  let ry = up.z * fx - up.x * fz;
+  let rz = up.x * fy - up.y * fx;
+  {
+    const l = Math.hypot(rx, ry, rz) || 1;
+    rx /= l;
+    ry /= l;
+    rz /= l;
+  }
+  const ux = fy * rz - fz * ry;
+  const uy = fz * rx - fx * rz;
+  const uz = fx * ry - fy * rx;
+  const proj = (x, y, z) => ({
+    u: x * rx + y * ry + z * rz,
+    v: x * ux + y * uy + z * uz,
+    d: x * fx + y * fy + z * fz
+  });
+  let minU = Infinity, maxU = -Infinity;
+  let minV = Infinity, maxV = -Infinity;
+  let minD = Infinity, maxD = -Infinity;
+  const verts = [];
+  for (const face of mesh.faces()) {
+    if (face.nodes.length < 3) continue;
+    const ps = face.nodes.map((id) => mesh.node(id).position);
+    const p0 = ps[0];
+    for (let i = 1; i < ps.length - 1; i++) {
+      const a = p0, b = ps[i], c = ps[i + 1];
+      for (const p of [a, b, c]) {
+        const pr = proj(p.x, p.y, p.z);
+        verts.push(pr.u, pr.v, pr.d);
+        if (pr.u < minU) minU = pr.u;
+        if (pr.u > maxU) maxU = pr.u;
+        if (pr.v < minV) minV = pr.v;
+        if (pr.v > maxV) maxV = pr.v;
+        if (pr.d < minD) minD = pr.d;
+        if (pr.d > maxD) maxD = pr.d;
+      }
+    }
+  }
+  if (verts.length === 0) {
+    return { segments: [], bounds: { minU: 0, maxU: 0, minV: 0, maxV: 0 } };
+  }
+  const sceneSize = Math.max(maxU - minU, maxV - minV);
+  const margin = sceneSize * 0.02;
+  minU -= margin;
+  maxU += margin;
+  minV -= margin;
+  maxV += margin;
+  const depthRange = maxD - minD || 1;
+  const depthPad = depthRange * 0.1;
+  minD -= depthPad;
+  maxD += depthPad;
+  const triPositions = new Float32Array(verts);
+  const geo = new THREE2.BufferGeometry();
+  geo.setAttribute("position", new THREE2.BufferAttribute(triPositions, 3));
+  for (let i = 2; i < triPositions.length; i += 3) triPositions[i] = -triPositions[i];
+  geo.attributes.position.needsUpdate = true;
+  const material = new THREE2.ShaderMaterial({
+    vertexShader: VS,
+    fragmentShader: FS,
+    side: THREE2.DoubleSide,
+    depthTest: true,
+    depthWrite: true,
+    uniforms: { uMinD: { value: minD }, uMaxD: { value: maxD } }
+  });
+  const scene = new THREE2.Scene();
+  scene.add(new THREE2.Mesh(geo, material));
+  const camZ = -minD + 1;
+  const farZ = maxD - minD + 2;
+  const camera = new THREE2.OrthographicCamera(minU, maxU, maxV, minV, 0.5, farZ);
+  camera.position.set(0, 0, camZ);
+  camera.lookAt(0, 0, camZ - 1);
+  const renderer = new THREE2.WebGLRenderer({ antialias: false });
+  renderer.setSize(resolution, resolution);
+  renderer.setClearColor(new THREE2.Color(0, 0, 0), 0);
+  const rt = new THREE2.WebGLRenderTarget(resolution, resolution, {
+    minFilter: THREE2.NearestFilter,
+    magFilter: THREE2.NearestFilter,
+    format: THREE2.RGBAFormat,
+    type: THREE2.UnsignedByteType
+  });
+  renderer.setRenderTarget(rt);
+  renderer.clear();
+  renderer.render(scene, camera);
+  const pixels = new Uint8Array(resolution * resolution * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, resolution, resolution, pixels);
+  renderer.setRenderTarget(null);
+  rt.dispose();
+  geo.dispose();
+  material.dispose();
+  renderer.dispose();
+  function unpackDepth01(px, py) {
+    if (px < 0 || px >= resolution || py < 0 || py >= resolution) return null;
+    const idx = (py * resolution + px) * 4;
+    if (pixels[idx + 3] === 0) return null;
+    const r = pixels[idx] / 255;
+    const g = pixels[idx + 1] / 255;
+    const b = pixels[idx + 2] / 255;
+    const a = pixels[idx + 3] / 255;
+    return r / (256 * 256 * 256) + g / (256 * 256) + b / 256 + a;
+  }
+  function toPixel(u, v) {
+    return [
+      Math.round((u - minU) / (maxU - minU) * (resolution - 1)),
+      Math.round((v - minV) / (maxV - minV) * (resolution - 1))
+    ];
+  }
+  const bias01 = biasFraction;
+  const segments = [];
+  function isVisible(p) {
+    const pr = proj(p.x, p.y, p.z);
+    const [px, py] = toPixel(pr.u, pr.v);
+    let best = null;
+    for (let oy = -1; oy <= 1; oy++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        const s = unpackDepth01(px + ox, py + oy);
+        if (s !== null && (best === null || s < best)) best = s;
+      }
+    }
+    if (best === null) return true;
+    const d01 = (pr.d - minD) / (maxD - minD);
+    return d01 <= best + bias01;
+  }
+  for (const poly of polylines) {
+    if (poly.length < 2) continue;
+    let run3 = [];
+    let run2 = [];
+    for (const p of poly) {
+      if (isVisible(p)) {
+        run3.push(p);
+        const pr = proj(p.x, p.y, p.z);
+        run2.push({ u: pr.u, v: pr.v });
+      } else if (run3.length >= 2) {
+        segments.push({ points3D: run3, points2D: run2 });
+        run3 = [];
+        run2 = [];
+      } else {
+        run3 = [];
+        run2 = [];
+      }
+    }
+    if (run3.length >= 2) segments.push({ points3D: run3, points2D: run2 });
+  }
+  return { segments, bounds: { minU, maxU, minV, maxV } };
+}
+function polylinesToSVG(segments, bounds2, options) {
+  const stroke = options?.stroke ?? "#000";
+  const sw = options?.strokeWidth ?? 0.5;
+  const pad = options?.padFraction ?? 0.02;
+  const w = bounds2.maxU - bounds2.minU;
+  const h = bounds2.maxV - bounds2.minV;
+  const padX = w * pad;
+  const padY = h * pad;
+  const vbX = bounds2.minU - padX;
+  const vbY = -(bounds2.maxV + padY);
+  const vbW = w + 2 * padX;
+  const vbH = h + 2 * padY;
+  const parts = [];
+  parts.push(
+    `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX.toFixed(4)} ${vbY.toFixed(4)} ${vbW.toFixed(4)} ${vbH.toFixed(4)}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round">`
+  );
+  for (const seg of segments) {
+    if (seg.points2D.length < 2) continue;
+    const d = seg.points2D.map((p) => `${p.u.toFixed(4)},${(-p.v).toFixed(4)}`).join(" ");
+    parts.push(`<polyline points="${d}"/>`);
+  }
+  parts.push(`</svg>
+`);
+  return parts.join("\n");
 }
 
 // src/gui/theme.ts
@@ -23968,79 +24782,6 @@ var Viewport = class {
   }
 };
 
-// src/bim/adjacency.ts
-function boxOf(positions) {
-  if (!positions.length) return null;
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i + 2 < positions.length; i += 3) {
-    for (let k = 0; k < 3; k++) {
-      const v = positions[i + k];
-      if (v < min[k]) min[k] = v;
-      if (v > max[k]) max[k] = v;
-    }
-  }
-  return { min, max };
-}
-function share(aMin, aMax, bMin, bMax) {
-  return Math.min(aMax, bMax) - Math.max(aMin, bMin);
-}
-function contactBetween(a, b, opts = {}) {
-  const tol = opts.tolerance ?? 0.05;
-  const up = opts.up ?? 2;
-  const gaps = [0, 1, 2].map((k) => share(a.min[k], a.max[k], b.min[k], b.max[k]));
-  if (gaps.some((g) => g < -tol)) return null;
-  const flat = [0, 1, 2].filter((k) => k !== up);
-  const area = flat.reduce((p, k) => p * Math.max(0, gaps[k]), 1);
-  const footprint = (box) => flat.reduce((p, k) => p * (box.max[k] - box.min[k]), 1);
-  const smaller = Math.min(footprint(a), footprint(b));
-  const overlap = smaller > 0 ? Math.min(1, area / smaller) : 0;
-  const verticalTouch = gaps[up] <= tol;
-  if (verticalTouch) {
-    if (overlap < (opts.minOverlap ?? 0.02)) return null;
-    const aAbove = a.min[up] >= b.max[up] - tol;
-    const bAbove = b.min[up] >= a.max[up] - tol;
-    if (aAbove) return { contact: "supportedBy", overlap };
-    if (bAbove) return { contact: "supports", overlap };
-  }
-  if (flat.some((k) => gaps[k] <= tol)) return { contact: "abuts", overlap };
-  return { contact: "overlaps", overlap };
-}
-function reverse(contact) {
-  return contact === "supports" ? "supportedBy" : contact === "supportedBy" ? "supports" : contact;
-}
-function findAdjacent(elements, opts = {}) {
-  const tol = opts.tolerance ?? 0.05;
-  const up = opts.up ?? 2;
-  const sorted = [...elements].sort((p, q) => p.box.min[up] - q.box.min[up]);
-  const out = [];
-  for (let i = 0; i < sorted.length; i++) {
-    const a = sorted[i];
-    for (let j = i + 1; j < sorted.length; j++) {
-      const b = sorted[j];
-      if (b.box.min[up] > a.box.max[up] + tol) break;
-      const met = contactBetween(a.box, b.box, opts);
-      if (!met) continue;
-      out.push({
-        a: a.id,
-        b: b.id,
-        contact: met.contact,
-        tolerance: tol,
-        overlap: met.overlap
-      });
-    }
-  }
-  return out;
-}
-function neighboursOf(id, all) {
-  const out = [];
-  for (const r of all) {
-    if (r.a === id) out.push({ id: r.b, contact: r.contact, overlap: r.overlap, tolerance: r.tolerance });
-    else if (r.b === id) out.push({ id: r.a, contact: reverse(r.contact), overlap: r.overlap, tolerance: r.tolerance });
-  }
-  return out;
-}
-
 // src/gui/LayerPanel.ts
 function computeEffectiveVisibility(nodes, value) {
   const result = {};
@@ -24164,9 +24905,187 @@ var LayerPanel = class {
   }
 };
 
+// src/sketch/AgentBridge.ts
+var MAX_ERRORS = 50;
+function installAgentBridge(host) {
+  const errors = [];
+  const record = (msg) => {
+    if (errors.length < MAX_ERRORS) errors.push(msg.slice(0, 500));
+  };
+  const onError = (e) => record(`${e.message}${e.filename ? ` (${e.filename}:${e.lineno})` : ""}`);
+  const onRejection = (e) => record(`unhandled rejection: ${String(e.reason?.stack ?? e.reason)}`);
+  const origError = console.error;
+  const wrapped = (...args) => {
+    record(args.map((a) => a instanceof Error ? a.stack ?? a.message : typeof a === "string" ? a : safeJson(a)).join(" "));
+    origError.apply(console, args);
+  };
+  window.addEventListener("error", onError);
+  window.addEventListener("unhandledrejection", onRejection);
+  console.error = wrapped;
+  const store = host.store;
+  window.__tekto = {
+    owner: host.owner,
+    harness: host.harness,
+    snapshot: (opts) => host.snapshot(opts),
+    params: () => store.getAll(),
+    paramNames: () => store.names(),
+    schema: () => paramSchema(store),
+    errors: () => [...errors],
+    // By label ("Radius"), "Group:Label" or key. Names that match nothing, or more than
+    // one control, are reported (and warned about) instead of silently dropped.
+    setParams: (p) => {
+      const r = store.setByName(p);
+      if (r.unknown.length || r.ambiguous.length) {
+        console.warn("tekto setParams:", [
+          ...r.unknown.map((n) => `no control named "${n}"`),
+          ...r.ambiguous.map((a) => `"${a.name}" matches ${a.keys.length} controls \u2014 use Group:Label`)
+        ].join("; "), "| controls:", store.names().join(", "));
+      }
+      return r;
+    },
+    ...host.camera ? { camera: host.camera } : {}
+  };
+  return {
+    errors: () => [...errors],
+    dispose() {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+      if (console.error === wrapped) console.error = origError;
+      if (window.__tekto?.owner === host.owner) delete window.__tekto;
+    }
+  };
+}
+function paramSchema(store) {
+  const schema = store.getSchema();
+  const names = store.names();
+  const values = store.getAll();
+  return Object.keys(schema).map((key, i) => {
+    const d = schema[key];
+    return {
+      name: names[i],
+      key,
+      type: d.type,
+      ...d.label ? { label: d.label } : {},
+      ...d.min !== void 0 ? { min: d.min } : {},
+      ...d.max !== void 0 ? { max: d.max } : {},
+      ...d.step !== void 0 ? { step: d.step } : {},
+      ...d.options !== void 0 ? { options: d.options } : {},
+      ...d.default !== void 0 ? { default: d.default } : {},
+      value: values[key]
+    };
+  });
+}
+function describeSceneObject(scene, id, src) {
+  const o = scene.get(id);
+  if (!o) return null;
+  return {
+    id,
+    type: o.type,
+    ...o.style.layer ? { layer: o.style.layer } : {},
+    ...o.style.label ? { label: o.style.label } : {},
+    ...o.pickTag ? { tag: o.pickTag } : {},
+    ...typeof o.style.color === "string" ? { color: o.style.color } : {},
+    ...src ? { src } : {}
+  };
+}
+function sceneSummary(scene, renderer, describe) {
+  const groups = /* @__PURE__ */ new Map();
+  const objects = [];
+  const meshIssues = [];
+  let meshesWithIssues = 0;
+  let shown = 0;
+  for (const o of scene.all()) {
+    if (!renderer.isObjectShown(o.id)) continue;
+    const b = renderer.objectBounds(o.id);
+    if (!b) continue;
+    shown++;
+    const d = describe(o.id);
+    if (o.mesh && typeof o.mesh.validate === "function") {
+      const v = o.mesh.validate();
+      if (!v.valid) {
+        meshesWithIssues++;
+        if (meshIssues.length < 20) meshIssues.push({ id: o.id, label: d.label, layer: d.layer, src: d.src, issues: v.issues });
+      }
+    }
+    const key = [d.layer, d.label, d.type, d.src, d.color].join("|");
+    let g = groups.get(key);
+    if (!g) {
+      g = { layer: d.layer, label: d.label, type: d.type, src: d.src, color: d.color, count: 0, ids: [], min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+      groups.set(key, g);
+    }
+    g.count++;
+    if (g.ids.length < 10) g.ids.push(o.id);
+    const lo = [b.min.x, b.min.y, b.min.z], hi = [b.max.x, b.max.y, b.max.z];
+    for (let i = 0; i < 3; i++) {
+      g.min[i] = Math.min(g.min[i], lo[i]);
+      g.max[i] = Math.max(g.max[i], hi[i]);
+    }
+    if (objects.length < 150) objects.push({ ...d, bounds: [lo, hi].map((v) => v.map((n) => +n.toFixed(4))) });
+  }
+  const r4 = (v) => v.map((n) => +n.toFixed(4));
+  const cam = renderer.cameraState();
+  return {
+    camera: { ...cam, position: r4(cam.position), target: r4(cam.target) },
+    scene: {
+      shownObjects: shown,
+      meshesWithIssues,
+      meshIssues,
+      groups: [...groups.values()].map(({ min, max, ...g }) => ({ ...g, bounds: [r4(min), r4(max)] })),
+      ...shown <= 150 ? { objects } : {}
+    }
+  };
+}
+async function plainBundle(opts) {
+  const markup = {
+    format: "tekto-markup/1",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    sketch: { title: opts.title, url: location.href },
+    harness: opts.harness,
+    instruction: opts.note ?? "",
+    viewport: { ...opts.viewport, dpr: window.devicePixelRatio || 1 },
+    ...opts.context,
+    marks: [],
+    files: { view: "view.png", clean: "clean.png" }
+  };
+  const bundle = { markup, viewPng: opts.png, cleanPng: opts.png };
+  if (opts.save !== false) bundle.dir = await saveBundle(bundle, opts.label ?? slug(opts.title));
+  return bundle;
+}
+var ENDPOINT = "/__tekto/markup";
+function slug(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "sketch";
+}
+async function saveBundle(b, label) {
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label, markup: b.markup, viewPng: b.viewPng, cleanPng: b.cleanPng })
+    });
+    if (res.ok) return (await res.json()).dir;
+  } catch {
+  }
+  const dl = (name, href) => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = name;
+    a.click();
+  };
+  dl(`${label}-view.png`, b.viewPng);
+  dl(`${label}-clean.png`, b.cleanPng);
+  dl(`${label}-markup.json`, URL.createObjectURL(new Blob([JSON.stringify(b.markup, null, 2)], { type: "application/json" })));
+  return void 0;
+}
+function safeJson(v) {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
 // src/sketch/Markup.ts
 var INK = "#ff00d4";
-var ENDPOINT = "/__tekto/markup";
 var MarkupOverlay = class {
   constructor(host) {
     this.marks = [];
@@ -24436,7 +25355,7 @@ var MarkupOverlay = class {
         files: { view: "view.png", clean: "clean.png" }
       };
       const bundle = { markup, viewPng, cleanPng };
-      if (opts.save !== false) bundle.dir = await post(bundle, opts.label ?? slug(this.host.title));
+      if (opts.save !== false) bundle.dir = await saveBundle(bundle, opts.label ?? slug(this.host.title));
       return bundle;
     } finally {
       if (!wasActive) this.host.setTracking(false);
@@ -24643,30 +25562,6 @@ function bounds(ps) {
 function round32(p) {
   return [p.x, p.y, p.z].map((v) => +v.toFixed(4));
 }
-function slug(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "sketch";
-}
-async function post(b, label) {
-  try {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ label, markup: b.markup, viewPng: b.viewPng, cleanPng: b.cleanPng })
-    });
-    if (res.ok) return (await res.json()).dir;
-  } catch {
-  }
-  const dl = (name, href) => {
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = name;
-    a.click();
-  };
-  dl(`${label}-view.png`, b.viewPng);
-  dl(`${label}-clean.png`, b.cleanPng);
-  dl(`${label}-markup.json`, URL.createObjectURL(new Blob([JSON.stringify(b.markup, null, 2)], { type: "application/json" })));
-  return void 0;
-}
 
 // src/sketch/Sketch.ts
 function spaceToConstrain(space) {
@@ -24784,6 +25679,10 @@ var SketchInstance = class {
     // Markup overlay (Markup.ts). While it is open, every object added to the scene
     // records the user-code line that created it, so a mark can point at source.
     this.markup = null;
+    this.bridge = null;
+    // Export ▾ / Import ▾ in the sketch's own header (a shell's top bar does it otherwise).
+    this._fileMenusEl = null;
+    this._fileMenusSig = "";
     this._trackSource = false;
     this._srcById = /* @__PURE__ */ new Map();
     this.separatorCount = 0;
@@ -24809,7 +25708,7 @@ var SketchInstance = class {
     this._viewLayerObjects = /* @__PURE__ */ new Map();
     this.fn = fn;
     this.config = config;
-    this.scene = new Scene3();
+    this.scene = new Scene();
     this.scene.on((e) => {
       if (e.type === "object:add" && this._trackSource) {
         const site = callSite();
@@ -24866,6 +25765,9 @@ var SketchInstance = class {
         <span style="font-size:9px;padding:2px 6px;border-radius:3px;
           background:${t.hoverBg};color:${t.accent}">LIVE</span>
       `;
+      this._fileMenusEl = document.createElement("div");
+      this._fileMenusEl.style.cssText = "margin-left:auto;display:flex;gap:8px;position:relative;";
+      header.appendChild(this._fileMenusEl);
       root.appendChild(header);
     }
     this.panelEl = document.createElement("div");
@@ -25107,7 +26009,13 @@ var SketchInstance = class {
       }
     }
     this.renderer.upsertDragHandle(name, cur.x, cur.y, cur.z, opts?.color, opts?.size, opts?.constrain, opts?.plane);
-    return { value: cur };
+    return {
+      value: cur,
+      set: (v) => {
+        this._dragHandles.set(name, v);
+        if (!this._running) this.runSketch();
+      }
+    };
   }
   setHandleSelected(name) {
     this.renderer.setHandleSelected(name);
@@ -25236,6 +26144,8 @@ var SketchInstance = class {
       const store = this.store;
       return { get value() {
         return store.get(key);
+      }, set(v) {
+        store.set(key, v);
       } };
     };
     const lab = {
@@ -25311,9 +26221,20 @@ var SketchInstance = class {
           lt.panel.update(nodes, lt.value);
         }
         const state = lt;
-        return { get value() {
-          return state.value;
-        } };
+        return {
+          get value() {
+            return state.value;
+          },
+          set(update) {
+            const next = { ...state.value };
+            for (const [id, v] of Object.entries(update)) next[id] = { ...next[id], ...v };
+            state.value = next;
+            state.panel.update(state.nodes, state.value);
+            if (self._running) return;
+            if (state.display && self._onDisplayFns.length > 0) self.runDisplayPass();
+            else self.runSketch();
+          }
+        };
       },
       // ── Actions ──
       button(label, action, opts) {
@@ -25332,10 +26253,12 @@ var SketchInstance = class {
       registerExport(opts) {
         self.exports.set(opts.name, { ...opts });
         for (const l of self._exportListeners) l();
+        self.renderFileMenus();
       },
       registerImport(opts) {
         self.imports.set(opts.name, { ...opts });
         for (const l of self._importListeners) l();
+        self.renderFileMenus();
       },
       // ── Geometry Builders ──
       mesh(m, style) {
@@ -26311,86 +27234,125 @@ var SketchInstance = class {
         if (on) self.runSketch();
       }
     });
-    window.__tekto = {
+    this.bridge = installAgentBridge({
       owner: this,
+      harness: "sketch",
+      store: this.store,
       snapshot: (opts) => this.markup.capture(opts),
-      params: () => this.store.getAll(),
-      paramNames: () => this.store.names(),
-      // By label ("Radius"), "Group:Label" or key. Names that match nothing, or more than
-      // one control, are reported (and warned about) instead of silently dropped.
-      setParams: (p) => {
-        const r = this.store.setByName(p);
-        if (r.unknown.length || r.ambiguous.length) {
-          console.warn("tekto setParams:", [
-            ...r.unknown.map((n) => `no control named "${n}"`),
-            ...r.ambiguous.map((a) => `"${a.name}" matches ${a.keys.length} controls \u2014 use Group:Label`)
-          ].join("; "), "| controls:", this.store.names().join(", "));
-        }
-        return r;
-      },
       camera: (pos, target) => {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
         if (target) this.renderer.lookAt(target[0], target[1], target[2]);
       }
-    };
+    });
   }
   describeObject(id) {
-    const o = this.scene.get(id);
-    if (!o) return null;
-    return {
-      id,
-      type: o.type,
-      ...o.style.layer ? { layer: o.style.layer } : {},
-      ...o.style.label ? { label: o.style.label } : {},
-      ...o.pickTag ? { tag: o.pickTag } : {},
-      ...typeof o.style.color === "string" ? { color: o.style.color } : {},
-      ...this._srcById.has(id) ? { src: this._srcById.get(id) } : {}
-    };
+    return describeSceneObject(this.scene, id, this._srcById.get(id));
   }
-  /** Camera, params and a scene summary grouped by (layer, label, type, source line). */
+  /** Camera, params, logs, errors and a scene summary grouped by (layer, label, type, source line). */
   markupContext() {
-    const groups = /* @__PURE__ */ new Map();
-    const objects = [];
-    let shown = 0;
-    for (const o of this.scene.all()) {
-      if (!this.renderer.isObjectShown(o.id)) continue;
-      const b = this.renderer.objectBounds(o.id);
-      if (!b) continue;
-      shown++;
-      const d = this.describeObject(o.id);
-      const key = [d.layer, d.label, d.type, d.src, d.color].join("|");
-      let g = groups.get(key);
-      if (!g) {
-        g = { layer: d.layer, label: d.label, type: d.type, src: d.src, color: d.color, count: 0, ids: [], min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
-        groups.set(key, g);
-      }
-      g.count++;
-      if (g.ids.length < 10) g.ids.push(o.id);
-      const lo = [b.min.x, b.min.y, b.min.z], hi = [b.max.x, b.max.y, b.max.z];
-      for (let i = 0; i < 3; i++) {
-        g.min[i] = Math.min(g.min[i], lo[i]);
-        g.max[i] = Math.max(g.max[i], hi[i]);
-      }
-      if (objects.length < 150) objects.push({ ...d, bounds: [lo, hi].map((v) => v.map((n) => +n.toFixed(4))) });
-    }
-    const r4 = (v) => v.map((n) => +n.toFixed(4));
-    const cam = this.renderer.cameraState();
     return {
-      camera: { ...cam, position: r4(cam.position), target: r4(cam.target) },
+      harness: "sketch",
+      ...sceneSummary(this.scene, this.renderer, (id) => this.describeObject(id)),
       up: this.config.up ?? "y",
       params: this.store.getAll(),
-      scene: {
-        shownObjects: shown,
-        groups: [...groups.values()].map(({ min, max, ...g }) => ({ ...g, bounds: [r4(min), r4(max)] })),
-        ...shown <= 150 ? { objects } : {}
-      }
+      logs: this.logs.map((l) => ({ ...l })),
+      errors: this.bridge?.errors() ?? []
     };
+  }
+  /**
+   * Export ▾ / Import ▾ in the sketch's own header, from `lab.registerExport/registerImport`.
+   * Without a header (inside a shell) the shell's top bar shows them instead. Rebuilt only
+   * when the registered names change, not on every re-run.
+   */
+  renderFileMenus() {
+    const host = this._fileMenusEl;
+    if (!host) return;
+    const sig = [...this.exports.keys()].join("\0") + "|" + [...this.imports.keys()].join("\0");
+    if (sig === this._fileMenusSig) return;
+    this._fileMenusSig = sig;
+    host.innerHTML = "";
+    const t = this.theme;
+    const menu = (label, items) => {
+      if (!items.length) return;
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "position:relative;";
+      const btn = document.createElement("button");
+      btn.textContent = `${label} \u25BE`;
+      btn.style.cssText = `font:12px ${t.font};padding:4px 10px;border-radius:4px;cursor:pointer;
+        background:${t.panelBg};color:${t.text};border:1px solid ${t.controlBorder};`;
+      const list = document.createElement("div");
+      list.style.cssText = `position:absolute;right:0;top:calc(100% + 4px);min-width:180px;z-index:30;display:none;
+        background:${t.panelBg};border:1px solid ${t.controlBorder};border-radius:6px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
+      for (const it of items) {
+        const b = document.createElement("button");
+        b.textContent = it.name;
+        if (it.title) b.title = it.title;
+        b.style.cssText = `display:block;width:100%;text-align:left;font:12px ${t.font};padding:6px 10px;border:0;border-radius:4px;
+          background:transparent;color:${t.text};cursor:pointer;`;
+        b.addEventListener("mouseenter", () => {
+          b.style.background = t.hoverBg;
+        });
+        b.addEventListener("mouseleave", () => {
+          b.style.background = "transparent";
+        });
+        b.addEventListener("click", async () => {
+          list.style.display = "none";
+          try {
+            await it.run();
+          } catch (e) {
+            console.error(`tekto ${label.toLowerCase()} "${it.name}":`, e);
+          }
+        });
+        list.appendChild(b);
+      }
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = list.style.display === "none";
+        for (const l of host.querySelectorAll("[data-tekto-menu]")) l.style.display = "none";
+        list.style.display = open ? "block" : "none";
+      });
+      list.dataset.tektoMenu = "";
+      document.addEventListener("click", () => {
+        list.style.display = "none";
+      });
+      wrap.append(btn, list);
+      host.appendChild(wrap);
+    };
+    menu("Export", this.getExports().map((it) => ({
+      name: it.name,
+      title: `Download as ${it.fileName}`,
+      run: async () => download(await it.handler(), it.fileName, it.mimeType ? { type: it.mimeType } : {})
+    })));
+    menu("Import", this.getImports().map((it) => ({
+      name: it.name,
+      run: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = it.accept ?? "";
+        input.onchange = async () => {
+          const f2 = input.files?.[0];
+          if (f2) await it.handler(f2);
+        };
+        input.click();
+      }
+    })));
+  }
+  /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
+  getParams() {
+    return { ...this.store.getAll() };
+  }
+  /**
+   * Set controls by label ("Radius"), "Group:Label" or key — e.g. the object `getParams()`
+   * returned — and re-run once. Reports names it could not apply instead of dropping them.
+   */
+  setParams(values) {
+    return this.store.setByName(values);
   }
   /** Destroy the sketch and clean up */
   dispose() {
     this.disposed = true;
     this.markup?.dispose();
-    if (window.__tekto?.owner === this) delete window.__tekto;
+    this.bridge?.dispose();
     if (this._boundKeyDown) window.removeEventListener("keydown", this._boundKeyDown);
     if (this._boundKeyUp) window.removeEventListener("keyup", this._boundKeyUp);
     this._boundKeyDown = null;
@@ -26472,7 +27434,7 @@ function appShell(config) {
   }
   panel.render(items);
   panelEl.appendChild(panel.el);
-  const scene = new Scene3();
+  const scene = new Scene();
   const renderer = new ThreeRenderer(scene, viewportEl, {
     backgroundColor: config.background ?? 658196,
     cameraPosition: config.camera ?? [6, 8, 10],
@@ -26511,7 +27473,8 @@ function appShell(config) {
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
-  return {
+  let statusText = "";
+  const instance = {
     params,
     scene,
     renderer,
@@ -26530,6 +27493,7 @@ function appShell(config) {
       displayFn?.();
     },
     status(text) {
+      statusText = text;
       if (text) {
         statusEl.textContent = text;
         statusEl.style.display = "block";
@@ -26539,11 +27503,36 @@ function appShell(config) {
     },
     dispose() {
       disposed = true;
+      bridge.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
     }
   };
+  const bridge = installAgentBridge({
+    owner: instance,
+    harness: "appShell",
+    store: params,
+    snapshot: (opts) => plainBundle({
+      ...opts,
+      title: config.title ?? "app",
+      harness: "appShell",
+      png: renderer.snapshotPng(),
+      viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
+      context: {
+        ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
+        up: config.up ?? "z",
+        params: params.getAll(),
+        logs: statusText ? [{ label: "status", value: statusText }] : [],
+        errors: bridge.errors()
+      }
+    }),
+    camera: (pos, target) => {
+      renderer.setCameraPosition(pos[0], pos[1], pos[2]);
+      if (target) renderer.lookAt(target[0], target[1], target[2]);
+    }
+  });
+  return instance;
 }
 function buildTopBar(header, scene, renderer, t) {
   const bar = document.createElement("div");
@@ -26700,433 +27689,6 @@ function buildSun(renderer, t) {
   return wrap;
 }
 
-// src/collab/SharedStore.ts
-var PALETTE = ["#e8590c", "#1c7ed6", "#2f9e44", "#ae3ec9", "#f08c00", "#0ca678", "#d6336c", "#4263eb"];
-function collabColor(id) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = h * 31 + id.charCodeAt(i) | 0;
-  return PALETTE[Math.abs(h) % PALETTE.length];
-}
-function randomId() {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-}
-var SharedStore = class {
-  constructor(opts) {
-    /** This client (tab). */
-    this.session = randomId();
-    this.records = /* @__PURE__ */ new Map();
-    /** Keys written here and not yet confirmed by the backend: remote versions wait … */
-    this.pending = /* @__PURE__ */ new Map();
-    /** … here (the newest per key), and the newer of it and ours wins on confirmation. */
-    this.deferred = /* @__PURE__ */ new Map();
-    this._status = "offline";
-    this._user = null;
-    this._presence = [];
-    this.myState = {};
-    this.unsub = null;
-    this.unsubUser = null;
-    this.changeL = /* @__PURE__ */ new Set();
-    this.presenceL = /* @__PURE__ */ new Set();
-    this.statusL = /* @__PURE__ */ new Set();
-    this.userL = /* @__PURE__ */ new Set();
-    this.broadcastL = /* @__PURE__ */ new Set();
-    this.errorL = /* @__PURE__ */ new Set();
-    this.doc = opts.doc;
-    this.adapter = opts.adapter;
-    this.color = opts.color;
-  }
-  /** Load the document and go live. Safe to call again after `disconnect()`. */
-  async connect() {
-    this.setStatus("connecting");
-    this._user = await this.adapter.user();
-    this.unsubUser = this.adapter.onUser?.((u) => {
-      this._user = u;
-      this.announce();
-      for (const l of this.userL) l(u);
-    }) ?? null;
-    this.unsub = this.adapter.subscribe(this.doc, this.session, {
-      record: (rec) => this.receive(rec),
-      presence: (list) => {
-        this._presence = list;
-        for (const l of this.presenceL) l(list);
-      },
-      broadcast: (event, payload, from) => {
-        if (from !== this.session) for (const l of this.broadcastL) l(event, payload, from);
-      },
-      status: (s, d) => this.setStatus(s, d)
-    });
-    try {
-      const all = await this.adapter.load(this.doc);
-      const keys = [];
-      for (const rec of all) if (this.take(rec)) keys.push(rec.key);
-      if (keys.length) this.emit(keys, "remote");
-    } catch (e) {
-      this.setStatus("error", String(e));
-      throw e;
-    }
-    this.announce();
-  }
-  disconnect() {
-    this.unsub?.();
-    this.unsub = null;
-    this.unsubUser?.();
-    this.unsubUser = null;
-    this.setStatus("offline");
-  }
-  // ── records ──
-  get(key) {
-    const r = this.records.get(key);
-    return r && r.value !== null ? r.value : void 0;
-  }
-  has(key) {
-    return this.get(key) !== void 0;
-  }
-  /** Live entries (removed records left out). */
-  entries() {
-    const out = [];
-    for (const [k, r] of this.records) if (r.value !== null) out.push([k, r.value]);
-    return out;
-  }
-  /** Who wrote a key last, and when (backend time). */
-  meta(key) {
-    const r = this.records.get(key);
-    return r && { by: r.by, at: r.at };
-  }
-  /** Write a key: applied here at once, then stored; on failure the stored version comes back. */
-  set(key, value) {
-    const before = this.records.get(key);
-    const ticket = (this.pending.get(key) ?? 0) + 1;
-    this.pending.set(key, ticket);
-    this.records.set(key, { key, value, by: this._user?.id ?? "", at: before?.at ?? 0 });
-    this.emit([key], "local");
-    const settle = () => {
-      if (this.pending.get(key) !== ticket) return false;
-      this.pending.delete(key);
-      const d = this.deferred.get(key);
-      this.deferred.delete(key);
-      return d ? this.take(d) : false;
-    };
-    this.adapter.put(this.doc, key, value).then(
-      (stored) => {
-        this.take(stored, true);
-        if (settle()) this.emit([key], "remote");
-      },
-      (err) => {
-        if (this.pending.get(key) === ticket) {
-          if (before) this.records.set(key, before);
-          else this.records.delete(key);
-          settle();
-          this.emit([key], "remote");
-        }
-        const msg = String(err?.message ?? err);
-        for (const l of this.errorL) l(key, msg);
-      }
-    );
-  }
-  delete(key) {
-    this.set(key, null);
-  }
-  // ── presence, broadcasts ──
-  get presence() {
-    return this._presence;
-  }
-  /** The other clients (this tab left out). */
-  get others() {
-    return this._presence.filter((p) => p.session !== this.session);
-  }
-  /** Merge into this client's presence state and announce it (only when something changed,
-   *  so calling it on every sketch run costs nothing). */
-  setPresence(state) {
-    const next = { ...this.myState, ...state };
-    if (JSON.stringify(next) === JSON.stringify(this.myState)) return;
-    this.myState = next;
-    this.announce();
-  }
-  broadcast(event, payload) {
-    this.adapter.broadcast(this.doc, this.session, event, payload);
-  }
-  // ── user, status ──
-  get user() {
-    return this._user;
-  }
-  get status() {
-    return this._status;
-  }
-  async signIn() {
-    await this.adapter.signIn?.();
-  }
-  async signOut() {
-    await this.adapter.signOut?.();
-  }
-  // ── listeners (each returns its unsubscribe) ──
-  onChange(cb) {
-    this.changeL.add(cb);
-    return () => this.changeL.delete(cb);
-  }
-  onPresence(cb) {
-    this.presenceL.add(cb);
-    return () => this.presenceL.delete(cb);
-  }
-  onStatus(cb) {
-    this.statusL.add(cb);
-    return () => this.statusL.delete(cb);
-  }
-  onUser(cb) {
-    this.userL.add(cb);
-    return () => this.userL.delete(cb);
-  }
-  onBroadcast(cb) {
-    this.broadcastL.add(cb);
-    return () => this.broadcastL.delete(cb);
-  }
-  /** A write the backend refused (e.g. not signed in / not an editor). */
-  onError(cb) {
-    this.errorL.add(cb);
-    return () => this.errorL.delete(cb);
-  }
-  // ── internals ──
-  receive(rec) {
-    if (this.take(rec)) this.emit([rec.key], "remote");
-  }
-  /** Take a backend version unless this one is as new (or newer); while a local write of the
-   *  key is pending, remote versions are held back (deferred). */
-  take(rec, own = false) {
-    if (!own && this.pending.has(rec.key)) {
-      const d = this.deferred.get(rec.key);
-      if (!d || d.at < rec.at) this.deferred.set(rec.key, rec);
-      return false;
-    }
-    const cur = this.records.get(rec.key);
-    if (cur && (own ? cur.at > rec.at : cur.at >= rec.at)) return false;
-    this.records.set(rec.key, rec);
-    return true;
-  }
-  emit(keys, source) {
-    for (const l of this.changeL) l(keys, source);
-  }
-  setStatus(s, detail) {
-    this._status = s;
-    for (const l of this.statusL) l(s, detail);
-  }
-  announce() {
-    if (!this.unsub) return;
-    const user = this._user ?? { id: `guest-${this.session}`, name: "Guest" };
-    this.adapter.setPresence(this.doc, { session: this.session, user, color: this.color ?? collabColor(user.id), state: this.myState });
-  }
-};
-function memoryAdapter(opts = {}) {
-  const docs = /* @__PURE__ */ new Map();
-  const subs = /* @__PURE__ */ new Map();
-  const presence = /* @__PURE__ */ new Map();
-  let clock = 0;
-  const now = () => clock = Math.max(clock + 1, Date.now());
-  const docOf = (m, doc) => m.get(doc) ?? m.set(doc, /* @__PURE__ */ new Map()).get(doc);
-  const make = (user) => ({
-    async load(doc) {
-      return [...docOf(docs, doc).values()].map((r) => ({ ...r }));
-    },
-    async put(doc, key, value) {
-      const rec = { key, value: value ?? null, by: user?.id ?? "guest", at: now() };
-      docOf(docs, doc).set(key, rec);
-      queueMicrotask(() => {
-        for (const s of docOf(subs, doc).values()) s.record({ ...rec });
-      });
-      return { ...rec };
-    },
-    subscribe(doc, session, on) {
-      docOf(subs, doc).set(session, on);
-      queueMicrotask(() => on.status("online"));
-      return () => {
-        docOf(subs, doc).delete(session);
-        docOf(presence, doc).delete(session);
-        const list = [...docOf(presence, doc).values()];
-        for (const s of docOf(subs, doc).values()) s.presence(list);
-      };
-    },
-    setPresence(doc, p) {
-      docOf(presence, doc).set(p.session, p);
-      const list = [...docOf(presence, doc).values()];
-      queueMicrotask(() => {
-        for (const s of docOf(subs, doc).values()) s.presence(list);
-      });
-    },
-    broadcast(doc, session, event, payload) {
-      queueMicrotask(() => {
-        for (const [sid, s] of docOf(subs, doc)) if (sid !== session) s.broadcast(event, payload, session);
-      });
-    },
-    async user() {
-      return user;
-    }
-  });
-  return Object.assign(make(opts.user ?? null), { withUser: make });
-}
-var DEV_ENDPOINT = "/__tekto/collab";
-var DEV_NAME_KEY = "tekto.collab.name";
-var DEV_ID_KEY = "tekto.collab.id";
-function devServerAdapter(opts = {}) {
-  const base = opts.endpoint ?? DEV_ENDPOINT;
-  const userL = /* @__PURE__ */ new Set();
-  const store = (k, v) => {
-    try {
-      if (v !== void 0) localStorage.setItem(k, v);
-      return localStorage.getItem(k);
-    } catch {
-      return null;
-    }
-  };
-  const currentUser = () => {
-    const name = store(DEV_NAME_KEY);
-    if (!name) return null;
-    const id = store(DEV_ID_KEY) ?? store(DEV_ID_KEY, `dev-${randomId()}`);
-    return { id, name };
-  };
-  const post2 = async (path, body) => {
-    const r = await fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-    return r.json();
-  };
-  return {
-    async load(doc) {
-      const r = await fetch(`${base}/records?doc=${encodeURIComponent(doc)}`);
-      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-      return r.json();
-    },
-    put(doc, key, value) {
-      return post2("/put", { doc, key, value: value ?? null, by: currentUser()?.name ?? "guest" });
-    },
-    subscribe(doc, session, on) {
-      let es = null;
-      let closed = false;
-      const open = () => {
-        on.status("connecting");
-        es = new EventSource(`${base}/events?doc=${encodeURIComponent(doc)}&session=${session}`);
-        es.addEventListener("open", () => on.status("online"));
-        es.addEventListener("record", (e) => on.record(JSON.parse(e.data)));
-        es.addEventListener("presence", (e) => on.presence(JSON.parse(e.data)));
-        es.addEventListener("broadcast", (e) => {
-          const m = JSON.parse(e.data);
-          on.broadcast(m.event, m.payload, m.from);
-        });
-        es.addEventListener("error", () => {
-          if (!closed) on.status("connecting", "reconnecting");
-        });
-      };
-      open();
-      return () => {
-        closed = true;
-        es?.close();
-        on.status("offline");
-      };
-    },
-    setPresence(doc, presence) {
-      void post2("/presence", { doc, presence }).catch(() => {
-      });
-    },
-    broadcast(doc, session, event, payload) {
-      void post2("/broadcast", { doc, from: session, event, payload }).catch(() => {
-      });
-    },
-    async user() {
-      return currentUser();
-    },
-    async signIn() {
-      const name = window.prompt("Your name (shown to the others)", store(DEV_NAME_KEY) ?? "");
-      if (!name) return;
-      store(DEV_NAME_KEY, name.trim());
-      const u = currentUser();
-      for (const l of userL) l(u);
-    },
-    async signOut() {
-      try {
-        localStorage.removeItem(DEV_NAME_KEY);
-      } catch {
-      }
-      for (const l of userL) l(null);
-    },
-    onUser(cb) {
-      userL.add(cb);
-      return () => userL.delete(cb);
-    }
-  };
-}
-function supabaseUser(u) {
-  if (!u) return null;
-  const m = u.user_metadata ?? {};
-  return { id: m.user_name ?? m.preferred_username ?? u.email ?? u.id, name: m.full_name ?? m.name ?? m.user_name ?? u.email ?? "user", avatarUrl: m.avatar_url };
-}
-function fromRow(row) {
-  return { key: row.key, value: row.value ?? null, by: row.by ?? "", at: Date.parse(row.at) };
-}
-function supabaseAdapter(client, opts = {}) {
-  const table = opts.table ?? "tekto_records";
-  const channels = /* @__PURE__ */ new Map();
-  const joined = /* @__PURE__ */ new Set();
-  const lastPresence = /* @__PURE__ */ new Map();
-  return {
-    async load(doc) {
-      const { data, error } = await client.from(table).select("key,value,by,at").eq("doc", doc);
-      if (error) throw new Error(error.message);
-      return (data ?? []).map(fromRow);
-    },
-    async put(doc, key, value) {
-      const { data, error } = await client.from(table).upsert({ doc, key, value: value ?? null }, { onConflict: "doc,key" }).select("key,value,by,at").single();
-      if (error) throw new Error(error.message);
-      return fromRow(data);
-    },
-    subscribe(doc, session, on) {
-      on.status("connecting");
-      const ch = client.channel(`tekto:${doc}`, { config: { presence: { key: session }, broadcast: { self: false } } });
-      ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `doc=eq.${doc}` }, (p) => {
-        if (p.new?.key) on.record(fromRow(p.new));
-      });
-      ch.on("presence", { event: "sync" }, () => {
-        const state = ch.presenceState();
-        on.presence(Object.values(state).map((metas) => metas[metas.length - 1]).filter(Boolean));
-      });
-      ch.on("broadcast", { event: "tekto" }, (m) => on.broadcast(m.payload.event, m.payload.payload, m.payload.from));
-      ch.subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          joined.add(doc);
-          on.status("online");
-          const p = lastPresence.get(doc);
-          if (p) void ch.track(p);
-        } else if (status === "CLOSED") {
-          joined.delete(doc);
-          on.status("offline");
-        } else on.status(status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "error" : "connecting", err?.message ?? status);
-      });
-      channels.set(doc, ch);
-      return () => {
-        channels.delete(doc);
-        joined.delete(doc);
-        void client.removeChannel(ch);
-        on.status("offline");
-      };
-    },
-    setPresence(doc, presence) {
-      lastPresence.set(doc, presence);
-      if (joined.has(doc)) void channels.get(doc)?.track(presence);
-    },
-    broadcast(doc, session, event, payload) {
-      void channels.get(doc)?.send({ type: "broadcast", event: "tekto", payload: { event, payload, from: session } });
-    },
-    async user() {
-      return supabaseUser((await client.auth.getUser()).data.user);
-    },
-    async signIn() {
-      await client.auth.signInWithOAuth({ provider: opts.provider ?? "github", options: { redirectTo: location.href } });
-    },
-    async signOut() {
-      await client.auth.signOut();
-    },
-    onUser(cb) {
-      const { data } = client.auth.onAuthStateChange((_e, s) => cb(supabaseUser(s?.user)));
-      return () => data.subscription.unsubscribe();
-    }
-  };
-}
-
 // src/collab/PresenceBar.ts
 var STATUS_COL = { online: "#2f9e44", connecting: "#f08c00", offline: "#adb5bd", error: "#e03131" };
 var PresenceBar = class {
@@ -27195,6 +27757,7 @@ var Sketch2DInstance = class {
     this.items = /* @__PURE__ */ new Map();
     this.buttons = [];
     this.logs = [];
+    this.bridge = null;
     this.drawFn = null;
     this.animateFn = null;
     this.pointerDownFns = [];
@@ -27230,6 +27793,24 @@ var Sketch2DInstance = class {
     this.wireInput();
     this.runSketch();
     this.startLoop();
+    this.bridge = installAgentBridge({
+      owner: this,
+      harness: "sketch2d",
+      store: this.store,
+      snapshot: (opts) => plainBundle({
+        ...opts,
+        title: this.config.title ?? "sketch2d",
+        harness: "sketch2d",
+        png: this.canvas.toDataURL("image/png"),
+        viewport: { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
+        context: {
+          params: this.store.getAll(),
+          // The body's lines plus this frame's: keep the latest value per label.
+          logs: [...new Map(this.logs.map((l) => [l.label, { ...l }])).values()],
+          errors: this.bridge?.errors() ?? []
+        }
+      })
+    });
   }
   // ── DOM ──
   buildDOM() {
@@ -27430,6 +28011,8 @@ var Sketch2DInstance = class {
       }
       return { get value() {
         return self.store.get(key);
+      }, set(v) {
+        self.store.set(key, v);
       } };
     }
     return {
@@ -27572,8 +28155,17 @@ var Sketch2DInstance = class {
     requestAnimationFrame(loop);
   }
   /** Tear down the sketch */
+  /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
+  getParams() {
+    return { ...this.store.getAll() };
+  }
+  /** Set controls by label, "Group:Label" or key, and re-run once; reports what it couldn't apply. */
+  setParams(values) {
+    return this.store.setByName(values);
+  }
   dispose() {
     this.disposed = true;
+    this.bridge?.dispose();
     this.panel.dispose();
     this.container.innerHTML = "";
   }
@@ -27729,6 +28321,7 @@ var Sketch2DInstance = class {
   createParams,
   createRandom,
   devServerAdapter,
+  download,
   easeInOut,
   edgeOutwardVisibility,
   edgeStyle,
@@ -27769,8 +28362,10 @@ var Sketch2DInstance = class {
   shortestTurn,
   sketch,
   sketch2d,
+  stampName,
   standardOrbit,
   supabaseAdapter,
   surfaceAppearance,
+  writeDxf2D,
   writeDxf3D
 });

@@ -117,6 +117,39 @@ declare class Mat4 {
 }
 
 /**
+ * Tekto AABB — Axis-Aligned Bounding Box.
+ *
+ * Mirrors HDGEO.Core.AABB.
+ */
+
+declare class AABB {
+    readonly min: Vec3;
+    readonly max: Vec3;
+    constructor(min: Vec3, max: Vec3);
+    static empty(): AABB;
+    static fromPoints(points: Vec3[]): AABB;
+    center(): Vec3;
+    size(): Vec3;
+    volume(): number;
+    expand(point: Vec3): AABB;
+    union(other: AABB): AABB;
+    containsPoint(p: Vec3): boolean;
+    intersectsAABB(other: AABB): boolean;
+    toJSON(): {
+        min: {
+            x: number;
+            y: number;
+            z: number;
+        };
+        max: {
+            x: number;
+            y: number;
+            z: number;
+        };
+    };
+}
+
+/**
  * Tekto Triangle primitive.
  *
  * Mirrors HDGEO.Core.Triangle.
@@ -146,39 +179,6 @@ declare class Triangle {
             z: number;
         };
         c: {
-            x: number;
-            y: number;
-            z: number;
-        };
-    };
-}
-
-/**
- * Tekto AABB — Axis-Aligned Bounding Box.
- *
- * Mirrors HDGEO.Core.AABB.
- */
-
-declare class AABB {
-    readonly min: Vec3;
-    readonly max: Vec3;
-    constructor(min: Vec3, max: Vec3);
-    static empty(): AABB;
-    static fromPoints(points: Vec3[]): AABB;
-    center(): Vec3;
-    size(): Vec3;
-    volume(): number;
-    expand(point: Vec3): AABB;
-    union(other: AABB): AABB;
-    containsPoint(p: Vec3): boolean;
-    intersectsAABB(other: AABB): boolean;
-    toJSON(): {
-        min: {
-            x: number;
-            y: number;
-            z: number;
-        };
-        max: {
             x: number;
             y: number;
             z: number;
@@ -222,6 +222,28 @@ interface MeshData$1 {
     indices: Uint32Array;
     uvs?: Float32Array;
     colors?: Float32Array;
+}
+/** What `Mesh.validate()` reports. `issues` is empty when the mesh is sound. */
+interface MeshValidation {
+    valid: boolean;
+    /** Human-readable problems, each with a count and the first offender. */
+    issues: string[];
+    /** No open edges, no non-manifold edges: a solid. */
+    closed: boolean;
+    /** For closed meshes: positive when the faces point outward. */
+    signedVolume?: number;
+    counts: {
+        nodes: number;
+        edges: number;
+        faces: number;
+        boundaryEdges: number;
+        nonManifoldEdges: number;
+        inconsistentEdges: number;
+        nonFiniteNodes: number;
+        badFaces: number;
+        repeatedFaces: number;
+        degenerateFaces: number;
+    };
 }
 /** What `toJSON()` writes. Dense: tombstones are dropped, ids renumbered. */
 interface MeshJSON {
@@ -456,6 +478,14 @@ declare class Mesh {
     centroid(): Vec3;
     /** V − E + F over the live elements. */
     eulerCharacteristic(): number;
+    /**
+     * Check the mesh for what silently breaks rendering, volumes and exports, in one pass:
+     * non-finite positions, faces that reference missing nodes or repeat one, degenerate
+     * (zero-area) faces, non-manifold edges, faces wound against their neighbours, and a
+     * closed mesh that is inside-out. `issues` is empty when the mesh is sound; open
+     * (boundary) edges are counted but are not an issue — plenty of good meshes are open.
+     */
+    validate(): MeshValidation;
     translate(dx: number, dy: number, dz: number): void;
     scale(s: number): void;
     scaleXYZ(sx: number, sy: number, sz: number): void;
@@ -669,6 +699,13 @@ type SceneEvent = {
     type: "camera:change";
 };
 type SceneEventListener = (event: SceneEvent) => void;
+/**
+ * The objects an app shows: points, segments, polylines, polygons, meshes, each with a
+ * {@link VisualStyle} (colour, opacity, layer, label …). Renderers listen to its events.
+ * `sketch()` rebuilds it every run; `appShell()` apps keep and edit it. Ids are per scene.
+ *
+ *   const obj = scene.addMesh(mesh, { color: "#ccc", layer: "slab" }); scene.setStyle(obj.id, { opacity: 0.5 });
+ */
 declare class Scene {
     private objects;
     /** Per-scene, reset by clear(): see genId. */
@@ -748,150 +785,4 @@ interface SceneJSON {
     objects: any[];
 }
 
-/**
- * Tekto Parameter System
- *
- * Declare parameters, get reactive values + auto-generated UI.
- *
- * Usage:
- *   const params = createParams({
- *     radius: { type: "float", min: 0.1, max: 5, default: 1, step: 0.1, label: "Radius" },
- *     segments: { type: "int", min: 3, max: 64, default: 16, label: "Segments" },
- *     algorithm: { type: "select", options: ["delaunay", "greedy"], default: "delaunay" },
- *     wireframe: { type: "bool", default: false },
- *     color: { type: "color", default: "#6ee7b7" },
- *     name: { type: "string", default: "Mesh 1" },
- *   });
- *
- *   params.get("radius")       // 1
- *   params.set("radius", 2.5)  // triggers listeners
- *   params.onChange((key, value) => rebuild())
- */
-interface FloatParam {
-    type: "float";
-    min: number;
-    max: number;
-    default: number;
-    step?: number;
-    label?: string;
-}
-interface IntParam {
-    type: "int";
-    min: number;
-    max: number;
-    default: number;
-    step?: number;
-    label?: string;
-}
-interface BoolParam {
-    type: "bool";
-    default: boolean;
-    label?: string;
-}
-interface SelectParam {
-    type: "select";
-    options: readonly string[];
-    default: string;
-    label?: string;
-}
-interface ColorParam {
-    type: "color";
-    default: string;
-    label?: string;
-}
-interface StringParam {
-    type: "string";
-    default: string;
-    label?: string;
-    placeholder?: string;
-}
-interface Vec3Param {
-    type: "vec3";
-    default: [number, number, number];
-    min?: [number, number, number];
-    max?: [number, number, number];
-    step?: number;
-    label?: string;
-}
-interface ButtonParam {
-    type: "button";
-    label?: string;
-    action: () => void;
-}
-type ParamDef = (FloatParam | IntParam | BoolParam | SelectParam | ColorParam | StringParam | Vec3Param | ButtonParam) & {
-    /** Display-only param: `appShell` routes its changes to `onDisplay`
-     *  (restyle existing objects) instead of `onBuild` (regenerate geometry). */
-    display?: boolean;
-};
-type ParamSchema = Record<string, ParamDef>;
-type ParamChangeListener = (key: string, value: any, allValues: Record<string, any>) => void;
-declare class ParamStore<S extends ParamSchema = ParamSchema> {
-    private schema;
-    private values;
-    private listeners;
-    private keyListeners;
-    constructor(schema: S);
-    get<K extends keyof S>(key: K): any;
-    set<K extends keyof S>(key: K, value: any): void;
-    /**
-     * Dynamically add (or refresh) a parameter definition. Used by the sketch
-     * APIs, whose immediate-mode `lab.slider(...)` calls declare params during
-     * the sketch run. Initializes the value from `default` the first time;
-     * an existing value is preserved so re-defining across re-runs is cheap.
-     * Does NOT notify listeners (definition is structure, not a value change).
-     */
-    define(key: string, def: ParamDef): void;
-    /** Remove a parameter (and its value). Does not notify listeners. */
-    remove(key: string): void;
-    has(key: string): boolean;
-    keys(): string[];
-    /** Get all current values */
-    getAll(): Record<string, any>;
-    /** Get the schema for a specific key */
-    getDef<K extends keyof S>(key: K): S[K];
-    /** Get entire schema */
-    getSchema(): S;
-    /** Listen to all changes */
-    onChange(listener: ParamChangeListener): () => void;
-    /** Listen to a specific key */
-    onKey(key: string, listener: (value: any) => void): () => void;
-    /** Reset all to defaults */
-    reset(): void;
-    /** Serialization */
-    toJSON(): Record<string, any>;
-    loadJSON(json: Record<string, any>): void;
-    /**
-     * The keys a person or an agent means by `name`, most specific first: the exact key;
-     * else the control's label, ignoring case ("Radius"); else "Group:Label" for sketch
-     * keys, which read `type:group:label`. One key when the name is unambiguous.
-     */
-    findKeys(name: string): string[];
-    /**
-     * Set params by key or label (see `findKeys`) and say what could not be applied,
-     * instead of dropping it the way `loadJSON` does. For tools and agents.
-     */
-    setByName(values: Record<string, unknown>): {
-        applied: string[];
-        unknown: string[];
-        ambiguous: {
-            name: string;
-            keys: string[];
-        }[];
-    };
-    /** Every param as the name to use with `setByName`: its label, or "Group:Label" when two share a label. */
-    names(): string[];
-}
-/** Convenience factory */
-declare function createParams<S extends ParamSchema>(schema: S): ParamStore<S>;
-interface ParamFolder {
-    label: string;
-    open?: boolean;
-    params: string[];
-}
-interface ParamLayout {
-    folders: ParamFolder[];
-}
-/** Create a layout that groups params into collapsible folders */
-declare function createLayout(folders: ParamFolder[]): ParamLayout;
-
-export { AABB as A, type BoolParam as B, type ColorParam as C, createParams as D, type FlatMeshData as F, type IntParam as I, type LightingMode as L, Mat4 as M, ObjFile as O, ParamStore as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, Vec2 as a, Mesh as b, type MeshData$1 as c, type VisualStyle as d, type ParamSchema as e, type ButtonParam as f, type FloatParam as g, type LegacyMeshJSON as h, type MeshEdge as i, type MeshFace as j, type MeshJSON as k, type MeshNode as l, type MeshData as m, type ParamDef as n, type ParamFolder as o, type ParamLayout as p, type SceneEvent as q, type SceneEventListener as r, type SceneJSON as s, type SceneObject as t, type SceneObjectType as u, type SelectParam as v, type StringParam as w, type Vec3Param as x, Vec4 as y, createLayout as z };
+export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, Vec2 as b, type MeshData$1 as c, type LegacyMeshJSON as d, Mat4 as e, type MeshEdge as f, type MeshFace as g, type MeshJSON as h, type MeshNode as i, type MeshValidation as j, type MeshData as k, type SceneEvent as l, type SceneEventListener as m, type SceneJSON as n, type SceneObjectType as o, Vec4 as p, type VisualStyle as q };
