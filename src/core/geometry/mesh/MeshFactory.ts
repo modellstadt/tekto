@@ -59,12 +59,26 @@ export const MeshFactory = {
     return mesh;
   },
 
+  /**
+   * Extrude a closed polygon (no repeated last point) along `direction`. Faces point
+   * outward whichever way the polygon winds: it is reoriented to run counter-clockwise
+   * seen from the tip of `direction` first.
+   */
   extrude(polygon: Vec3[], direction: Vec3, cap = true): Mesh {
     const mesh = new Mesh();
     const n = polygon.length;
+    // Newell normal of the outline; if it opposes the extrusion, walk the outline backwards.
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0; i < n; i++) {
+      const a = polygon[i], b = polygon[(i + 1) % n];
+      nx += (a.y - b.y) * (a.z + b.z);
+      ny += (a.z - b.z) * (a.x + b.x);
+      nz += (a.x - b.x) * (a.y + b.y);
+    }
+    const outline = nx * direction.x + ny * direction.y + nz * direction.z < 0 ? [...polygon].reverse() : polygon;
 
-    const bottom = polygon.map(p => mesh.addNode(p));
-    const top = polygon.map(p => mesh.addNode(p.add(direction)));
+    const bottom = outline.map(p => mesh.addNode(p));
+    const top = outline.map(p => mesh.addNode(p.add(direction)));
 
     for (let i = 0; i < n; i++) {
       const next = (i + 1) % n;
@@ -72,8 +86,8 @@ export const MeshFactory = {
     }
 
     if (cap && n >= 3) {
-      mesh.addFace(bottom);
-      mesh.addFace([...top].reverse());
+      mesh.addFace([...bottom].reverse());   // faces −direction
+      mesh.addFace(top);                     // faces +direction
     }
 
     mesh.computeVertexNormals();
@@ -208,16 +222,17 @@ export const MeshFactory = {
       topIds.push(mesh.addNode(new Vec3(radiusTop * cos, h2, radiusTop * sin)));
     }
 
+    // The angle runs +x → +z, clockwise seen from +y, so the outward winding is s → s−1.
     for (let s = 0; s < segments; s++) {
-      mesh.addQuad(bottomIds[s], bottomIds[s + 1], topIds[s + 1], topIds[s]);
+      mesh.addQuad(bottomIds[s], topIds[s], topIds[s + 1], bottomIds[s + 1]);
     }
 
     if (cap) {
       const bottomCenter = mesh.addNode(new Vec3(0, -h2, 0));
       const topCenter = mesh.addNode(new Vec3(0, h2, 0));
       for (let s = 0; s < segments; s++) {
-        mesh.addTriangle(bottomCenter, bottomIds[s + 1], bottomIds[s]);
-        mesh.addTriangle(topCenter, topIds[s], topIds[s + 1]);
+        mesh.addTriangle(bottomCenter, bottomIds[s], bottomIds[s + 1]);
+        mesh.addTriangle(topCenter, topIds[s + 1], topIds[s]);
       }
     }
 
@@ -258,6 +273,9 @@ export const MeshFactory = {
    * Accepts uniform radius (number) or per-point varying radii (number[]).
    */
   pipe(path: Vec3[], radius: number | number[], sides = 8): Mesh {
+    if (Array.isArray(radius) && radius.length !== path.length) {
+      throw new Error(`MeshFactory.pipe: ${radius.length} radii for ${path.length} path points — need one radius per point (or a single number)`);
+    }
     const mesh = new Mesh();
     const frames = CurveUtils.parallelTransportFrames(path);
     if (frames.length === 0) return mesh;
