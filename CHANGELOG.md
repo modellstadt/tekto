@@ -6,6 +6,23 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **One renderer, part 1: section cuts and ghost on `ThreeRenderer`** (from `Viewport`), so
+  every `sketch()` and `appShell()` app has them.
+  - `renderer.setSection({ axis, coordinate | at, flip })` cuts the model with a plane and
+    fills the cut (poché on opaque surfaces). A pick skips what the cut removed. The cut
+    stays while the scene is rebuilt. `setSectionColour`, `section`. In a sketch:
+    `lab.setSection`; `SketchInstance.setSection`.
+  - New render mode **`"ghost"`**: surfaces faint in their own colour, with creases. A
+    selection is drawn solid. Ghosts cast no shadows. Creases turn dark on a light background.
+  - appShell top bar: **Ghost** in Mode and a **Cut ▾** popover (axis, position, flip).
+    `topBar` also takes `{ light, mode, camera, cut, sun }`, so an app can switch off
+    controls it has no use for. The testbench has Ghost and a Cut control too.
+  - `SectionRequest` gains `coordinate` (a cut at a model position; `at` stays a fraction)
+    and moves to the Scene types. The view rules `Viewport` and `ThreeRenderer` share
+    (`edgeStyle`, `surfaceAppearance`, `standardOrbit`, … and new `sectionPlane`) live in
+    their own module. They are exported under the same names. With `flip`, a fraction cut
+    stays where it was and only the kept side changes.
+
 ## 0.7.2 — 2026-10-13
 
 Drawings: a `Sheet` shown on screen and exported to SVG and DXF from the same primitives.

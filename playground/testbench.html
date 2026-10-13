@@ -114,7 +114,18 @@
         <option value="solid">Solid</option>
         <option value="wireframe">Wireframe</option>
         <option value="hiddenline">Hidden Line</option>
+        <option value="ghost">Ghost</option>
       </select>
+    </span>
+    <span class="group" id="cut-group">
+      <span class="label">Cut</span>
+      <select id="section-axis" title="Cut the model with a section">
+        <option value="">Off</option>
+        <option value="z">Plan (Z)</option>
+        <option value="x">X</option>
+        <option value="y">Y</option>
+      </select>
+      <input type="range" id="section-at" class="tekto-slider" min="0" max="100" value="50" title="Where the cut goes through the model" style="width:90px;--tekto-track:#3a3c5a;--tekto-thumb:#ffffff;" hidden>
     </span>
     <span class="group" id="light-group">
       <span class="label">Light</span>

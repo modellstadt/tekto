@@ -11,8 +11,8 @@ import * as THREE from "three";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
-  orbitFor, shortestTurn, nearestAxis, easeInOut,
-} from "../src/render/Viewport";
+  orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane,
+} from "../src/render/viewRules";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
 function luminance(hex: number): number {
@@ -216,5 +216,33 @@ describe("framing", () => {
     expect(f.top).toBeCloseTo(halfHeight);
     expect(f.bottom).toBeCloseTo(-halfHeight);
     expect(f.right - f.left).toBeCloseTo((f.top - f.bottom) * 1.5);
+  });
+});
+
+describe("section planes", () => {
+  const Z = new THREE.Vector3(0, 0, 1);
+  const kept = (plane: THREE.Plane, z: number) => plane.distanceToPoint(new THREE.Vector3(0, 0, z)) >= 0;
+
+  it("a coordinate cut keeps what is below it, flip what is above — at the same place", () => {
+    const below = sectionPlane({ axis: "z", coordinate: 2 }, Z, null)!;
+    expect([kept(below, 1), kept(below, 3)]).toEqual([true, false]);
+    const above = sectionPlane({ axis: "z", coordinate: 2, flip: true }, Z, null)!;
+    expect([kept(above, 1), kept(above, 3)]).toEqual([false, true]);
+  });
+
+  it("a fraction is measured through the content; flipping doesn't move the cut", () => {
+    const box = new THREE.Box3(new THREE.Vector3(-1, -1, 0), new THREE.Vector3(1, 1, 10));
+    const p = sectionPlane({ axis: "z", at: 0.3 }, Z, box)!;
+    const q = sectionPlane({ axis: "z", at: 0.3, flip: true }, Z, box)!;
+    expect(p.distanceToPoint(new THREE.Vector3(0, 0, 3))).toBeCloseTo(0, 9);
+    expect(q.distanceToPoint(new THREE.Vector3(0, 0, 3))).toBeCloseTo(0, 9);
+    expect(sectionPlane({ axis: "z" }, Z, box)!.distanceToPoint(new THREE.Vector3(0, 0, 5))).toBeCloseTo(0, 9);
+    // nothing loaded, nothing to measure a fraction against
+    expect(sectionPlane({ axis: "z", at: 0.5 }, Z, new THREE.Box3())).toBeNull();
+  });
+
+  it("ghost creases go dark on a light page, so they can still be seen", () => {
+    expect(luminance(edgeStyle("ghost").colour)).toBeGreaterThan(200);
+    expect(luminance(edgeStyle("ghost", 0xffffff).colour)).toBeLessThan(60);
   });
 });

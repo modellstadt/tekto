@@ -59,8 +59,8 @@ test("a slider re-runs the sketch with the new value", async ({ page }) => {
   await page.goto("/testbench.html?page=mesh-factory");
   await expectLiveCanvas(page);
 
-  // The page's own slider (.tekto-slider) — not the sun control in the top bar.
-  const slider = page.locator("input.tekto-slider").first();
+  // The page's own slider (.tekto-slider) — not the sun or cut controls in the top bar.
+  const slider = page.locator("#app input.tekto-slider").first();
   const { min, max, step } = await slider.evaluate((el: HTMLInputElement) => ({
     min: Number(el.min), max: Number(el.max), step: Number(el.step) || 1,
   }));
@@ -83,9 +83,9 @@ test("the render mode and lighting controls apply", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/testbench.html?page=mesh-factory");
   await expectLiveCanvas(page);
-  await page.getByRole("combobox").nth(1).selectOption("wireframe"); // RENDER
+  await page.locator("#render-mode").selectOption("wireframe");
   await page.waitForTimeout(300);
-  await page.getByRole("combobox").nth(2).selectOption("studio");    // LIGHT
+  await page.locator("#lighting-mode").selectOption("studio");
   await page.waitForTimeout(500);
   await expectLiveCanvas(page);
   expect(errors).toEqual([]);

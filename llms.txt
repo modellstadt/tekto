@@ -33,8 +33,8 @@ Five rules that catch agents out:
 
 ## Entry points
 
-- `import … from "tekto/core"` — geometry and data — no three.js, no DOM; runs in Node, workers and tests (169 values, 146 types)
-- `import … from "tekto"` — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (209 values, 210 types)
+- `import … from "tekto/core"` — geometry and data — no three.js, no DOM; runs in Node, workers and tests (169 values, 147 types)
+- `import … from "tekto"` — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (210 values, 210 types)
 - `import … from "tekto/2d"` — sketch2d and the 2D geometry a first sketch needs — no three.js (20 values, 33 types)
 - `import … from "tekto/react"` — React components (needs react, react-dom)
 
