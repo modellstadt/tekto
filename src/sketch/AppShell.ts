@@ -430,9 +430,11 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
   };
 
   if (show.light !== false) bar.appendChild(group("Light", segmented<LightingMode>(
-    [["Flat", "flat"], ["Studio", "studio"]], "flat", (v) => scene.setLightingMode(v))));
+    [["Flat", "flat"], ["Studio", "studio"]], scene.lightingMode, (v) => scene.setLightingMode(v),
+    (set) => scene.on((e) => { if (e.type === "scene:lightingMode") set(e.mode); }))));
   if (show.mode !== false) bar.appendChild(group("Mode", segmented<RenderMode>(
-    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]], "solid", (v) => scene.setRenderMode(v))));
+    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]], scene.renderMode, (v) => scene.setRenderMode(v),
+    (set) => scene.on((e) => { if (e.type === "scene:renderMode") set(e.mode); }))));
   if (show.camera !== false) {
     const cam = group("Cam", segmented<"perspective" | "orthographic">(
       [["Persp", "perspective"], ["Ortho", "orthographic"]], renderer.projection,

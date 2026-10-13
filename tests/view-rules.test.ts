@@ -1,5 +1,5 @@
 /**
- * The rules a Viewport draws by, tested without a GPU.
+ * The rules the renderer draws by, tested without a GPU.
  *
  * Everything here is a plain function on purpose: the parts of a viewport that
  * are easy to get quietly wrong (which axis a named view looks down, whether a
@@ -265,11 +265,11 @@ describe("named views on the renderer", () => {
     expect(y).toBeCloseTo(z, 12);
     expect(viewDirection("iso", "z").length()).toBeCloseTo(1, 12);
   });
-  it("matches the Viewport's own named views once its Z-up turn is undone", () => {
+  it("agrees with the spherical named views once a Z-up content turn is undone", () => {
     for (const v of ["top", "front", "right", "back", "left"] as const) {
       const o = standardOrbit(v);
       const world = new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, o.phi, o.theta));
-      const content = new THREE.Vector3(world.x, -world.z, world.y);      // Viewport turns Z-up content by -90° about X
+      const content = new THREE.Vector3(world.x, -world.z, world.y);      // Z-up content turned into Y-up: -90° about X
       expect(r(content)).toEqual(r(viewDirection(v, "z")));
     }
   });
