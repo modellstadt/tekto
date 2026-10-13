@@ -36,6 +36,9 @@ export class Marks {
   private selectionStyle: "tint" | "outline" = "tint";
   outlineGroup = new THREE.Group();
   private outlined: { line: THREE.LineSegments; source: THREE.Object3D }[] = [];
+  // ── Others' selections (shared presence): outlines in each person's colour ──
+  private presenceLines: { line: THREE.LineSegments; source: THREE.Object3D }[] = [];
+  private presenceMats = new Map<string, THREE.LineBasicMaterial>();
 
   constructor(private core: RendererCore) {
     this.outlineGroup.renderOrder = 999;
@@ -45,6 +48,7 @@ export class Marks {
   /** Keep outlines on their objects (a gizmo drag moves them without a rebuild). */
   followOutlines(): void {
     for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
+    for (const o of this.presenceLines) o.line.matrix.copy(o.source.matrixWorld);
   }
 
   setSelectionStyle(style: "tint" | "outline"): void {
@@ -111,12 +115,46 @@ export class Marks {
 
   /** Remove the outlines traced from `root`'s meshes (all of them for null). */
   dropOutlines(root: THREE.Object3D | null): void {
-    this.outlined = this.outlined.filter((o) => {
+    const keep = (o: { line: THREE.LineSegments; source: THREE.Object3D }) => {
       let inside = root === null;
       for (let c: THREE.Object3D | null = o.source; c && !inside; c = c.parent) inside = c === root;
       if (inside) { o.line.geometry.dispose(); o.line.removeFromParent(); }
       return !inside;
-    });
+    };
+    this.outlined = this.outlined.filter(keep);
+    this.presenceLines = this.presenceLines.filter(keep);
+  }
+
+  /** Outline what other people have selected, each set in its person's colour, on top of
+   *  everything (and clipped by a section). An empty list clears. */
+  setPresenceHighlight(entries: readonly { ids: readonly string[]; color: string }[]): void {
+    for (const o of this.presenceLines) { o.line.geometry.dispose(); o.line.removeFromParent(); }
+    this.presenceLines = [];
+    for (const e of entries) {
+      const mat = this._presenceMaterial(e.color);
+      for (const id of e.ids) {
+        const t = this.core.objectMap.get(id);
+        if (!t) continue;
+        t.updateMatrixWorld(true);
+        t.traverse((c) => {
+          if (!c.userData.surface) return;
+          const line = new THREE.LineSegments(new THREE.EdgesGeometry((c as THREE.Mesh).geometry, 30), mat);
+          line.matrixAutoUpdate = false;
+          line.matrix.copy(c.matrixWorld);
+          line.renderOrder = 998;                  // under this person's own selection outline
+          this.outlineGroup.add(line);
+          this.presenceLines.push({ line, source: c });
+        });
+      }
+    }
+    this.core.requestRender();
+  }
+
+  private _presenceMaterial(color: string): THREE.LineBasicMaterial {
+    let m = this.presenceMats.get(color);
+    if (!m) { m = new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.9 }); this.presenceMats.set(color, m); }
+    m.clippingPlanes = this.sectionClip ? [this.sectionClip] : null;
+    return m;
   }
 
 
@@ -135,6 +173,7 @@ export class Marks {
     this.core.renderer.localClippingEnabled = !!this.sectionClip;
     for (const t of this.core.objectMap.values()) this.dressSection(t);
     if (this.outlineMat) this._outlineMaterial();
+    for (const c of this.presenceMats.keys()) this._presenceMaterial(c);
     this.core.requestRender();
   }
 
@@ -279,6 +318,8 @@ export class Marks {
     this.pocheMat?.dispose();
     this.outlineMat?.dispose();
     for (const o of this.outlined) o.line.geometry.dispose();
+    for (const o of this.presenceLines) o.line.geometry.dispose();
+    for (const m of this.presenceMats.values()) m.dispose();
     this.callouts?.dispose();
     clearTimeout(this.calloutRecheck);
   }

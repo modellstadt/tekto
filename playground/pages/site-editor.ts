@@ -9,11 +9,13 @@
  *   undo / redo    a slider drag or a run of arrow-key nudges is one step
  *   toJSON / load  Save JSON / Open JSON
  *
+ *   shareSelection with `?shared=1`, each window outlines what the others have selected, in
+ *                  their colour (the presence bar says whose colour is whose)
  *   commands       Delete, ⌘/Ctrl-Z, ⇧⌘/Ctrl-Shift-Z, ⌘/Ctrl-D, arrows (move 0.5 m) — as
  *                  `app.commands`, so an agent can list and run them too (`__tekto.run`)
  */
 import {
-  appShell, Doc, bindScene, Selection, selectOnClick, localAdapter, devServerAdapter,
+  appShell, Doc, bindScene, Selection, selectOnClick, shareSelection, PresenceBar, localAdapter, devServerAdapter,
   MeshFactory, download, type DocJSON,
 } from "../../src";
 
@@ -59,6 +61,12 @@ export default function (container: HTMLElement) {
     app.scene.addMesh(m, { color: "#cfd8dc", label: `block ${id}`, layer: "blocks" });
   });
   const stopSelecting = selectOnClick(app.renderer, app.scene, selection);
+  // Who has what selected: this window's selection goes out, the others' are outlined here.
+  const stopSharing = shareSelection(selection, doc.store, app.renderer, app.scene);
+  const presence = shared ? new PresenceBar(doc.store, app.renderer.canvasEl.parentElement!, { describe: (p) => {
+    const n = Array.isArray(p.state.selection) ? p.state.selection.length : 0;
+    return n ? `${n} selected` : undefined;
+  } }) : null;
 
   // The sliders show the (first) selected block, and edit every selected one.
   selection.onChange(() => {
@@ -152,6 +160,8 @@ export default function (container: HTMLElement) {
   return {
     dispose() {
       stopSelecting();
+      stopSharing();
+      presence?.destroy();
       blocks.dispose();
       doc.dispose();
       app.dispose();

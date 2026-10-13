@@ -557,3 +557,44 @@ export function selectOnClick(view: PickingView, scene: Scene, selection: Select
   highlight();
   return () => { offPick(); offSel(); offScene(); view.setSelectionHighlight(null); };
 }
+
+/** What `shareSelection` draws others' selections with: structurally a ThreeRenderer. */
+export interface PresenceView {
+  setPresenceHighlight(entries: readonly { ids: readonly string[]; color: string }[]): void;
+}
+
+/**
+ * Share a selection with everyone on the same document: this client's selected record keys go
+ * into its presence, and `view` outlines what the others have selected, each in their presence
+ * colour — so two people (or a person and an agent) see who is on what before they collide.
+ * Others' outlines follow their records through rebuilds. Returns the unsubscribe (which also
+ * withdraws this client's selection).
+ *
+ *   shareSelection(selection, doc.store, app.renderer, app.scene);
+ */
+export function shareSelection(selection: Selection, store: SharedStore<any>, view?: PresenceView, scene?: Scene): () => void {
+  const publish = () => store.setPresence({ selection: selection.keys() });
+  const offSel = selection.onChange(publish);
+  publish();
+  if (!view || !scene) return () => { offSel(); store.setPresence({ selection: [] }); };
+
+  const show = () => {
+    const entries = store.others.map((p: Presence) => {
+      const keys = Array.isArray(p.state.selection) ? (p.state.selection as string[]) : [];
+      const want = new Set(keys);
+      const ids = scene.all().filter(o => o.key && want.has(o.key)).map(o => o.id);
+      return { ids, color: p.color };
+    }).filter(e => e.ids.length);
+    view.setPresenceHighlight(entries);
+  };
+  // A rebuilt record gets new scene objects: draw the outlines again once the rebuild is done.
+  let queued = false;
+  const offScene = scene.on((e) => {
+    if ((e.type !== "object:add" && e.type !== "scene:clear") || queued) return;
+    queued = true;
+    queueMicrotask(() => { queued = false; show(); });
+  });
+  const offPresence = store.onPresence(show);
+  show();
+  return () => { offSel(); offPresence(); offScene(); view.setPresenceHighlight([]); store.setPresence({ selection: [] }); };
+}

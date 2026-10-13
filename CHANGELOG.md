@@ -6,6 +6,16 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Shared selection.** `shareSelection(selection, doc.store, renderer, scene)` puts this
+  client's selected record keys into its presence. Each window outlines what the others have
+  selected, in their presence colour, so people (and agents) see who is on what before they
+  collide.
+  - The outlines follow their records through rebuilds and are clipped by a section.
+  - Withdrawing the share clears this client's selection everywhere.
+  - New on `ThreeRenderer`: `setPresenceHighlight(entries)`. `PresenceView` is the
+    structural type `shareSelection` draws with.
+  - The Site Editor shares its selection and, with `?shared=1`, shows a presence bar.
+
 - **Unused exports are marked `@experimental`, and kept.**
   - 51 exports had no user in the library, the playground, the tests, tekto-apps or
     buchholz-stair. They are 46 values (most of the SDF family, the React components,

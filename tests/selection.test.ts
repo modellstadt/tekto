@@ -6,7 +6,8 @@
  * the record has been rebuilt with new scene ids.
  */
 import { describe, it, expect } from "vitest";
-import { Doc, bindScene, Selection, selectOnClick, type PickingView } from "../src/collab/Doc";
+import { Doc, bindScene, Selection, selectOnClick, shareSelection, type PickingView } from "../src/collab/Doc";
+import { memoryAdapter } from "../src/collab/SharedStore";
 import type { ThreeRenderer } from "../src/render/ThreeRenderer";
 import { Scene } from "../src/scene/Scene";
 import { Vec3 } from "../src/core/math/vectors";
@@ -103,5 +104,38 @@ describe("Selection", () => {
     sel.remove("a/9");               // not in
     sel.clear(); sel.clear();
     expect(n).toBe(2);
+  });
+});
+
+describe("shareSelection", () => {
+  it("publishes this selection and outlines the others' in their colour, through rebuilds", async () => {
+    const adapter = memoryAdapter();
+    const a = new Doc<{ posts: { x: number } }>({ name: "share", adapter });
+    const b = new Doc<{ posts: { x: number } }>({ name: "share", adapter });
+    await Promise.all([a.ready, b.ready]);
+    a.add("posts", { x: 0 }, { id: "p1" });
+    await new Promise(r => setTimeout(r, 0));
+    const sceneB = new Scene();
+    const bindingB = bindScene(b, "posts", sceneB, (p) => { sceneB.addPoint(new Vec3(p.x, 0, 0)); });
+    await new Promise(r => setTimeout(r, 0));
+    let shown: readonly { ids: readonly string[]; color: string }[] = [];
+    const viewB = { setPresenceHighlight: (e: readonly { ids: readonly string[]; color: string }[]) => { shown = e; } };
+    const selA = new Selection(), selB = new Selection();
+    const offA = shareSelection(selA, a.store);
+    shareSelection(selB, b.store, viewB, sceneB);
+
+    selA.select(["posts/p1"]);
+    await new Promise(r => setTimeout(r, 0));
+    expect(shown.length).toBe(1);
+    expect(shown[0].ids).toEqual(bindingB.objectsOf("p1"));
+    expect(shown[0].color).toBe(b.store.others[0].color);
+
+    a.update("posts", "p1", { x: 5 });                    // B rebuilds the record: new scene ids
+    await new Promise(r => setTimeout(r, 0));
+    expect(shown[0].ids).toEqual(bindingB.objectsOf("p1"));
+
+    offA();                                               // A leaves: its selection is withdrawn
+    await new Promise(r => setTimeout(r, 0));
+    expect(shown).toEqual([]);
   });
 });

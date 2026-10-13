@@ -795,6 +795,10 @@ export class ThreeRenderer {
   /** Highlight one object, several (a record's objects, a multi-selection), or none. */
   setSelectionHighlight(ids: string | readonly string[] | null): void { this.marks.setSelectionHighlight(ids); }
 
+  /** Outline what other people have selected, each set in its person's colour (see
+   *  `shareSelection`); an empty list clears. Drawn on top, clipped by a section. */
+  setPresenceHighlight(entries: readonly { ids: readonly string[]; color: string }[]): void { this.marks.setPresenceHighlight(entries); }
+
   /**
    * Cut the model with a plane and fill the cut, so it reads as solid: `{ axis: "z",
    * coordinate: 1.2 }` is a plan cut at 1.2 m (what is above goes), `{ axis: "x", at: 0.5 }`
