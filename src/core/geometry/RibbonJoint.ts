@@ -24,6 +24,7 @@
 import { Vec2 } from "../math/vectors";
 import { ExtrudedRibbon, RibbonEndTrim, safeNormalize } from "./ExtrudedRibbon";
 
+/** How a joint trims its ribbons: `"mitered"` cuts each to the angular bisector; `"butt"` lets one ribbon run through and stops the others at its inside face. */
 export type JointStyle = "mitered" | "butt";
 
 /**
@@ -59,6 +60,10 @@ export type JointTrim = { start?: RibbonEndTrim | null; end?: RibbonEndTrim | nu
 
 // ─── RibbonJoint ─────────────────────────────────────────────────────
 
+/**
+ * A plan point where 2+ ribbons meet. Owns the trim policy (`style`, `throughRibbon`) so the trim math
+ * lives in one place; `computeTrims()` turns it into end trims per ribbon. `WallJoint` wraps it for BIM.
+ */
 export class RibbonJoint {
   readonly participants: JointParticipant[];
   readonly point: Vec2;

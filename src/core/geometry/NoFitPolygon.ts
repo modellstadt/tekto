@@ -26,6 +26,11 @@ import { Vec2 } from "../math/vectors";
 import { Polygon2D } from "./Polygon2D";
 import { PolygonBool, type Ring2, type MultiPoly2 } from "./PolygonBool";
 
+/**
+ * No-fit polygons and Minkowski sums for 2D nesting: `nfp(fixed, orbiting)` is the region where `orbiting`'s origin
+ * would overlap `fixed` (its boundary = touching), `innerFit(container, orbiting)` where it stays inside.
+ * Concave rings are split into convex parts; results are `MultiPoly2` and may have holes.
+ */
 export const NoFitPolygon = {
 
   /** Reflect a ring through the origin (negate every vertex) — forms −B. */

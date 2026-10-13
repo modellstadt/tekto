@@ -22,6 +22,7 @@ import * as THREE from "three";
 import { Vec3 } from "../core/math/vectors";
 import type { Mesh } from "../core/geometry/mesh/Mesh";
 
+/** The orthographic view for `extractVisiblePolylines`: the view direction and the up direction (default +Y, where `DxfView` defaults to +Z). */
 export interface VisibilityView {
   /** View direction (camera-to-target). The unit vector is fine. */
   viewDir: Vec3;
@@ -29,6 +30,7 @@ export interface VisibilityView {
   upDir?: Vec3;
 }
 
+/** Options for `extractVisiblePolylines`: depth-buffer resolution (default 1024 px square) and the depth tolerance as a fraction of the view-depth range (default 0.005). */
 export interface VisibilityOptions {
   /** Offscreen target resolution. Higher = sharper silhouettes. Default 1024. */
   resolution?: number;
@@ -38,6 +40,7 @@ export interface VisibilityOptions {
   bias?: number;
 }
 
+/** One visible run of a polyline: its points in 2D view space (u, v, in model units) and the same points in 3D. */
 export interface ProjectedSegment {
   /** 2D points (u, v) in view space — ready for SVG / DXF. */
   points2D: { u: number; v: number }[];
@@ -45,6 +48,7 @@ export interface ProjectedSegment {
   points3D: Vec3[];
 }
 
+/** What `extractVisiblePolylines` returns: the visible runs and the (u, v) bounds of the mesh's projection, which `polylinesToSVG` uses for its viewBox. */
 export interface VisibilityResult {
   /** Visible polyline chunks. Long polylines may yield multiple chunks. */
   segments: ProjectedSegment[];
@@ -90,6 +94,13 @@ const FS = /* glsl */ `
 
 // ─── Public API ───────────────────────────────
 
+/**
+ * Hidden-line removal for any 3D polylines (streamlines, hatching, sketched
+ * curves) against a mesh: renders the mesh's depth offscreen with WebGL
+ * (three.js) and keeps the runs of points in front of it. Visibility is
+ * tested per point, so a segment is never split between its points; a
+ * point outside the mesh's outline counts as visible.
+ */
 export function extractVisiblePolylines(
   mesh: Mesh,
   polylines: Vec3[][],
@@ -274,6 +285,7 @@ export function extractVisiblePolylines(
 
 // ─── SVG helper ───────────────────────────────
 
+/** Options for `polylinesToSVG`: stroke width in SVG user units, which are model units (default 0.5), stroke colour (default "#000") and viewBox padding as a fraction of its size (default 0.02). */
 export interface SVGOptions {
   /** Stroke width in SVG user units. Default 0.5. */
   strokeWidth?: number;
@@ -283,6 +295,7 @@ export interface SVGOptions {
   padFraction?: number;
 }
 
+/** Projected runs (from `extractVisiblePolylines`) as SVG text: one `<polyline>` per run, v flipped so up is up on paper, viewBox = `bounds` plus padding, in model units. */
 export function polylinesToSVG(
   segments: ProjectedSegment[],
   bounds: { minU: number; maxU: number; minV: number; maxV: number },

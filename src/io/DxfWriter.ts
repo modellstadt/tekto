@@ -8,6 +8,7 @@
 
 import { Vec3 } from '../core/math/vectors';
 
+/** A layer for the LAYER table: name (sanitized to an R12 token on write), ACI colour (default 7) and line type (only `writeDxf2D` writes it; the others use CONTINUOUS). */
 export interface DxfLayerDef {
   name: string;
   /** AutoCAD Color Index (ACI): 1=red 2=yellow 3=green 4=cyan 5=blue 7=white */
@@ -193,12 +194,14 @@ export function writeDxf3D(content: Dxf3DContent): string {
 
 /** A point in the drawing plane. `Vec2`, or anything with x and y. */
 export interface Dxf2DPoint { x: number; y: number; }
-/** A polyline in the drawing plane; emitted as an R12 2D POLYLINE (closed = the ring is shut). */
 /** What a 2D entity may set beyond its layer: an ACI colour (1 red … 7 white/black) and an R12
  *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. */
 export interface Dxf2DLook { color?: number; linetype?: "DASHED" | "HIDDEN" | "DOTTED" | "CENTER"; }
+/** A polyline in the drawing plane for `writeDxf2D`; emitted as an R12 2D POLYLINE (`closed` shuts the ring). */
 export interface Dxf2DPolyline extends Dxf2DLook { layer: string; points: Dxf2DPoint[]; closed?: boolean; }
+/** A straight segment in the drawing plane for `writeDxf2D`; emitted as a LINE. */
 export interface Dxf2DLine extends Dxf2DLook { layer: string; start: Dxf2DPoint; end: Dxf2DPoint; }
+/** A circle in the drawing plane for `writeDxf2D`; emitted as a CIRCLE, dropped if the radius is degenerate. */
 export interface Dxf2DCircle extends Dxf2DLook { layer: string; center: Dxf2DPoint; radius: number; }
 /** A filled triangle (or quad), e.g. one piece of a poché. */
 export interface Dxf2DSolid { layer: string; points: Dxf2DPoint[]; color?: number; }

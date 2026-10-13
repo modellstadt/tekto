@@ -135,6 +135,11 @@ export class PGFace {
 // PLANAR GRAPH (DCEL CONTAINER)
 // ================================================================
 
+/**
+ * A 2D planar graph as a half-edge structure (DCEL): vertices, twin half-edges kept in angular order
+ * around each vertex, and faces from `buildFaces()` (CCW = bounded, CW = outer). Build one from raw
+ * segments with `PlanarGraphRepair.fromSegments`.
+ */
 export class PlanarGraph {
   readonly vertices: PGVertex[] = [];
   readonly halfEdges: PGHalfEdge[] = [];
@@ -449,6 +454,7 @@ function detachHalf(h: PGHalfEdge): void {
 // PLANAR GRAPH REPAIR — build from raw segments
 // ================================================================
 
+/** Builds a valid `PlanarGraph` from raw 2D segments: fuses vertices within `tolerance`, splits edges at vertices and crossings, then builds faces. */
 export const PlanarGraphRepair = {
 
   /** Creates a valid planar graph from line segments. */
@@ -644,6 +650,7 @@ function projectOnSegment(p: Vec2, a: Vec2, b: Vec2): number {
 // PLANAR GRAPH CLEANUP
 // ================================================================
 
+/** In-place passes on a `PlanarGraph`: remove dead ends, dissolve collinear degree-2 vertices, drop edges with the same face on both sides or bounded faces on both sides. */
 export const PlanarGraphCleanup = {
 
   /** Iteratively removes degree-1 vertices (dead ends). */
@@ -743,6 +750,7 @@ class DTriangle {
   }
 }
 
+/** Incremental Delaunay triangulation of 2D points (at least 3), returned as a `PlanarGraph` whose CCW faces are the triangles. */
 export const Delaunay2D = {
 
   /** Triangulates 2D points and returns a PlanarGraph with Delaunay faces. */

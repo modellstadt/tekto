@@ -8,9 +8,9 @@
  *                  JSDoc; namespaces and classes list their members. Generated from the
  *                  TypeScript sources, so it cannot drift from the code.
  *
- * `--check` (CI) regenerates in memory and fails if the committed files differ, and fails
- * if a bare `Name` in the Start-here block is not an export — so the docs an agent trusts
- * stay true. Run `node tools/gen-llms.mjs` after changing exports, JSDoc or the README block.
+ * `--check` (CI) regenerates in memory and fails if the committed files differ, if a bare
+ * `Name` in the Start-here block is not an export, or if an export has no JSDoc — so the docs
+ * an agent trusts stay true, and every export says what it is. Run `node tools/gen-llms.mjs` after changing exports, JSDoc or the README block.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -141,6 +141,8 @@ ${ENTRIES.map(e => {
 
 let failed = false;
 if (stale.length) { console.error(`✗ README Start-here names that are not exports: ${stale.join(", ")}`); failed = true; }
+const undocumented = [...new Set(Object.values(byEntry).flat().filter(x => !x.doc).map(x => x.name))];
+if (undocumented.length) { console.error(`✗ exports without JSDoc (add a /** … */ to the declaration): ${undocumented.join(", ")}`); failed = true; }
 for (const [file, text] of [["llms.txt", llms], ["llms-full.txt", full]]) {
   const p = path.join(root, file);
   if (check) {

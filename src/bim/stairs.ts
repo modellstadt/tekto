@@ -31,6 +31,7 @@ export type StairShape =
   | "spiral"
   | "not_defined";
 
+/** Options for `new StairType(...)`: name, overall shape (default "straight_run"), material, description and Psets. */
 export interface StairTypeOptions {
   name: string;
   /** Overall shape. Default "straight_run". */
@@ -73,6 +74,7 @@ export interface StairFlight {
   treadDepth: number;
 }
 
+/** Options for `new Stair(...)`: a straight run from `start` (Z-up, metres) along `direction`, climbing `totalRise` in even risers near `riserHeight` (default 0.18) with `treadDepth` goings (default 0.27). */
 export interface StairOptions {
   name?: string;
   /** Bottom of the stair: centre of the flight width at floor level. */

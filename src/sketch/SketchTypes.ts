@@ -22,6 +22,7 @@ import type { LayerState } from "../gui/LayerPanel";
 
 // ─── SketchConfig ────────────────────────────────────────────────────
 
+/** Options for `sketch()`: where to mount, title, background, grid and axes, the initial camera, up axis (default Y), theme, and which header, Markup and axis widget to show. */
 export interface SketchConfig {
   /** DOM element or CSS selector to mount into */
   container?: HTMLElement | string;
@@ -230,6 +231,10 @@ export interface HandleSetOpts<T> {
   size?: number;
 }
 
+/**
+ * The API a `sketch()` function receives on every run: controls that create UI and return their value, geometry builders that add to the scene and return a handle,
+ * drag handles and picking, logging, view and export hooks, animation, and Processing-style math, noise and input.
+ */
 export interface Lab {
   // ── GUI Controls (create UI + return reactive value) ──
   slider(label: string, min: number, max: number, defaultValue: number, opts?: SliderOpts): Reactive<number>;

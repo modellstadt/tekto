@@ -26,6 +26,7 @@ import { Polygon2D } from "./Polygon2D";
 import { PolygonBool } from "./PolygonBool";
 import type { Ring2, MultiPoly2 } from "./PolygonBool";
 
+/** A segment as its two endpoints: an obstacle wall (or the edge to skip) for {@link perpVisibility}. */
 export type PerpSegment = readonly [Vec2, Vec2];
 
 /** Clip a segment to the horizontal slab 0 ≤ y ≤ top (Liang–Barsky on y only).

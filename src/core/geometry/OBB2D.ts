@@ -8,6 +8,7 @@ import { Vec2 } from "../math/vectors";
 import { HMath } from "../math/HMath";
 import { VecMath } from "../math/VecMath";
 
+/** Oriented 2D rectangle: `width` along `angle` (radians), `height` across it, centred on `center`; `Polygon2D.minAreaRect` returns one. */
 export class OBB2D {
   constructor(
     public readonly center: Vec2,

@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Every export is documented.**
+  - The 219 exports without JSDoc have it now, including `Mesh`, `Vec3`, `ThreeRenderer`, the
+    Scene types, the BIM and IO types, the SDF family and the React components.
+  - Each doc was checked against the code for units, axes, angles and defaults. Where the code
+    surprises (`ArcCurve` measures from −X, `Mat4()` is all zeros), the doc says so.
+  - `llms-full.txt` now gives every export's first sentence.
+  - `tools/gen-llms.mjs --check` (CI) fails on an export without JSDoc, so it stays this way.
+
 - **`lab.overlay(name?)` in `sketch()`**: a layer over the 3D view, kept across re-runs, for
   a 2D view such as a `SheetCanvas` showing the drawing of what the sketch builds. This is
   what an app like the stair needs. Snapshots and ✎ Markup include visible overlay canvases,

@@ -13,6 +13,7 @@
 
 // ─── Types ───────────────────────────────────────────────────────
 
+/** One layer in a `LayerPanel` tree: id, label, initial visibility and colour (a colour shows a picker), and child layers. */
 export interface LayerNode {
   /** Unique identifier — used as key in LayerMap */
   id: string;
@@ -26,6 +27,7 @@ export interface LayerNode {
   children?: LayerNode[];
 }
 
+/** A layer's own stored state: its visibility toggle and colour (not ancestor-aware — see `computeEffectiveVisibility`). */
 export interface LayerState {
   visible: boolean;
   color: string;
@@ -61,6 +63,10 @@ export function computeEffectiveVisibility(
 
 // ─── LayerPanel class ────────────────────────────────────────────
 
+/**
+ * A tree of layers with a visibility checkbox (and optional colour picker) per node; hiding a parent dims its children without changing their stored state.
+ * Used by `lab.layerTree()`, or standalone by appending `.el`; `onChange` receives only the changed node, and `update(nodes, value)` re-renders.
+ */
 export class LayerPanel {
   /** Mount this element anywhere in your UI */
   readonly el: HTMLElement;

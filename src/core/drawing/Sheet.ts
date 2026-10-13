@@ -44,6 +44,7 @@ export interface DrawOptions extends LineStyle {
   key?: string;
 }
 
+/** Style, size and placement of a view's `text` and of a `leader`'s label. */
 export interface TextOptions extends DrawOptions {
   /** Height in paper millimetres (default 2.5). */
   size?: number;
@@ -53,6 +54,7 @@ export interface TextOptions extends DrawOptions {
   baseline?: "bottom" | "middle" | "top";
 }
 
+/** Options for `dim` and `radius`: where the dimension line sits, what it measures, and how the length is written. */
 export interface DimOptions extends DrawOptions {
   /** Distance of the dimension line from the measured points, in paper mm (default 8;
    *  negative puts it on the other side). */
@@ -68,6 +70,7 @@ export interface DimOptions extends DrawOptions {
   size?: number;
 }
 
+/** Options for a `level` mark: the value it writes (metres) and the text's format and size. */
 export interface LevelOptions extends DrawOptions {
   /** The level to write (default: the point's y in the view — its height in an elevation). */
   value?: number;
@@ -79,6 +82,7 @@ export interface LevelOptions extends DrawOptions {
   size?: number;
 }
 
+/** How a view sits on the sheet (`sheet.view(name, opts)`): position, rotation, enlargement, the 3D projection of its input, and a title. */
 export interface ViewOptions {
   /** Where the view's origin sits on the sheet, in sheet (model) units. */
   at?: PtIn;
@@ -94,6 +98,7 @@ export interface ViewOptions {
   title?: string;
 }
 
+/** Options for `new Sheet(...)`: the drawing scale and the named layer styles. */
 export interface SheetOptions {
   /** Drawing scale: 50 means 1:50 (default 1). */
   scale?: number;
@@ -103,7 +108,9 @@ export interface SheetOptions {
 
 // ── Exploded primitives (sheet coordinates, model units) ───────────────────────
 
+/** An entity's final style after its layer and overrides: layer name, colour, pen weight (paper mm) and dash. */
 export interface ResolvedStyle { layer: string; color: string; weight: number; dash: Dash; }
+/** One exploded primitive in sheet coordinates (model units, text height included) — the list `explode()` returns and every output draws. */
 export type SheetPrim =
   | { kind: "polyline"; points: Pt[]; closed: boolean; style: ResolvedStyle; key?: string }
   | { kind: "circle"; center: Pt; radius: number; style: ResolvedStyle; key?: string }

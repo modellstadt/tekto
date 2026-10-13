@@ -28,6 +28,7 @@ import { Marks } from "./Marks";
 
 export type { GizmoMode, PickInfo } from "./Pointer";
 
+/** Construction options of a `ThreeRenderer` — background, grid and axes, orbit controls, initial camera, up axis, axis widget; pass any subset (default Y-up, no widget). */
 export interface ThreeRendererConfig {
   antialias: boolean;
   backgroundColor: number;
@@ -72,6 +73,11 @@ const DEFAULTS: ThreeRendererConfig = {
 /** How long a frame may spend building crease lines before it draws. */
 const EDGE_BUDGET_MS = 8;
 
+/**
+ * The one 3D renderer under `sketch()` and `appShell()`: keeps a three.js scene in step with a tekto `Scene` and draws it on demand.
+ * The work is split into parts (ObjectBuilder, Lighting, CameraRig, Pointer, Marks — see the file header); this class owns the scene sync and the draw loop, and its methods are the app API.
+ * Drive it with `renderIfNeeded()` each animation frame, or `startLoop()`.
+ */
 export class ThreeRenderer {
   readonly threeScene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;

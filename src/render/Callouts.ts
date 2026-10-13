@@ -58,6 +58,7 @@ export function labelWidthFor(hostWidth: number): number {
   return Math.round(Math.max(88, Math.min(170, hostWidth * 0.27)));
 }
 
+/** Options for `layoutLabels`: the host size in pixels, and optionally the row pitch, label width and edge inset. */
 export interface LayoutOptions {
   width: number; height: number;
   /** vertical pitch between labels, which is a label's height plus its gap */

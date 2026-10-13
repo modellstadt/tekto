@@ -52,6 +52,10 @@ class MinHeap<T> {
 
 // ─── Graph ───────────────────────────────────
 
+/**
+ * A weighted graph on nodes `0..nodeCount-1`, defined by a neighbour callback and an optional weight
+ * callback (default 1) rather than stored edges: Dijkstra (single/multi-source, Voronoi), components, flood fill.
+ */
 export class Graph {
   getNeighbors: (node: number) => number[];
   getWeight: (a: number, b: number) => number;
@@ -295,6 +299,7 @@ export class Graph {
 
 // ─── GridGraph ───────────────────────────────
 
+/** Ready-made `Graph`s over regular 2D/3D grids (4-, 8- and 6-connected); node index is `x * ny + y` (3D: `x * ny * nz + y * nz + z`). */
 export const GridGraph = {
   /** Creates a 2D 4-connected grid graph (N/S/E/W neighbors). */
   grid2D4(nx: number, ny: number, weightFn?: (a: number, b: number) => number): Graph {

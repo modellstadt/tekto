@@ -7,6 +7,7 @@
 import { Vec3 } from "../math/vectors";
 import { HMath } from "../math/HMath";
 
+/** Immutable sphere (`center`, `radius`) for containment and overlap tests and `Ray.intersectSphere`. */
 export class Sphere {
   constructor(
     public readonly center: Vec3,

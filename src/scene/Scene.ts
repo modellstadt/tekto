@@ -15,6 +15,7 @@ import type { MeshData as RenderMeshData } from "../core/geometry/mesh/Mesh";
 
 // ─── Scene Object ────────────────────────────
 
+/** The kinds of object a `Scene` holds; `type` decides which geometry fields of a `SceneObject` are set. */
 export type SceneObjectType = "point" | "segment" | "polyline" | "polygon" | "mesh" | "circle" | "plane" | "group";
 
 /** How meshes are drawn: lit surfaces, wireframe, a hidden-line drawing, or ghost —
@@ -57,6 +58,7 @@ export type StandardView = "iso" | "top" | "bottom" | "front" | "back" | "left" 
  */
 export type LightingMode = "flat" | "studio";
 
+/** How a scene object is drawn: colour, opacity, line and point size, visibility, label and layer, plus optional shading, edge, PBR and dash settings. */
 export interface VisualStyle {
   color: string;
   opacity: number;
@@ -116,6 +118,7 @@ const DEFAULT_STYLE: VisualStyle = {
   visible: true,
 };
 
+/** One object in a `Scene`: id, type, style, and the geometry fields its type uses (a point's `position`, a mesh's `mesh` …); `key` names the document record it shows. */
 export interface SceneObject {
   id: string;
   type: SceneObjectType;
@@ -171,6 +174,7 @@ export interface FlatMeshData extends RenderMeshData {
 
 // ─── Events ──────────────────────────────────
 
+/** What changed in a `Scene` (objects, selection, hover, clear, render or lighting mode); renderers stay in step by listening to these. */
 export type SceneEvent =
   | { type: "object:add"; id: string }
   | { type: "object:remove"; id: string }
@@ -184,6 +188,7 @@ export type SceneEvent =
   | { type: "scene:environment"; enabled: boolean }
   | { type: "camera:change" };
 
+/** A callback passed to `scene.on(...)`. */
 export type SceneEventListener = (event: SceneEvent) => void;
 
 // ─── Scene Manager ───────────────────────────
@@ -569,6 +574,7 @@ export class Scene {
   }
 }
 
+/** What `scene.toJSON()` writes and `Scene.fromJSON` reads: the objects, with vectors and meshes as plain JSON. */
 export interface SceneJSON {
   objects: any[];
 }

@@ -21,8 +21,11 @@ import polygonClipping from "polygon-clipping";
 import { Vec2 } from "../math/vectors";
 import { Polygon2D } from "./Polygon2D";
 
+/** One polygon ring, open (no repeated closing vertex); any winding on input. */
 export type Ring2 = Vec2[];
+/** A polygon with holes: `[outer, ...holes]`; outputs are outer CCW, holes CW. */
 export type Poly2 = Ring2[];
+/** Zero or more disjoint polygons with holes — the input and output of {@link PolygonBool}. */
 export type MultiPoly2 = Poly2[];
 
 // ── polygon-clipping geometry (plain [x,y] pairs) ──

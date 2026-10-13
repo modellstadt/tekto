@@ -90,6 +90,7 @@ export interface MeshNode {
   readonly data: Record<string, any>;
 }
 
+/** An edge seen through `mesh.edge(id)`: its two node ids and incident faces, read from the mesh. */
 export interface MeshEdge {
   readonly id: number;
   readonly nodes: [number, number];
@@ -98,6 +99,7 @@ export interface MeshEdge {
   readonly data: Record<string, any>;
 }
 
+/** A face (any polygon) seen through `mesh.face(id)`: reads and writes go to the mesh. */
 export interface MeshFace {
   readonly id: number;
   /** Node ids in winding order (snapshot — see `Mesh.reverseFace`). */
@@ -151,6 +153,11 @@ const NONE = -1;
 
 // ─── Mesh ──────────────────────────────────────────────────────
 
+/**
+ * The one mesh class: edited by id (`addNode`/`addFace`/`node(id)`/`splitEdge` …) and read as typed arrays
+ * (`positions`/`indices`/`normals`, `toMeshData()`) on the same object, with connectivity kept up to date by every edit.
+ * Ids are indices; removal leaves a tombstone until `compact()`. `new Mesh(positions, indices)` loads flat triangle arrays.
+ */
 export class Mesh {
   // nodes — a slot per id; `_nodeN` slots used, `_nodeLive` of them alive
   private _pos = new Float64Array(16 * 3);

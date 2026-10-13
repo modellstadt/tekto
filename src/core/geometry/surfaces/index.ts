@@ -77,6 +77,10 @@ export function clampedUniformKnots(numCtrl: number, degree: number): number[] {
 
 // ─── NurbsSurface ────────────────────────────
 
+/**
+ * Tensor-product NURBS surface on a `controlPoints[u][v]` grid; `getPoint(u, v)` takes u, v in [0, 1] over the
+ * valid knot range. Build one with `loft` or `revolve` (exact circles via rational weights), tessellate with `toMesh`.
+ */
 export class NurbsSurface {
   /**
    * @param controlPoints  controlPoints[uIdx][vIdx], size (nU+1) × (nV+1)

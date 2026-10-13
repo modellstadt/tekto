@@ -8,6 +8,7 @@ import { Vec2, Vec3 } from "../core/math/vectors";
 
 // ─── MeshData (interchange format) ──────────
 
+/** A polygon mesh as OBJ holds it (exported as `ObjMeshData`; not `Mesh`'s typed-array `MeshData`): parallel per-vertex positions, uvs and normals (the last two may be empty), 0-based `faces` into them, and optional `g` group ranges. */
 export interface MeshData {
   positions: Vec3[];
   normals: Vec3[];
@@ -29,6 +30,7 @@ function emptyMeshData(): MeshData {
 
 // ─── ObjFile ─────────────────────────────────
 
+/** Wavefront OBJ text to and from `ObjMeshData`: `parse` reads v/vt/vn/f lines and `g` groups, `serialize` writes them back; coordinates pass through unchanged (no axis swap, no unit scaling). */
 export const ObjFile = {
   /** Parses an OBJ string into MeshData. Handles v/vt/vn/f lines. */
   parse(source: string): MeshData {

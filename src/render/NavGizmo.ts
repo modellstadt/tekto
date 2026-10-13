@@ -29,6 +29,7 @@ const AXES: { axis: "x" | "y" | "z"; dir: THREE.Vector3; colour: string }[] = [
 
 const SVG = "http://www.w3.org/2000/svg";
 
+/** Size, corner and projection toggle of a `NavGizmo`, and the callbacks through which it drives the viewport. */
 export interface NavGizmoOptions {
   /** Pixels. The ball radius and font scale with it. */
   size?: number;
@@ -67,6 +68,10 @@ interface Ball {
   name: string;
 }
 
+/**
+ * The axis widget in a viewport corner, drawn as SVG: click an axis ball to look down it, drag to orbit, double-click to snap to the nearest axis, toggle perspective/ortho.
+ * It only reports intent through its callbacks; the owner calls `update(camera, contentRotation)` after each draw. `ThreeRenderer` shows one with `navGizmo: true`.
+ */
 export class NavGizmo {
   private root: HTMLDivElement;
   private svg: SVGSVGElement;

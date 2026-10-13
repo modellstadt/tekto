@@ -6,6 +6,10 @@
 
 import { Vec3 } from "../math/vectors";
 
+/**
+ * Axis-aligned 3D bounding box between `min` and `max`; immutable (`expand`/`union` return a new box).
+ *   const b = AABB.fromPoints(pts);  // or accumulate: box = AABB.empty().expand(p)
+ */
 export class AABB {
   constructor(
     public readonly min: Vec3,

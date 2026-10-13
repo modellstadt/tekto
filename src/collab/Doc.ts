@@ -34,6 +34,7 @@ export interface DocChange<S extends DocSchema = DocSchema> {
 /** Where a batch of changes came from: this client, another client, or undo/redo. */
 export type DocChangeSource = "local" | "remote" | "history";
 
+/** Options for one edit (`add`/`update`/`remove`/`transact`): its undo label, coalescing key, and whether it is undoable. */
 export interface DocEditOptions {
   /** Shown as "Undo <label>"; default from the operation ("Add blocks", "Edit blocks"…). */
   label?: string;
@@ -43,6 +44,7 @@ export interface DocEditOptions {
   undoable?: boolean;
 }
 
+/** Options for `new Doc(...)`: its name, storage adapter and undo history settings. */
 export interface DocOptions {
   /** Document name: with a shared adapter, every client using it edits the same records. */
   name: string;

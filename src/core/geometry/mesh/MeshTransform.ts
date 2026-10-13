@@ -7,6 +7,7 @@
 import { Vec3, Mat4 } from "../../math/vectors";
 import type { Mesh } from "./Mesh";
 
+/** A world axis, as named by `MeshTransform.swapAxes` and `mirror`. */
 export type Axis = "x" | "y" | "z";
 
 /**

@@ -7,6 +7,10 @@
 import { Vec3 } from "../math/vectors";
 import { HMath } from "../math/HMath";
 
+/**
+ * Infinite plane `normal·p + d = 0` with a unit `normal`; `distToPoint` is signed (positive on the normal's side). Immutable.
+ * Build it with `fromPointNormal` / `fromThreePoints` (they normalise) or `XY()`/`XZ()`/`YZ()`.
+ */
 export class Plane {
   /** ax + by + cz + d = 0 */
   constructor(

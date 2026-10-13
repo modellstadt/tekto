@@ -19,6 +19,7 @@
  */
 import type { MeshData as FlatMeshData } from "../core/geometry/mesh/Mesh";
 
+/** Options for `IfcFile.parse`: where web-ifc.wasm is served (default "/"), whether to recentre on the bounding-box centre (default true, so site coordinates don't break WebGL precision), and a progress callback. */
 export interface IfcParseOptions {
   /** Directory (with trailing slash) where web-ifc.wasm is served. Default: '/'. */
   wasmPath?: string;
@@ -30,6 +31,13 @@ export interface IfcParseOptions {
   onProgress?: (msg: string) => void;
 }
 
+/**
+ * IFC import as one fused mesh, for context geometry that nobody selects;
+ * use `IfcModel` to keep elements apart. Needs the optional `web-ifc`
+ * dependency and its wasm served by the app.
+ *
+ *   const mesh = await IfcFile.parse(buf, { wasmPath: '/' });
+ */
 export const IfcFile = {
   /**
    * Parse an IFC file (as ArrayBuffer) into a single fused FlatMeshData.
