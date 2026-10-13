@@ -16,6 +16,8 @@ export interface SketchLayout {
   fileMenusEl: HTMLElement | null;
   panelEl: HTMLElement;
   viewportEl: HTMLElement;
+  /** The viewport's container: the 3D view, overlays laid over it, the log overlay. */
+  viewportWrap: HTMLElement;
   logEl: HTMLElement;
 }
 
@@ -168,7 +170,9 @@ export function buildSketchLayout(container: HTMLElement, config: SketchConfig, 
   vpWrap.style.cssText = "position:relative;overflow:hidden;grid-column:2;";
 
   const viewportEl = document.createElement("div");
-  viewportEl.style.cssText = "width:100%;height:100%;";
+  // Its own stacking context: what the 3D view puts in its corners (the axis widget) stays
+  // with the 3D view, under any overlay laid over it.
+  viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
   vpWrap.appendChild(viewportEl);
 
   // Log overlay
@@ -193,7 +197,7 @@ export function buildSketchLayout(container: HTMLElement, config: SketchConfig, 
     container.style.overflow = "hidden";
   }
   container.appendChild(root);
-  return { root, fileMenusEl, panelEl, viewportEl, logEl };
+  return { root, fileMenusEl, panelEl, viewportEl, viewportWrap: vpWrap, logEl };
 }
 
 /**

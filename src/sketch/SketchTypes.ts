@@ -296,6 +296,21 @@ export interface Lab {
   command(cmd: Command | readonly Command[]): void;
 
   /**
+   * A layer over the 3D view, kept across re-runs: mount a 2D view there once, update it
+   * every run, hide it to show the model again —
+   *
+   *   let sheetView: SheetCanvas | null = null;              // outside the sketch function
+   *   sketch((lab) => {
+   *     sheetView ??= new SheetCanvas(lab.overlay());
+   *     sheetView.setSheet(drawingOf(model));                // keeps its zoom across runs
+   *     lab.overlay().style.display = showDrawing.value ? "" : "none";
+   *   });
+   *
+   * The same `name` gives the same layer. Visible overlay canvases are in snapshots.
+   */
+  overlay(name?: string): HTMLElement;
+
+  /**
    * Register an "Import ▾" item for the host shell. The handler receives
    * the user-selected `File`.
    *

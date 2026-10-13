@@ -203,6 +203,39 @@ export function sceneSummary(
   };
 }
 
+// ── Overlays: 2D views laid over the 3D one ─────────────────────────────
+
+/**
+ * A new layer over a 3D view (`viewportEl`, inside `wrap`): above the canvas and any layer
+ * added before, under what comes after the viewport (status line, ✎ Markup). For a 2D view —
+ * a `SheetCanvas` — over the model. Hide it to show the 3D view again.
+ */
+export function addOverlay(viewportEl: HTMLElement, existing: HTMLElement[]): HTMLElement {
+  const el = document.createElement("div");
+  el.style.cssText = "position:absolute;inset:0;";
+  (existing[existing.length - 1] ?? viewportEl).after(el);
+  existing.push(el);
+  return el;
+}
+
+/** The 3D view as a PNG, with every visible overlay canvas (`data-tekto-overlay`) in `wrap`
+ *  drawn over it where it sits — what a person sees, for snapshots and ✎ Markup. */
+export function snapshotWithOverlays(renderer: { snapshotPng(): string; readonly canvasEl: HTMLCanvasElement }, wrap: HTMLElement): string {
+  const base = renderer.snapshotPng();
+  const shown = [...wrap.querySelectorAll<HTMLCanvasElement>("canvas[data-tekto-overlay]")].filter(c => c.getClientRects().length > 0);
+  if (!shown.length) return base;
+  const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
+  const out = document.createElement("canvas");
+  out.width = src.width; out.height = src.height;
+  const g = out.getContext("2d")!;
+  g.drawImage(src, 0, 0);                     // drawn in the same task as the render, so the buffer still holds it
+  for (const c of shown) {
+    const r = c.getBoundingClientRect();
+    g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
+  }
+  return out.toDataURL("image/png");
+}
+
 // ── Bundles without marks (sketch2d, appShell) ───────────────────────────
 
 /** A snapshot bundle for a harness without the ✎ overlay: the picture plus context. */
