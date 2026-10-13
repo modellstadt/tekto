@@ -72,7 +72,11 @@ test("an idle sketch stops drawing; orbiting and re-runs draw", async ({ page })
     const w = window as any;
     return { drawn: w.__drawnCam, now: w.__tekto.owner.renderer.activeCamera.position.toArray() };
   });
-  expect(cam.now, "camera moved after the last draw").toEqual(cam.drawn);
+  // Within float noise: OrbitControls recomputes the position from spherical
+  // coordinates on every update, which can flip the last bit (~1e-15 m) without
+  // the camera moving. A real glide after the last draw is many orders larger.
+  cam.now.forEach((v: number, i: number) =>
+    expect(Math.abs(v - cam.drawn[i]), `camera moved after the last draw (axis ${i})`).toBeLessThan(1e-9));
 
   // A re-run draws one frame.
   await page.evaluate(() => (window as any).__tekto.owner.rerun());
