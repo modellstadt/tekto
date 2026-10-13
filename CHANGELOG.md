@@ -11,6 +11,8 @@ before 1.0, breaking changes bump the minor version. See
   of the content (1 m under a house, 10 m under a block, every fifth line stronger), fading
   out with distance so it has no edge, and refitted when the content changes. Opt-in; the
   default stays the fixed `"lines"` grid. The Site Editor page uses it.
+- `AccordionColumn`: a section that appears after the first render opens per its own
+  `defaultOpen` (it opened collapsed: the open state was seeded once). From BuildGraph.
 - **View-mode icons** (BuildGraph's #22, now keyed by render mode): a cube drawn the way
   each mode draws, solid, ghost, hidden line and wireframe. `viewModeIconSvg(mode, size)`
   for a DOM app, `viewModeIconShapes(mode)` as data, and `ViewModeIcon` in `tekto/react`.
