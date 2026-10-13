@@ -51,6 +51,7 @@ export type SlabPartRole =
 
 // ─── Slab parts ──────────────────────────────────────────────────────
 
+/** One mesh sub-element of a slab (a joist, the sheathing, the ceiling) with the material, profile and length a cut list or the IFC exporter needs; `ifcType` defaults from `role`. */
 export interface SlabPart {
   name: string;
   role: SlabPartRole;
@@ -106,10 +107,12 @@ export interface SlabContext {
 
 // ─── Construction function ──────────────────────────────────────────
 
+/** How a slab type turns a slab into parts (joists, plates, coverings), e.g. `JoistedSlab({...})` or `SolidSlabConstruction`; return `[]` for a purely layered slab. */
 export type SlabConstruction = (slab: Slab, ctx?: SlabContext) => SlabPart[];
 
 // ─── SlabType ───────────────────────────────────────────────────────
 
+/** Options for `new SlabType(...)`: name, construction, material layers, Pset properties and joist defaults. */
 export interface SlabTypeOptions {
   name: string;
   description?: string;
@@ -174,6 +177,7 @@ export class SlabType {
 
 // ─── Slab instance ──────────────────────────────────────────────────
 
+/** Options for `new Slab(...)`: a closed XY footprint, thickness (default 0.2 m) and top elevation in Z (default 0), plus type, Psets, openings and a joist-direction override. */
 export interface SlabOptions {
   /**
    * Closed XY polygon defining the slab footprint. Must be closed
@@ -198,6 +202,12 @@ export interface SlabOptions {
   joistDirection?: Vec2;
 }
 
+/**
+ * A floor, ceiling or roof slab: a closed XY footprint extruded down by
+ * `thickness` from its top at `elevation` (Z-up, metres). `toMesh()` is
+ * the plain envelope; give it a `SlabType` and call `realizeSlab` for
+ * the parts.
+ */
 export class Slab {
   readonly boundary: Vec2[];
   thickness: number;
@@ -300,6 +310,7 @@ export class Slab {
 
 // ─── Realized slab (geometry + metadata pair) ───────────────────────
 
+/** The result of `realizeSlab(slab)`: the construction's parts, the type's layers, the envelope mesh, the merged Pset (instance over type) and the context's joist direction, if one was passed. */
 export interface RealizedSlab {
   slab: Slab;
   parts: SlabPart[];
@@ -309,6 +320,12 @@ export interface RealizedSlab {
   joistDirection?: Vec2;
 }
 
+/**
+ * Apply a slab's type to get its parts, layers, envelope mesh and merged
+ * Psets; without a type construction there are no parts, only the
+ * envelope. Pure. Pass a `SlabContext` to set the joist direction or
+ * name the supporting walls.
+ */
 export function realizeSlab(slab: Slab, ctx?: SlabContext): RealizedSlab {
   const type = slab.type;
   const envelopeMesh = slab.toMesh();

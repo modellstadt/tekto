@@ -43,8 +43,10 @@ export interface Presence {
   state: Record<string, unknown>;
 }
 
+/** Connection state of a `SharedStore` (the `PresenceBar` dot). */
 export type CollabStatus = "offline" | "connecting" | "online" | "error";
 
+/** The callbacks an adapter's `subscribe` calls: live records, the presence list, broadcasts and connection status. */
 export interface CollabEvents {
   record(rec: SharedRecord): void;
   presence(list: Presence[]): void;
@@ -72,6 +74,7 @@ export interface CollabAdapter {
   onUser?(cb: (user: CollabUser | null) => void): () => void;
 }
 
+/** Options for `new SharedStore(...)`: the document name, the backend adapter and an optional presence colour. */
 export interface SharedStoreOptions {
   /** Document name: every client with the same name shares the records. */
   doc: string;

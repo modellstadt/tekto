@@ -35,6 +35,7 @@ const REL_TYPES = {
   aggregates: 160246688,    // IfcRelAggregates: a whole and its parts
 } as const;
 
+/** Options for `IfcModel.parse`: where web-ifc.wasm is served, recentring, and whether to read property sets, the spatial tree and relations (all default true). */
 export interface IfcParseElementsOptions {
   /** Directory (with trailing slash) where web-ifc.wasm is served. Default: '/'. */
   wasmPath?: string;
@@ -198,6 +199,7 @@ export interface IfcRelations {
   parts?: number[];
 }
 
+/** One element from `IfcModel.parse`: express id, IFC class, name and GlobalId, its own mesh, its property and quantity values (flattened and by set) and the relations the file states. */
 export interface IfcElementData {
   expressID: number;
   /** "IfcSlab", "IfcWall", ... in IFC's own casing where web-ifc reports it. */
@@ -221,6 +223,7 @@ export interface IfcElementData {
   relations?: IfcRelations;
 }
 
+/** A node of the model's spatial structure (project, site, building, storey, …) as web-ifc reports it: express id, class, name and children. */
 export interface IfcSpatialNode {
   expressID: number;
   ifcClass: string;
@@ -228,6 +231,7 @@ export interface IfcSpatialNode {
   children: IfcSpatialNode[];
 }
 
+/** What `IfcModel.parse` returns: the elements, the spatial tree, the recentring offset, and `lengthScale`, the metres per length unit of the file. */
 export interface IfcModelData {
   elements: IfcElementData[];
   tree?: IfcSpatialNode;
@@ -279,6 +283,13 @@ function flattenSet(set: any): Record<string, string | number | boolean> {
   return out;
 }
 
+/**
+ * IFC import per element: each keeps its mesh, IFC class, property and
+ * quantity sets and stated relations, so an app can select and inspect it.
+ * Same optional `web-ifc` dependency and wasm setup as `IfcFile`.
+ *
+ *   const model = await IfcModel.parse(buf, { wasmPath: '/' });
+ */
 export const IfcModel = {
   /**
    * Parse an IFC file into its elements, each with geometry and properties.

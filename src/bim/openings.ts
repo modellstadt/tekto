@@ -39,6 +39,7 @@ export type WindowPartitioning =
   | "triple_panel"
   | "not_defined";
 
+/** Options for `new OpeningType(...)`: name, door or window, how it operates or is partitioned, material and Pset properties. */
 export interface OpeningTypeOptions {
   name: string;
   /** "door" → IfcDoor(Type); "window" → IfcWindow(Type). Default "door". */

@@ -10,6 +10,7 @@
  * the sketch's business, not the theme's.)
  */
 
+/** The colours of tekto's panel chrome (white on dark by default), from `getTheme`; every panel reads them instead of its own hex literals. */
 export interface Theme {
   isDark: boolean;
   /** App background behind the viewport */
@@ -70,6 +71,7 @@ const LIGHT: Theme = {
   font: "'IBM Plex Mono',ui-monospace,monospace",
 };
 
+/** The panel chrome colours for dark (default, white-on-dark) or light mode. */
 export function getTheme(mode: "dark" | "light" = "dark"): Theme {
   return mode === "light" ? LIGHT : DARK;
 }

@@ -9,6 +9,7 @@ import { Vec3 } from "../../math/vectors";
 import { Mesh, MeshNode } from "./Mesh";
 import { MeshTransform } from "./MeshTransform";
 
+/** In-place refinement of a `Mesh`: split long edges, refine to a target edge length, Doo-Sabin. Catmull-Clark is `MeshFactory.subdivide`. */
 export const MeshSubdivide = {
 
   /** Splits all edges longer than maxLength in a single pass. */

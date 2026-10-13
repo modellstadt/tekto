@@ -9,6 +9,7 @@
 import { Vec2 } from "../math/vectors";
 import { Capsule2D } from "../geometry/Capsule2D";
 
+/** Per-frame damping factors and wall restitution of a `RigidBody2D`. */
 export interface RigidBodyConfig {
   damping?: number;          // linear velocity decay per frame (default 0.984)
   angularDamping?: number;   // angular velocity decay per frame (default 0.975)
@@ -21,6 +22,10 @@ const DEFAULTS: Required<RigidBodyConfig> = {
   wallRestitution: -0.4,
 };
 
+/**
+ * A 2D rigid body with a `Capsule2D` shape (x, y, angle in radians), stepped per frame without a dt:
+ * apply forces at points, `integrate()`, then `constrainToBox` to bounce off walls. Mass and inertia come from the shape.
+ */
 export class RigidBody2D {
   shape: Capsule2D;
 
@@ -131,6 +136,7 @@ export class RigidBody2D {
 
 // ─── Spring between two rigid bodies ─────────
 
+/** Stiffness and damping of a `Spring2D`. */
 export interface SpringConfig {
   stiffness?: number;   // default 0.35
   damping?: number;     // default 0.055

@@ -4,6 +4,7 @@
  * Mirrors HDGEO.Core.HMath.
  */
 
+/** Scalar helpers: `DEG2RAD` / `RAD2DEG`, `EPSILON`, `clamp`, `lerp`, `smoothstep`, `remap` … (also exported as `MathUtils`). */
 export const HMath = {
   DEG2RAD: Math.PI / 180,
   RAD2DEG: 180 / Math.PI,

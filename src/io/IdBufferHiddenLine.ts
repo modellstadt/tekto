@@ -19,6 +19,7 @@ import { Vec3 } from '../core/math/vectors';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/** Options for the WebGL id-buffer hidden-line pass (`hiddenLineIdBuffer`, `DxfExporter.toSegmentsGpu`): buffer resolution (default 2048 px square), debug layers, U flip, layers kept by name, and a layer for occluded runs. */
 export interface IdBufferOptions {
   /** ID buffer resolution (square). Default: 2048. Higher = more accurate transitions. */
   resolution?: number;

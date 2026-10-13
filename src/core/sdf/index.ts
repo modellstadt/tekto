@@ -15,6 +15,10 @@ const TWO_PI = Math.PI * 2;
 // ISdf Interface
 // ═════════════════════════════════════════════
 
+/**
+ * A signed distance field: `distance(p)` is negative inside, 0 on the surface, positive outside.
+ * Mesh one with `VoxelGrid.fillFromSdf` + `MarchingCubes.extract`.
+ */
 export interface ISdf {
   distance(point: Vec3): number;
 }
@@ -23,11 +27,13 @@ export interface ISdf {
 // Primitives
 // ═════════════════════════════════════════════
 
+/** Sphere of `radius` around `center` (default origin); exact distance. */
 export class SdfSphere implements ISdf {
   constructor(public radius: number, public center = Vec3.zero()) {}
   distance(p: Vec3): number { return p.sub(this.center).len() - this.radius; }
 }
 
+/** Axis-aligned box of `halfExtents` around `center`; exact distance. `SdfBox.fromSize(sx, sy, sz)` takes full sizes at the origin. */
 export class SdfBox implements ISdf {
   constructor(public halfExtents: Vec3, public center = Vec3.zero()) {}
 
@@ -46,6 +52,7 @@ export class SdfBox implements ISdf {
   }
 }
 
+/** Capsule: every point within `radius` of segment a→b (round ends). */
 export class SdfCapsule implements ISdf {
   constructor(public a: Vec3, public b: Vec3, public radius: number) {}
 
@@ -57,6 +64,7 @@ export class SdfCapsule implements ISdf {
   }
 }
 
+/** Flat-capped cylinder of `radius` from `a` to `b`; `SdfCylinder.vertical(height, radius)` stands one on the Y axis, centred on the origin. */
 export class SdfCylinder implements ISdf {
   constructor(public a: Vec3, public b: Vec3, public radius: number) {}
 
@@ -88,6 +96,7 @@ export class SdfCylinder implements ISdf {
   }
 }
 
+/** Capped cone (frustum) from `a` (radius `radiusA`) to `b` (radius `radiusB`); the slanted side uses radial distance, so it is approximate. */
 export class SdfCone implements ISdf {
   constructor(
     public a: Vec3, public b: Vec3,
@@ -116,6 +125,7 @@ export class SdfCone implements ISdf {
   }
 }
 
+/** Torus at the origin around the Y axis (ring in the XZ plane): `majorRadius` to the tube centre, `minorRadius` of the tube. */
 export class SdfTorus implements ISdf {
   constructor(public majorRadius: number, public minorRadius: number) {}
 
@@ -125,6 +135,7 @@ export class SdfTorus implements ISdf {
   }
 }
 
+/** Ellipsoid at the origin with semi-axes `radii`; the distance is an approximation (exact only for a sphere). */
 export class SdfEllipsoid implements ISdf {
   constructor(public radii: Vec3) {}
 
@@ -141,6 +152,10 @@ export class SdfEllipsoid implements ISdf {
   }
 }
 
+/**
+ * Half-space behind a plane (exported as `SdfPlaneField`): negative on the side away from `normal`.
+ * Give the plane as `normal` plus offset `d` (normal·p = d) or a point on it; the normal is normalised.
+ */
 export class SdfPlane implements ISdf {
   normal: Vec3;
   d: number;
@@ -157,6 +172,7 @@ export class SdfPlane implements ISdf {
   distance(p: Vec3): number { return p.dot(this.normal) - this.d; }
 }
 
+/** Unsigned distance to the infinite line through `a` and `b` (exported as `SdfLineField`); wrap in `SdfOffset` for an endless rod. */
 export class SdfLine implements ISdf {
   constructor(public a: Vec3, public b: Vec3) {}
 
@@ -173,6 +189,7 @@ export class SdfLine implements ISdf {
 // Boolean Operations
 // ═════════════════════════════════════════════
 
+/** Union of any number of fields (the minimum of their distances). */
 export class SdfUnion implements ISdf {
   children: ISdf[];
   constructor(...children: ISdf[]) { this.children = children; }
@@ -184,6 +201,7 @@ export class SdfUnion implements ISdf {
   }
 }
 
+/** Intersection of any number of fields (the maximum of their distances). */
 export class SdfIntersect implements ISdf {
   children: ISdf[];
   constructor(...children: ISdf[]) { this.children = children; }
@@ -195,6 +213,7 @@ export class SdfIntersect implements ISdf {
   }
 }
 
+/** `a` minus `b`: max(a, −b). */
 export class SdfSubtract implements ISdf {
   constructor(public a: ISdf, public b: ISdf) {}
   distance(p: Vec3): number { return Math.max(this.a.distance(p), -this.b.distance(p)); }
@@ -204,6 +223,7 @@ export class SdfSubtract implements ISdf {
 // Smooth Operations
 // ═════════════════════════════════════════════
 
+/** Smooth union of `a` and `b`, filleting the joint over `radius` (quadratic smooth-min; same field as `SdfSmoothUnion` with k = radius). */
 export class SdfBlend implements ISdf {
   constructor(public a: ISdf, public b: ISdf, public radius = 1) {}
 
@@ -215,6 +235,7 @@ export class SdfBlend implements ISdf {
   }
 }
 
+/** `a` minus `b` with the cut edge rounded over `radius`. */
 export class SdfSmoothSubtract implements ISdf {
   constructor(public a: ISdf, public b: ISdf, public radius = 1) {}
 
@@ -226,6 +247,7 @@ export class SdfSmoothSubtract implements ISdf {
   }
 }
 
+/** Smooth union of `a` and `b`; `k` is the blend width (larger = softer fillet). */
 export class SdfSmoothUnion implements ISdf {
   constructor(public a: ISdf, public b: ISdf, public k = 1) {}
 
@@ -242,11 +264,13 @@ export class SdfSmoothUnion implements ISdf {
 // Modifiers
 // ═════════════════════════════════════════════
 
+/** Hollows `input` into a wall `2 × thickness` thick, centred on its surface (|d| − thickness). */
 export class SdfShell implements ISdf {
   constructor(public input: ISdf, public thickness = 1) {}
   distance(p: Vec3): number { return Math.abs(this.input.distance(p)) - this.thickness; }
 }
 
+/** Nested shells: applies |d| − thickness `layers` times, each pass splitting every wall in two. */
 export class SdfOnion implements ISdf {
   constructor(public input: ISdf, public thickness: number, public layers = 1) {}
   distance(p: Vec3): number {
@@ -256,6 +280,10 @@ export class SdfOnion implements ISdf {
   }
 }
 
+/**
+ * Twists `input` about the Z axis: the rotation grows linearly with z, by `anglePerUnit` radians across the whole
+ * `z1`..`z2` span (not per metre), zero at its midpoint, and keeps growing outside it. The result is not an exact distance.
+ */
 export class SdfTwist implements ISdf {
   constructor(
     public input: ISdf, public anglePerUnit: number,
@@ -271,6 +299,7 @@ export class SdfTwist implements ISdf {
   }
 }
 
+/** Revolves a profile around the Y axis: `input` is sampled in its z = 0 plane at (distance from the Y axis, y). */
 export class SdfRevolution implements ISdf {
   constructor(public input: ISdf) {}
   distance(p: Vec3): number {
@@ -279,11 +308,13 @@ export class SdfRevolution implements ISdf {
   }
 }
 
+/** Extrudes `input`'s z = 0 section endlessly along Z. */
 export class SdfExtrude implements ISdf {
   constructor(public input: ISdf) {}
   distance(p: Vec3): number { return this.input.distance(new Vec3(p.x, p.y, 0)); }
 }
 
+/** Extrudes `input`'s z = 0 section along Z over `height`, centred on z = 0 (flat caps). */
 export class SdfBoundedExtrude implements ISdf {
   halfHeight: number;
   constructor(public input: ISdf, height: number) { this.halfHeight = height * 0.5; }
@@ -293,6 +324,7 @@ export class SdfBoundedExtrude implements ISdf {
   }
 }
 
+/** Mirror symmetry about the plane through the origin with `planeNormal`: the part of `input` on the normal's side is reflected onto the other side (what was there is dropped). */
 export class SdfMirror implements ISdf {
   normal: Vec3;
   constructor(public input: ISdf, planeNormal: Vec3) {
@@ -305,6 +337,10 @@ export class SdfMirror implements ISdf {
   }
 }
 
+/**
+ * `count` copies of `input` around the Z axis, 360°/count apart, taken from the sector around +X.
+ * The fold reflects (angle a → −a) rather than rotates, so copies are mirrored in y unless `input` is symmetric about XZ.
+ */
 export class SdfRadialArray implements ISdf {
   private deltaAngle: number;
   constructor(public input: ISdf, public count: number) {
@@ -320,6 +356,10 @@ export class SdfRadialArray implements ISdf {
   }
 }
 
+/**
+ * Places `input` with a Mat4 (stored inverted; `input` is sampled at transform⁻¹·p).
+ * Exact for rigid transforms; under scaling the distance stays in `input`'s unscaled units.
+ */
 export class SdfTransform implements ISdf {
   private inverse: Mat4;
   constructor(public input: ISdf, transform: Mat4) {
@@ -333,16 +373,22 @@ export class SdfTransform implements ISdf {
   }
 }
 
+/** Grows `input` outward by `amount` (shrinks it if negative), which also rounds its edges. */
 export class SdfOffset implements ISdf {
   constructor(public input: ISdf, public amount: number) {}
   distance(p: Vec3): number { return this.input.distance(p) - this.amount; }
 }
 
+/** Weighted sum `a + factor × b`: modulates one field by another (the result is not a true distance). */
 export class SdfGradient implements ISdf {
   constructor(public a: ISdf, public b: ISdf, public factor = 1) {}
   distance(p: Vec3): number { return this.a.distance(p) + this.factor * this.b.distance(p); }
 }
 
+/**
+ * Voronoi walls between the fields in `children` (push them in after construction): |d1 − d2| − `offset` over the two
+ * nearest, so the walls are where they are equally near, `2 × offset` thick. 0 everywhere when there are no children.
+ */
 export class SdfVoronoi implements ISdf {
   children: ISdf[];
   constructor(public offset = 0) { this.children = []; }
@@ -361,10 +407,16 @@ export class SdfVoronoi implements ISdf {
 // SdfLattice (TPMS)
 // ═════════════════════════════════════════════
 
+/** Triply periodic minimal surface (TPMS) family for {@link SdfLattice}. */
 export type LatticeType =
   | "schwarz" | "gyroid" | "diamond" | "lidinoid" | "neovius"
   | "fischerKoch" | "frd" | "doubleDiamond" | "doubleGyroid" | "s";
 
+/**
+ * Endless TPMS lattice (gyroid, Schwarz, diamond …) as an implicit field, not a true distance: period 2π·`scale`
+ * on each axis, `offset` shifts the level (solid fraction); `shell: true` gives a wall |f| − offset instead of a solid.
+ * Intersect it with a body to fill that body.
+ */
 export class SdfLattice implements ISdf {
   constructor(
     public type: LatticeType = "gyroid",
@@ -421,10 +473,15 @@ export class SdfLattice implements ISdf {
 // SdfMicrostructure
 // ═════════════════════════════════════════════
 
+/** Strut layout of one {@link SdfMicrostructure} cell. */
 export type MicroPatternType =
   | "bigX" | "grid" | "star" | "cross" | "octagon"
   | "octet" | "vintile" | "dual" | "interlock" | "isotrop";
 
+/**
+ * Endless strut lattice: `pattern`'s struts, laid out in one octant of a `cellSize` cube and mirrored to fill it,
+ * tiled through space; `strutRadius` is the strut radius.
+ */
 export class SdfMicrostructure implements ISdf {
   private struts: { a: Vec3; b: Vec3 }[];
 
@@ -492,6 +549,10 @@ function generateStruts(pattern: MicroPatternType, dim: number): { a: Vec3; b: V
 // SdfUtils
 // ═════════════════════════════════════════════
 
+/**
+ * Queries on any {@link ISdf}: central-difference `gradient`, sphere-tracing `rayMarch`, `surfaceNormal`,
+ * `projectToSurface`, `estimateCurvature` (Laplacian) and `ambientOcclusion` (0..1, 1 = open).
+ */
 export const SdfUtils = {
   gradient(sdf: ISdf, p: Vec3, epsilon = 0.001): Vec3 {
     const dx = sdf.distance(new Vec3(p.x + epsilon, p.y, p.z))
@@ -574,6 +635,11 @@ export const SdfUtils = {
 // Fluent builder helpers
 // ═════════════════════════════════════════════
 
+/**
+ * One-call wrappers that return a new {@link ISdf}: `translate`, `rotateX|Y|Z` (radians), `scale` (via
+ * {@link SdfTransform}), `union`, `intersect`, `subtract`, `blend`, `shell`, `round`, `mirror`, `twist`, `revolve`.
+ *   const s = SdfOps.translate(new SdfSphere(1), 0, 0, 2);
+ */
 export const SdfOps = {
   translate(sdf: ISdf, x: number, y: number, z: number): ISdf {
     return new SdfTransform(sdf, Mat4.translation(x, y, z));

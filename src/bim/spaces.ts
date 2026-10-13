@@ -21,6 +21,7 @@ import { Vec2 } from "../core/math/vectors";
 import type { PropertyMap } from "./walls/types";
 import type { Wall } from "../core/geometry/walls";
 
+/** Options for `new Space(...)`: name, XY boundary (≥ 3 points, metres), floor elevation (default 0), clear height (default 2.7 m), room function and Psets. */
 export interface SpaceOptions {
   name: string;
   /** Boundary polygon in the XY ground plane (CCW), in metres. */

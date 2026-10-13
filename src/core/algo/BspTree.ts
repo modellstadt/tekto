@@ -14,6 +14,7 @@ import { Plane } from "../geometry/Plane";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
+/** A convex polygon with its supporting plane, as stored, split and clipped by `BspTree`. */
 export interface BspPolygon {
   vertices: Vec3[];
   plane: Plane;
@@ -233,6 +234,7 @@ function clipTo(a: BspNode | null, b: BspNode | null): void {
 
 // ── Point classification ─────────────────────────────────────────────────────
 
+/** Where a point lies relative to a `BspTree` solid; `"on"` means on one of its boundary polygons. */
 export type PointClassification = "inside" | "outside" | "on";
 
 function classifyPointNode(node: BspNode | null, point: Vec3): PointClassification {
@@ -383,6 +385,11 @@ function polygonsToMesh(polys: BspPolygon[]): { positions: Float32Array; indices
 
 // ── Public API: BspTree class ────────────────────────────────────────────────
 
+/**
+ * A BSP tree of convex polygons, for CSG on closed solids: build with `fromPolygons`/`fromMesh`,
+ * combine with `union`/`subtract`/`intersect` (new trees, inputs unchanged), read back with `toMesh()`
+ * (indexed typed arrays, not a `Mesh`). Also classifies points and walks polygons in depth order.
+ */
 export class BspTree {
   constructor(public root: BspNode | null) {}
 

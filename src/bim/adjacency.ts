@@ -40,6 +40,7 @@ export interface Box {
  */
 export type Contact = "supports" | "supportedBy" | "abuts" | "overlaps";
 
+/** One touching pair from `findAdjacent`: element ids `a` and `b`, how `a` meets `b`, and the tolerance it was found at (an inference, not a stated relation). */
 export interface Adjacency {
   a: number;
   b: number;
@@ -55,6 +56,7 @@ export interface Adjacency {
 /** Up, as an axis index. Tekto and IFC are Z-up; three.js content is Y-up. */
 export type UpAxis = 0 | 1 | 2;
 
+/** Options for `contactBetween` / `findAdjacent`: contact tolerance (default 0.05), up axis (default 2, Z) and minimum shared footprint (default 0.02). */
 export interface AdjacencyOptions {
   /** How close counts as touching, in model units. 0.05 for metres is a
    *  builder's tolerance: it catches a wall drawn 30 mm off a slab and does

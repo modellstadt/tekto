@@ -16,6 +16,7 @@ import { DASH_PATTERNS, boundsOf, pickPrim, type Pt, type Sheet, type SheetPrim,
 /** Sheet → screen: `scale` CSS pixels per sheet unit, the sheet origin at (`x`, `y`); y up. */
 export interface SheetTransform { scale: number; x: number; y: number; }
 
+/** Options for `drawSheet`: pre-exploded primitives to reuse, and the keys to draw highlighted. */
 export interface DrawSheetOptions {
   /** The exploded sheet, if you have it already (`sheet.explode()`). */
   prims?: readonly SheetPrim[];
@@ -96,6 +97,7 @@ export function drawSheet(ctx: CanvasRenderingContext2D, sheet: Sheet, t: SheetT
   ctx.restore();
 }
 
+/** Options for `new SheetCanvas(...)`: the sheet to show, paper colour, pick tolerance, fit margin and highlight colour. */
 export interface SheetCanvasOptions {
   sheet?: Sheet | null;
   /** Paper colour (default white; "transparent" shows what is underneath). */

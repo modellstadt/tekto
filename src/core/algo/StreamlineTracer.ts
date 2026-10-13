@@ -23,6 +23,7 @@ import { Vec3 } from "../math/vectors";
 import type { Mesh } from "../geometry/mesh/Mesh";
 import { closestPointOnSegment } from "../geometry/Segment";
 
+/** Tuning for `StreamlineTracer.trace`: step budget, seed density, step size and lift off the surface. */
 export interface StreamlineOptions {
   /** Maximum integration steps per direction (forward + backward each get this budget). */
   maxSteps?: number;
@@ -36,6 +37,10 @@ export interface StreamlineOptions {
   liftFactor?: number;
 }
 
+/**
+ * Traces polylines along a per-face direction field on a `Mesh` (e.g. combed principal curvature
+ * from `Curvature`), walking face to face from seed faces in both directions; plus polyline smoothing.
+ */
 export const StreamlineTracer = {
   /**
    * Laplacian smoothing of a single polyline. Each interior point is moved

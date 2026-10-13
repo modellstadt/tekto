@@ -9,6 +9,7 @@
 import { Scene as GScene, SceneObject } from "../scene/Scene";
 import { Vec3 } from "../core/math/vectors";
 
+/** Pixel size, viewBox (model units), grid, labels and projection plane of an `SVGRenderer`; pass any subset, the rest has defaults. */
 export interface SVGRendererConfig {
   width: number;
   height: number;
@@ -37,6 +38,10 @@ const DEFAULTS: SVGRendererConfig = {
   pointRadius: 5,
 };
 
+/**
+ * Draws a `Scene`'s points, segments, polygons, circles and meshes as SVG, projected onto one plane (`xz` by default), and redraws on every scene change.
+ * `setViewBox` pans/zooms; `dispose()` unsubscribes and removes the SVG.
+ */
 export class SVGRenderer {
   private gScene: GScene;
   private config: SVGRendererConfig;

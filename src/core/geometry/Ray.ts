@@ -11,6 +11,10 @@ import { Triangle } from "./Triangle";
 import { Sphere } from "./Sphere";
 import { AABB } from "./AABB";
 
+/**
+ * Half-line `origin + t·direction` (t ≥ 0) with hit tests against planes, triangles, spheres and AABBs; immutable.
+ * Pass a unit `direction`: `closestPointTo`/`distToPoint` assume it, and `t` is then a distance.
+ */
 export class Ray {
   constructor(
     public readonly origin: Vec3,

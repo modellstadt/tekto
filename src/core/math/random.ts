@@ -15,6 +15,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/** Seeded random generator (mulberry32) from {@link createRandom}: the same seed gives the same sequence. */
 export interface SeededRandom {
   /** Returns a random float. 0 args → [0,1). 1 arg → [0,max). 2 args → [min,max). */
   random(min?: number, max?: number): number;

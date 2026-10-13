@@ -29,6 +29,10 @@ import {
 } from "./ExtrudedRibbon";
 import { RibbonJoint, JointKind, JointParticipant } from "./RibbonJoint";
 
+/**
+ * A set of `ExtrudedRibbon`s with their `RibbonJoint`s (L/T/X/Y), detected from the centerlines on first
+ * need and editable before meshing; `buildMesh()` trims every ribbon at its joints and merges them into one `Mesh`.
+ */
 export class RibbonSystem {
   readonly ribbons: ExtrudedRibbon[] = [];
   joints: RibbonJoint[] = [];

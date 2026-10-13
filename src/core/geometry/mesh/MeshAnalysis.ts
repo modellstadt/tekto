@@ -7,6 +7,7 @@
 import { Vec3 } from "../../math/vectors";
 import { Mesh } from "./Mesh";
 
+/** Measurements on a `Mesh` (volume, area, centroid), Laplacian smoothing, and a 3D convex hull of points. */
 export const MeshAnalysis = {
 
   /** Mesh volume (closed, consistently wound; polygons are fan-triangulated). */

@@ -9,6 +9,7 @@ import { HMath } from "../math/HMath";
 import { Plane } from "./Plane";
 import { closestPointOnSegment } from "./Segment";
 
+/** Immutable 3D triangle a, b, c: unit `normal` (right-hand rule a→b→c), area, centroid, barycentrics and closest point. */
 export class Triangle {
   constructor(
     public readonly a: Vec3,

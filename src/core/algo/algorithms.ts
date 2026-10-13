@@ -9,4 +9,5 @@
 import { Polygon2D } from "../geometry/Polygon2D";
 import { MeshAnalysis } from "../geometry/mesh/MeshAnalysis";
 
+/** `Polygon2D` and `MeshAnalysis` in one namespace (kept for older code); new code imports those two directly. */
 export const Algo = { ...Polygon2D, ...MeshAnalysis };

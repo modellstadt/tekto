@@ -5,6 +5,7 @@
  */
 import type { CollabStatus, Presence, SharedStore } from "./SharedStore";
 
+/** Options for `PresenceBar`: where it sits and what each person's tooltip says. */
 export interface PresenceBarOptions {
   /** CSS for the bar's position inside the host; default: top right, left of ✎ Markup. */
   position?: string;
@@ -14,6 +15,10 @@ export interface PresenceBarOptions {
 
 const STATUS_COL: Record<CollabStatus, string> = { online: "#2f9e44", connecting: "#f08c00", offline: "#adb5bd", error: "#e03131" };
 
+/**
+ * Who is online in a `SharedStore` document: a connection dot, one badge per person, and a Sign in / Sign out button.
+ * `new PresenceBar(store, host)` mounts it in `host` and re-renders on presence, status and user changes; `destroy()` removes it.
+ */
 export class PresenceBar {
   readonly el: HTMLDivElement;
   private dot: HTMLSpanElement;

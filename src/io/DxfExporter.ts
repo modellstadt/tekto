@@ -27,6 +27,7 @@ export type { DxfLayerDef, Dxf3DContent, Dxf3DPolyline, Dxf3DLine, Dxf3DPoint, D
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
+/** The orthographic view a `DxfExporter` projects onto: the direction it looks along and the drawing's up direction (default +Z). */
 export interface DxfView {
   /** Direction the camera looks toward (into the scene). Will be normalized. */
   viewDir: Vec3;
@@ -35,6 +36,7 @@ export interface DxfView {
 }
 
 
+/** Options for `DxfExporter.addMesh`: layer, the dihedral angle in degrees above which an edge is drawn (default 30), open edges, and whether smooth edges go to a soft layer or become view-dependent silhouettes. `addBspTree` reads only `layer`, `featureAngle` and `boundary`. */
 export interface DxfMeshOptions {
   /** DXF layer name for edges of this mesh. Default: '0'. */
   layer?: string;
@@ -63,10 +65,12 @@ export interface DxfMeshOptions {
   silhouettes?: boolean;
 }
 
+/** Options for `DxfExporter.addEdge` / `addPolyline`: the DXF layer (default "0"). */
 export interface DxfEdgeOptions {
   layer?: string;
 }
 
+/** Options for `DxfExporter.toDxf` and its siblings: coordinate scale (default 1000, metres → millimetres), decimals, and hidden-line removal or classified debug layers. */
 export interface DxfWriteOptions {
   /** Scale multiplier applied to all coordinates. Default 1000 (meters→mm). */
   scale?: number;
@@ -119,6 +123,7 @@ interface ISilhouetteEdge extends IEdge {
   n0x: number; n0y: number; n0z: number;
   n1x: number; n1y: number; n1z: number;
 }
+/** One projected 2D line in view coordinates (u right, v up, unscaled model units) with its layer: what `toSegments` / `toSegmentsGpu` return and `toDxfFromSegments` writes. */
 export interface DxfSegment { u0: number; v0: number; u1: number; v1: number; layer: string; }
 type ISeg = DxfSegment;
 
@@ -678,6 +683,7 @@ function _subInterval(vis: [number, number][], a: number, b: number): [number, n
 
 // ── Serializable worker types ─────────────────────────────────────────────────
 
+/** A plain-data hidden-line job from `DxfExporter.toWorkerRequest` (flattened triangles, view-resolved edges, layers, view, scale): post it to a Web Worker that calls `processWorkerRequest`. */
 export interface DxfWorkerRequest {
   /** Flat array: ax,ay,az,bx,by,bz,cx,cy,cz per triangle */
   trisFlat: number[];

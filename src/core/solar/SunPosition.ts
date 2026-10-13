@@ -14,6 +14,7 @@
 
 import { Vec3 } from "../math/vectors";
 
+/** A UTC instant and a site (latitude/longitude in degrees) for `SunPosition.compute`. */
 export interface SunPositionInput {
   /**
    * UTC date+time. The algorithm internally converts to Julian Date in
@@ -27,6 +28,7 @@ export interface SunPositionInput {
   longitude: number;
 }
 
+/** The sun's altitude and azimuth (radians) and its unit direction in the Z-up frame (+X east, +Y north). */
 export interface SunPositionResult {
   /** Solar altitude above horizon (radians). Negative ⇒ below horizon (night). */
   altitude: number;
@@ -46,6 +48,7 @@ export interface SunPositionResult {
   isDaytime: boolean;
 }
 
+/** Sun direction from a date and a site (Michalsky 1988, ~0.01° for 1950–2050), as a Z-up vector: +X east, +Y north, +Z sky. */
 export const SunPosition = {
   /**
    * Compute the sun's position in the sky for a given UTC instant and

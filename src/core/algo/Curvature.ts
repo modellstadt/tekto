@@ -17,6 +17,7 @@
 import { Vec3 } from "../math/vectors";
 import type { Mesh } from "../geometry/mesh/Mesh";
 
+/** Principal curvatures and directions at one mesh node, as estimated by `Curvature.taubin` (positive = convex w.r.t. the outward normal). */
 export interface VertexCurvature {
   /** Principal curvature with larger (signed) value. */
   kMax: number;
@@ -48,6 +49,10 @@ function triangleArea(a: Vec3, b: Vec3, c: Vec3): number {
   return b.sub(a).cross(c.sub(a)).len() * 0.5;
 }
 
+/**
+ * Per-node principal curvature on a `Mesh` (Taubin's tensor method), plus helpers to comb the
+ * resulting line field into consistent signs and average it per face, e.g. for `StreamlineTracer`.
+ */
 export const Curvature = {
   /**
    * Estimate per-vertex principal curvatures and directions.

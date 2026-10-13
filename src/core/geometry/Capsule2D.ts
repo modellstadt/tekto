@@ -9,6 +9,10 @@
 
 import { Vec2 } from "../math/vectors";
 
+/**
+ * 2D capsule (stadium): a segment of `2 × halfLength` through `center` at `angle` (radians), swept by a disk of `radius`.
+ * Mutable — it is the shape of a `RigidBody2D` — with signed distance, hit testing and grab handles for dragging.
+ */
 export class Capsule2D {
   constructor(
     /** Center position */

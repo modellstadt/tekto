@@ -48,6 +48,7 @@ export type { Reactive, SliderOpts, SelectOpts } from "./SketchTypes";
 // Public Types
 // ═══════════════════════════════════════════════
 
+/** Options for `sketch2d()`: where to mount it, title, canvas background, panel width and theme. */
 export interface Sketch2DConfig {
   /** DOM element or CSS selector to mount into */
   container?: HTMLElement | string;
@@ -61,7 +62,9 @@ export interface Sketch2DConfig {
   theme?: "dark" | "light";
 }
 
+/** The `lab.draw` callback: paint the canvas, given its 2D context and size in CSS pixels; runs on every re-run and animation frame. */
 export type DrawFn = (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+/** The `lab.animate` callback, run every frame with the time since start and the frame step, both in seconds (the step capped at 1/15 s). */
 export type AnimateFn = (time: number, dt: number) => void;
 
 /** A single pointer (mouse / touch / pen) sample in CSS pixels relative to the canvas. */
@@ -73,6 +76,7 @@ export interface Pointer2D {
   /** Stable id for this pointer — match it across down/move/up to track one finger. */
   id: number;
 }
+/** A handler for `lab.onPointerDown` / `onPointerMove` / `onPointerUp`. */
 export type PointerFn = (p: Pointer2D) => void;
 
 /** The lab context passed to the sketch function */
@@ -152,6 +156,7 @@ export interface Lab2D {
   onPointerUp(fn: PointerFn): void;
 }
 
+/** The function `sketch2d()` runs with the `Lab2D` API, and re-runs whenever a control changes. */
 export type Sketch2DFn = (lab: Lab2D) => void;
 
 // ═══════════════════════════════════════════════
@@ -178,6 +183,7 @@ export function sketch2d(fn: Sketch2DFn, config?: Sketch2DConfig): Sketch2DInsta
   return new Sketch2DInstance(fn, config ?? {});
 }
 
+/** What `sketch2d()` returns: the running 2D sketch, with `getParams` / `setParams` to save and restore its controls and `dispose()` to tear it down. */
 export class Sketch2DInstance {
   private fn: Sketch2DFn;
   private config: Sketch2DConfig;
@@ -603,13 +609,13 @@ export class Sketch2DInstance {
     requestAnimationFrame(loop);
   }
 
-  /** Tear down the sketch */
   /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
   getParams(): Record<string, unknown> { return { ...this.store.getAll() }; }
 
   /** Set controls by label, "Group:Label" or key, and re-run once; reports what it couldn't apply. */
   setParams(values: Record<string, unknown>) { return this.store.setByName(values); }
 
+  /** Tear down the sketch */
   dispose() {
     this.disposed = true;
     this.bridge?.dispose();

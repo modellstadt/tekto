@@ -7,6 +7,7 @@
 import { Vec3 } from "../../math/vectors";
 import { Mesh } from "./Mesh";
 
+/** Merges coincident vertices of a `Mesh` in place (exactly equal or within a distance) and drops faces that collapse; the mesh is rebuilt, so ids are renumbered. */
 export const MeshCleanup = {
 
   /** Merges vertices that have the exact same position (binary equality). */

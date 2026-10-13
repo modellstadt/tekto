@@ -6,26 +6,26 @@ choose between them, read llms.txt first.
 
 ## tekto/core — geometry and data — no three.js, no DOM; runs in Node, workers and tests
 
-- `AABB` (class)
+- `AABB` (class): Axis-aligned 3D bounding box between `min` and `max`; immutable (`expand`/`union` return a new box).
   members: static empty(), static fromPoints(), center(), size(), volume(), expand(), union(), containsPoint(), intersectsAABB(), toJSON()
 - `aciFromHex` (function): The nearest AutoCAD Color Index for a CSS hex colour (`#rgb` / `#rrggbb`).
-- `Algo` (namespace)
-- `ArcCurve` (class)
+- `Algo` (namespace): `Polygon2D` and `MeshAnalysis` in one namespace (kept for older code); new code imports those two directly.
+- `ArcCurve` (class): Circular arc of `radius` around `center` in the plane perpendicular to `normal`.
   members: forward, length, getTFromDistance(), getPoint(), getTangent(), getPointAtDistance()
 - `BalloonFrame` (function): Balloon-frame construction factory (North-American light-frame timber).
 - `bindScene` (function): Keep a scene in step with one collection of a document.
-- `BlobDetect` (namespace)
+- `BlobDetect` (namespace): Regions of a `VoxelGrid2D` above a threshold: 4-connected component labels, and their outlines as cell-coordinate loops.
   members: labelComponents2D(), traceContours2D()
 - `boundingWalls` (function): Find which walls bound a space: a wall whose centerline runs along one of the space's boundary edges (approximately collinear, and overlapping in projection).
 - `boxOf` (function): The box of a set of points, or null for no points.
-- `BspTree` (class)
+- `BspTree` (class): A BSP tree of convex polygons, for CSG on closed solids: build with `fromPolygons`/`fromMesh`, combine with `union`/`subtract`/`intersect` (new trees, inputs unchanged), read back with `toMesh()` (…
   members: static fromPolygons(), static fromMesh(), toPolygons(), toMesh(), toFlatMesh(), clone(), invert(), classifyPoint(), traverseFrontToBack(), traverseBackToFront(), static union(), static subtract(), static intersect()
 - `buildCutList` (function): Roll a list of parts (typically from a `RealizedWall.parts`) into a cut list keyed by (material × profile × length-bucket).
-- `Capsule2D` (class)
+- `Capsule2D` (class): 2D capsule (stadium): a segment of `2 × halfLength` through `center` at `angle` (radians), swept by a disk of `radius`.
   members: endpoints, totalLength, area, mass, inertia, handles, closestSegmentPoint(), distToPoint(), containsPoint(), hitTest(), clone()
 - `chooseJoistDirection` (function): Pick a joist direction for a slab.
 - `clampedUniformKnots` (function): Build a clamped uniform knot vector with `numCtrl` control points and given degree.
-- `closestPointOnSegment` (function)
+- `closestPointOnSegment` (function): Closest point to `p` on segment a→b (point first — `Intersections.closestPointOnSegment` takes it last).
 - `CltConstruction` (const): CLT construction: the wall is a single panel (one `WallPart`), the lamellae are layered metadata.
 - `cltLayers` (function): Build the `MaterialLayer[]` for a CLT panel from a list of lamella thicknesses.
 - `collabColor` (function): A stable colour per user id (the same person gets the same colour in every tab).
@@ -33,86 +33,86 @@ choose between them, read llms.txt first.
 - `createLayout` (function): Create a layout that groups params into collapsible folders
 - `createParams` (function): Convenience factory
 - `createRandom` (function): Create a seeded random number generator.
-- `CubicBezierCurve` (class)
+- `CubicBezierCurve` (class): Cubic Bézier with control points `p0`..`p3`; arc length comes from a 50-step table, so move it with `updateControlPoints` rather than the fields.
   members: updateControlPoints(), getPoint(), getTangent(), length, getTFromDistance(), getPointAtDistance()
-- `Curvature` (namespace)
+- `Curvature` (namespace): Per-node principal curvature on a `Mesh` (Taubin's tensor method), plus helpers to comb the resulting line field into consistent signs and average it per face, e.g.
   members: taubin(), facePrincipalField(), combDirections()
 - `CurveUtils` (namespace): Helpers over curves (`LineCurve`, `ArcCurve`, `HelixCurve`, `CubicBezierCurve`, `NurbsCurve`, `PolylineCurve` — all with `getPoint(t)`, `getTangent(t)`, arc length): `divideByCount` / `divideByFixe…
   members: divideByCount(), divideByFixedLength(), divideByTargetLength(), cubicEval(), splitCubic(), findTForComponent(), unrollPolyline(), findUnrollX(), parallelTransportFrames(), arcFromPointTangentPoint()
 - `DASH_PATTERNS` (namespace): Dash patterns in paper mm (dash, gap, …).
   members: dashed, hidden, dotted, center
-- `Delaunay2D` (namespace)
+- `Delaunay2D` (namespace): Incremental Delaunay triangulation of 2D points (at least 3), returned as a `PlanarGraph` whose CCW faces are the triangles.
   members: triangulate()
 - `devServerAdapter` (function): The Vite dev server as backend: records live in `.tekto/collab/<doc>.json` (an agent can read and edit that file — the browsers pick the change up).
-- `DistanceTransform` (namespace)
+- `DistanceTransform` (namespace): In-place chamfer distance on a voxel grid: cells at 0 are sources, all others (set them large, e.g.
   members: compute2D(), compute2DWithLabels(), compute3D(), compute3DWithLabels()
 - `Doc` (class): The document of a retained CAD app: typed records in named collections, each with a stable id; `transact` groups writes into one undo step; `undo`/`redo`; `toJSON`/`load` for Save and Open; persist…
   members: name, store, ready, get(), has(), all(), ids(), count(), add(), update(), remove(), transact(), undo(), redo(), canUndo(), canRedo(), undoLabel(), redoLabel(), clearHistory(), onChange(), onHistory(), toJSON(), load(), dispose()
 - `edgeOutwardVisibility` (function): Visibility of edge `i` of `ring`, shot toward its OUTWARD side (away from the ring interior — winding is detected, so either orientation works), against a set of obstacle rings.
-- `ExtrudedRibbon` (class)
+- `ExtrudedRibbon` (class): A 2D polyline centerline offset by ±width/2 and extruded up Z by `height` (Z-up, metres), with mitered corners and rectangular `openings` cut through both faces.
   members: centerline, width, height, baseZ, openings, length, segmentCount, isClosedPolyline, toMesh(), buildInto()
 - `findAdjacent` (function): Every touching pair among these elements.
-- `FloodFill` (namespace)
+- `FloodFill` (namespace): In-place flood fill on a voxel grid: from the seed cells, negates every connected cell (4/6-neighbours) whose sign matches `targetSign`.
   members: fill2D(), fill3D()
-- `Graph` (class)
+- `Graph` (class): A weighted graph on nodes `0..nodeCount-1`, defined by a neighbour callback and an optional weight callback (default 1) rather than stored edges: Dijkstra (single/multi-source, Voronoi), components…
   members: getNeighbors, getWeight, nodeCount, dijkstra(), dijkstraFromSources(), dijkstraFromDistances(), shortestPath(), static tracePath(), dijkstraVoronoi(), connectedComponents(), componentLabels(), floodFill(), floodFillPredicate(), degrees(), leafNodes(), junctionNodes(), eccentricity(), diameter(), static fromAdjacencyList(), static fromEdgeList()
-- `GridGraph` (namespace)
+- `GridGraph` (namespace): Ready-made `Graph`s over regular 2D/3D grids (4-, 8- and 6-connected); node index is `x * ny + y` (3D: `x * ny * nz + y * nz + z`).
   members: grid2D4(), grid2D8(), grid3D6()
 - `HelixCurve` (class): Helical curve in the XY plane with Z height.
   members: length, getTFromDistance(), getPoint(), getTangent(), getPointAtDistance()
-- `HMath` (namespace): Tekto HMath — Scalar math utilities.
+- `HMath` (namespace): Scalar helpers: `DEG2RAD` / `RAD2DEG`, `EPSILON`, `clamp`, `lerp`, `smoothstep`, `remap` … (also exported as `MathUtils`).
   members: DEG2RAD, RAD2DEG, EPSILON, clamp(), lerp(), smoothstep(), remap(), almostEqual(), sweepFraction(), solveQuadraticBezier()
 - `HolzrahmenBau` (function): Holzrahmenbau construction factory (Central-European timber frame).
 - `HolzrahmenBauJointStyle` (const): The conventional joint style for Holzrahmenbau / Holztafelbau panels — walls are prefab elements built flat in a factory, so corners are butt-jointed (one panel through, one butting) rather than mi…
 - `holzrahmenbauLayers` (function): Returns a typical Holzrahmenbau exterior-wall layered build-up, interior → exterior.
-- `IfcFile` (namespace)
+- `IfcFile` (namespace): IFC import as one fused mesh, for context geometry that nobody selects; use `IfcModel` to keep elements apart.
   members: parse()
-- `IfcModel` (namespace)
+- `IfcModel` (namespace): IFC import per element: each keeps its mesh, IFC class, property and quantity sets and stated relations, so an app can select and inspect it.
   members: parse()
 - `IfcWriter` (class): Writes an IFC4 file as STEP text — no web-ifc needed.
   members: addStorey(), getDefaultStorey(), addWallSystem(), addWall(), addOpening(), addMember(), addJoint(), addSlab(), addStair(), addSpace(), save(), saveBytes(), saveBlob()
-- `Intersections` (namespace)
+- `Intersections` (namespace): 2D and 3D intersection tests: ray vs segment/triangle/plane/sphere/AABB, segments, lines and rays in 2D, circles, planes, a ray through a polygon, plus closest points on segments and lines.
   members: raySegment(), rayTriangle(), pointInTriangle3D(), closestPointOnSegment(), closestPointsLineLine(), rayPlane(), raySphere(), rayAABB(), segmentIntersect2D(), segmentSegment2D(), lineLine2D(), raySegment2D(), rayLine2D(), segmentLine2D(), rayRay2D(), circleLine(), circleCircle(), circleSegment(), segmentPlane(), linePlane(), planePlane(), polygonRay2D()
 - `joistDirectionFromBounds` (function): Method 1 — joists span the SHORTER dimension of the slab's axis-aligned bounding box.
 - `joistDirectionFromPCA` (function): Method 1 variant — PCA-based: returns the unit vector along the shorter principal axis of the boundary point cloud.
 - `joistDirectionFromSupports` (function): Method 2 — joists run perpendicular to the parallel pair of supports with the smallest gap (≈ shortest joist span).
 - `JoistedSlab` (function): Joisted-slab construction factory.
 - `lineClipPolygon` (function): Intersect an infinite 2D line `origin + t · direction` with a closed polygon's edges.
-- `LineCurve` (class)
+- `LineCurve` (class): Straight segment from `start` to `end`; `t` in [0, 1] is proportional to arc length.
   members: length, getTFromDistance(), getPoint(), getTangent(), getPointAtDistance()
 - `localAdapter` (function): Keep a document in this browser (`localStorage`): for single-user apps on a static site.
-- `MarchingCubes` (namespace)
+- `MarchingCubes` (namespace): Iso-surface of a `VoxelGrid` as a welded triangle `Mesh` (marching cubes).
   members: extract()
-- `MarchingSquares` (namespace)
+- `MarchingSquares` (namespace): Iso-contour of a 2D scalar grid as loose line segments in world coordinates (marching squares).
   members: extract(), extractFromGrid()
-- `Mat4` (class)
+- `Mat4` (class): Immutable 4×4 transform, column-major like OpenGL/three.js (translation in `m[12..14]`); ops return a new Mat4, and `a.multiply(b)` applies `b` first.
   members: static identity(), static translation(), static scaling(), static rotationX(), static rotationY(), static rotationZ(), static lookAt(), multiply(), transformPoint(), transformDirection(), invert(), toArray()
 - `MathUtils` (const): Backward-compat alias
 - `memoryAdapter` (function): An in-process backend: stores on the same adapter share records, presence and broadcasts.
-- `Mesh` (class)
+- `Mesh` (class): The one mesh class: edited by id (`addNode`/`addFace`/`node(id)`/`splitEdge` …) and read as typed arrays (`positions`/`indices`/`normals`, `toMeshData()`) on the same object, with connectivity kept…
   members: nodeCount, edgeCount, faceCount, vertexCount, triangleCount, hasTombstones, positions, normals, indices, uvs, colors, setUVs(), setColors(), markPositionsChanged(), getPosition(), setPosition(), getNormal(), nodeNormal(), setNormal(), nodeData(), isNodeAlive(), node(), nodes(), nodesArray(), nodeIds(), addNode(), addNodes(), nodeEdges(), nodeFaces(), nodeNeighbors(), neighbors(), isBoundaryNode(), isBoundary(), removeNode(), edgeNodes(), edgeFaces(), edgeData(), isEdgeAlive(), edge(), edges(), edgesArray(), findEdge(), addEdge(), edgeOtherNode(), isBoundaryEdge(), boundaryEdges(), removeEdge(), faceVerts(), faceNodes(), faceEdges(), faceSize(), faceNormal(), setFaceNormal(), faceData(), isFaceAlive(), face(), faces(), facesArray(), faceIds(), addFace(), addTriangle(), addQuad(), removeFace(), reverseFace(), faceTriangle(), clear(), compact(), clone(), merge(), computeFaceNormals(), computeVertexNormals(), computeNormals(), bounds(), volume(), surfaceArea(), centroid(), eulerCharacteristic(), validate(), translate(), scale(), scaleXYZ(), mapPositions(), smooth(), splitEdge(), collapseEdge(), getTriangle(), getTrianglePositions(), toMeshData(), static fromMeshData(), static fromArrays(), static fromIndexedTriangles(), static fromFaces(), toJSON(), static fromJSON()
-- `MeshAnalysis` (namespace)
+- `MeshAnalysis` (namespace): Measurements on a `Mesh` (volume, area, centroid), Laplacian smoothing, and a 3D convex hull of points.
   members: meshVolume(), meshSurfaceArea(), meshCentroid(), laplacianSmooth(), convexHull3D()
-- `MeshCleanup` (namespace)
+- `MeshCleanup` (namespace): Merges coincident vertices of a `Mesh` in place (exactly equal or within a distance) and drops faces that collapse; the mesh is rebuilt, so ids are renumbered.
   members: mergeIdenticalVertices(), weldVertices()
 - `MeshFactory` (namespace): Generators that return a Mesh.
   members: grid(), extrude(), revolve(), loft(), box(), sphere(), cylinder(), torus(), pipe(), subdivide(), triangulate(), midpointSubdivide()
-- `MeshSubdivide` (namespace)
+- `MeshSubdivide` (namespace): In-place refinement of a `Mesh`: split long edges, refine to a target edge length, Doo-Sabin.
   members: splitLongEdges(), refineByEdgeLength(), dooSabin()
 - `MeshTransform` (namespace): In-place transforms of a Mesh: `transform` (Mat4), `translate`, `scale`, `rotate`/`rotateAbout`, `swapAxes` (Y-up ↔ Z-up), `mirror`, `flipFaces`, `reorientFaces`, `centerAtOrigin`.
   members: transform(), translate(), scale(), scaleXYZ(), scaleAbout(), rotate(), rotateAbout(), swapAxes(), mirror(), flipFaces(), reorientFaces(), centerAtOrigin(), centerAtCentroid()
 - `MITER_LIMIT` (const): Maximum miter extension as a multiple of half-width.
 - `neighboursOf` (function): The adjacencies of one element, both directions folded together, so a caller can ask "what is next to this" without knowing which side of the pair it was found on.
-- `NoFitPolygon` (namespace)
+- `NoFitPolygon` (namespace): No-fit polygons and Minkowski sums for 2D nesting: `nfp(fixed, orbiting)` is the region where `orbiting`'s origin would overlap `fixed` (its boundary = touching), `innerFit(container, orbiting)` wh…
   members: reflect(), decomposeConvex(), minkowskiSumConvex(), minkowskiSum(), nfp(), innerFit()
 - `noise` (function): Perlin noise — 1D, 2D, or 3D.
 - `NurbsCurve` (class): Non-uniform rational B-spline curve.
   members: getPoint(), getTangent(), length, getTFromDistance(), getPointAtDistance()
-- `NurbsSurface` (class)
+- `NurbsSurface` (class): Tensor-product NURBS surface on a `controlPoints[u][v]` grid; `getPoint(u, v)` takes u, v in [0, 1] over the valid knot range.
   members: getPoint(), getNormal(), toMesh(), static loft(), static revolve()
-- `OBB2D` (class)
+- `OBB2D` (class): Oriented 2D rectangle: `width` along `angle` (radians), `height` across it, centred on `center`; `Polygon2D.minAreaRect` returns one.
   members: axisU, axisV, area, corners, contains(), toString()
-- `ObjFile` (namespace)
+- `ObjFile` (namespace): Wavefront OBJ text to and from `ObjMeshData`: `parse` reads v/vt/vn/f lines and `g` groups, `serialize` writes them back; coordinates pass through unchanged (no axis swap, no unit scaling).
   members: parse(), serialize()
 - `OpeningType` (class): Reusable door/window type — the IFC `IfcDoorType` / `IfcWindowType` analogue.
   members: name, kind, operation, partitioning, material, description, properties, static door(), static window()
@@ -129,13 +129,13 @@ choose between them, read llms.txt first.
 - `pickPrim` (function): The primitive at `p` (sheet coordinates): the topmost line, arc, circle or text within `tolerance` (sheet units — divide a pixel tolerance by the screen scale), else the topmost fill containing `p`…
 - `PixelView` (namespace): Discrete 2D shadow-casting visibility analysis (isovist).
   members: analyse(), analyseAll()
-- `PlanarGraph` (class)
+- `PlanarGraph` (class): A 2D planar graph as a half-edge structure (DCEL): vertices, twin half-edges kept in angular order around each vertex, and faces from `buildFaces()` (CCW = bounded, CW = outer).
   members: vertices, halfEdges, faces, addVertex(), addEdge(), createEdgePair(), attach(), detach(), removeEdge(), flushRemovals(), buildFaces(), clearFaces(), removeNegativeFaces(), getUniqueEdges(), findClosestVertex(), getBounds(), clearTags(), getEdgePositions3D(), toFlatMesh()
-- `PlanarGraphCleanup` (namespace)
+- `PlanarGraphCleanup` (namespace): In-place passes on a `PlanarGraph`: remove dead ends, dissolve collinear degree-2 vertices, drop edges with the same face on both sides or bounded faces on both sides.
   members: removeDeadEnds(), removeLinearVertices(), removeEdgesWithSameFace(), removeInnerEdges()
-- `PlanarGraphRepair` (namespace)
+- `PlanarGraphRepair` (namespace): Builds a valid `PlanarGraph` from raw 2D segments: fuses vertices within `tolerance`, splits edges at vertices and crossings, then builds faces.
   members: fromSegments()
-- `Plane` (class)
+- `Plane` (class): Infinite plane `normal·p + d = 0` with a unit `normal`; `distToPoint` is signed (positive on the normal's side).
   members: static fromPointNormal(), static fromThreePoints(), static XY(), static XZ(), static YZ(), distToPoint(), projectPoint(), side(), reflectVector(), reflectPoint(), flipped(), toJSON()
 - `Polygon2D` (namespace): 2D polygon operations on open rings of `Vec2` (no repeated closing point): `area`, `signedArea`, `centroid2D`, `pointInPolygon`, `offset`, `simplify`, `convexHull2D`, `triangulate2D`, `filletRays`,…
   members: cross2D(), signedArea(), area(), perimeter(), polylineLength(), openRing(), closeRing(), isCCW(), averageCenter(), centroid2D(), pointInPolygon(), containsWinding(), closestVertexIndex(), closestPointOnEdge(), closestPointOnPolyline(), segmentIntersect2D(), offset(), simplify(), simplifyByAngle(), removeShortEdges(), subdivideEdges(), splitLongEdges(), normal3D(), createCircle(), createRect(), reverse(), filletRays(), convexHull2D(), triangulate2D(), minEnclosingCircle(), minAreaRect()
@@ -143,93 +143,93 @@ choose between them, read llms.txt first.
   members: fromRing(), rings(), isEmpty(), area(), union(), difference(), intersection()
 - `polygonFromVertices` (function): Create a BspPolygon from vertices, computing the plane automatically.
 - `polygonIntersection` (function): Compute the intersection of two simple polygons using Greiner-Hormann.
-- `PolylineCurve` (class)
+- `PolylineCurve` (class): Polyline through 2+ points (copied); `t` in [0, 1] is proportional to arc length over the whole polyline.
   members: length, getTFromDistance(), getPoint(), getTangent(), getPointAtDistance()
-- `Ray` (class)
+- `Ray` (class): Half-line `origin + t·direction` (t ≥ 0) with hit tests against planes, triangles, spheres and AABBs; immutable.
   members: at(), closestPointTo(), distToPoint(), intersectPlane(), intersectTriangle(), intersectSphere(), intersectAABB(), toJSON()
 - `realize` (function): Apply a wall's type to produce its realized geometry + metadata.
-- `realizeSlab` (function)
+- `realizeSlab` (function): Apply a slab's type to get its parts, layers, envelope mesh and merged Psets; without a type construction there are no parts, only the envelope.
 - `repelBodies` (function): Repel two rigid bodies if their capsule surfaces overlap.
 - `reverseContact` (function): The opposite sense, so both elements can be asked the same question.
 - `RibbonEndTrim` (class): Trim specification for one end of an open ribbon.
   members: drawCap, static bothSides()
 - `RibbonFrame` (class): Local coordinate frame for a single straight segment of an ExtrudedRibbon.
   members: origin, dirU, dirW, segLength, halfWidth, baseZ, height, uOffset, toWorld(), toWorldXY(), toLocal(), leftAt(), rightAt(), centerAt(), leftNormal, rightNormal
-- `RibbonJoint` (class)
+- `RibbonJoint` (class): A plan point where 2+ ribbons meet.
   members: participants, point, kind, style, throughRibbon, computeTrims()
 - `RibbonOpening` (class): A rectangular cutout in an ExtrudedRibbon, positioned along the centerline.
   members: centerlinePosition, width, bottomOffset, topOffset
-- `RibbonSystem` (class)
+- `RibbonSystem` (class): A set of `ExtrudedRibbon`s with their `RibbonJoint`s (L/T/X/Y), detected from the centerlines on first need and editable before meshing; `buildMesh()` trims every ribbon at its joints and merges th…
   members: ribbons, joints, touchEpsilon, add(), detectJoints(), computeTrims(), findTJunctionsOnRibbon(), buildMesh(), buildInto()
-- `RigidBody2D` (class)
+- `RigidBody2D` (class): A 2D rigid body with a `Capsule2D` shape (x, y, angle in radians), stepped per frame without a dt: apply forces at points, `integrate()`, then `constrainToBox` to bounce off walls.
   members: shape, vx, vy, va, mass, inertia, x, y, angle, position, applyForceAt(), applyForce(), integrate(), constrainToBox(), stop()
 - `Scene` (class): The objects an app shows: points, segments, polylines, polygons, meshes, each with a VisualStyle (colour, opacity, layer, label …).
   members: renderMode, lightingMode, environmentEnabled, setRenderMode(), setLightingMode(), setEnvironment(), on(), withSuspendedEvents(), withKey(), byKey(), get(), has(), all(), count(), update(), setStyle(), remove(), clear(), addPoint(), addPoints(), addSegment(), addPolygon(), addPolyline(), addMesh(), addFlatMesh(), addCircle(), addPlane(), select(), deselect(), toggleSelect(), clearSelection(), getSelection(), isSelected(), setHover(), getHover(), byType(), toMeshData(), toJSON(), static fromJSON()
-- `SdfBlend` (class)
+- `SdfBlend` (class): Smooth union of `a` and `b`, filleting the joint over `radius` (quadratic smooth-min; same field as `SdfSmoothUnion` with k = radius).
   members: distance()
-- `SdfBoundedExtrude` (class)
+- `SdfBoundedExtrude` (class): Extrudes `input`'s z = 0 section along Z over `height`, centred on z = 0 (flat caps).
   members: halfHeight, distance()
-- `SdfBox` (class)
+- `SdfBox` (class): Axis-aligned box of `halfExtents` around `center`; exact distance.
   members: static fromSize(), distance()
-- `SdfCapsule` (class)
+- `SdfCapsule` (class): Capsule: every point within `radius` of segment a→b (round ends).
   members: distance()
-- `SdfCone` (class)
+- `SdfCone` (class): Capped cone (frustum) from `a` (radius `radiusA`) to `b` (radius `radiusB`); the slanted side uses radial distance, so it is approximate.
   members: distance()
-- `SdfCylinder` (class)
+- `SdfCylinder` (class): Flat-capped cylinder of `radius` from `a` to `b`; `SdfCylinder.vertical(height, radius)` stands one on the Y axis, centred on the origin.
   members: static vertical(), distance()
-- `SdfEllipsoid` (class)
+- `SdfEllipsoid` (class): Ellipsoid at the origin with semi-axes `radii`; the distance is an approximation (exact only for a sphere).
   members: distance()
-- `SdfExtrude` (class)
+- `SdfExtrude` (class): Extrudes `input`'s z = 0 section endlessly along Z.
   members: distance()
-- `SdfGradient` (class)
+- `SdfGradient` (class): Weighted sum `a + factor × b`: modulates one field by another (the result is not a true distance).
   members: distance()
-- `SdfIntersect` (class)
+- `SdfIntersect` (class): Intersection of any number of fields (the maximum of their distances).
   members: children, distance()
-- `SdfLattice` (class)
+- `SdfLattice` (class): Endless TPMS lattice (gyroid, Schwarz, diamond …) as an implicit field, not a true distance: period 2π·`scale` on each axis, `offset` shifts the level (solid fraction); `shell: true` gives a wall |…
   members: distance()
-- `SdfLineField` (class)
+- `SdfLineField` (class): Unsigned distance to the infinite line through `a` and `b` (exported as `SdfLineField`); wrap in `SdfOffset` for an endless rod.
   members: distance()
-- `SdfMicrostructure` (class)
+- `SdfMicrostructure` (class): Endless strut lattice: `pattern`'s struts, laid out in one octant of a `cellSize` cube and mirrored to fill it, tiled through space; `strutRadius` is the strut radius.
   members: distance()
-- `SdfMirror` (class)
+- `SdfMirror` (class): Mirror symmetry about the plane through the origin with `planeNormal`: the part of `input` on the normal's side is reflected onto the other side (what was there is dropped).
   members: normal, distance()
-- `SdfOffset` (class)
+- `SdfOffset` (class): Grows `input` outward by `amount` (shrinks it if negative), which also rounds its edges.
   members: distance()
-- `SdfOnion` (class)
+- `SdfOnion` (class): Nested shells: applies |d| − thickness `layers` times, each pass splitting every wall in two.
   members: distance()
-- `SdfOps` (namespace)
+- `SdfOps` (namespace): One-call wrappers that return a new ISdf: `translate`, `rotateX|Y|Z` (radians), `scale` (via SdfTransform), `union`, `intersect`, `subtract`, `blend`, `shell`, `round`, `mirror`, `twist`, `revolve`.
   members: translate(), rotateX(), rotateY(), rotateZ(), scale(), union(), intersect(), subtract(), blend(), shell(), round(), mirror(), twist(), revolve()
-- `SdfPlaneField` (class)
+- `SdfPlaneField` (class): Half-space behind a plane (exported as `SdfPlaneField`): negative on the side away from `normal`.
   members: normal, d, distance()
-- `SdfRadialArray` (class)
+- `SdfRadialArray` (class): `count` copies of `input` around the Z axis, 360°/count apart, taken from the sector around +X.
   members: distance()
-- `SdfRevolution` (class)
+- `SdfRevolution` (class): Revolves a profile around the Y axis: `input` is sampled in its z = 0 plane at (distance from the Y axis, y).
   members: distance()
-- `SdfShell` (class)
+- `SdfShell` (class): Hollows `input` into a wall `2 × thickness` thick, centred on its surface (|d| − thickness).
   members: distance()
-- `SdfSmoothSubtract` (class)
+- `SdfSmoothSubtract` (class): `a` minus `b` with the cut edge rounded over `radius`.
   members: distance()
-- `SdfSmoothUnion` (class)
+- `SdfSmoothUnion` (class): Smooth union of `a` and `b`; `k` is the blend width (larger = softer fillet).
   members: distance()
-- `SdfSphere` (class)
+- `SdfSphere` (class): Sphere of `radius` around `center` (default origin); exact distance.
   members: distance()
-- `SdfSubtract` (class)
+- `SdfSubtract` (class): `a` minus `b`: max(a, −b).
   members: distance()
-- `SdfTorus` (class)
+- `SdfTorus` (class): Torus at the origin around the Y axis (ring in the XZ plane): `majorRadius` to the tube centre, `minorRadius` of the tube.
   members: distance()
-- `SdfTransform` (class)
+- `SdfTransform` (class): Places `input` with a Mat4 (stored inverted; `input` is sampled at transform⁻¹·p).
   members: setTransform(), distance()
-- `SdfTwist` (class)
+- `SdfTwist` (class): Twists `input` about the Z axis: the rotation grows linearly with z, by `anglePerUnit` radians across the whole `z1`..`z2` span (not per metre), zero at its midpoint, and keeps growing outside it.
   members: distance()
-- `SdfUnion` (class)
+- `SdfUnion` (class): Union of any number of fields (the minimum of their distances).
   members: children, distance()
-- `SdfUtils` (namespace)
+- `SdfUtils` (namespace): Queries on any ISdf: central-difference `gradient`, sphere-tracing `rayMarch`, `surfaceNormal`, `projectToSurface`, `estimateCurvature` (Laplacian) and `ambientOcclusion` (0..1, 1 = open).
   members: gradient(), rayMarch(), surfaceNormal(), projectToSurface(), estimateCurvature(), ambientOcclusion()
-- `SdfVoronoi` (class)
+- `SdfVoronoi` (class): Voronoi walls between the fields in `children` (push them in after construction): |d1 − d2| − `offset` over the two nearest, so the walls are where they are equally near, `2 × offset` thick.
   members: children, distance()
-- `Segment` (class)
+- `Segment` (class): Immutable 3D line segment from `a` to `b`: parameter t (0 = a, 1 = b), closest points, distances to points and to other segments.
   members: direction, length, lengthSquared, midpoint, pointAt(), closestPoint(), closestParameter(), distanceTo(), distanceSquaredTo(), bounds, static split(), closestPointsTo(), distanceToSegment(), reversed(), toString()
-- `segmentSegmentClosest` (function)
+- `segmentSegmentClosest` (function): Closest points between 3D segments a1→a2 and b1→b2, with their parameters `t` (on a) and `u` (on b), both 0..1.
 - `Selection` (class): The selected records, by key (`"blocks/k3f9x2"` — the `key` every object of a record carries).
   members: keys(), has(), size, ids(), select(), add(), remove(), toggle(), clear(), click(), onChange()
 - `selectOnClick` (function): Click to select records in a viewport: a click selects the record an object shows, Shift/⌘/Ctrl-click adds or removes it, a click on the background clears.
@@ -240,7 +240,7 @@ choose between them, read llms.txt first.
   members: scale, layer(), layers, view(), main, viewNames(), paper(), explode(), bounds(), style(), toSVG(), toDXF()
 - `SheetView` (class): One view on the sheet: a plan, an elevation, an unrolled strip, a detail.
   members: name, entities, options, polyline(), line(), rect(), circle(), arc(), fill(), text(), dim(), radius(), leader(), level(), segments(), sheetRef
-- `Slab` (class)
+- `Slab` (class): A floor, ceiling or roof slab: a closed XY footprint extruded down by `thickness` from its top at `elevation` (Z-up, metres).
   members: boundary, thickness, elevation, name, type, properties, openings, joistDirection, perimeter, area, toMesh()
 - `SlabOpening` (class): A rectangular opening in a slab (stair well, mechanical penetration, skylight).
   members: centerX, centerY, width, depth, name
@@ -250,34 +250,34 @@ choose between them, read llms.txt first.
 - `SolidSlabConstruction` (const): Trivial construction: the whole slab is one part (the envelope mesh).
 - `Space` (class): A room — the IFC `IfcSpace` analogue.
   members: name, boundary, elevation, height, function, properties, area(), volume()
-- `Sphere` (class)
+- `Sphere` (class): Immutable sphere (`center`, `radius`) for containment and overlap tests and `Ray.intersectSphere`.
   members: containsPoint(), intersectsSphere(), toJSON()
 - `Spring2D` (class): A spring connecting two RigidBody2D surfaces.
   members: bodyA, bodyB, restLength, stiffness, damping, surfA, surfB, stretch, apply()
-- `SpringSystem3D` (class)
+- `SpringSystem3D` (class): Spring-mass simulation of a `Mesh`: `initFromMesh` makes a particle per node with edge, quad-diagonal and hinge springs (optionally a second truss layer), `step(dt)` integrates in substeps, `update…
   members: pos, vel, invMass, springs, gravity, floorPlane, globalVelDamping, useGlobalStiffness, globalStiffness, globalDamping, stiffnessStrut, stiffnessShear, stiffnessHinge, maxForce, initFromMesh(), addSpring(), pin(), unpin(), step(), updateMesh()
 - `Stair` (class): A stair — the IFC `IfcStair` analogue.
   members: name, start, direction, width, totalRise, riserHeight, treadDepth, type, properties, risers, actualRiser, flights()
 - `StairType` (class): Reusable stair type — the IFC `IfcStairType` analogue.
   members: name, shape, material, description, properties
 - `stampName` (function): "stair.dxf" → "stair-20261013-1542.dxf": a timestamp before the extension.
-- `StreamlineTracer` (namespace)
+- `StreamlineTracer` (namespace): Traces polylines along a per-face direction field on a `Mesh` (e.g.
   members: smoothPolyline(), trace()
-- `SunPosition` (const)
+- `SunPosition` (const): Sun direction from a date and a site (Michalsky 1988, ~0.01° for 1950–2050), as a Z-up vector: +X east, +Y north, +Z sky.
 - `supabaseAdapter` (function): Supabase as backend.
-- `Triangle` (class)
+- `Triangle` (class): Immutable 3D triangle a, b, c: unit `normal` (right-hand rule a→b→c), area, centroid, barycentrics and closest point.
   members: normal(), area(), centroid(), barycentric(), containsPoint(), closestPointTo(), toJSON()
-- `Vec2` (class): Tekto Core Math Immutable vector/matrix types with fluent API.
+- `Vec2` (class): Immutable 2D vector or point (metres; plan coordinates are x, y): fields are readonly and every op returns a new Vec2, so write `p = p.add(d)`.
   members: static zero(), static one(), static unitX(), static unitY(), static fromAngle(), static fromArray(), add(), sub(), mul(), div(), neg(), dot(), cross(), len(), lenSq(), normalize(), distTo(), distSqTo(), lerp(), angle(), angleTo(), rotate(), perp(), almostEqual(), toArray(), toVec3(), toString(), clone(), toJSON(), static fromJSON()
-- `Vec3` (class)
+- `Vec3` (class): Immutable 3D vector or point (metres): fields are readonly and every op returns a new Vec3, so write `p = p.add(d)`, never `p.x = …`.
   members: static zero(), static one(), static unitX(), static unitY(), static unitZ(), static fromArray(), add(), sub(), mul(), div(), neg(), dot(), cross(), len(), lenSq(), normalize(), distTo(), distSqTo(), lerp(), project(), reflect(), almostEqual(), toArray(), toVec2(), xz(), toString(), clone(), toJSON(), static fromJSON()
-- `Vec4` (class)
+- `Vec4` (class): Minimal immutable 4-component vector (x, y, z, w): only `dot`, `toVec3` and `toArray`.
   members: dot(), toVec3(), toArray()
-- `VecMath` (namespace)
+- `VecMath` (namespace): Stateless vector helpers that never mutate their inputs: interpolation, polar points, angles (radians), point–line/segment distances and closest points, 2D orientation tests, triangle area/normal, …
   members: pointBetween(), pointBetweenAbsolute(), pointsBetween(), pointsAlongSegment(), fromAngle2D(), polar(), polarXZ(), polarOffset(), angle2D(), angle2DFrom3D(), anglePositive(), angleBetween(), angleBetweenSigned(), angleBetweenCCW(), angleAtVertex(), angleBetweenSegments(), rotate90(), rotate90CW(), rotate2D(), distanceToLine(), distanceToSegment(), distanceToSegmentSq(), distanceToSegment2D(), distanceToLine2D(), closestPointOnLine(), closestPointsSegmentSegment(), projectOnPlane(), offsetSegment2D(), rotationBetween(), frameFromNormal(), cross2D(), orientation(), isConvexQuad(), isPointOnSegment2D(), triangleSignedVolume(), triangleArea(), triangleArea2D(), triangleNormal(), bisector2D(), arcLength(), arcAngle(), determinant3x3(), segmentPerpendicular2D()
-- `VoxelGrid` (class)
+- `VoxelGrid` (class): A 3D scalar field (typically a signed distance, negative inside) of `nx × ny × nz` samples `cellSize` apart from (`x1`, `y1`, `z1`), stored x-major; fill from SDFs, combine with `union`/`subtract`/…
   members: values, nx, ny, nz, x1, y1, z1, cellSize, static fromBounds(), static fromResolution(), getIndex(), get(), set(), getPosition(), getVoxelCoord(), fillFromSdf(), fillFromFunction(), clear(), union(), subtract(), intersect(), offset(), blur(), getRange(), clone()
-- `VoxelGrid2D` (class)
+- `VoxelGrid2D` (class): A 2D scalar field of `nx × ny` samples `cellSize` apart from the corner (`x1`, `y1`), stored x-major (`x * ny + y`); `get` outside the grid returns Infinity.
   members: values, nx, ny, x1, y1, cellSize, static fromBounds(), static fromResolution(), getIndex(), get(), set(), getPosition(), getVoxelCoord(), fillFromFunction(), clear(), offset(), blur(), getRange(), clone()
 - `Wall` (class): BIM-level wall.
   members: ribbon, name, openings, type, properties, static segment(), centerline, thickness, height, baseElevation, length, segmentCount, isClosedPolyline, toMesh(), static buildMesh(), syncOpeningsToRibbon()
@@ -302,7 +302,7 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
 - `Commands` (class): The commands of one app: run by key or by id, listed for people and agents.
   members: add(), remove(), get(), has(), list(), run(), match(), bindKeys(), onChange()
 - `computeEffectiveVisibility` (function): Traverse a layer tree and return a map of id → effective visibility, where a node is effectively visible only when it AND all its ancestors are individually visible.
-- `ControlPanel` (class)
+- `ControlPanel` (class): The panel every tekto GUI uses (`sketch`, `sketch2d`, `appShell`): sliders, toggles, selects, colours, text, buttons, menus, tabs and accordion groups for the values in a `ParamStore`.
   members: el, footer, dispose(), render(), applyValue(), getActiveTab()
 - `DEFAULT_BACKGROUND` (const): The page shaded and hidden-line are drawn on, when the host names none.
 - `download` (function): Download `data` as `fileName`.
@@ -311,27 +311,27 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
   members: layer(), addMesh(), addOccluder(), addPolyline(), addEdge(), addBspTree(), toWorkerRequest(), toSegments(), toDxf(), toSegmentsGpu(), toDxfGpu(), toDxfFromSegments(), debugEdgeCounts(), clear()
 - `easeInOut` (function): Smoothstep.
 - `edgeStyle` (function): Crease colour and weight for a mode.
-- `extractVisiblePolylines` (function)
+- `extractVisiblePolylines` (function): Hidden-line removal for any 3D polylines (streamlines, hatching, sketched curves) against a mesh: renders the mesh's depth offscreen with WebGL (three.js) and keeps the runs of points in front of it.
 - `fitRadius` (function): How far back to sit so a sphere of `boundingRadius` fits, on the tighter of the two field-of-view axes.
 - `fitSheet` (function): The transform that fits `bounds` into a `width` × `height` canvas with a pixel margin.
 - `formatKeys` (function): A binding the way the platform writes it: "⇧⌘Z" on a Mac, "Ctrl+Shift+Z" elsewhere.
-- `getTheme` (function)
+- `getTheme` (function): The panel chrome colours for dark (default, white-on-dark) or light mode.
 - `groundAppearance` (function): The visible plane the content stands on.
 - `hiddenLineIdBuffer` (function): Compute hidden-line segments using GPU ID buffer rendering.
 - `keyMatches` (function): Does this key event press this binding?
 - `labelWidthFor` (function): How wide a label may be in a host of this width.
-- `LayerPanel` (class)
+- `LayerPanel` (class): A tree of layers with a visibility checkbox (and optional colour picker) per node; hiding a parent dims its children without changing their stored state.
   members: el, update()
 - `layoutLabels` (function): Stack labels into the left and right margins without overlapping.
 - `lightBalance` (function): Sun and sky intensity for a mode.
 - `modeBackground` (function): The page a mode is drawn on.
-- `NavGizmo` (class)
+- `NavGizmo` (class): The axis widget in a viewport corner, drawn as SVG: click an axis ball to look down it, drag to orbit, double-click to snap to the nearest axis, toggle perspective/ortho.
   members: setProjection(), update(), setVisible(), dispose()
 - `nearestAxis` (function): Whichever of the six axis directions a view is already closest to.
 - `orbitFor` (function): Where the camera sits to look down `direction`, which points from the subject towards the camera.
 - `orthoFrustum` (function): The orthographic frustum that frames what a perspective camera would see at the same distance, so switching projection changes the drawing convention and not the subject.
-- `polylinesToSVG` (function)
-- `PresenceBar` (class)
+- `polylinesToSVG` (function): Projected runs (from `extractVisiblePolylines`) as SVG text: one `<polyline>` per run, v flipped so up is up on paper, viewBox = `bounds` plus padding, in model units.
+- `PresenceBar` (class): Who is online in a `SharedStore` document: a connection dot, one badge per person, and a Sign in / Sign out button.
   members: el, destroy(), render()
 - `processWorkerRequest` (function): Run hidden-line DXF computation — intended to be called from a Web Worker.
 - `sectionAppearance` (function): How a cut face is drawn.
@@ -341,15 +341,15 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
 - `shortestTurn` (function): The end angle to interpolate towards so a turn takes the short way round.
 - `sketch` (function): One function = one interactive 3D app.
 - `sketch2d` (function): One function = one interactive 2D canvas app, p5-style: controls in the panel, a `draw` callback with the canvas context, pointer events.
-- `Sketch2DInstance` (class)
+- `Sketch2DInstance` (class): What `sketch2d()` returns: the running 2D sketch, with `getParams` / `setParams` to save and restore its controls and `dispose()` to tear it down.
   members: getParams(), setParams(), dispose()
-- `SketchInstance` (class)
+- `SketchInstance` (class): What `sketch()` returns: the running 3D sketch, driven from outside by its host (the testbench shell) — render mode, lighting, sun, section, the registered exports and imports.
   members: commands, exports, imports, enablePicking(), setGizmoMode(), setSelected(), registerDragHandle(), setHandleSelected(), selectedHandle, activeDragHandle, setSlider(), rerun(), requestRender(), setRenderMode(), overlay(), setSection(), setLightingMode(), setEnvironment(), setEnvironmentSource(), setFog(), setExposure(), setEnvironmentBackground(), setEnvironmentRotation(), addExternalObject(), removeExternalObject(), setStudioMaterial(), setHelpersVisible(), setShadowGroundVisible(), setSunDirection(), getExports(), getImports(), onExportsChange(), onImportsChange(), getParams(), setParams(), dispose()
 - `standardOrbit` (function): Where the camera sits for a named view, as three.js spherical angles: phi from +Y, theta around Y from +Z towards +X.
 - `surfaceAppearance` (function): How a mode paints a surface whose own colour is `base`.
-- `SVGRenderer` (class)
+- `SVGRenderer` (class): Draws a `Scene`'s points, segments, polygons, circles and meshes as SVG, projected onto one plane (`xz` by default), and redraws on every scene change.
   members: render(), setViewBox(), dispose()
-- `ThreeRenderer` (class)
+- `ThreeRenderer` (class): The one 3D renderer under `sketch()` and `appShell()`: keeps a three.js scene in step with a tekto `Scene` and draws it on demand.
   members: threeScene, camera, renderer, controls, activeCamera, addExternalObject(), removeExternalObject(), setHelpersVisible(), getThreeObject(), objectBounds(), isObjectShown(), snapshotPng(), render(), requestRender(), renderIfNeeded(), startLoop(), resize(), canvasEl, setBackground(), dispose(), setStudioMaterial(), setShadowGroundVisible(), setFog(), setExposure(), setSunDirection(), setEnvironmentSource(), setEnvironmentBackground(), setEnvironmentRotation(), worldToScreen(), setOrbitRotateEnabled(), cameraState(), setProjection(), onProjection(), projection, setView(), orbitTo(), fitTo(), setCameraUp(), setCameraPosition(), lookAt(), fitAll(), setPickEnabled(), onPick(), pickAt(), hitAt(), groundAt(), pick(), screenToPlane(), onHover(), setDragHandleCallbacks(), beginDragHandleSweep(), upsertDragHandle(), endDragHandleSweep(), getSelectedHandle(), getActiveDragHandle(), setHandleSelected(), setGizmoMode(), getGizmoMode(), attachGizmo(), detachGizmo(), setSelectionStyle(), setSelectionHighlight(), setSection(), section, setSectionColour(), setCallouts(), pendingEdges
 - `viewCommands` (function): The commands every 3D view has — frame everything, the plan, the elevations, iso, the projection — so a palette lists them and an agent can run them (`__tekto.run("view.top")`).
 
@@ -357,7 +357,7 @@ Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `Callout
 
 ## tekto/2d — sketch2d and the 2D geometry a first sketch needs — no three.js
 
-- `closestPointOnSegment` (function)
+- `closestPointOnSegment` (function): Closest point to `p` on segment a→b (point first — `Intersections.closestPointOnSegment` takes it last).
 - `createRandom` (function): Create a seeded random number generator.
 - `download` (function): Download `data` as `fileName`.
 - `drawSheet` (function): Draw the sheet's primitives with `t`; the canvas transform (e.g.
@@ -368,9 +368,9 @@ Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `Callout
   members: cross2D(), signedArea(), area(), perimeter(), polylineLength(), openRing(), closeRing(), isCCW(), averageCenter(), centroid2D(), pointInPolygon(), containsWinding(), closestVertexIndex(), closestPointOnEdge(), closestPointOnPolyline(), segmentIntersect2D(), offset(), simplify(), simplifyByAngle(), removeShortEdges(), subdivideEdges(), splitLongEdges(), normal3D(), createCircle(), createRect(), reverse(), filletRays(), convexHull2D(), triangulate2D(), minEnclosingCircle(), minAreaRect()
 - `PolygonBool` (namespace): Robust 2D booleans on polygons with holes: `union`, `intersection`, `difference` over multipolygons (`Ring2` → `Poly2` = [outer, …holes] → `MultiPoly2`), plus `fromRing`, `rings`, `area`.
   members: fromRing(), rings(), isEmpty(), area(), union(), difference(), intersection()
-- `Segment` (class)
+- `Segment` (class): Immutable 3D line segment from `a` to `b`: parameter t (0 = a, 1 = b), closest points, distances to points and to other segments.
   members: direction, length, lengthSquared, midpoint, pointAt(), closestPoint(), closestParameter(), distanceTo(), distanceSquaredTo(), bounds, static split(), closestPointsTo(), distanceToSegment(), reversed(), toString()
-- `segmentSegmentClosest` (function)
+- `segmentSegmentClosest` (function): Closest points between 3D segments a1→a2 and b1→b2, with their parameters `t` (on a) and `u` (on b), both 0..1.
 - `Sheet` (class): A 2D drawing — views on a sheet at a scale — whose outputs (`toSVG`, `toDXF`) all draw the same exploded primitives.
   members: scale, layer(), layers, view(), main, viewNames(), paper(), explode(), bounds(), style(), toSVG(), toDXF()
 - `SheetCanvas` (class): A sheet in a container: fills it, fits the drawing, zooms with the wheel (about the cursor), pans by dragging, fits again on double-click.
@@ -378,12 +378,12 @@ Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `Callout
 - `SheetView` (class): One view on the sheet: a plan, an elevation, an unrolled strip, a detail.
   members: name, entities, options, polyline(), line(), rect(), circle(), arc(), fill(), text(), dim(), radius(), leader(), level(), segments(), sheetRef
 - `sketch2d` (function): One function = one interactive 2D canvas app, p5-style: controls in the panel, a `draw` callback with the canvas context, pointer events.
-- `Sketch2DInstance` (class)
+- `Sketch2DInstance` (class): What `sketch2d()` returns: the running 2D sketch, with `getParams` / `setParams` to save and restore its controls and `dispose()` to tear it down.
   members: getParams(), setParams(), dispose()
 - `stampName` (function): "stair.dxf" → "stair-20261013-1542.dxf": a timestamp before the extension.
-- `Vec2` (class): Tekto Core Math Immutable vector/matrix types with fluent API.
+- `Vec2` (class): Immutable 2D vector or point (metres; plan coordinates are x, y): fields are readonly and every op returns a new Vec2, so write `p = p.add(d)`.
   members: static zero(), static one(), static unitX(), static unitY(), static fromAngle(), static fromArray(), add(), sub(), mul(), div(), neg(), dot(), cross(), len(), lenSq(), normalize(), distTo(), distSqTo(), lerp(), angle(), angleTo(), rotate(), perp(), almostEqual(), toArray(), toVec3(), toString(), clone(), toJSON(), static fromJSON()
-- `Vec3` (class)
+- `Vec3` (class): Immutable 3D vector or point (metres): fields are readonly and every op returns a new Vec3, so write `p = p.add(d)`, never `p.x = …`.
   members: static zero(), static one(), static unitX(), static unitY(), static unitZ(), static fromArray(), add(), sub(), mul(), div(), neg(), dot(), cross(), len(), lenSq(), normalize(), distTo(), distSqTo(), lerp(), project(), reflect(), almostEqual(), toArray(), toVec2(), xz(), toString(), clone(), toJSON(), static fromJSON()
 - `writeDxf2D` (function): Write a 2D drawing (plan, section, cut sheet) as DXF R12: POLYLINEs, LINEs, CIRCLEs, ARCs and TEXT on named layers — the same AutoCAD-safe writer as writeDxf3D (every layer declared, R12 names, pla…
 

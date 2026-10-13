@@ -39,6 +39,7 @@ import {
 
 // ─── Options ─────────────────────────────────────────────────────────
 
+/** Options for `HolzrahmenBau`: stud and plate profiles, stud spacing, Rähm count, header depth by opening width, material and Doppelständer at openings (defaults KVH 60×120 @ 0.625 m, single Rähm). */
 export interface HolzrahmenBauOptions {
   /** Stud cross-section. Default: KVH 60×120 (engineered softwood). */
   studProfile?: PartProfile;

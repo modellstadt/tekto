@@ -40,6 +40,7 @@ export interface MarkupHost {
   title: string;
 }
 
+/** A scene object as a mark or snapshot names it: id, type, layer, label, pick tag, colour, the source line that created it, and its document `key`. */
 export interface MarkupObjectRef {
   id: string;
   type: string;
@@ -53,6 +54,7 @@ export interface MarkupObjectRef {
   key?: string;
 }
 
+/** What a mark was read as from its strokes: a click (`point`), a closed `loop` (the things inside), a straight `line`, two crossing strokes (`cross`), or a free `stroke`. */
 export type MarkKind = "point" | "loop" | "line" | "cross" | "stroke";
 
 interface Mark {
@@ -69,6 +71,7 @@ interface ResolvedMark {
   summary: string;
 }
 
+/** Options for a Markup capture: the overall instruction, whether to save it to the dev server, and the folder label. */
 export interface MarkupCaptureOptions {
   /** Overall instruction, written to markup.json and the PNG legend. */
   note?: string;
@@ -78,6 +81,7 @@ export interface MarkupCaptureOptions {
   label?: string;
 }
 
+/** One capture: `markup.json` content, the view with marks (`viewPng`) and without (`cleanPng`) as PNG data URLs, and the folder it was saved to. */
 export interface MarkupBundle {
   markup: Record<string, unknown>;
   viewPng: string;

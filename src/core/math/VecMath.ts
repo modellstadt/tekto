@@ -10,6 +10,11 @@ import { HMath } from "./HMath";
 const EPSILON = HMath.EPSILON;
 const TWO_PI = Math.PI * 2;
 
+/**
+ * Stateless vector helpers that never mutate their inputs: interpolation, polar points, angles (radians),
+ * point–line/segment distances and closest points, 2D orientation tests, triangle area/normal, and
+ * `rotationBetween` / `frameFromNormal` matrices.
+ */
 export const VecMath = {
   // ================================================================
   // INTERPOLATION & POINT CONSTRUCTION

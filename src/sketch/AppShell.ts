@@ -49,6 +49,7 @@ import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
 
 // ─── Config ──────────────────────────────────
 
+/** Options for `appShell()`: the container, the param schema and its groups, the initial camera, up axis (default Z), theme, panel width, and which top bar, Markup and axis-widget controls to show. */
 export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   title?: string;
   container: HTMLElement;
@@ -93,6 +94,7 @@ export interface TopBarOptions {
   sun?: boolean;
 }
 
+/** What `appShell()` returns: its params, scene, renderer, panel and commands, the build/display/animate hooks, the status line and overlays, and `dispose`. */
 export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
   params: ParamStore<S>;
   scene: Scene;

@@ -29,6 +29,7 @@ function gaussianKernel(radius: number): Float32Array {
 // VoxelGrid2D
 // ═════════════════════════════════════════════
 
+/** A 2D scalar field of `nx × ny` samples `cellSize` apart from the corner (`x1`, `y1`), stored x-major (`x * ny + y`); `get` outside the grid returns Infinity. */
 export class VoxelGrid2D {
   values: Float32Array;
   nx: number;
@@ -165,6 +166,10 @@ export class VoxelGrid2D {
 // VoxelGrid (3D)
 // ═════════════════════════════════════════════
 
+/**
+ * A 3D scalar field (typically a signed distance, negative inside) of `nx × ny × nz` samples `cellSize` apart from
+ * (`x1`, `y1`, `z1`), stored x-major; fill from SDFs, combine with `union`/`subtract`/`intersect` in place, mesh with `MarchingCubes`.
+ */
 export class VoxelGrid {
   values: Float32Array;
   nx: number;
@@ -398,6 +403,7 @@ export class VoxelGrid {
 // MarchingSquares
 // ═════════════════════════════════════════════
 
+/** Iso-contour of a 2D scalar grid as loose line segments in world coordinates (marching squares). */
 export const MarchingSquares = {
   extract(
     values: ArrayLike<number>, nx: number, ny: number,
@@ -490,6 +496,7 @@ const MS_EDGE_TABLE = new Int8Array([
 // MarchingCubes
 // ═════════════════════════════════════════════
 
+/** Iso-surface of a `VoxelGrid` as a welded triangle `Mesh` (marching cubes). */
 export const MarchingCubes = {
   extract(grid: VoxelGrid, iso = 0): Mesh {
     const { nx, ny, nz, x1, y1, z1, cellSize, values } = grid;
@@ -845,6 +852,7 @@ function matchesSign(value: number, targetSign: number): boolean {
   return targetSign > 0 ? value > 0 : value < 0;
 }
 
+/** In-place flood fill on a voxel grid: from the seed cells, negates every connected cell (4/6-neighbours) whose sign matches `targetSign`. */
 export const FloodFill = {
   fill2D(grid: VoxelGrid2D, seeds: { x: number; y: number }[], targetSign = 1): void {
     const { values, nx, ny } = grid;
@@ -929,6 +937,7 @@ export const FloodFill = {
 // DistanceTransform
 // ═════════════════════════════════════════════
 
+/** In-place chamfer distance on a voxel grid: cells at 0 are sources, all others (set them large, e.g. Infinity) get the distance in cells to the nearest source; the `WithLabels` variants also spread each source's label. */
 export const DistanceTransform = {
   compute2D(grid: VoxelGrid2D, d1 = 1, d2 = 1.414): void {
     const { values: v, nx, ny } = grid;
@@ -1102,6 +1111,7 @@ const BACKWARD_3D: [number, number, number, number][] = [
 // BlobDetect
 // ═════════════════════════════════════════════
 
+/** Regions of a `VoxelGrid2D` above a threshold: 4-connected component labels, and their outlines as cell-coordinate loops. */
 export const BlobDetect = {
   labelComponents2D(grid: VoxelGrid2D, threshold = 0): { labels: Int32Array; blobCount: number } {
     const { values: v, nx, ny } = grid;

@@ -84,6 +84,7 @@ export class WallOpening {
 
 // ─── Wall (BIM wrapper) ─────────────────────────────────────────────
 
+/** Centerline (XY, metres) and section of a `Wall`; `thickness`/`height`/`baseElevation` become the ribbon's width/height/baseZ (defaults 0.2 m, 3 m, 0). */
 export interface WallOptions {
   centerline: Vec2[];
   thickness?: number;

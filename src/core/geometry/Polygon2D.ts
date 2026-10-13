@@ -11,6 +11,7 @@ import { OBB2D } from "./OBB2D";
 
 const TWO_PI = Math.PI * 2;
 
+/** Fillet arc from {@link Polygon2D.filletRays}: tangent points on the two rays, angles in radians, `sweepAngle` signed (+ = CCW). */
 export interface FilletResult {
   center: Vec2;
   radius: number;

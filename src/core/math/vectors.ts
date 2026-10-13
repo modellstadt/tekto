@@ -7,6 +7,10 @@
 
 // ─── Vec2 ────────────────────────────────────
 
+/**
+ * Immutable 2D vector or point (metres; plan coordinates are x, y): fields are readonly and
+ * every op returns a new Vec2, so write `p = p.add(d)`. `normalize()` of a zero vector gives zero.
+ */
 export class Vec2 {
   constructor(public readonly x: number = 0, public readonly y: number = 0) {}
 
@@ -56,6 +60,10 @@ export class Vec2 {
 
 // ─── Vec3 ────────────────────────────────────
 
+/**
+ * Immutable 3D vector or point (metres): fields are readonly and every op returns a new Vec3,
+ * so write `p = p.add(d)`, never `p.x = …`. `normalize()` of a zero vector gives zero.
+ */
 export class Vec3 {
   constructor(
     public readonly x: number = 0,
@@ -124,6 +132,7 @@ export class Vec3 {
 
 // ─── Vec4 ────────────────────────────────────
 
+/** Minimal immutable 4-component vector (x, y, z, w): only `dot`, `toVec3` and `toArray`. */
 export class Vec4 {
   constructor(
     public readonly x: number = 0,
@@ -139,6 +148,11 @@ export class Vec4 {
 
 // ─── Mat4 (column-major, like OpenGL/Three.js) ──
 
+/**
+ * Immutable 4×4 transform, column-major like OpenGL/three.js (translation in `m[12..14]`); ops return a new Mat4,
+ * and `a.multiply(b)` applies `b` first. `new Mat4()` is all zeros — start from `Mat4.identity()`.
+ * `invert()` of a singular matrix returns identity.
+ */
 export class Mat4 {
   /** 16 elements in column-major order */
   constructor(public readonly m: Float64Array = new Float64Array(16)) {

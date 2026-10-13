@@ -146,6 +146,10 @@ export function sketch(fn: SketchFn, config?: SketchConfig): SketchInstance {
   return new SketchInstance(fn, config ?? {});
 }
 
+/**
+ * What `sketch()` returns: the running 3D sketch, driven from outside by its host (the testbench shell) — render mode, lighting, sun, section, the registered exports and imports.
+ * `getParams` / `setParams` save and restore its controls; `dispose()` tears it down.
+ */
 export class SketchInstance {
   private fn: SketchFn;
   private config: SketchConfig;

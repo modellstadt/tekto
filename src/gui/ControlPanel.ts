@@ -67,6 +67,7 @@ export interface ExtraTab {
   render: (container: HTMLElement) => void;
 }
 
+/** Options for `new ControlPanel(...)`: the `ParamStore` it shows, theme, buttons, and the commit/action/tab hooks of its owner. */
 export interface ControlPanelConfig {
   store: ParamStore;
   theme?: Theme;
@@ -103,6 +104,10 @@ export function ensureSliderStyle(doc: Document): void {
 
 // ─── ControlPanel ────────────────────────────────────────────────────
 
+/**
+ * The panel every tekto GUI uses (`sketch`, `sketch2d`, `appShell`): sliders, toggles, selects, colours, text, buttons, menus, tabs and accordion groups for the values in a `ParamStore`.
+ * Call `render(items, …)` when the set of controls changes; value changes update the live controls in place (so a slider keeps focus mid-drag).
+ */
 export class ControlPanel {
   /** Mount this element in your panel container. */
   readonly el: HTMLElement;

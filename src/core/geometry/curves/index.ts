@@ -77,6 +77,7 @@ export class ArcLengthCache {
 
 // ─── LineCurve ───────────────────────────────
 
+/** Straight segment from `start` to `end`; `t` in [0, 1] is proportional to arc length. */
 export class LineCurve implements IMetricCurve {
   constructor(public start: Vec3, public end: Vec3) {}
 
@@ -103,6 +104,10 @@ export class LineCurve implements IMetricCurve {
 
 // ─── ArcCurve ────────────────────────────────
 
+/**
+ * Circular arc of `radius` around `center` in the plane perpendicular to `normal`. Angles are radians,
+ * counter-clockwise about `normal` from `forward` = normal × Y (−X for a +Z normal, not +X).
+ */
 export class ArcCurve implements IMetricCurve {
   public forward: Vec3;
 
@@ -212,6 +217,7 @@ export class HelixCurve implements IMetricCurve {
 
 // ─── CubicBezierCurve ────────────────────────
 
+/** Cubic Bézier with control points `p0`..`p3`; arc length comes from a 50-step table, so move it with `updateControlPoints` rather than the fields. */
 export class CubicBezierCurve implements IMetricCurve {
   private cache = new ArcLengthCache(50);
 
@@ -337,6 +343,7 @@ export class NurbsCurve implements IMetricCurve {
 
 // ─── PolylineCurve ───────────────────────────
 
+/** Polyline through 2+ points (copied); `t` in [0, 1] is proportional to arc length over the whole polyline. */
 export class PolylineCurve implements IMetricCurve {
   private points: Vec3[];
   private accumulatedLengths: number[];

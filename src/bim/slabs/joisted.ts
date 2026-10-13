@@ -37,6 +37,7 @@ import { lineClipPolygon, joistDirectionFromBounds } from "./orientation";
 
 // ─── Options ─────────────────────────────────────────────────────────
 
+/** Options for `JoistedSlab`: joist profile, spacing and material, the rim joist, edge and bearing offsets, and the sheathing and ceiling layers (metres; defaults KVH 60×220 @ 0.625, 22 mm OSB, 12.5 mm ceiling). */
 export interface JoistedSlabOptions {
   /** Joist cross-section. Default: KVH 60×220 (typical timber-joist size). */
   profile?: PartProfile;

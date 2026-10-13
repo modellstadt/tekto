@@ -14,6 +14,7 @@
 import type { Wall } from "../../core/geometry/walls";
 import type { WallConstruction, WallPart, MaterialLayer } from "./types";
 
+/** Options for `cltLayers`: lamella thicknesses interior → exterior (default 5-ply, 160 mm) and timber grade (default "C24"). */
 export interface CltOptions {
   /**
    * Lamella thicknesses, in order interior → exterior, in metres.

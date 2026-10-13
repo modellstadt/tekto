@@ -23,12 +23,14 @@ interface TektoCtx {
 
 const Ctx = createContext<TektoCtx | null>(null);
 
+/** The `Scene` of the enclosing `<TektoApp>`; throws outside one. */
 export function useScene(): Scene {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error("useScene must be inside <TektoApp>");
   return ctx.scene;
 }
 
+/** Provides a `Scene` (the one passed in, or a new one) to its children; `useScene` and the other hooks need it above them. */
 export function TektoApp({
   scene: extScene,
   children,
@@ -94,6 +96,7 @@ interface ParamPanelProps {
   className?: string;
 }
 
+/** A React panel generated from a `ParamStore`: one control per param, grouped into folders by an optional `ParamLayout`, kept in sync with the store. */
 export function ParamPanel({ store, layout, title, style, className }: ParamPanelProps) {
   const { values, set } = useParams(store);
   const schema = store.getSchema();
@@ -263,6 +266,7 @@ function FolderWidget({
 // Inspector Panel
 // ═══════════════════════════════════════════════
 
+/** A list of the scene's objects (type, id, label); clicking one toggles its selection and calls `onSelect`. */
 export function InspectorPanel({
   style, className, onSelect,
 }: {
@@ -307,6 +311,7 @@ export function InspectorPanel({
 // Toolbar
 // ═══════════════════════════════════════════════
 
+/** One `Toolbar` button: label, optional icon, click handler, `active` highlight and `group`; `shortcut` only appears in the tooltip. */
 export interface ToolbarAction {
   key: string;
   label: string;
@@ -317,6 +322,7 @@ export interface ToolbarAction {
   group?: string;
 }
 
+/** A row of buttons with a divider between `group`s; `active` ones are highlighted. Shortcuts are shown in the tooltip, not bound. */
 export function Toolbar({
   actions, style, className,
 }: {
@@ -505,6 +511,7 @@ export interface AccordionSection {
   children: ReactNode;
 }
 
+/** Props of `AccordionColumn`: its sections, the `localStorage` key for open state and heights, and class names for the host's styling. */
 export interface AccordionColumnProps {
   sections: AccordionSection[];
   /** localStorage key for what is open and how tall. Omit to keep it per mount. */

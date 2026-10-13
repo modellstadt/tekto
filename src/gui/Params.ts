@@ -20,6 +20,7 @@
 
 // ─── Parameter Definitions ───────────────────
 
+/** A number slider from `min` to `max`; values set outside the range are clamped. */
 export interface FloatParam {
   type: "float";
   min: number;
@@ -29,6 +30,7 @@ export interface FloatParam {
   label?: string;
 }
 
+/** An integer slider from `min` to `max`; values are clamped and rounded. */
 export interface IntParam {
   type: "int";
   min: number;
@@ -38,12 +40,14 @@ export interface IntParam {
   label?: string;
 }
 
+/** An on/off toggle. */
 export interface BoolParam {
   type: "bool";
   default: boolean;
   label?: string;
 }
 
+/** A dropdown of fixed string `options`; setting a value not in the list is ignored. */
 export interface SelectParam {
   type: "select";
   options: readonly string[];
@@ -51,12 +55,14 @@ export interface SelectParam {
   label?: string;
 }
 
+/** A colour picker whose value is a CSS hex string (`"#6ee7b7"`). */
 export interface ColorParam {
   type: "color";
   default: string;
   label?: string;
 }
 
+/** A single-line text field. */
 export interface StringParam {
   type: "string";
   default: string;
@@ -64,6 +70,7 @@ export interface StringParam {
   placeholder?: string;
 }
 
+/** Three number fields holding an `[x, y, z]` value. */
 export interface Vec3Param {
   type: "vec3";
   default: [number, number, number];
@@ -73,12 +80,14 @@ export interface Vec3Param {
   label?: string;
 }
 
+/** A button that runs `action`; it holds no value. */
 export interface ButtonParam {
   type: "button";
   label?: string;
   action: () => void;
 }
 
+/** One control in a schema — slider, toggle, select, colour, text, vec3 or button — plus the `display` flag. */
 export type ParamDef = (
   | FloatParam
   | IntParam
@@ -94,6 +103,7 @@ export type ParamDef = (
   display?: boolean;
 };
 
+/** Controls by key — what `new ParamStore(schema)` and `createParams` take; the store's values are typed from it. */
 export type ParamSchema = Record<string, ParamDef>;
 
 /** The value a param definition holds: `float`/`int` → number, `bool` → boolean,
@@ -295,12 +305,14 @@ export function createParams<S extends ParamSchema>(schema: S): ParamStore<S> {
 
 // ─── Folder System (for grouping params in the GUI) ──
 
+/** A collapsible group in a `ParamLayout`: its label, whether it starts open (default yes), and the schema keys it holds. */
 export interface ParamFolder {
   label: string;
   open?: boolean;
   params: string[];  // keys from schema
 }
 
+/** How the React `ParamPanel` groups a store's params into folders; keys in no folder are listed after them. */
 export interface ParamLayout {
   folders: ParamFolder[];
 }

@@ -26,6 +26,7 @@ export type ConnectionType =
   | "boltedPlate"
   | "unspecified";
 
+/** Options for `new WallJoint(...)`: the geometric `RibbonJoint` it wraps, the walls that meet there, and connection type, fastener count and Psets for IFC export. */
 export interface WallJointOptions {
   ribbonJoint: RibbonJoint;
   walls: Wall[];

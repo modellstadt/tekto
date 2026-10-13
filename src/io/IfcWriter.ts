@@ -36,6 +36,7 @@ import type { Stair, StairType, StairFlight, StairShape } from "../bim/stairs";
 
 // ─── Options ─────────────────────────────────────────────────────────
 
+/** Options for `new IfcWriter(...)`: project, site, building and default-storey names, that storey's elevation (m), the author and application written into the file, and the MVD (default DesignTransferView_V1.0). */
 export interface IfcWriterOptions {
   projectName?: string;
   projectDescription?: string;
@@ -52,6 +53,7 @@ export interface IfcWriterOptions {
   viewDefinition?: string;
 }
 
+/** Options for `IfcWriter.addWallSystem`: whether to emit framed members, joint relations, openings and material layer sets (all default true). */
 export interface AddWallSystemOptions {
   /** Aggregate framed members (studs, plates, headers) under each wall. Default: true. */
   includeMembers?: boolean;

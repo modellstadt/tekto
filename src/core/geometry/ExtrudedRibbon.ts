@@ -140,6 +140,7 @@ export class RibbonEndTrim {
 
 // ─── ExtrudedRibbon ──────────────────────────────────────────────────
 
+/** Centerline (XY, at least 2 points) and section of an `ExtrudedRibbon`; defaults are width 0.2 m, height 3 m, baseZ 0. */
 export interface ExtrudedRibbonOptions {
   centerline: Vec2[];
   width?: number;
@@ -153,6 +154,10 @@ export interface ExtrudedRibbonOptions {
  */
 export const MITER_LIMIT = 6;
 
+/**
+ * A 2D polyline centerline offset by ±width/2 and extruded up Z by `height` (Z-up, metres), with mitered
+ * corners and rectangular `openings` cut through both faces. The pure geometry under walls, masses and fences.
+ */
 export class ExtrudedRibbon {
   centerline: Vec2[];
   width = 0.2;
@@ -388,6 +393,7 @@ export class ExtrudedRibbon {
 
 // ─── Shared mesh buffer helpers (internal) ──────────────────────────
 
+/** Growable position/normal/index arrays that ribbons append into; `finishMesh` turns them into one `Mesh`. */
 export interface MeshBuffers {
   positions: number[];
   normals: number[];

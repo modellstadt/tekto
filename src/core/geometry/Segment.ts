@@ -9,6 +9,7 @@ import { HMath } from "../math/HMath";
 import { AABB } from "./AABB";
 import { VecMath } from "../math/VecMath";
 
+/** Immutable 3D line segment from `a` to `b`: parameter t (0 = a, 1 = b), closest points, distances to points and to other segments. */
 export class Segment {
   constructor(
     public readonly a: Vec3,
@@ -88,6 +89,7 @@ export class Segment {
 }
 
 // Backward-compat: keep standalone functions
+/** Closest point to `p` on segment a→b (point first — `Intersections.closestPointOnSegment` takes it last). */
 export function closestPointOnSegment(p: Vec3, a: Vec3, b: Vec3): Vec3 {
   const ab = b.sub(a);
   const lenSq = ab.lenSq();
@@ -96,6 +98,7 @@ export function closestPointOnSegment(p: Vec3, a: Vec3, b: Vec3): Vec3 {
   return a.add(ab.mul(t));
 }
 
+/** Closest points between 3D segments a1→a2 and b1→b2, with their parameters `t` (on a) and `u` (on b), both 0..1. */
 export function segmentSegmentClosest(
   a1: Vec3, a2: Vec3, b1: Vec3, b2: Vec3
 ): { pointA: Vec3; pointB: Vec3; t: number; u: number } {

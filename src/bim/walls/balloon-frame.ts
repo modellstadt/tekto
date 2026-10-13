@@ -29,6 +29,7 @@ import {
 
 // ─── Options ─────────────────────────────────────────────────────────
 
+/** Options for `BalloonFrame`: stud and plate profiles, stud spacing, single or doubled top plate, header depth by opening width, and material (defaults SPF 2×4 @ 0.4 m, doubled top plate). */
 export interface BalloonFrameOptions {
   /** Stud cross-section. Default: SPF 2×4 nominal (38 × 89 mm actual). */
   studProfile?: PartProfile;
