@@ -2152,6 +2152,9 @@ var NurbsCurve = class {
     this.knots = knots;
     this.weights = weights;
     this.cache = new ArcLengthCache(100);
+    if (weights && weights.length !== controlPoints.length) {
+      throw new Error(`NurbsCurve: ${weights.length} weights for ${controlPoints.length} control points \u2014 need one weight per control point`);
+    }
     this.cache.rebuild((t) => this.getPoint(t));
   }
   getPoint(t) {
@@ -2175,20 +2178,27 @@ var NurbsCurve = class {
   getPointAtDistance(distance) {
     return this.getPoint(this.getTFromDistance(distance));
   }
+  /** De Boor in homogeneous coordinates: blend (w·P, w), then divide. Weights of 1 reduce to the plain B-spline. */
   evaluateDeBoor(u) {
     const k = this.findKnotSpan(u);
+    const w = this.weights;
     const d = [];
+    const dw = [];
     for (let j = 0; j <= this.degree; j++) {
-      d[j] = this.controlPoints[k - this.degree + j];
+      const i = k - this.degree + j;
+      const wi = w ? w[i] : 1;
+      d[j] = this.controlPoints[i].mul(wi);
+      dw[j] = wi;
     }
     for (let r = 1; r <= this.degree; r++) {
       for (let j = this.degree; j >= r; j--) {
         const denom = this.knots[k + 1 + j - r] - this.knots[k - this.degree + j];
-        const alpha = (u - this.knots[k - this.degree + j]) / denom;
+        const alpha = denom > 0 ? (u - this.knots[k - this.degree + j]) / denom : 0;
         d[j] = d[j - 1].mul(1 - alpha).add(d[j].mul(alpha));
+        dw[j] = dw[j - 1] * (1 - alpha) + dw[j] * alpha;
       }
     }
-    return d[this.degree];
+    return d[this.degree].div(dw[this.degree]);
   }
   findKnotSpan(u) {
     const n = this.controlPoints.length - 1;
@@ -2474,18 +2484,31 @@ var MeshFactory = {
     mesh.computeVertexNormals();
     return mesh;
   },
+  /**
+   * Extrude a closed polygon (no repeated last point) along `direction`. Faces point
+   * outward whichever way the polygon winds: it is reoriented to run counter-clockwise
+   * seen from the tip of `direction` first.
+   */
   extrude(polygon, direction, cap = true) {
     const mesh = new Mesh();
     const n = polygon.length;
-    const bottom = polygon.map((p) => mesh.addNode(p));
-    const top = polygon.map((p) => mesh.addNode(p.add(direction)));
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0; i < n; i++) {
+      const a = polygon[i], b = polygon[(i + 1) % n];
+      nx += (a.y - b.y) * (a.z + b.z);
+      ny += (a.z - b.z) * (a.x + b.x);
+      nz += (a.x - b.x) * (a.y + b.y);
+    }
+    const outline = nx * direction.x + ny * direction.y + nz * direction.z < 0 ? [...polygon].reverse() : polygon;
+    const bottom = outline.map((p) => mesh.addNode(p));
+    const top = outline.map((p) => mesh.addNode(p.add(direction)));
     for (let i = 0; i < n; i++) {
       const next = (i + 1) % n;
       mesh.addQuad(bottom[i], bottom[next], top[next], top[i]);
     }
     if (cap && n >= 3) {
-      mesh.addFace(bottom);
-      mesh.addFace([...top].reverse());
+      mesh.addFace([...bottom].reverse());
+      mesh.addFace(top);
     }
     mesh.computeVertexNormals();
     return mesh;
@@ -2600,14 +2623,14 @@ var MeshFactory = {
       topIds.push(mesh.addNode(new Vec3(radiusTop * cos, h2, radiusTop * sin)));
     }
     for (let s = 0; s < segments; s++) {
-      mesh.addQuad(bottomIds[s], bottomIds[s + 1], topIds[s + 1], topIds[s]);
+      mesh.addQuad(bottomIds[s], topIds[s], topIds[s + 1], bottomIds[s + 1]);
     }
     if (cap) {
       const bottomCenter = mesh.addNode(new Vec3(0, -h2, 0));
       const topCenter = mesh.addNode(new Vec3(0, h2, 0));
       for (let s = 0; s < segments; s++) {
-        mesh.addTriangle(bottomCenter, bottomIds[s + 1], bottomIds[s]);
-        mesh.addTriangle(topCenter, topIds[s], topIds[s + 1]);
+        mesh.addTriangle(bottomCenter, bottomIds[s], bottomIds[s + 1]);
+        mesh.addTriangle(topCenter, topIds[s + 1], topIds[s]);
       }
     }
     mesh.computeVertexNormals();
@@ -2642,6 +2665,9 @@ var MeshFactory = {
    * Accepts uniform radius (number) or per-point varying radii (number[]).
    */
   pipe(path, radius, sides = 8) {
+    if (Array.isArray(radius) && radius.length !== path.length) {
+      throw new Error(`MeshFactory.pipe: ${radius.length} radii for ${path.length} path points \u2014 need one radius per point (or a single number)`);
+    }
     const mesh = new Mesh();
     const frames = CurveUtils.parallelTransportFrames(path);
     if (frames.length === 0) return mesh;
@@ -17361,6 +17387,50 @@ var ParamStore = class {
       }
     }
   }
+  /**
+   * The keys a person or an agent means by `name`, most specific first: the exact key;
+   * else the control's label, ignoring case ("Radius"); else "Group:Label" for sketch
+   * keys, which read `type:group:label`. One key when the name is unambiguous.
+   */
+  findKeys(name) {
+    if (name in this.schema) return [name];
+    const n = name.trim().toLowerCase();
+    const keys = Object.keys(this.schema);
+    const byLabel = keys.filter((k) => (this.schema[k].label ?? k).toLowerCase() === n);
+    if (byLabel.length) return byLabel;
+    return keys.filter((k) => {
+      const parts = k.split(":");
+      return parts.length >= 3 && `${parts[1]}:${parts.slice(2).join(":")}`.toLowerCase() === n;
+    });
+  }
+  /**
+   * Set params by key or label (see `findKeys`) and say what could not be applied,
+   * instead of dropping it the way `loadJSON` does. For tools and agents.
+   */
+  setByName(values) {
+    const applied = [], unknown = [];
+    const ambiguous = [];
+    for (const [name, value] of Object.entries(values)) {
+      const keys = this.findKeys(name);
+      if (keys.length === 0) unknown.push(name);
+      else if (keys.length > 1) ambiguous.push({ name, keys });
+      else {
+        this.set(keys[0], value);
+        applied.push(keys[0]);
+      }
+    }
+    return { applied, unknown, ambiguous };
+  }
+  /** Every param as the name to use with `setByName`: its label, or "Group:Label" when two share a label. */
+  names() {
+    const keys = Object.keys(this.schema);
+    const label = (k) => this.schema[k].label ?? k;
+    return keys.map((k) => {
+      if (keys.filter((o) => label(o).toLowerCase() === label(k).toLowerCase()).length === 1) return label(k);
+      const parts = k.split(":");
+      return parts.length >= 3 && parts[1] ? `${parts[1]}:${parts.slice(2).join(":")}` : k;
+    });
+  }
 };
 function createParams(schema) {
   return new ParamStore(schema);
@@ -17940,8 +18010,8 @@ var ControlPanel = class {
 
 // src/render/ThreeRenderer.ts
 import * as THREE3 from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
-import { TransformControls } from "three/examples/jsm/controls/TransformControls";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
 var DEFAULTS5 = {
   antialias: true,
@@ -19243,8 +19313,9 @@ var ThreeRenderer = class {
     const tc = new TransformControls(this.activeCamera, this.renderer.domElement);
     tc.setMode(this.gizmoMode === "none" ? "translate" : this.gizmoMode);
     tc.addEventListener("dragging-changed", (e) => {
-      if (this.controls) this.controls.enabled = !e.value;
-      if (!e.value && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
+      const dragging = e.value === true;
+      if (this.controls) this.controls.enabled = !dragging;
+      if (!dragging && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
     });
     tc.addEventListener("objectChange", () => {
       if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
@@ -23435,8 +23506,18 @@ var SketchInstance = class {
       owner: this,
       snapshot: (opts) => this.markup.capture(opts),
       params: () => this.store.getAll(),
+      paramNames: () => this.store.names(),
+      // By label ("Radius"), "Group:Label" or key. Names that match nothing, or more than
+      // one control, are reported (and warned about) instead of silently dropped.
       setParams: (p) => {
-        this.store.loadJSON(p);
+        const r = this.store.setByName(p);
+        if (r.unknown.length || r.ambiguous.length) {
+          console.warn("tekto setParams:", [
+            ...r.unknown.map((n) => `no control named "${n}"`),
+            ...r.ambiguous.map((a) => `"${a.name}" matches ${a.keys.length} controls \u2014 use Group:Label`)
+          ].join("; "), "| controls:", this.store.names().join(", "));
+        }
+        return r;
       },
       camera: (pos, target) => {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);

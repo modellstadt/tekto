@@ -1,7 +1,7 @@
-import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, b as Mesh, c as MeshData, P as ParamStore, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode, e as ParamSchema } from './Params-DgIHJ6Bm.mjs';
-export { B as BoolParam, f as ButtonParam, C as ColorParam, g as FloatParam, I as IntParam, h as LegacyMeshJSON, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, n as ParamDef, o as ParamFolder, p as ParamLayout, q as SceneEvent, r as SceneEventListener, s as SceneJSON, t as SceneObject, u as SceneObjectType, v as SelectParam, w as StringParam, x as Vec3Param, y as Vec4, z as createLayout, D as createParams } from './Params-DgIHJ6Bm.mjs';
+import { V as Vec3, a as Vec2, M as Mat4, T as Triangle, A as AABB, b as Mesh, c as MeshData, P as ParamStore, S as Scene, d as VisualStyle, F as FlatMeshData, R as RenderMode, L as LightingMode, e as ParamSchema } from './Params-CnlZMZH0.mjs';
+export { B as BoolParam, f as ButtonParam, C as ColorParam, g as FloatParam, I as IntParam, h as LegacyMeshJSON, i as MeshEdge, j as MeshFace, k as MeshJSON, l as MeshNode, O as ObjFile, m as ObjMeshData, n as ParamDef, o as ParamFolder, p as ParamLayout, q as SceneEvent, r as SceneEventListener, s as SceneJSON, t as SceneObject, u as SceneObjectType, v as SelectParam, w as StringParam, x as Vec3Param, y as Vec4, z as createLayout, D as createParams } from './Params-CnlZMZH0.mjs';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 /**
  * Tekto HMath — Scalar math utilities.
@@ -779,6 +779,11 @@ type GridMesh = Mesh & {
 };
 declare const MeshFactory: {
     grid(width: number, depth: number, divisionsX: number, divisionsZ: number, heightFn?: (x: number, z: number) => number): GridMesh;
+    /**
+     * Extrude a closed polygon (no repeated last point) along `direction`. Faces point
+     * outward whichever way the polygon winds: it is reoriented to run counter-clockwise
+     * seen from the tip of `direction` first.
+     */
     extrude(polygon: Vec3[], direction: Vec3, cap?: boolean): Mesh;
     revolve(profile: Vec2[], segments?: number, angleRange?: number): Mesh;
     loft(profiles: Vec3[][], closedProfile?: boolean): Mesh;
@@ -1219,6 +1224,11 @@ declare class CubicBezierCurve implements IMetricCurve {
     getTFromDistance(distance: number): number;
     getPointAtDistance(distance: number): Vec3;
 }
+/**
+ * Non-uniform rational B-spline curve. `t` in [0, 1] maps onto the valid knot range.
+ * With `weights` the curve is rational (exact circles and conics: a quarter circle is
+ * degree 2 with weights `[1, √½, 1]`); without them it is a plain B-spline.
+ */
 declare class NurbsCurve implements IMetricCurve {
     controlPoints: Vec3[];
     degree: number;
@@ -1231,6 +1241,7 @@ declare class NurbsCurve implements IMetricCurve {
     get length(): number;
     getTFromDistance(distance: number): number;
     getPointAtDistance(distance: number): Vec3;
+    /** De Boor in homogeneous coordinates: blend (w·P, w), then divide. Weights of 1 reduce to the plain B-spline. */
     private evaluateDeBoor;
     private findKnotSpan;
 }
