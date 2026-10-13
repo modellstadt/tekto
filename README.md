@@ -38,12 +38,12 @@ Use `tekto/core` for scripts and checks (`node check.mjs` with `import { MeshFac
 ### Start here
 
 <!-- start-here: copied into llms.txt by tools/gen-llms.mjs; bare `Names` must be exports (CI checks) -->
-About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `SharedStore`. **Files:** `writeDxf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
+About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Files:** `writeDxf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
 
 | To … | use | not |
 |---|---|---|
 | make a parametric study | `sketch` | — |
-| make an app people edit, select and save | `appShell` with a `Scene` you keep | `sketch` (it rebuilds everything each run) |
+| make an app people edit, select and save | `appShell` + `Doc` + `bindScene` + `selectOnClick` (see the Site Editor page) | `sketch` (it rebuilds everything each run) |
 | run geometry in Node, a worker or a test | `import … from "tekto/core"` | `"tekto"` (pulls in three.js) |
 | build a mesh | `MeshFactory.box(…)` etc., or `new Mesh()` + `mesh.addNode` / `mesh.addFace` | hand-filled typed arrays |
 | measure or smooth a mesh | `mesh.volume()`, `mesh.smooth()` | the older `MeshAnalysis` / `Algo` wrappers |
@@ -52,11 +52,12 @@ About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sket
 | export a drawing | `writeDxf2D` + `download` | a hand-written DXF or Blob |
 | export 3D lines / views of meshes / BIM | `writeDxf3D` / `DxfExporter` / `IfcWriter` | — |
 | set a control from code | `handle.set(value)` on any control | clicking the panel's DOM |
-| save and reopen a design | `getParams()` / `setParams()` | `localStorage` + reload |
+| save and reopen a design | parametric: `getParams()` / `setParams()`; edited: `doc.toJSON()` / `doc.load()` | `localStorage` + reload |
+| undo | `doc.undo()` — `doc.transact(…)` makes one step, `{ coalesce: "h" }` one drag | snapshots of app state you keep yourself |
 | see what your change did | `npm run snap -- <url>`: exit code, `view.png`, `markup.json` | assuming it worked |
 
 Five rules that catch agents out:
-1. **Rebuilt or retained — decide first.** `sketch` re-creates every object on each change (ids are positional); `appShell` keeps a `Scene` whose objects live until removed. Selection, undo and save need the second.
+1. **Rebuilt or retained — decide first.** `sketch` re-creates every object on each change (ids are positional); a retained app keeps a `Doc` whose record ids live until removed, and `bindScene` derives the scene from it. Selection, undo and save need the second.
 2. **Two coordinate conventions.** `sketch` and the `MeshFactory` primitives are Y-up; `appShell`, BIM, DXF and sun are Z-up. Pass `up: "z"` to `sketch` for CAD content.
 3. **The sketch function runs again on every change.** Put one-shot work in `lab.button` callbacks and caches in module scope.
 4. **One name per concept.** `Mesh` is the only mesh (edit by id, read as arrays); `face.nodes` is a snapshot — reverse a face with `mesh.reverseFace(id)`.
@@ -189,16 +190,16 @@ The access levels above are about the GUI. This is the other axis — **who owns
 the objects** — and it decides whether an object has a lasting identity. Pick it
 before you start; converting later means rewriting the app's core.
 
-| | **Rebuilt** (`sketch()` / `sketch2d()`) | **Retained** (`Scene` you own) |
+| | **Rebuilt** (`sketch()` / `sketch2d()`) | **Retained** (`appShell()` + `Doc` + `bindScene`) |
 |---|---|---|
 | The scene is | re-created by your function on every param change | created once, then edited |
 | Objects | are thrown away and re-declared each run | live until you remove them |
-| Identity | positional: ids follow declaration order and restart at `clear()` | an id per object, stable for its whole life |
-| Selection / gizmo | survives a re-run while the run declares the same objects (see [`Scene.genId`](src/scene/Scene.ts)) | survives anything |
-| Undo / redo | not a concept — the code is the state | yours to implement over your document |
-| Save / load | save the params, re-run the code | save the objects, ids and all |
+| Identity | positional: ids follow declaration order and restart at `clear()` | a record id from `doc.add`, stable for its whole life; every object showing it carries `key` = `"collection/id"` |
+| Selection / gizmo | survives a re-run while the run declares the same objects (see [`Scene.genId`](src/scene/Scene.ts)) | `Selection` by record + `selectOnClick`: survives re-renders, undo, reload |
+| Undo / redo | not a concept — the code is the state | `doc.undo()` / `redo()`, `transact` for one step, `coalesce` for a drag |
+| Save / load | `getParams()` / `setParams()`, re-run the code | `doc.toJSON()` / `doc.load()`; or persist live with `localAdapter` / `devServerAdapter` / `supabaseAdapter` |
 | Best for | studies, demos, teaching, anything parametric end-to-end | apps where the user builds, names and reopens things |
-| Examples | every playground page | `apps/_template-react` in tekto-apps |
+| Examples | every playground page | playground **Site Editor** ([site-editor.ts](playground/pages/site-editor.ts)), **App Shell** |
 
 **Rebuilt** is the fast path: write a function, get sliders, change a number and
 everything is recomputed. The cost is that no object outlives a run, so nothing
@@ -207,12 +208,21 @@ same content reproduces the same ids, which is what keeps a selection and its
 transform gizmo attached across the re-run a click triggers. Add, remove or
 reorder an object and the ids after it shift.
 
-**Retained** is the CAD model: your app holds a document (a list of shapes, a
-building model, a graph), each entry gets an id when it is created, and that id
-is the handle — through edits, undo, saving and reopening. The `Scene` is then
-synced from the document instead of cleared, so only what changed is touched.
-`sketch()` is not involved; use `appShell()` or your own UI (React, or anything
-else) and drive the `Scene`/`ThreeRenderer` directly.
+**Retained** is the CAD model: your app holds a document, each entry gets an id
+when it is created, and that id is the handle — through edits, undo, saving and
+reopening. tekto provides the pieces:
+
+```ts
+const doc = new Doc<{ blocks: Block }>({ name: "site", adapter: localAdapter() });   // records = decisions, as JSON
+const blocks = bindScene(doc, "blocks", app.scene, (b) => app.scene.addMesh(blockMesh(b)));  // geometry is derived
+selectOnClick(app.renderer, app.scene, selection);                                    // selection by record
+doc.update("blocks", id, { h: 12 }, { coalesce: "h" }); doc.undo(); doc.toJSON();
+```
+
+The scene follows the document record by record — only what changed is rebuilt —
+and ✎ Markup marks name the records they touch. The [Site Editor](playground/pages/site-editor.ts)
+page puts it all together in about 170 lines. `sketch()` is not involved; use
+`appShell()` or your own UI (React, or anything else).
 
 **Choosing.** If a user will point at a thing and expect it to stay that thing —
 select it, rename it, attach data to it, save the file, come back tomorrow — you

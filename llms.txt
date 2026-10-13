@@ -6,12 +6,12 @@ tekto 0.7.0. One function becomes an interactive CAD app in the browser; people 
 
 ## Start here
 
-About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `SharedStore`. **Files:** `writeDxf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
+About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Files:** `writeDxf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
 
 | To … | use | not |
 |---|---|---|
 | make a parametric study | `sketch` | — |
-| make an app people edit, select and save | `appShell` with a `Scene` you keep | `sketch` (it rebuilds everything each run) |
+| make an app people edit, select and save | `appShell` + `Doc` + `bindScene` + `selectOnClick` (see the Site Editor page) | `sketch` (it rebuilds everything each run) |
 | run geometry in Node, a worker or a test | `import … from "tekto/core"` | `"tekto"` (pulls in three.js) |
 | build a mesh | `MeshFactory.box(…)` etc., or `new Mesh()` + `mesh.addNode` / `mesh.addFace` | hand-filled typed arrays |
 | measure or smooth a mesh | `mesh.volume()`, `mesh.smooth()` | the older `MeshAnalysis` / `Algo` wrappers |
@@ -20,11 +20,12 @@ About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sket
 | export a drawing | `writeDxf2D` + `download` | a hand-written DXF or Blob |
 | export 3D lines / views of meshes / BIM | `writeDxf3D` / `DxfExporter` / `IfcWriter` | — |
 | set a control from code | `handle.set(value)` on any control | clicking the panel's DOM |
-| save and reopen a design | `getParams()` / `setParams()` | `localStorage` + reload |
+| save and reopen a design | parametric: `getParams()` / `setParams()`; edited: `doc.toJSON()` / `doc.load()` | `localStorage` + reload |
+| undo | `doc.undo()` — `doc.transact(…)` makes one step, `{ coalesce: "h" }` one drag | snapshots of app state you keep yourself |
 | see what your change did | `npm run snap -- <url>`: exit code, `view.png`, `markup.json` | assuming it worked |
 
 Five rules that catch agents out:
-1. **Rebuilt or retained — decide first.** `sketch` re-creates every object on each change (ids are positional); `appShell` keeps a `Scene` whose objects live until removed. Selection, undo and save need the second.
+1. **Rebuilt or retained — decide first.** `sketch` re-creates every object on each change (ids are positional); a retained app keeps a `Doc` whose record ids live until removed, and `bindScene` derives the scene from it. Selection, undo and save need the second.
 2. **Two coordinate conventions.** `sketch` and the `MeshFactory` primitives are Y-up; `appShell`, BIM, DXF and sun are Z-up. Pass `up: "z"` to `sketch` for CAD content.
 3. **The sketch function runs again on every change.** Put one-shot work in `lab.button` callbacks and caches in module scope.
 4. **One name per concept.** `Mesh` is the only mesh (edit by id, read as arrays); `face.nodes` is a snapshot — reverse a face with `mesh.reverseFace(id)`.

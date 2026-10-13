@@ -19,9 +19,9 @@ Tekto is an **AI-first platform for online CAD experiments**: people and agents 
 Two ways an app produces a scene — get this right before writing code, and see [README → Two scene models](README.md#two-scene-models-rebuilt-vs-retained):
 
 - **Rebuilt** — `sketch()` / `sketch2d()`: the function re-runs on every param change and re-creates every object. Ids are positional (per-scene counter, reset by `Scene.clear()`), so a selection holds only while the run declares the same objects in the same order. Never store an id beyond a run, and don't hang app state off one.
-- **Retained** — the app owns a document and syncs a long-lived `Scene` (`appShell()` or a custom/React UI). Ids are created with the object and last for its lifetime: that is the CAD "handle", and the model to choose when the user selects, renames, saves or reopens things.
+- **Retained** — the app owns a `Doc` (plain-JSON records with stable ids; undo, save/open, persistence via adapters) and `bindScene` derives a long-lived `Scene` from it (`appShell()` or a custom/React UI). The record id is the CAD "handle": selection (`Selection`, `selectOnClick`), Markup and snapshots name it via `SceneObject.key`. Copy the shape of [playground/pages/site-editor.ts](playground/pages/site-editor.ts). Store decisions in the document, never meshes — geometry is derived.
 
-Asked for something with selection, an outliner, undo or save/load? That is the retained model — do not build it on `sketch()`.
+Asked for something with selection, an outliner, undo or save/load? That is the retained model — do not build it on `sketch()`, and don't hand-roll an undo stack or a save format: use `Doc`.
 
 ## Where things live
 
