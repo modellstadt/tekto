@@ -15,6 +15,11 @@ before 1.0, breaking changes bump the minor version. See
   - A section clips shadows too: the part it removes no longer shades what is left.
   - Flat lighting in a Z-up scene takes its sky from +Z, not from the side. Facades facing
     −Y had the ground colour.
+- **`IfcWriter`: an element on an upper storey is written at its height**, not a storey
+  higher (#62). Heights stay absolute in the API; the writer subtracts the storey's
+  elevation where it places an element inside the storey. Members (world-coordinate meshes)
+  are placed under the building, as stairs are, so a wall and its studs agree. Files made
+  with an upper storey before this need re-exporting.
 - `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
   experimental: BuildGraph uses them. 47 exports keep the tag.
 

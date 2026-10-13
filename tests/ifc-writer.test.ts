@@ -7,6 +7,7 @@ import { OpeningType } from "../src/bim/openings";
 import { Space, boundingWalls } from "../src/bim/spaces";
 import { Stair, StairType } from "../src/bim/stairs";
 import { IfcWriter, standardPropertyName } from "../src/io/IfcWriter";
+import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 
 /**
  * `IfcWriter` is a STEP-21 text generator. We can't easily round-trip
@@ -17,6 +18,42 @@ import { IfcWriter, standardPropertyName } from "../src/io/IfcWriter";
 
 function countLines(ifc: string, pattern: RegExp): number {
   return ifc.split("\n").filter(l => pattern.test(l)).length;
+}
+
+/** The arguments of a STEP entity, split at its top-level commas. */
+function stepArgs(line: string): string[] {
+  const body = line.slice(line.indexOf("(") + 1, line.lastIndexOf(")"));
+  const out: string[] = [];
+  let depth = 0, quoted = false, start = 0;
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c === "'") quoted = !quoted;
+    else if (!quoted && c === "(") depth++;
+    else if (!quoted && c === ")") depth--;
+    else if (!quoted && depth === 0 && c === ",") { out.push(body.slice(start, i)); start = i + 1; }
+  }
+  out.push(body.slice(start));
+  return out;
+}
+
+/**
+ * World z of the first `entity`'s placement: its IfcLocalPlacement chain followed to the
+ * root, adding each IfcAxis2Placement3D's z (every placement the writer makes keeps +Z up).
+ */
+function placementZ(ifc: string, entity: string): number {
+  const lines = new Map<string, string>();
+  for (const l of ifc.split("\n")) { const m = /^(#\d+)=(.*);$/.exec(l); if (m) lines.set(m[1], m[2]); }
+  const element = [...lines.values()].find(l => l.startsWith(entity + "("));
+  if (!element) throw new Error(`no ${entity} in the file`);
+  let z = 0;
+  let ref: string | undefined = stepArgs(element)[5];          // ObjectPlacement
+  while (ref && ref !== "$") {
+    const [parent, axis] = stepArgs(lines.get(ref)!);           // IFCLOCALPLACEMENT(parent, axis)
+    const point = stepArgs(lines.get(axis)!)[0];                 // IFCAXIS2PLACEMENT3D(location, …)
+    z += Number(/\(\((.*)\)\)/.exec(lines.get(point)!)![1].split(",")[2]);
+    ref = parent;
+  }
+  return z;
 }
 
 function makeWallType() {
@@ -228,6 +265,30 @@ describe("IfcWriter — multi-storey", () => {
     const out = w.save();
     // One containment relation per storey that has elements.
     expect(countLines(out, /=IFCRELCONTAINEDINSPATIALSTRUCTURE\(/)).toBe(2);
+  });
+
+  it("an element on an upper storey is as high in the file as in the model, not a storey higher", () => {
+    // Heights in the API are absolute; the storey's placement is already raised to its
+    // elevation, so the writer subtracts it. Read back by following the placements.
+    const w = new IfcWriter({ storeyElevation: 0.5 });
+    const first = w.addStorey({ name: "First", elevation: 3 });
+    const wall = new Wall({ centerline: [new Vec2(0, 0), new Vec2(4, 0)], thickness: 0.2, height: 2.5, name: "W1", baseElevation: 3 });
+    wall.openings.push(WallOpening.window(2, 1.2, 0.9, 2.1));
+    w.addWallSystem(new WallSystem([wall]), { storey: first, includeMembers: false, includeJoints: false, includeMaterials: false });
+    w.addSlab(new Slab({ boundary: [new Vec2(0, 0), new Vec2(4, 0), new Vec2(4, 3), new Vec2(0, 3)], thickness: 0.2, elevation: 3, name: "F1" }),
+      { storey: first, includeParts: false });
+    w.addSpace(new Space({ name: "R1", boundary: [new Vec2(0, 0), new Vec2(4, 0), new Vec2(4, 3), new Vec2(0, 3)], elevation: 3 }), { storey: first });
+    // A member's mesh is in world coordinates (a stud from 0.5 to 3 m): nothing is added to it.
+    const stud = MeshFactory.box(0.06, 0.12, 2.5);
+    stud.translate(1, 0, 0.5 + 1.25);
+    w.addMember(0, { name: "Stud", role: "stud", mesh: stud });
+    const out = w.save();
+
+    expect(placementZ(out, "IFCWALLSTANDARDCASE")).toBeCloseTo(3, 9);
+    expect(placementZ(out, "IFCOPENINGELEMENT")).toBeCloseTo(3 + 0.9, 9);
+    expect(placementZ(out, "IFCSLAB")).toBeCloseTo(3 - 0.2, 9);
+    expect(placementZ(out, "IFCSPACE")).toBeCloseTo(3, 9);
+    expect(placementZ(out, "IFCMEMBER")).toBeCloseTo(0, 9);
   });
 
   it("rejects unknown storey refs with a helpful error", () => {

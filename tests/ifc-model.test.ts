@@ -4,6 +4,7 @@ import { Wall } from "../src/core/geometry/walls";
 import { WallType, SolidConstruction } from "../src/bim/walls";
 import { IfcWriter } from "../src/io/IfcWriter";
 import { IfcModel } from "../src/io/IfcModel";
+import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 
 /**
  * Reading an element's properties back out of a file.
@@ -87,5 +88,28 @@ describe("IfcWriter type property sets", () => {
     // HasPropertySets: a null there is a type nothing can read
     const attrs = line!.slice(line!.indexOf("(") + 1).split(",");
     expect(attrs[5], `HasPropertySets is null in ${line}`).toMatch(/^\(#\d+\)$/);
+  });
+});
+
+describe("IfcWriter storeys, read back by web-ifc", () => {
+  it("a wall on an upper storey comes back at its own height, not a storey higher", async () => {
+    // Heights in the writer's API are absolute, and the storey's placement is raised already.
+    const w = new IfcWriter({ storeyElevation: 0.5 });
+    const first = w.addStorey({ name: "First", elevation: 3 });
+    w.addWall(new Wall({ centerline: [new Vec2(0, 0), new Vec2(4, 0)], thickness: 0.2, height: 2.5, name: "W1", baseElevation: 3 }), { storey: first });
+    const stud = MeshFactory.box(0.06, 0.12, 2.5);
+    stud.translate(1, 0, 0.5 + 1.25);                            // world coordinates: 0.5 to 3 m
+    w.addMember(0, { name: "Stud", role: "stud", mesh: stud });
+    const model = await IfcModel.parse(w.saveBytes().buffer as ArrayBuffer, { wasmPath: "", tree: false, recenter: false, relations: false, properties: false });
+    // web-ifc hands geometry back Y-up: IFC's z is its y.
+    const heights = (cls: RegExp) => {
+      const p = model.elements.find((e) => cls.test(e.ifcClass))!.mesh.positions;
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 1; i < p.length; i += 3) { lo = Math.min(lo, p[i]); hi = Math.max(hi, p[i]); }
+      return [lo, hi];
+    };
+    expect(heights(/Wall/i)[0]).toBeCloseTo(3, 6);
+    expect(heights(/Wall/i)[1]).toBeCloseTo(5.5, 6);
+    expect(heights(/Member/i)[0]).toBeCloseTo(0.5, 6);
   });
 });
