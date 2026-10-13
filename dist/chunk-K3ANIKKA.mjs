@@ -1,7 +1,7 @@
 import {
   Polygon2D,
   PolygonBool
-} from "./chunk-K5F6U4JJ.mjs";
+} from "./chunk-K7LUW25N.mjs";
 import {
   Mesh,
   Plane
@@ -1211,7 +1211,7 @@ var CurveUtils = {
     return new ArcCurve(
       new Vec3(cx, cy, 0),
       radius,
-      startAngle,
+      startAngle - Math.PI,
       sweepAngle,
       Vec3.unitZ()
     );
@@ -2777,30 +2777,30 @@ function traverseFTB(node, eye, visit) {
   if (!node) return;
   const d = node.plane.distToPoint(eye);
   if (d > 0) {
-    traverseFTB(node.back, eye, visit);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
     traverseFTB(node.front, eye, visit);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    traverseFTB(node.back, eye, visit);
   } else {
-    traverseFTB(node.front, eye, visit);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
     traverseFTB(node.back, eye, visit);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    traverseFTB(node.front, eye, visit);
   }
 }
 function traverseBTF(node, eye, visit) {
   if (!node) return;
   const d = node.plane.distToPoint(eye);
   if (d > 0) {
-    traverseBTF(node.front, eye, visit);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
     traverseBTF(node.back, eye, visit);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    traverseBTF(node.front, eye, visit);
   } else {
-    traverseBTF(node.back, eye, visit);
-    if (node.coplanarBack.length) visit(node.coplanarBack);
-    if (node.coplanarFront.length) visit(node.coplanarFront);
     traverseBTF(node.front, eye, visit);
+    if (node.coplanarFront.length) visit(node.coplanarFront);
+    if (node.coplanarBack.length) visit(node.coplanarBack);
+    traverseBTF(node.back, eye, visit);
   }
 }
 function polygonsFromMesh(positions, indices) {
@@ -9731,7 +9731,7 @@ var SdfRadialArray = class {
     let angle = Math.atan2(p.y, p.x);
     if (angle < 0) angle += TWO_PI;
     const closest = Math.round(angle / this.deltaAngle) * this.deltaAngle;
-    const rot = closest - angle;
+    const rot = angle - closest;
     const r = Math.sqrt(p.x * p.x + p.y * p.y);
     return this.input.distance(new Vec3(r * Math.cos(rot), r * Math.sin(rot), p.z));
   }
@@ -10090,7 +10090,8 @@ var SpringSystem3D = class {
     this.springs = [];
     // Settings
     this.gravity = new Vec3(0, -9.81, 0);
-    this.floorPlane = new Plane(new Vec3(0, 0, 1), -10);
+    this.floorPlane = new Plane(new Vec3(0, 1, 0), 10);
+    // y = −10, under gravity −Y
     this.globalVelDamping = 0.02;
     this.useGlobalStiffness = true;
     this.globalStiffness = 200;
@@ -15357,6 +15358,42 @@ function selectOnClick(view, scene, selection) {
     view.setSelectionHighlight(null);
   };
 }
+function shareSelection(selection, store, view, scene) {
+  const publish = () => store.setPresence({ selection: selection.keys() });
+  const offSel = selection.onChange(publish);
+  publish();
+  if (!view || !scene) return () => {
+    offSel();
+    store.setPresence({ selection: [] });
+  };
+  const show = () => {
+    const entries = store.others.map((p) => {
+      const keys = Array.isArray(p.state.selection) ? p.state.selection : [];
+      const want = new Set(keys);
+      const ids = scene.all().filter((o) => o.key && want.has(o.key)).map((o) => o.id);
+      return { ids, color: p.color };
+    }).filter((e) => e.ids.length);
+    view.setPresenceHighlight(entries);
+  };
+  let queued = false;
+  const offScene = scene.on((e) => {
+    if (e.type !== "object:add" && e.type !== "scene:clear" || queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      show();
+    });
+  });
+  const offPresence = store.onPresence(show);
+  show();
+  return () => {
+    offSel();
+    offPresence();
+    offScene();
+    view.setPresenceHighlight([]);
+    store.setPresence({ selection: [] });
+  };
+}
 
 export {
   Ray,
@@ -15494,5 +15531,6 @@ export {
   localAdapter,
   bindScene,
   Selection,
-  selectOnClick
+  selectOnClick,
+  shareSelection
 };

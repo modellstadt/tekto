@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.8.1 — 2026-10-13
+
+The review's last items: the renderer and the sketch split into parts, commands and shortcuts, drawings over a sketch, every export documented (51 marked experimental), a shared selection, and seven bugs fixed that the documentation pass found.
+
 - **Fixes found while documenting every export** (each with a test that failed before):
   - `CurveUtils.arcFromPointTangentPoint` returned its arc turned half a turn about the
     centre: it measured angles from +X, but `ArcCurve` measures them from its `forward`

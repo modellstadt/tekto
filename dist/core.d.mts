@@ -1,8 +1,8 @@
-import { V as Vec3, b as Vec2, g as Mat4, T as Triangle, A as AABB, M as Mesh, e as MeshData, S as Scene } from './Scene-BsMmRZP7.mjs';
-export { F as ColoredMeshData, f as LegacyMeshJSON, L as LightingMode, h as MeshEdge, i as MeshFace, j as MeshJSON, k as MeshNode, l as MeshValidation, O as ObjFile, m as ObjMeshData, P as Projection, R as RenderMode, n as SceneEvent, o as SceneEventListener, p as SceneJSON, a as SceneObject, q as SceneObjectType, c as SectionRequest, d as StandardView, r as Vec4, s as VisualStyle } from './Scene-BsMmRZP7.mjs';
-import { z as Ring2, v as MultiPoly2 } from './download-BZSbEmHN.mjs';
-export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-BZSbEmHN.mjs';
-export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, b as ParamSchema, P as ParamStore, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-C5uOYti3.mjs';
+import { V as Vec3, b as Vec2, g as Mat4, T as Triangle, A as AABB, M as Mesh, e as MeshData, S as Scene } from './Scene-CaG0H74_.mjs';
+export { F as ColoredMeshData, f as LegacyMeshJSON, L as LightingMode, h as MeshEdge, i as MeshFace, j as MeshJSON, k as MeshNode, l as MeshValidation, O as ObjFile, m as ObjMeshData, P as Projection, R as RenderMode, n as SceneEvent, o as SceneEventListener, p as SceneJSON, a as SceneObject, q as SceneObjectType, d as SectionRequest, c as StandardView, r as Vec4, s as VisualStyle } from './Scene-CaG0H74_.mjs';
+import { z as Ring2, v as MultiPoly2 } from './download-DxT2M8eM.mjs';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-DxT2M8eM.mjs';
+export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, b as ParamSchema, P as ParamStore, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-op8yBPbB.mjs';
 
 /**
  * Tekto VecMath — Static vector/geometry utility functions.
@@ -10,6 +10,11 @@ export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I a
  * Mirrors HDGEO.Core.VecMath — all bugs fixed, no mutating inputs.
  */
 
+/**
+ * Stateless vector helpers that never mutate their inputs: interpolation, polar points, angles (radians),
+ * point–line/segment distances and closest points, 2D orientation tests, triangle area/normal, and
+ * `rotationBetween` / `frameFromNormal` matrices.
+ */
 declare const VecMath: {
     /** Point between a and b at parameter t (0=a, 1=b). */
     pointBetween(a: Vec3, b: Vec3, t: number): Vec3;
@@ -140,6 +145,10 @@ declare const VecMath: {
  * Mirrors HDGEO.Core.Plane.
  */
 
+/**
+ * Infinite plane `normal·p + d = 0` with a unit `normal`; `distToPoint` is signed (positive on the normal's side). Immutable.
+ * Build it with `fromPointNormal` / `fromThreePoints` (they normalise) or `XY()`/`XZ()`/`YZ()`.
+ */
 declare class Plane {
     readonly normal: Vec3;
     readonly d: number;
@@ -175,6 +184,7 @@ declare class Plane {
  * Mirrors HDGEO.Core.Sphere.
  */
 
+/** Immutable sphere (`center`, `radius`) for containment and overlap tests and `Ray.intersectSphere`. */
 declare class Sphere {
     readonly center: Vec3;
     readonly radius: number;
@@ -197,6 +207,10 @@ declare class Sphere {
  * Mirrors HDGEO.Core.Ray.
  */
 
+/**
+ * Half-line `origin + t·direction` (t ≥ 0) with hit tests against planes, triangles, spheres and AABBs; immutable.
+ * Pass a unit `direction`: `closestPointTo`/`distToPoint` assume it, and `t` is then a distance.
+ */
 declare class Ray {
     readonly origin: Vec3;
     readonly direction: Vec3;
@@ -242,11 +256,23 @@ declare class Ray {
  * Mirrors HDGEO.Core.Intersections.
  */
 
+/**
+ * Hit of two 2D segments: `t` along the first (0..1), `u` along the second (0..1), and the `point`.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 interface Intersect2DResult {
     t: number;
     u: number;
     point: Vec2;
 }
+/**
+ * 2D and 3D intersection tests: ray vs segment/triangle/plane/sphere/AABB, segments, lines and rays in 2D,
+ * circles, planes, a ray through a polygon, plus closest points on segments and lines. A miss gives `null` (lists: `[]`),
+ * except `raySegment`, which clamps and always returns a point.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare const Intersections: {
     /**
      * Intersects a Ray with a line segment (A, B).
@@ -350,6 +376,11 @@ declare const Intersections: {
  * the only external piece is `poly-decomp` for the convex decomposition.
  */
 
+/**
+ * No-fit polygons and Minkowski sums for 2D nesting: `nfp(fixed, orbiting)` is the region where `orbiting`'s origin
+ * would overlap `fixed` (its boundary = touching), `innerFit(container, orbiting)` where it stays inside.
+ * Concave rings are split into convex parts; results are `MultiPoly2` and may have holes.
+ */
 declare const NoFitPolygon: {
     /** Reflect a ring through the origin (negate every vertex) — forms −B. */
     reflect(ring: Ring2): Ring2;
@@ -387,6 +418,7 @@ declare const NoFitPolygon: {
     innerFit(container: Ring2, orbiting: Ring2): MultiPoly2;
 };
 
+/** A segment as its two endpoints: an obstacle wall (or the edge to skip) for {@link perpVisibility}. */
 type PerpSegment = readonly [Vec2, Vec2];
 /**
  * Perpendicular-visibility region of segment a→b, with rays shot toward its
@@ -415,6 +447,7 @@ declare function edgeOutwardVisibility(ring: Ring2, i: number, obstacles: readon
  * Mirrors HDGEO.Core.MeshAnalysis.
  */
 
+/** Measurements on a `Mesh` (volume, area, centroid), Laplacian smoothing, and a 3D convex hull of points. */
 declare const MeshAnalysis: {
     /** Mesh volume (closed, consistently wound; polygons are fan-triangulated). */
     meshVolume(mesh: Mesh): number;
@@ -434,6 +467,7 @@ declare const MeshAnalysis: {
  * Mirrors HDGEO.Core.MeshTransform.
  */
 
+/** A world axis, as named by `MeshTransform.swapAxes` and `mirror`. */
 type Axis = "x" | "y" | "z";
 /**
  * In-place transforms of a {@link Mesh}: `transform` (Mat4), `translate`, `scale`,
@@ -479,6 +513,7 @@ declare const MeshTransform: {
  * Note: CatmullClark is in MeshFactory.subdivide().
  */
 
+/** In-place refinement of a `Mesh`: split long edges, refine to a target edge length, Doo-Sabin. Catmull-Clark is `MeshFactory.subdivide`. */
 declare const MeshSubdivide: {
     /** Splits all edges longer than maxLength in a single pass. */
     splitLongEdges(mesh: Mesh, maxLength: number): void;
@@ -499,6 +534,7 @@ declare const MeshSubdivide: {
  * Mirrors HDGEO.Core.MeshCleanup.
  */
 
+/** Merges coincident vertices of a `Mesh` in place (exactly equal or within a distance) and drops faces that collapse; the mesh is rebuilt, so ids are renumbered. */
 declare const MeshCleanup: {
     /** Merges vertices that have the exact same position (binary equality). */
     mergeIdenticalVertices(mesh: Mesh): void;
@@ -523,6 +559,7 @@ declare const MeshCleanup: {
  * make the field sign-consistent across the mesh before tracing streamlines.
  */
 
+/** Principal curvatures and directions at one mesh node, as estimated by `Curvature.taubin` (positive = convex w.r.t. the outward normal). */
 interface VertexCurvature {
     /** Principal curvature with larger (signed) value. */
     kMax: number;
@@ -539,6 +576,10 @@ interface VertexCurvature {
     /** True if this vertex lies on a mesh boundary (open edge). Curvature is unreliable here. */
     isBoundary: boolean;
 }
+/**
+ * Per-node principal curvature on a `Mesh` (Taubin's tensor method), plus helpers to comb the
+ * resulting line field into consistent signs and average it per face, e.g. for `StreamlineTracer`.
+ */
 declare const Curvature: {
     /**
      * Estimate per-vertex principal curvatures and directions.
@@ -595,6 +636,7 @@ declare const Curvature: {
  *    be added later if streamline density needs to be uniform across the mesh.
  */
 
+/** Tuning for `StreamlineTracer.trace`: step budget, seed density, step size and lift off the surface. */
 interface StreamlineOptions {
     /** Maximum integration steps per direction (forward + backward each get this budget). */
     maxSteps?: number;
@@ -607,6 +649,10 @@ interface StreamlineOptions {
     /** Lift each emitted point along the face normal by this fraction of edge length (anti-Z-fight). */
     liftFactor?: number;
 }
+/**
+ * Traces polylines along a per-face direction field on a `Mesh` (e.g. combed principal curvature
+ * from `Curvature`), walking face to face from seed faces in both directions; plus polyline smoothing.
+ */
 declare const StreamlineTracer: {
     /**
      * Laplacian smoothing of a single polyline. Each interior point is moved
@@ -640,6 +686,7 @@ declare const StreamlineTracer: {
  *  - Mesh I/O: fromMesh / toMesh
  */
 
+/** A convex polygon with its supporting plane, as stored, split and clipped by `BspTree`. */
 interface BspPolygon {
     vertices: Vec3[];
     plane: Plane;
@@ -656,8 +703,14 @@ interface BspNode {
 }
 /** Create a BspPolygon from vertices, computing the plane automatically. */
 declare function polygonFromVertices(vertices: Vec3[], shared?: unknown): BspPolygon;
+/** Where a point lies relative to a `BspTree` solid; `"on"` means on one of its boundary polygons. */
 type PointClassification = "inside" | "outside" | "on";
 type TraversalCallback = (polygons: BspPolygon[]) => void;
+/**
+ * A BSP tree of convex polygons, for CSG on closed solids: build with `fromPolygons`/`fromMesh`,
+ * combine with `union`/`subtract`/`intersect` (new trees, inputs unchanged), read back with `toMesh()`
+ * (indexed typed arrays, not a `Mesh`). Also classifies points and walks polygons in depth order.
+ */
 declare class BspTree {
     root: BspNode | null;
     constructor(root: BspNode | null);
@@ -714,6 +767,7 @@ interface IMetricCurve extends ICurve {
     getTFromDistance(distance: number): number;
     getPointAtDistance(distance: number): Vec3;
 }
+/** Straight segment from `start` to `end`; `t` in [0, 1] is proportional to arc length. */
 declare class LineCurve implements IMetricCurve {
     start: Vec3;
     end: Vec3;
@@ -724,6 +778,10 @@ declare class LineCurve implements IMetricCurve {
     getTangent(_t: number): Vec3;
     getPointAtDistance(distance: number): Vec3;
 }
+/**
+ * Circular arc of `radius` around `center` in the plane perpendicular to `normal`. Angles are radians,
+ * counter-clockwise about `normal` from `forward` = normal × Y (−X for a +Z normal, not +X).
+ */
 declare class ArcCurve implements IMetricCurve {
     center: Vec3;
     radius: number;
@@ -757,6 +815,7 @@ declare class HelixCurve implements IMetricCurve {
     getTangent(t: number): Vec3;
     getPointAtDistance(distance: number): Vec3;
 }
+/** Cubic Bézier with control points `p0`..`p3`; arc length comes from a 50-step table, so move it with `updateControlPoints` rather than the fields. */
 declare class CubicBezierCurve implements IMetricCurve {
     p0: Vec3;
     p1: Vec3;
@@ -792,6 +851,7 @@ declare class NurbsCurve implements IMetricCurve {
     private evaluateDeBoor;
     private findKnotSpan;
 }
+/** Polyline through 2+ points (copied); `t` in [0, 1] is proportional to arc length over the whole polyline. */
 declare class PolylineCurve implements IMetricCurve {
     private points;
     private accumulatedLengths;
@@ -861,6 +921,10 @@ declare const CurveUtils: {
 
 /** Build a clamped uniform knot vector with `numCtrl` control points and given degree. */
 declare function clampedUniformKnots(numCtrl: number, degree: number): number[];
+/**
+ * Tensor-product NURBS surface on a `controlPoints[u][v]` grid; `getPoint(u, v)` takes u, v in [0, 1] over the
+ * valid knot range. Build one with `loft` or `revolve` (exact circles via rational weights), tessellate with `toMesh`.
+ */
 declare class NurbsSurface {
     controlPoints: Vec3[][];
     degreeU: number;
@@ -913,6 +977,7 @@ declare class NurbsSurface {
     private evaluate;
 }
 
+/** A UTC instant and a site (latitude/longitude in degrees) for `SunPosition.compute`. */
 interface SunPositionInput {
     /**
      * UTC date+time. The algorithm internally converts to Julian Date in
@@ -925,6 +990,7 @@ interface SunPositionInput {
     /** Longitude in degrees, east positive. e.g. Zurich = +8.55. */
     longitude: number;
 }
+/** The sun's altitude and azimuth (radians) and its unit direction in the Z-up frame (+X east, +Y north). */
 interface SunPositionResult {
     /** Solar altitude above horizon (radians). Negative ⇒ below horizon (night). */
     altitude: number;
@@ -943,6 +1009,7 @@ interface SunPositionResult {
     /** Convenience: `altitude > 0`. */
     isDaytime: boolean;
 }
+/** Sun direction from a date and a site (Michalsky 1988, ~0.01° for 1950–2050), as a Z-up vector: +X east, +Y north, +Z sky. */
 declare const SunPosition: {
     /**
      * Compute the sun's position in the sky for a given UTC instant and
@@ -965,6 +1032,10 @@ declare const SunPosition: {
  * Tekto Graph — Weighted graph with Dijkstra, components, flood fill.
  *
  * Mirrors HDGEO.Core.Graph + GridGraph.
+ */
+/**
+ * A weighted graph on nodes `0..nodeCount-1`, defined by a neighbour callback and an optional weight
+ * callback (default 1) rather than stored edges: Dijkstra (single/multi-source, Voronoi), components, flood fill.
  */
 declare class Graph {
     getNeighbors: (node: number) => number[];
@@ -1002,6 +1073,7 @@ declare class Graph {
     static fromAdjacencyList(adjacency: number[][], weightFn?: (a: number, b: number) => number): Graph;
     static fromEdgeList(nodeCount: number, edges: [number, number][], undirected?: boolean, weightFn?: (a: number, b: number) => number): Graph;
 }
+/** Ready-made `Graph`s over regular 2D/3D grids (4-, 8- and 6-connected); node index is `x * ny + y` (3D: `x * ny * nz + y * nz + z`). */
 declare const GridGraph: {
     /** Creates a 2D 4-connected grid graph (N/S/E/W neighbors). */
     grid2D4(nx: number, ny: number, weightFn?: (a: number, b: number) => number): Graph;
@@ -1065,6 +1137,11 @@ declare class PGFace {
     signedArea(): number;
     get isCCW(): boolean;
 }
+/**
+ * A 2D planar graph as a half-edge structure (DCEL): vertices, twin half-edges kept in angular order
+ * around each vertex, and faces from `buildFaces()` (CCW = bounded, CW = outer). Build one from raw
+ * segments with `PlanarGraphRepair.fromSegments`.
+ */
 declare class PlanarGraph {
     readonly vertices: PGVertex[];
     readonly halfEdges: PGHalfEdge[];
@@ -1096,6 +1173,7 @@ declare class PlanarGraph {
      */
     toFlatMesh(faceColor?: (face: PGFace, index: number) => [number, number, number, number]): Mesh;
 }
+/** Builds a valid `PlanarGraph` from raw 2D segments: fuses vertices within `tolerance`, splits edges at vertices and crossings, then builds faces. */
 declare const PlanarGraphRepair: {
     /** Creates a valid planar graph from line segments. */
     fromSegments(segments: {
@@ -1103,6 +1181,7 @@ declare const PlanarGraphRepair: {
         b: Vec2;
     }[], tolerance: number): PlanarGraph;
 };
+/** In-place passes on a `PlanarGraph`: remove dead ends, dissolve collinear degree-2 vertices, drop edges with the same face on both sides or bounded faces on both sides. */
 declare const PlanarGraphCleanup: {
     /** Iteratively removes degree-1 vertices (dead ends). */
     removeDeadEnds(graph: PlanarGraph): void;
@@ -1113,6 +1192,7 @@ declare const PlanarGraphCleanup: {
     /** Removes inner edges (both sides are bounded faces). */
     removeInnerEdges(graph: PlanarGraph): void;
 };
+/** Incremental Delaunay triangulation of 2D points (at least 3), returned as a `PlanarGraph` whose CCW faces are the triangles. */
 declare const Delaunay2D: {
     /** Triangulates 2D points and returns a PlanarGraph with Delaunay faces. */
     triangulate(points: Vec2[]): PlanarGraph;
@@ -1125,6 +1205,7 @@ declare const Delaunay2D: {
  * Mirrors HDGEO.Core.Voxel.
  */
 
+/** A 2D scalar field of `nx × ny` samples `cellSize` apart from the corner (`x1`, `y1`), stored x-major (`x * ny + y`); `get` outside the grid returns Infinity. */
 declare class VoxelGrid2D {
     values: Float32Array;
     nx: number;
@@ -1153,6 +1234,10 @@ declare class VoxelGrid2D {
     };
     clone(): VoxelGrid2D;
 }
+/**
+ * A 3D scalar field (typically a signed distance, negative inside) of `nx × ny × nz` samples `cellSize` apart from
+ * (`x1`, `y1`, `z1`), stored x-major; fill from SDFs, combine with `union`/`subtract`/`intersect` in place, mesh with `MarchingCubes`.
+ */
 declare class VoxelGrid {
     values: Float32Array;
     nx: number;
@@ -1196,6 +1281,11 @@ declare class VoxelGrid {
     };
     clone(): VoxelGrid;
 }
+/**
+ * Iso-contour of a 2D scalar grid as loose line segments in world coordinates (marching squares).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare const MarchingSquares: {
     extract(values: ArrayLike<number>, nx: number, ny: number, iso?: number, cellSize?: number, originX?: number, originY?: number): {
         a: Vec2;
@@ -1206,9 +1296,11 @@ declare const MarchingSquares: {
         b: Vec2;
     }[];
 };
+/** Iso-surface of a `VoxelGrid` as a welded triangle `Mesh` (marching cubes). */
 declare const MarchingCubes: {
     extract(grid: VoxelGrid, iso?: number): Mesh;
 };
+/** In-place flood fill on a voxel grid: from the seed cells, negates every connected cell (4/6-neighbours) whose sign matches `targetSign`. */
 declare const FloodFill: {
     fill2D(grid: VoxelGrid2D, seeds: {
         x: number;
@@ -1220,12 +1312,14 @@ declare const FloodFill: {
         z: number;
     }[], targetSign?: number): void;
 };
+/** In-place chamfer distance on a voxel grid: cells at 0 are sources, all others (set them large, e.g. Infinity) get the distance in cells to the nearest source; the `WithLabels` variants also spread each source's label. */
 declare const DistanceTransform: {
     compute2D(grid: VoxelGrid2D, d1?: number, d2?: number): void;
     compute2DWithLabels(grid: VoxelGrid2D, labels: Int32Array, d1?: number, d2?: number): void;
     compute3D(grid: VoxelGrid, d1?: number, d2?: number, d3?: number): void;
     compute3DWithLabels(grid: VoxelGrid, labels: Int32Array, d1?: number, d2?: number, d3?: number): void;
 };
+/** Regions of a `VoxelGrid2D` above a threshold: 4-connected component labels, and their outlines as cell-coordinate loops. */
 declare const BlobDetect: {
     labelComponents2D(grid: VoxelGrid2D, threshold?: number): {
         labels: Int32Array;
@@ -1267,15 +1361,21 @@ declare const PixelView: {
  * Mirrors HDGEO.Core.SDF.
  */
 
+/**
+ * A signed distance field: `distance(p)` is negative inside, 0 on the surface, positive outside.
+ * Mesh one with `VoxelGrid.fillFromSdf` + `MarchingCubes.extract`.
+ */
 interface ISdf {
     distance(point: Vec3): number;
 }
+/** Sphere of `radius` around `center` (default origin); exact distance. */
 declare class SdfSphere implements ISdf {
     radius: number;
     center: Vec3;
     constructor(radius: number, center?: Vec3);
     distance(p: Vec3): number;
 }
+/** Axis-aligned box of `halfExtents` around `center`; exact distance. `SdfBox.fromSize(sx, sy, sz)` takes full sizes at the origin. */
 declare class SdfBox implements ISdf {
     halfExtents: Vec3;
     center: Vec3;
@@ -1283,6 +1383,11 @@ declare class SdfBox implements ISdf {
     static fromSize(sx: number, sy: number, sz: number): SdfBox;
     distance(p: Vec3): number;
 }
+/**
+ * Capsule: every point within `radius` of segment a→b (round ends).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfCapsule implements ISdf {
     a: Vec3;
     b: Vec3;
@@ -1290,6 +1395,11 @@ declare class SdfCapsule implements ISdf {
     constructor(a: Vec3, b: Vec3, radius: number);
     distance(p: Vec3): number;
 }
+/**
+ * Flat-capped cylinder of `radius` from `a` to `b`; `SdfCylinder.vertical(height, radius)` stands one on the Y axis, centred on the origin.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfCylinder implements ISdf {
     a: Vec3;
     b: Vec3;
@@ -1298,6 +1408,11 @@ declare class SdfCylinder implements ISdf {
     static vertical(height: number, radius: number): SdfCylinder;
     distance(p: Vec3): number;
 }
+/**
+ * Capped cone (frustum) from `a` (radius `radiusA`) to `b` (radius `radiusB`); the slanted side uses radial distance, so it is approximate.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfCone implements ISdf {
     a: Vec3;
     b: Vec3;
@@ -1306,45 +1421,82 @@ declare class SdfCone implements ISdf {
     constructor(a: Vec3, b: Vec3, radiusA: number, radiusB: number);
     distance(p: Vec3): number;
 }
+/**
+ * Torus at the origin around the Y axis (ring in the XZ plane): `majorRadius` to the tube centre, `minorRadius` of the tube.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfTorus implements ISdf {
     majorRadius: number;
     minorRadius: number;
     constructor(majorRadius: number, minorRadius: number);
     distance(p: Vec3): number;
 }
+/**
+ * Ellipsoid at the origin with semi-axes `radii`; the distance is an approximation (exact only for a sphere).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfEllipsoid implements ISdf {
     radii: Vec3;
     constructor(radii: Vec3);
     distance(p: Vec3): number;
 }
+/**
+ * Half-space behind a plane (exported as `SdfPlaneField`): negative on the side away from `normal`.
+ * Give the plane as `normal` plus offset `d` (normal·p = d) or a point on it; the normal is normalised.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfPlane implements ISdf {
     normal: Vec3;
     d: number;
     constructor(normal: Vec3, dOrPoint: number | Vec3);
     distance(p: Vec3): number;
 }
+/**
+ * Unsigned distance to the infinite line through `a` and `b` (exported as `SdfLineField`); wrap in `SdfOffset` for an endless rod.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfLine implements ISdf {
     a: Vec3;
     b: Vec3;
     constructor(a: Vec3, b: Vec3);
     distance(p: Vec3): number;
 }
+/**
+ * Union of any number of fields (the minimum of their distances).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfUnion implements ISdf {
     children: ISdf[];
     constructor(...children: ISdf[]);
     distance(p: Vec3): number;
 }
+/**
+ * Intersection of any number of fields (the maximum of their distances).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfIntersect implements ISdf {
     children: ISdf[];
     constructor(...children: ISdf[]);
     distance(p: Vec3): number;
 }
+/** `a` minus `b`: max(a, −b). */
 declare class SdfSubtract implements ISdf {
     a: ISdf;
     b: ISdf;
     constructor(a: ISdf, b: ISdf);
     distance(p: Vec3): number;
 }
+/**
+ * Smooth union of `a` and `b`, filleting the joint over `radius` (quadratic smooth-min; same field as `SdfSmoothUnion` with k = radius).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfBlend implements ISdf {
     a: ISdf;
     b: ISdf;
@@ -1352,6 +1504,11 @@ declare class SdfBlend implements ISdf {
     constructor(a: ISdf, b: ISdf, radius?: number);
     distance(p: Vec3): number;
 }
+/**
+ * `a` minus `b` with the cut edge rounded over `radius`.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfSmoothSubtract implements ISdf {
     a: ISdf;
     b: ISdf;
@@ -1359,6 +1516,7 @@ declare class SdfSmoothSubtract implements ISdf {
     constructor(a: ISdf, b: ISdf, radius?: number);
     distance(p: Vec3): number;
 }
+/** Smooth union of `a` and `b`; `k` is the blend width (larger = softer fillet). */
 declare class SdfSmoothUnion implements ISdf {
     a: ISdf;
     b: ISdf;
@@ -1366,12 +1524,22 @@ declare class SdfSmoothUnion implements ISdf {
     constructor(a: ISdf, b: ISdf, k?: number);
     distance(p: Vec3): number;
 }
+/**
+ * Hollows `input` into a wall `2 × thickness` thick, centred on its surface (|d| − thickness).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfShell implements ISdf {
     input: ISdf;
     thickness: number;
     constructor(input: ISdf, thickness?: number);
     distance(p: Vec3): number;
 }
+/**
+ * Nested shells: applies |d| − thickness `layers` times, each pass splitting every wall in two.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfOnion implements ISdf {
     input: ISdf;
     thickness: number;
@@ -1379,6 +1547,10 @@ declare class SdfOnion implements ISdf {
     constructor(input: ISdf, thickness: number, layers?: number);
     distance(p: Vec3): number;
 }
+/**
+ * Twists `input` about the Z axis: the rotation grows linearly with z, by `anglePerUnit` radians across the whole
+ * `z1`..`z2` span (not per metre), zero at its midpoint, and keeps growing outside it. The result is not an exact distance.
+ */
 declare class SdfTwist implements ISdf {
     input: ISdf;
     anglePerUnit: number;
@@ -1387,28 +1559,53 @@ declare class SdfTwist implements ISdf {
     constructor(input: ISdf, anglePerUnit: number, z1?: number, z2?: number);
     distance(p: Vec3): number;
 }
+/**
+ * Revolves a profile around the Y axis: `input` is sampled in its z = 0 plane at (distance from the Y axis, y).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfRevolution implements ISdf {
     input: ISdf;
     constructor(input: ISdf);
     distance(p: Vec3): number;
 }
+/**
+ * Extrudes `input`'s z = 0 section endlessly along Z.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfExtrude implements ISdf {
     input: ISdf;
     constructor(input: ISdf);
     distance(p: Vec3): number;
 }
+/**
+ * Extrudes `input`'s z = 0 section along Z over `height`, centred on z = 0 (flat caps).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfBoundedExtrude implements ISdf {
     input: ISdf;
     halfHeight: number;
     constructor(input: ISdf, height: number);
     distance(p: Vec3): number;
 }
+/**
+ * Mirror symmetry about the plane through the origin with `planeNormal`: the part of `input` on the normal's side is reflected onto the other side (what was there is dropped).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfMirror implements ISdf {
     input: ISdf;
     normal: Vec3;
     constructor(input: ISdf, planeNormal: Vec3);
     distance(p: Vec3): number;
 }
+/**
+ * `count` copies of `input` around the Z axis, 360°/count apart, taken from the sector around +X.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfRadialArray implements ISdf {
     input: ISdf;
     count: number;
@@ -1416,6 +1613,12 @@ declare class SdfRadialArray implements ISdf {
     constructor(input: ISdf, count: number);
     distance(p: Vec3): number;
 }
+/**
+ * Places `input` with a Mat4 (stored inverted; `input` is sampled at transform⁻¹·p).
+ * Exact for rigid transforms; under scaling the distance stays in `input`'s unscaled units.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfTransform implements ISdf {
     input: ISdf;
     private inverse;
@@ -1423,12 +1626,22 @@ declare class SdfTransform implements ISdf {
     setTransform(transform: Mat4): void;
     distance(p: Vec3): number;
 }
+/**
+ * Grows `input` outward by `amount` (shrinks it if negative), which also rounds its edges.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfOffset implements ISdf {
     input: ISdf;
     amount: number;
     constructor(input: ISdf, amount: number);
     distance(p: Vec3): number;
 }
+/**
+ * Weighted sum `a + factor × b`: modulates one field by another (the result is not a true distance).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfGradient implements ISdf {
     a: ISdf;
     b: ISdf;
@@ -1436,13 +1649,31 @@ declare class SdfGradient implements ISdf {
     constructor(a: ISdf, b: ISdf, factor?: number);
     distance(p: Vec3): number;
 }
+/**
+ * Voronoi walls between the fields in `children` (push them in after construction): |d1 − d2| − `offset` over the two
+ * nearest, so the walls are where they are equally near, `2 × offset` thick. 0 everywhere when there are no children.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfVoronoi implements ISdf {
     offset: number;
     children: ISdf[];
     constructor(offset?: number);
     distance(p: Vec3): number;
 }
+/**
+ * Triply periodic minimal surface (TPMS) family for {@link SdfLattice}.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 type LatticeType = "schwarz" | "gyroid" | "diamond" | "lidinoid" | "neovius" | "fischerKoch" | "frd" | "doubleDiamond" | "doubleGyroid" | "s";
+/**
+ * Endless TPMS lattice (gyroid, Schwarz, diamond …) as an implicit field, not a true distance: period 2π·`scale`
+ * on each axis, `offset` shifts the level (solid fraction); `shell: true` gives a wall |f| − offset instead of a solid.
+ * Intersect it with a body to fill that body.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfLattice implements ISdf {
     type: LatticeType;
     scale: number;
@@ -1451,7 +1682,14 @@ declare class SdfLattice implements ISdf {
     constructor(type?: LatticeType, scale?: number, offset?: number, shell?: boolean);
     distance(p: Vec3): number;
 }
+/** Strut layout of one {@link SdfMicrostructure} cell. */
 type MicroPatternType = "bigX" | "grid" | "star" | "cross" | "octagon" | "octet" | "vintile" | "dual" | "interlock" | "isotrop";
+/**
+ * Endless strut lattice: `pattern`'s struts, laid out in one octant of a `cellSize` cube and mirrored to fill it,
+ * tiled through space; `strutRadius` is the strut radius.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SdfMicrostructure implements ISdf {
     cellSize: number;
     strutRadius: number;
@@ -1460,6 +1698,12 @@ declare class SdfMicrostructure implements ISdf {
     constructor(cellSize?: number, strutRadius?: number, pattern?: MicroPatternType);
     distance(p: Vec3): number;
 }
+/**
+ * Queries on any {@link ISdf}: central-difference `gradient`, sphere-tracing `rayMarch`, `surfaceNormal`,
+ * `projectToSurface`, `estimateCurvature` (Laplacian) and `ambientOcclusion` (0..1, 1 = open).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare const SdfUtils: {
     gradient(sdf: ISdf, p: Vec3, epsilon?: number): Vec3;
     rayMarch(sdf: ISdf, origin: Vec3, direction: Vec3, maxDistance?: number, tolerance?: number, maxSteps?: number): {
@@ -1471,6 +1715,13 @@ declare const SdfUtils: {
     estimateCurvature(sdf: ISdf, p: Vec3, epsilon?: number): number;
     ambientOcclusion(sdf: ISdf, surfacePoint: Vec3, normal: Vec3, samples?: number, maxDistance?: number): number;
 };
+/**
+ * One-call wrappers that return a new {@link ISdf}: `translate`, `rotateX|Y|Z` (radians), `scale` (via
+ * {@link SdfTransform}), `union`, `intersect`, `subtract`, `blend`, `shell`, `round`, `mirror`, `twist`, `revolve`.
+ *   const s = SdfOps.translate(new SdfSphere(1), 0, 0, 2);
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare const SdfOps: {
     translate(sdf: ISdf, x: number, y: number, z: number): ISdf;
     rotateX(sdf: ISdf, radians: number): ISdf;
@@ -1497,6 +1748,10 @@ declare const SdfOps: {
  * Useful for: rigid body simulation, collision detection, hit testing.
  */
 
+/**
+ * 2D capsule (stadium): a segment of `2 × halfLength` through `center` at `angle` (radians), swept by a disk of `radius`.
+ * Mutable — it is the shape of a `RigidBody2D` — with signed distance, hit testing and grab handles for dragging.
+ */
 declare class Capsule2D {
     /** Center position */
     center: Vec2;
@@ -1548,12 +1803,21 @@ declare class Capsule2D {
  * Mirrors HDGEO.Core.Physics.SpringSystem3DHinge.
  */
 
+/** A linear spring between particles `i` and `j` of a `SpringSystem3D`; `k` is ignored while `useGlobalStiffness` is on. */
 interface Spring {
     i: number;
     j: number;
     restLength: number;
     k: number;
 }
+/**
+ * Spring-mass simulation of a `Mesh`: `initFromMesh` makes a particle per node with edge, quad-diagonal and hinge
+ * springs (optionally a second truss layer), `step(dt)` integrates in substeps, `updateMesh` writes positions back.
+ * The defaults are Y-up: gravity −Y and a floor at y = −10; for a Z-up model set both
+ * (`gravity = new Vec3(0, 0, -9.81)`, `floorPlane = new Plane(new Vec3(0, 0, 1), d)`).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare class SpringSystem3D {
     pos: Vec3[];
     vel: Vec3[];
@@ -1588,11 +1852,16 @@ declare class SpringSystem3D {
  * velocity integration, and box constraint with angular impulse.
  */
 
+/** Per-frame damping factors and wall restitution of a `RigidBody2D`. */
 interface RigidBodyConfig {
     damping?: number;
     angularDamping?: number;
     wallRestitution?: number;
 }
+/**
+ * A 2D rigid body with a `Capsule2D` shape (x, y, angle in radians), stepped per frame without a dt:
+ * apply forces at points, `integrate()`, then `constrainToBox` to bounce off walls. Mass and inertia come from the shape.
+ */
 declare class RigidBody2D {
     shape: Capsule2D;
     vx: number;
@@ -1624,6 +1893,7 @@ declare class RigidBody2D {
     /** Kill all velocities. */
     stop(): void;
 }
+/** Stiffness and damping of a `Spring2D`. */
 interface SpringConfig {
     stiffness?: number;
     damping?: number;
@@ -1672,6 +1942,7 @@ declare function repelBodies(a: RigidBody2D, b: RigidBody2D, stiffness?: number)
  *   lab.flatMesh(mesh);
  */
 
+/** Options for `IfcFile.parse`: where web-ifc.wasm is served (default "/"), whether to recentre on the bounding-box centre (default true, so site coordinates don't break WebGL precision), and a progress callback. */
 interface IfcParseOptions {
     /** Directory (with trailing slash) where web-ifc.wasm is served. Default: '/'. */
     wasmPath?: string;
@@ -1682,6 +1953,13 @@ interface IfcParseOptions {
     /** Optional progress / stats callback. */
     onProgress?: (msg: string) => void;
 }
+/**
+ * IFC import as one fused mesh, for context geometry that nobody selects;
+ * use `IfcModel` to keep elements apart. Needs the optional `web-ifc`
+ * dependency and its wasm served by the app.
+ *
+ *   const mesh = await IfcFile.parse(buf, { wasmPath: '/' });
+ */
 declare const IfcFile: {
     /**
      * Parse an IFC file (as ArrayBuffer) into a single fused FlatMeshData.
@@ -1712,6 +1990,7 @@ declare const IfcFile: {
  * kept alongside in `psets` for when the distinction matters.
  */
 
+/** Options for `IfcModel.parse`: where web-ifc.wasm is served, recentring, and whether to read property sets, the spatial tree and relations (all default true). */
 interface IfcParseElementsOptions {
     /** Directory (with trailing slash) where web-ifc.wasm is served. Default: '/'. */
     wasmPath?: string;
@@ -1765,6 +2044,7 @@ interface IfcRelations {
     partOf?: number;
     parts?: number[];
 }
+/** One element from `IfcModel.parse`: express id, IFC class, name and GlobalId, its own mesh, its property and quantity values (flattened and by set) and the relations the file states. */
 interface IfcElementData {
     expressID: number;
     /** "IfcSlab", "IfcWall", ... in IFC's own casing where web-ifc reports it. */
@@ -1787,12 +2067,14 @@ interface IfcElementData {
      */
     relations?: IfcRelations;
 }
+/** A node of the model's spatial structure (project, site, building, storey, …) as web-ifc reports it: express id, class, name and children. */
 interface IfcSpatialNode {
     expressID: number;
     ifcClass: string;
     name?: string;
     children: IfcSpatialNode[];
 }
+/** What `IfcModel.parse` returns: the elements, the spatial tree, the recentring offset, and `lengthScale`, the metres per length unit of the file. */
 interface IfcModelData {
     elements: IfcElementData[];
     tree?: IfcSpatialNode;
@@ -1809,6 +2091,13 @@ interface IfcModelData {
      */
     lengthScale: number;
 }
+/**
+ * IFC import per element: each keeps its mesh, IFC class, property and
+ * quantity sets and stated relations, so an app can select and inspect it.
+ * Same optional `web-ifc` dependency and wasm setup as `IfcFile`.
+ *
+ *   const model = await IfcModel.parse(buf, { wasmPath: '/' });
+ */
 declare const IfcModel: {
     /**
      * Parse an IFC file into its elements, each with geometry and properties.
@@ -1826,6 +2115,8 @@ declare const IfcModel: {
  * Opening, attachment, and dimension math becomes trivial 1D/2D in this frame.
  * Multi-segment walls have one RibbonFrame per segment with a `uOffset` equal
  * to the cumulative arc-length up to that segment.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 declare class RibbonFrame {
     readonly origin: Vec2;
@@ -1888,6 +2179,7 @@ declare class RibbonEndTrim {
     constructor(leftTrimPoint: Vec2, leftTrimDir: Vec2, rightTrimPoint: Vec2, rightTrimDir: Vec2);
     static bothSides(pointOnLine: Vec2, lineDirection: Vec2): RibbonEndTrim;
 }
+/** Centerline (XY, at least 2 points) and section of an `ExtrudedRibbon`; defaults are width 0.2 m, height 3 m, baseZ 0. */
 interface ExtrudedRibbonOptions {
     centerline: Vec2[];
     width?: number;
@@ -1897,8 +2189,14 @@ interface ExtrudedRibbonOptions {
 /**
  * Maximum miter extension as a multiple of half-width.
  * Clamps acute angles to avoid self-intersection.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 declare const MITER_LIMIT = 6;
+/**
+ * A 2D polyline centerline offset by ±width/2 and extruded up Z by `height` (Z-up, metres), with mitered
+ * corners and rectangular `openings` cut through both faces. The pure geometry under walls, masses and fences.
+ */
 declare class ExtrudedRibbon {
     centerline: Vec2[];
     width: number;
@@ -1917,12 +2215,14 @@ declare class ExtrudedRibbon {
      */
     buildInto(buf: MeshBuffers, startTrim: RibbonEndTrim | null, endTrim: RibbonEndTrim | null): void;
 }
+/** Growable position/normal/index arrays that ribbons append into; `finishMesh` turns them into one `Mesh`. */
 interface MeshBuffers {
     positions: number[];
     normals: number[];
     indices: number[];
 }
 
+/** How a joint trims its ribbons: `"mitered"` cuts each to the angular bisector; `"butt"` lets one ribbon run through and stops the others at its inside face. */
 type JointStyle = "mitered" | "butt";
 /**
  * Kind of joint, derived from how many ribbons touch and how.
@@ -1955,6 +2255,10 @@ type JointTrim = {
     start?: RibbonEndTrim | null;
     end?: RibbonEndTrim | null;
 };
+/**
+ * A plan point where 2+ ribbons meet. Owns the trim policy (`style`, `throughRibbon`) so the trim math
+ * lives in one place; `computeTrims()` turns it into end trims per ribbon. `WallJoint` wraps it for BIM.
+ */
 declare class RibbonJoint {
     readonly participants: JointParticipant[];
     readonly point: Vec2;
@@ -1969,6 +2273,10 @@ declare class RibbonJoint {
     private computeButtTrims;
 }
 
+/**
+ * A set of `ExtrudedRibbon`s with their `RibbonJoint`s (L/T/X/Y), detected from the centerlines on first
+ * need and editable before meshing; `buildMesh()` trims every ribbon at its joints and merges them into one `Mesh`.
+ */
 declare class RibbonSystem {
     readonly ribbons: ExtrudedRibbon[];
     joints: RibbonJoint[];
@@ -2294,7 +2602,9 @@ interface Presence {
     color: string;
     state: Record<string, unknown>;
 }
+/** Connection state of a `SharedStore` (the `PresenceBar` dot). */
 type CollabStatus = "offline" | "connecting" | "online" | "error";
+/** The callbacks an adapter's `subscribe` calls: live records, the presence list, broadcasts and connection status. */
 interface CollabEvents {
     record(rec: SharedRecord): void;
     presence(list: Presence[]): void;
@@ -2320,6 +2630,7 @@ interface CollabAdapter {
     /** Called with the user whenever sign-in changes. Returns the unsubscribe. */
     onUser?(cb: (user: CollabUser | null) => void): () => void;
 }
+/** Options for `new SharedStore(...)`: the document name, the backend adapter and an optional presence colour. */
 interface SharedStoreOptions {
     /** Document name: every client with the same name shares the records. */
     doc: string;
@@ -2455,6 +2766,7 @@ declare function supabaseAdapter(client: SupabaseLike, opts?: {
 
 /** Mechanical connection class. Influences fastener listing / structural calc. */
 type ConnectionType = "screwed" | "nailed" | "glued" | "mortise" | "metalBracket" | "boltedPlate" | "unspecified";
+/** Options for `new WallJoint(...)`: the geometric `RibbonJoint` it wraps, the walls that meet there, and connection type, fastener count and Psets for IFC export. */
 interface WallJointOptions {
     ribbonJoint: RibbonJoint;
     walls: Wall[];
@@ -2488,6 +2800,7 @@ declare class WallJoint {
 type DoorOperation = "single_swing_left" | "single_swing_right" | "double_swing" | "double_door_single_swing" | "sliding" | "folding" | "revolving" | "not_defined";
 /** How a window is partitioned. Maps to `IfcWindowTypePartitioningEnum`. */
 type WindowPartitioning = "single_panel" | "double_panel_vertical" | "double_panel_horizontal" | "triple_panel" | "not_defined";
+/** Options for `new OpeningType(...)`: name, door or window, how it operates or is partitioned, material and Pset properties. */
 interface OpeningTypeOptions {
     name: string;
     /** "door" → IfcDoor(Type); "window" → IfcWindow(Type). Default "door". */
@@ -2571,6 +2884,7 @@ declare class WallOpening {
     static door(centerlinePosition: number, width?: number, headHeight?: number): WallOpening;
     static window(centerlinePosition: number, width?: number, sillHeight?: number, headHeight?: number): WallOpening;
 }
+/** Centerline (XY, metres) and section of a `Wall`; `thickness`/`height`/`baseElevation` become the ribbon's width/height/baseZ (defaults 0.2 m, 3 m, 0). */
 interface WallOptions {
     centerline: Vec2[];
     thickness?: number;
@@ -2682,6 +2996,7 @@ declare class WallSystem {
  *   monolithic                       → IfcSlab (the whole envelope as one piece)
  */
 type SlabPartRole = "joist" | "beam" | "header" | "blocking" | "sheathing" | "decking" | "topping" | "insulation" | "ceiling" | "monolithic" | string;
+/** One mesh sub-element of a slab (a joist, the sheathing, the ceiling) with the material, profile and length a cut list or the IFC exporter needs; `ifcType` defaults from `role`. */
 interface SlabPart {
     name: string;
     role: SlabPartRole;
@@ -2721,7 +3036,9 @@ interface SlabContext {
     /** Walls that support this slab (used by joisted constructions). */
     supports?: Wall[];
 }
+/** How a slab type turns a slab into parts (joists, plates, coverings), e.g. `JoistedSlab({...})` or `SolidSlabConstruction`; return `[]` for a purely layered slab. */
 type SlabConstruction = (slab: Slab, ctx?: SlabContext) => SlabPart[];
+/** Options for `new SlabType(...)`: name, construction, material layers, Pset properties and joist defaults. */
 interface SlabTypeOptions {
     name: string;
     description?: string;
@@ -2769,6 +3086,7 @@ declare class SlabType {
     constructor(opts: SlabTypeOptions);
     get layeredThickness(): number;
 }
+/** Options for `new Slab(...)`: a closed XY footprint, thickness (default 0.2 m) and top elevation in Z (default 0), plus type, Psets, openings and a joist-direction override. */
 interface SlabOptions {
     /**
      * Closed XY polygon defining the slab footprint. Must be closed
@@ -2792,6 +3110,12 @@ interface SlabOptions {
      */
     joistDirection?: Vec2;
 }
+/**
+ * A floor, ceiling or roof slab: a closed XY footprint extruded down by
+ * `thickness` from its top at `elevation` (Z-up, metres). `toMesh()` is
+ * the plain envelope; give it a `SlabType` and call `realizeSlab` for
+ * the parts.
+ */
 declare class Slab {
     readonly boundary: Vec2[];
     thickness: number;
@@ -2816,6 +3140,7 @@ declare class Slab {
      */
     toMesh(): Mesh;
 }
+/** The result of `realizeSlab(slab)`: the construction's parts, the type's layers, the envelope mesh, the merged Pset (instance over type) and the context's joist direction, if one was passed. */
 interface RealizedSlab {
     slab: Slab;
     parts: SlabPart[];
@@ -2824,8 +3149,15 @@ interface RealizedSlab {
     properties: PropertyMap;
     joistDirection?: Vec2;
 }
+/**
+ * Apply a slab's type to get its parts, layers, envelope mesh and merged
+ * Psets; without a type construction there are no parts, only the
+ * envelope. Pure. Pass a `SlabContext` to set the joist direction or
+ * name the supporting walls.
+ */
 declare function realizeSlab(slab: Slab, ctx?: SlabContext): RealizedSlab;
 
+/** Options for `new Space(...)`: name, XY boundary (≥ 3 points, metres), floor elevation (default 0), clear height (default 2.7 m), room function and Psets. */
 interface SpaceOptions {
     name: string;
     /** Boundary polygon in the XY ground plane (CCW), in metres. */
@@ -2870,6 +3202,7 @@ declare function boundingWalls(space: Space, walls: Wall[], tol?: number): Wall[
 
 /** Overall stair shape — maps to `IfcStairTypeEnum`. */
 type StairShape = "straight_run" | "two_straight_run" | "quarter_turn" | "half_turn" | "spiral" | "not_defined";
+/** Options for `new StairType(...)`: name, overall shape (default "straight_run"), material, description and Psets. */
 interface StairTypeOptions {
     name: string;
     /** Overall shape. Default "straight_run". */
@@ -2902,6 +3235,7 @@ interface StairFlight {
     riserHeight: number;
     treadDepth: number;
 }
+/** Options for `new Stair(...)`: a straight run from `start` (Z-up, metres) along `direction`, climbing `totalRise` in even risers near `riserHeight` (default 0.18) with `treadDepth` goings (default 0.27). */
 interface StairOptions {
     name?: string;
     /** Bottom of the stair: centre of the flight width at floor level. */
@@ -2947,6 +3281,7 @@ declare class Stair {
     flights(): StairFlight[];
 }
 
+/** Options for `new IfcWriter(...)`: project, site, building and default-storey names, that storey's elevation (m), the author and application written into the file, and the MVD (default DesignTransferView_V1.0). */
 interface IfcWriterOptions {
     projectName?: string;
     projectDescription?: string;
@@ -2962,6 +3297,7 @@ interface IfcWriterOptions {
     /** Default: ViewDefinition [DesignTransferView_V1.0] — the round-trippable MVD. */
     viewDefinition?: string;
 }
+/** Options for `IfcWriter.addWallSystem`: whether to emit framed members, joint relations, openings and material layer sets (all default true). */
 interface AddWallSystemOptions {
     /** Aggregate framed members (studs, plates, headers) under each wall. Default: true. */
     includeMembers?: boolean;
@@ -3222,6 +3558,7 @@ declare class IfcWriter {
  */
 declare const SolidConstruction: WallConstruction;
 
+/** Options for `BalloonFrame`: stud and plate profiles, stud spacing, single or doubled top plate, header depth by opening width, and material (defaults SPF 2×4 @ 0.4 m, doubled top plate). */
 interface BalloonFrameOptions {
     /** Stud cross-section. Default: SPF 2×4 nominal (38 × 89 mm actual). */
     studProfile?: PartProfile;
@@ -3248,6 +3585,7 @@ interface BalloonFrameOptions {
  */
 declare function BalloonFrame(options?: BalloonFrameOptions): WallConstruction;
 
+/** Options for `HolzrahmenBau`: stud and plate profiles, stud spacing, Rähm count, header depth by opening width, material and Doppelständer at openings (defaults KVH 60×120 @ 0.625 m, single Rähm). */
 interface HolzrahmenBauOptions {
     /** Stud cross-section. Default: KVH 60×120 (engineered softwood). */
     studProfile?: PartProfile;
@@ -3345,6 +3683,7 @@ declare function holzrahmenbauLayers(opts?: {
     };
 }): MaterialLayer[];
 
+/** Options for `cltLayers`: lamella thicknesses interior → exterior (default 5-ply, 160 mm) and timber grade (default "C24"). */
 interface CltOptions {
     /**
      * Lamella thicknesses, in order interior → exterior, in metres.
@@ -3448,6 +3787,7 @@ declare function lineClipPolygon(origin: Vec2, direction: Vec2, boundary: Vec2[]
  */
 declare const SolidSlabConstruction: SlabConstruction;
 
+/** Options for `JoistedSlab`: joist profile, spacing and material, the rim joist, edge and bearing offsets, and the sheathing and ceiling layers (metres; defaults KVH 60×220 @ 0.625, 22 mm OSB, 12.5 mm ceiling). */
 interface JoistedSlabOptions {
     /** Joist cross-section. Default: KVH 60×220 (typical timber-joist size). */
     profile?: PartProfile;
@@ -3543,6 +3883,7 @@ interface Box {
  * throw away the half that matters.
  */
 type Contact = "supports" | "supportedBy" | "abuts" | "overlaps";
+/** One touching pair from `findAdjacent`: element ids `a` and `b`, how `a` meets `b`, and the tolerance it was found at (an inference, not a stated relation). */
 interface Adjacency {
     a: number;
     b: number;
@@ -3556,6 +3897,7 @@ interface Adjacency {
 }
 /** Up, as an axis index. Tekto and IFC are Z-up; three.js content is Y-up. */
 type UpAxis = 0 | 1 | 2;
+/** Options for `contactBetween` / `findAdjacent`: contact tolerance (default 0.05), up axis (default 2, Z) and minimum shared footprint (default 0.02). */
 interface AdjacencyOptions {
     /** How close counts as touching, in model units. 0.05 for metres is a
      *  builder's tolerance: it catches a wall drawn 30 mm off a slab and does
@@ -3582,7 +3924,11 @@ declare function contactBetween(a: Box, b: Box, opts?: AdjacencyOptions): {
     contact: Contact;
     overlap: number;
 } | null;
-/** The opposite sense, so both elements can be asked the same question. */
+/**
+ * The opposite sense, so both elements can be asked the same question.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function reverse(contact: Contact): Contact;
 /**
  * Every touching pair among these elements.
@@ -3638,6 +3984,7 @@ interface DocChange<S extends DocSchema = DocSchema> {
 }
 /** Where a batch of changes came from: this client, another client, or undo/redo. */
 type DocChangeSource = "local" | "remote" | "history";
+/** Options for one edit (`add`/`update`/`remove`/`transact`): its undo label, coalescing key, and whether it is undoable. */
 interface DocEditOptions {
     /** Shown as "Undo <label>"; default from the operation ("Add blocks", "Edit blocks"…). */
     label?: string;
@@ -3646,6 +3993,7 @@ interface DocEditOptions {
     /** Leave this change out of the undo history (view state, imports). */
     undoable?: boolean;
 }
+/** Options for `new Doc(...)`: its name, storage adapter and undo history settings. */
 interface DocOptions {
     /** Document name: with a shared adapter, every client using it edits the same records. */
     name: string;
@@ -3830,5 +4178,22 @@ interface PickingView {
  * unsubscribe.
  */
 declare function selectOnClick(view: PickingView, scene: Scene, selection: Selection): () => void;
+/** What `shareSelection` draws others' selections with: structurally a ThreeRenderer. */
+interface PresenceView {
+    setPresenceHighlight(entries: readonly {
+        ids: readonly string[];
+        color: string;
+    }[]): void;
+}
+/**
+ * Share a selection with everyone on the same document: this client's selected record keys go
+ * into its presence, and `view` outlines what the others have selected, each in their presence
+ * colour — so two people (or a person and an agent) see who is on what before they collide.
+ * Others' outlines follow their records through rebuilds. Returns the unsubscribe (which also
+ * withdraws this client's selection).
+ *
+ *   shareSelection(selection, doc.store, app.renderer, app.scene);
+ */
+declare function shareSelection(selection: Selection, store: SharedStore<any>, view?: PresenceView, scene?: Scene): () => void;
 
-export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, type CollabAdapter, type CollabEvents, type CollabStatus, type CollabUser, type ConnectionType, type Contact, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, Doc, type DocChange, type DocChangeSource, type DocEditOptions, type DocJSON, type DocOptions, type DocSchema, type DoorOperation, ExtrudedRibbon, type ExtrudedRibbonOptions, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type LatticeType, type LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, type MicroPatternType, MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, type PerpSegment, type PickingView, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, PolylineCurve, type Presence, type PropertyMap, Ray, type RealizedSlab, type RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, Ring2, Scene, type SceneBinding, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Selection, type SharedRecord, SharedStore, type SharedStoreOptions, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type SupabaseLike, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, bindScene, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, localAdapter, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverse as reverseContact, selectOnClick, supabaseAdapter };
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, type CollabAdapter, type CollabEvents, type CollabStatus, type CollabUser, type ConnectionType, type Contact, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, Doc, type DocChange, type DocChangeSource, type DocEditOptions, type DocJSON, type DocOptions, type DocSchema, type DoorOperation, ExtrudedRibbon, type ExtrudedRibbonOptions, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type LatticeType, type LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, type MicroPatternType, MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, type PerpSegment, type PickingView, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, PolylineCurve, type Presence, type PresenceView, type PropertyMap, Ray, type RealizedSlab, type RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, Ring2, Scene, type SceneBinding, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Selection, type SharedRecord, SharedStore, type SharedStoreOptions, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type SupabaseLike, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, bindScene, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, localAdapter, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverse as reverseContact, selectOnClick, shareSelection, supabaseAdapter };

@@ -1,10 +1,11 @@
-import { M as Mesh, V as Vec3, b as Vec2, A as AABB } from './Scene-BsMmRZP7.js';
+import { M as Mesh, V as Vec3, b as Vec2, A as AABB } from './Scene-CaG0H74_.js';
 
 /**
  * Tekto HMath — Scalar math utilities.
  *
  * Mirrors HDGEO.Core.HMath.
  */
+/** Scalar helpers: `DEG2RAD` / `RAD2DEG`, `EPSILON`, `clamp`, `lerp`, `smoothstep`, `remap` … (also exported as `MathUtils`). */
 declare const HMath: {
     DEG2RAD: number;
     RAD2DEG: number;
@@ -106,6 +107,7 @@ declare const MeshFactory: {
  * Mirrors HDGEO.Core.OBB2D.
  */
 
+/** Oriented 2D rectangle: `width` along `angle` (radians), `height` across it, centred on `center`; `Polygon2D.minAreaRect` returns one. */
 declare class OBB2D {
     readonly center: Vec2;
     readonly width: number;
@@ -130,6 +132,7 @@ declare class OBB2D {
  * Mirrors HDGEO.Core.Polygon2D.
  */
 
+/** Fillet arc from {@link Polygon2D.filletRays}: tangent points on the two rays, angles in radians, `sweepAngle` signed (+ = CCW). */
 interface FilletResult {
     center: Vec2;
     radius: number;
@@ -301,6 +304,7 @@ declare function polygonIntersection(subjPoly: Vec2[], clipPoly: Vec2[]): Vec2[]
  *
  * Import from the new locations for new code.
  */
+/** `Polygon2D` and `MeshAnalysis` in one namespace (kept for older code); new code imports those two directly. */
 declare const Algo: {
     meshVolume(mesh: Mesh): number;
     meshSurfaceArea(mesh: Mesh): number;
@@ -375,6 +379,7 @@ declare function noise(x: number, y?: number, z?: number): number;
  * Uses mulberry32 algorithm — fast, compact, good distribution.
  * Matches HDGEO's Random() / RandomSeed() API.
  */
+/** Seeded random generator (mulberry32) from {@link createRandom}: the same seed gives the same sequence. */
 interface SeededRandom {
     /** Returns a random float. 0 args → [0,1). 1 arg → [0,max). 2 args → [min,max). */
     random(min?: number, max?: number): number;
@@ -405,8 +410,11 @@ declare function createRandom(seed?: number): SeededRandom;
  * outer rings are CCW and holes CW, following polygon-clipping's convention.
  */
 
+/** One polygon ring, open (no repeated closing vertex); any winding on input. */
 type Ring2 = Vec2[];
+/** A polygon with holes: `[outer, ...holes]`; outputs are outer CCW, holes CW. */
 type Poly2 = Ring2[];
+/** Zero or more disjoint polygons with holes — the input and output of {@link PolygonBool}. */
 type MultiPoly2 = Poly2[];
 /** Set the coordinate snap grid used before boolean ops (mm). 0 disables it. */
 declare function setClipSnap(grid: number): void;
@@ -444,6 +452,7 @@ declare const PolygonBool: {
  * Mirrors HDGEO.Core.Segment.
  */
 
+/** Immutable 3D line segment from `a` to `b`: parameter t (0 = a, 1 = b), closest points, distances to points and to other segments. */
 declare class Segment {
     readonly a: Vec3;
     readonly b: Vec3;
@@ -480,7 +489,13 @@ declare class Segment {
     reversed(): Segment;
     toString(): string;
 }
+/** Closest point to `p` on segment a→b (point first — `Intersections.closestPointOnSegment` takes it last). */
 declare function closestPointOnSegment(p: Vec3, a: Vec3, b: Vec3): Vec3;
+/**
+ * Closest points between 3D segments a1→a2 and b1→b2, with their parameters `t` (on a) and `u` (on b), both 0..1.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function segmentSegmentClosest(a1: Vec3, a2: Vec3, b1: Vec3, b2: Vec3): {
     pointA: Vec3;
     pointB: Vec3;
@@ -531,6 +546,7 @@ interface DrawOptions extends LineStyle {
     layer?: string;
     key?: string;
 }
+/** Style, size and placement of a view's `text` and of a `leader`'s label. */
 interface TextOptions extends DrawOptions {
     /** Height in paper millimetres (default 2.5). */
     size?: number;
@@ -539,6 +555,7 @@ interface TextOptions extends DrawOptions {
     align?: "left" | "center" | "right";
     baseline?: "bottom" | "middle" | "top";
 }
+/** Options for `dim` and `radius`: where the dimension line sits, what it measures, and how the length is written. */
 interface DimOptions extends DrawOptions {
     /** Distance of the dimension line from the measured points, in paper mm (default 8;
      *  negative puts it on the other side). */
@@ -553,6 +570,7 @@ interface DimOptions extends DrawOptions {
     /** Text height in paper mm (default 2.5). */
     size?: number;
 }
+/** Options for a `level` mark: the value it writes (metres) and the text's format and size. */
 interface LevelOptions extends DrawOptions {
     /** The level to write (default: the point's y in the view — its height in an elevation). */
     value?: number;
@@ -563,6 +581,7 @@ interface LevelOptions extends DrawOptions {
     /** Text height in paper mm (default 2.5). */
     size?: number;
 }
+/** How a view sits on the sheet (`sheet.view(name, opts)`): position, rotation, enlargement, the 3D projection of its input, and a title. */
 interface ViewOptions {
     /** Where the view's origin sits on the sheet, in sheet (model) units. */
     at?: PtIn;
@@ -581,6 +600,7 @@ interface ViewOptions {
     /** Title drawn under the view's bounds ("Plan 1:50"); sized in paper mm. */
     title?: string;
 }
+/** Options for `new Sheet(...)`: the drawing scale and the named layer styles. */
 interface SheetOptions {
     /** Drawing scale: 50 means 1:50 (default 1). */
     scale?: number;
@@ -589,12 +609,14 @@ interface SheetOptions {
         fill?: string;
     }>;
 }
+/** An entity's final style after its layer and overrides: layer name, colour, pen weight (paper mm) and dash. */
 interface ResolvedStyle {
     layer: string;
     color: string;
     weight: number;
     dash: Dash;
 }
+/** One exploded primitive in sheet coordinates (model units, text height included) — the list `explode()` returns and every output draws. */
 type SheetPrim = {
     kind: "polyline";
     points: Pt[];
@@ -798,6 +820,7 @@ declare function pickPrim(prims: readonly SheetPrim[], p: Pt, tolerance: number)
  * imports them from here; the underscore names are internal, not part of the API.
  */
 
+/** A layer for the LAYER table: name (sanitized to an R12 token on write), ACI colour (default 7) and line type (only `writeDxf2D` writes it; the others use CONTINUOUS). */
 interface DxfLayerDef {
     name: string;
     /** AutoCAD Color Index (ACI): 1=red 2=yellow 3=green 4=cyan 5=blue 7=white */
@@ -864,23 +887,25 @@ interface Dxf2DPoint {
     x: number;
     y: number;
 }
-/** A polyline in the drawing plane; emitted as an R12 2D POLYLINE (closed = the ring is shut). */
 /** What a 2D entity may set beyond its layer: an ACI colour (1 red … 7 white/black) and an R12
  *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. */
 interface Dxf2DLook {
     color?: number;
     linetype?: "DASHED" | "HIDDEN" | "DOTTED" | "CENTER";
 }
+/** A polyline in the drawing plane for `writeDxf2D`; emitted as an R12 2D POLYLINE (`closed` shuts the ring). */
 interface Dxf2DPolyline extends Dxf2DLook {
     layer: string;
     points: Dxf2DPoint[];
     closed?: boolean;
 }
+/** A straight segment in the drawing plane for `writeDxf2D`; emitted as a LINE. */
 interface Dxf2DLine extends Dxf2DLook {
     layer: string;
     start: Dxf2DPoint;
     end: Dxf2DPoint;
 }
+/** A circle in the drawing plane for `writeDxf2D`; emitted as a CIRCLE, dropped if the radius is degenerate. */
 interface Dxf2DCircle extends Dxf2DLook {
     layer: string;
     center: Dxf2DPoint;

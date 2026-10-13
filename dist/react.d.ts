@@ -1,15 +1,33 @@
-import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Params-C5uOYti3.js';
+import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Params-op8yBPbB.js';
 import React, { ReactNode, CSSProperties } from 'react';
-import { S as Scene, a as SceneObject } from './Scene-BsMmRZP7.js';
+import { S as Scene, a as SceneObject } from './Scene-CaG0H74_.js';
 
+/**
+ * The `Scene` of the enclosing `<TektoApp>`; throws outside one.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function useScene(): Scene;
+/**
+ * Provides a `Scene` (the one passed in, or a new one) to its children; `useScene` and the other hooks need it above them.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function TektoApp({ scene: extScene, children, }: {
     scene?: Scene;
     children: ReactNode;
 }): React.JSX.Element;
-/** Reactively watch all scene objects */
+/**
+ * Reactively watch all scene objects
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function useSceneObjects(): SceneObject[];
-/** Watch selection */
+/**
+ * Watch selection
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function useSelection(): {
     ids: string[];
     select: (id: string) => void;
@@ -18,7 +36,11 @@ declare function useSelection(): {
     clear: () => void;
     isSelected: (id: string) => boolean;
 };
-/** Use a ParamStore reactively */
+/**
+ * Use a ParamStore reactively
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function useParams<S extends ParamSchema>(store: ParamStore<S>): {
     values: ParamValues<S>;
     set: (key: string, value: any) => void;
@@ -31,12 +53,27 @@ interface ParamPanelProps {
     style?: CSSProperties;
     className?: string;
 }
+/**
+ * A React panel generated from a `ParamStore`: one control per param, grouped into folders by an optional `ParamLayout`, kept in sync with the store.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function ParamPanel({ store, layout, title, style, className }: ParamPanelProps): React.JSX.Element;
+/**
+ * A list of the scene's objects (type, id, label); clicking one toggles its selection and calls `onSelect`.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function InspectorPanel({ style, className, onSelect, }: {
     style?: CSSProperties;
     className?: string;
     onSelect?: (id: string) => void;
 }): React.JSX.Element;
+/**
+ * One `Toolbar` button: label, optional icon, click handler, `active` highlight and `group`; `shortcut` only appears in the tooltip.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 interface ToolbarAction {
     key: string;
     label: string;
@@ -46,6 +83,11 @@ interface ToolbarAction {
     active?: boolean;
     group?: string;
 }
+/**
+ * A row of buttons with a divider between `group`s; `active` ones are highlighted. Shortcuts are shown in the tooltip, not bound.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 declare function Toolbar({ actions, style, className, }: {
     actions: ToolbarAction[];
     style?: CSSProperties;
@@ -57,6 +99,8 @@ declare function Toolbar({ actions, style, className, }: {
  * `meta` is the part that earns a closed section its place on screen: a count,
  * a total, a setting. A header that says only "Cut list" is worth nothing shut;
  * one that says "Cut list, 94 pieces" answers the question most readers had.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 interface AccordionSection {
     id: string;
@@ -81,6 +125,11 @@ interface AccordionSection {
     hint?: string;
     children: ReactNode;
 }
+/**
+ * Props of `AccordionColumn`: its sections, the `localStorage` key for open state and heights, and class names for the host's styling.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
 interface AccordionColumnProps {
     sections: AccordionSection[];
     /** localStorage key for what is open and how tall. Omit to keep it per mount. */
@@ -115,6 +164,8 @@ interface AccordionColumnProps {
  * The flexible section takes the leftover until a sash gives it a height of its
  * own; from then on it is a section like the others, which is what makes a
  * boundary stay where it was put.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 declare function AccordionColumn({ sections, storageKey, className, style, classes, }: AccordionColumnProps): React.JSX.Element;
 /**
@@ -129,6 +180,8 @@ declare function AccordionColumn({ sections, storageKey, className, style, class
  * click, so it works with a mouse, a keyboard and a finger. Positioned to the
  * right-bottom of the mark by default; a host that needs it elsewhere styles
  * the box.
+ *
+ * @experimental No app uses this yet; it may still change.
  */
 declare function InfoHint({ text, className, boxClassName, label }: {
     text: ReactNode;

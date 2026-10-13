@@ -361,6 +361,10 @@ var ParamStore = class {
       value = Math.max(def.min, Math.min(def.max, value));
       if (def.type === "int") value = Math.round(value);
     }
+    if (def.type === "vec3" && Array.isArray(value)) {
+      const lo = def.min, hi = def.max;
+      value = value.map((v, i) => Math.max(lo?.[i] ?? -Infinity, Math.min(hi?.[i] ?? Infinity, v)));
+    }
     if (def.type === "select" && !def.options.includes(value)) return;
     this.values[key] = value;
     for (const l of this.listeners) l(key, value, this.values);

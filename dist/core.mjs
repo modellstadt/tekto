@@ -134,8 +134,9 @@ import {
   repelBodies,
   reverse,
   selectOnClick,
+  shareSelection,
   supabaseAdapter
-} from "./chunk-EJK3E2KL.mjs";
+} from "./chunk-K3ANIKKA.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -155,7 +156,7 @@ import {
   stampName,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-K5F6U4JJ.mjs";
+} from "./chunk-K7LUW25N.mjs";
 import {
   Mesh,
   Plane,
@@ -341,6 +342,7 @@ export {
   segmentSegmentClosest,
   selectOnClick,
   setClipSnap,
+  shareSelection,
   stampName,
   supabaseAdapter,
   writeDxf2D,

@@ -2,6 +2,7 @@ import {
   ControlPanel,
   SheetCanvas,
   Sketch2DInstance,
+  addOverlay,
   describeSceneObject,
   drawSheet,
   fitSheet,
@@ -11,8 +12,9 @@ import {
   saveBundle,
   sceneSummary,
   sketch2d,
-  slug
-} from "./chunk-AQT7Y2CN.mjs";
+  slug,
+  snapshotWithOverlays
+} from "./chunk-YFTL3I3X.mjs";
 import {
   Algo,
   ArcCurve,
@@ -149,8 +151,9 @@ import {
   repelBodies,
   reverse,
   selectOnClick,
+  shareSelection,
   supabaseAdapter
-} from "./chunk-EJK3E2KL.mjs";
+} from "./chunk-K3ANIKKA.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -174,7 +177,7 @@ import {
   stampName,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-K5F6U4JJ.mjs";
+} from "./chunk-K7LUW25N.mjs";
 import {
   Mesh,
   Plane,
@@ -1680,7 +1683,7 @@ function extractVisiblePolylines(mesh, polylines, view, options) {
 }
 function polylinesToSVG(segments, bounds2, options) {
   const stroke = options?.stroke ?? "#000";
-  const sw = options?.strokeWidth ?? 0.5;
+  const sw = options?.strokeWidth ?? 2e-3 * Math.max(bounds2.maxU - bounds2.minU, bounds2.maxV - bounds2.minV, 1e-9);
   const pad = options?.padFraction ?? 0.02;
   const w = bounds2.maxU - bounds2.minU;
   const h = bounds2.maxV - bounds2.minV;
@@ -1705,10 +1708,152 @@ function polylinesToSVG(segments, bounds2, options) {
   return parts.join("\n");
 }
 
+// src/gui/Commands.ts
+var isMacPlatform = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
+function keyMatches(binding, e, mac = isMacPlatform()) {
+  const parts = binding.split("+").map((s) => s.trim()).filter(Boolean);
+  const key = binding.endsWith("++") ? "+" : parts.pop();
+  if (!key) return false;
+  const want = { meta: false, ctrl: false, alt: false, shift: false };
+  for (const m of parts) {
+    const k = m.toLowerCase();
+    if (k === "mod") mac ? want.meta = true : want.ctrl = true;
+    else if (k === "meta" || k === "cmd") want.meta = true;
+    else if (k === "ctrl" || k === "control") want.ctrl = true;
+    else if (k === "alt" || k === "option") want.alt = true;
+    else if (k === "shift") want.shift = true;
+  }
+  if (e.metaKey !== want.meta || e.ctrlKey !== want.ctrl || e.altKey !== want.alt) return false;
+  const letterOrNamed = key.length > 1 || /^[a-z0-9]$/i.test(key);
+  if (letterOrNamed && e.shiftKey !== want.shift) return false;
+  return e.key.length === 1 ? e.key.toLowerCase() === key.toLowerCase() : e.key === key;
+}
+function formatKeys(binding, mac = isMacPlatform()) {
+  const parts = binding.split("+").map((s) => s.trim()).filter(Boolean);
+  const key = binding.endsWith("++") ? "+" : parts.pop() ?? "";
+  const has = (...names) => parts.some((p) => names.includes(p.toLowerCase()));
+  const named = mac ? { ArrowUp: "\u2191", ArrowDown: "\u2193", ArrowLeft: "\u2190", ArrowRight: "\u2192", Delete: "\u2326", Backspace: "\u232B", Escape: "\u238B", Enter: "\u21A9" } : { ArrowUp: "\u2191", ArrowDown: "\u2193", ArrowLeft: "\u2190", ArrowRight: "\u2192", Escape: "Esc" };
+  const k = named[key] ?? (key.length === 1 ? key.toUpperCase() : key);
+  if (mac) {
+    return (has("ctrl", "control") ? "\u2303" : "") + (has("alt", "option") ? "\u2325" : "") + (has("shift") ? "\u21E7" : "") + (has("mod", "meta", "cmd") ? "\u2318" : "") + k;
+  }
+  const mods = [has("mod", "ctrl", "control") && "Ctrl", has("meta", "cmd") && "Win", has("alt", "option") && "Alt", has("shift") && "Shift"].filter(Boolean);
+  return [...mods, k].join("+");
+}
+function typing(target) {
+  const el = target;
+  if (!el || typeof el.tagName !== "string") return false;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
+}
+function viewCommands(view) {
+  const v = (id, label) => ({ id: `view.${id}`, label, group: "View", run: () => view.setView(id) });
+  return [
+    { id: "view.fitAll", label: "Frame all", group: "View", run: () => view.fitAll() },
+    v("top", "Plan (top)"),
+    v("front", "Front"),
+    v("right", "Right"),
+    v("back", "Back"),
+    v("left", "Left"),
+    v("iso", "Iso"),
+    {
+      id: "view.toggleProjection",
+      label: "Perspective / orthographic",
+      group: "View",
+      run: () => view.setProjection(view.projection === "perspective" ? "orthographic" : "perspective")
+    }
+  ];
+}
+var Commands = class {
+  constructor() {
+    this.byId = /* @__PURE__ */ new Map();
+    this.listeners = /* @__PURE__ */ new Set();
+  }
+  /** Add commands (an id already there is replaced). Returns a function that removes them. */
+  add(commands) {
+    const list = Array.isArray(commands) ? commands : [commands];
+    for (const c of list) {
+      if (!c.id || typeof c.run !== "function") throw new Error(`Commands.add: a command needs an id and run(), got ${JSON.stringify(c)}`);
+      this.byId.set(c.id, c);
+    }
+    this.emit();
+    return () => {
+      for (const c of list) if (this.byId.get(c.id) === c) this.byId.delete(c.id);
+      this.emit();
+    };
+  }
+  remove(id) {
+    if (this.byId.delete(id)) this.emit();
+  }
+  get(id) {
+    return this.byId.get(id);
+  }
+  has(id) {
+    return this.byId.has(id);
+  }
+  /** Every command, in the order added, with its keys and whether it can run now. */
+  list() {
+    return [...this.byId.values()].map((c) => ({
+      id: c.id,
+      label: c.label,
+      group: c.group,
+      keys: c.keys === void 0 ? [] : typeof c.keys === "string" ? [c.keys] : [...c.keys],
+      enabled: this.canRun(c)
+    }));
+  }
+  /** Run a command by id. False if there is none or it can't run now. */
+  async run(id) {
+    const c = this.byId.get(id);
+    if (!c || !this.canRun(c)) return false;
+    await c.run();
+    return true;
+  }
+  /** The command a key event presses, if any (and enabled). */
+  match(e, mac) {
+    for (const c of this.byId.values()) {
+      const keys = c.keys === void 0 ? [] : typeof c.keys === "string" ? [c.keys] : c.keys;
+      if (keys.some((k) => keyMatches(k, e, mac)) && this.canRun(c)) return c;
+    }
+    return void 0;
+  }
+  /**
+   * Run commands from their keys on `target` (default: the window). Keys typed into a
+   * field stay with the field; a matched key's default is prevented. Returns the unbind.
+   */
+  bindKeys(target = window) {
+    const onKey = (ev) => {
+      const e = ev;
+      if (e.defaultPrevented || typing(e.target)) return;
+      const c = this.match(e);
+      if (!c) return;
+      e.preventDefault();
+      void Promise.resolve(c.run()).catch((err) => console.error(`command ${c.id}:`, err));
+    };
+    target.addEventListener("keydown", onKey);
+    return () => target.removeEventListener("keydown", onKey);
+  }
+  /** Hear when commands are added or removed. Returns the unsubscribe. */
+  onChange(cb) {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  canRun(c) {
+    try {
+      return c.enabled ? c.enabled() !== false : true;
+    } catch {
+      return false;
+    }
+  }
+  emit() {
+    for (const l of this.listeners) l();
+  }
+};
+
 // src/render/ThreeRenderer.ts
-import * as THREE5 from "three";
+import * as THREE10 from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+
+// src/render/ObjectBuilder.ts
+import * as THREE4 from "three";
 
 // src/render/viewRules.ts
 import * as THREE3 from "three";
@@ -1846,12 +1991,724 @@ function orthoFrustum(distance, fovDeg, aspect) {
   return { left: -w / 2, right: w / 2, top: h / 2, bottom: -h / 2 };
 }
 
+// src/render/ObjectBuilder.ts
+var ObjectBuilder = class {
+  constructor(core, lighting) {
+    this.core = core;
+    this.lighting = lighting;
+    this.edgeQueue = [];
+    /** Cached horizontal-stripe textures for print-layer shading, keyed by layer height (m). One texture
+     *  period = one printed bead: bright rounded crown, dark groove at the layer boundary. The pipe UVs
+     *  carry V in metres, so repeat.y = 1/layerH gives physically-true layer spacing. */
+    this._stripeTexCache = /* @__PURE__ */ new Map();
+  }
+  /**
+   * Build a material that respects the current lighting mode. Studio mode
+   * returns an `MeshStandardMaterial` (PBR; reacts correctly to shadows
+   * and tonemapping); Flat mode returns the original `MeshPhongMaterial`.
+   * Same option surface — caller doesn't have to care which one comes back.
+   */
+  makeMaterial(opts) {
+    if (this.lighting.currentLighting === "studio") {
+      return new THREE4.MeshStandardMaterial({
+        color: this.lighting.studioColor ?? opts.color,
+        emissive: opts.emissive,
+        emissiveIntensity: opts.emissiveIntensity,
+        opacity: opts.opacity,
+        transparent: opts.transparent,
+        side: opts.side,
+        wireframe: opts.wireframe,
+        flatShading: opts.flatShading ?? this.lighting.studioFlatShading,
+        depthTest: opts.depthTest,
+        depthWrite: opts.depthWrite,
+        vertexColors: opts.vertexColors,
+        roughness: opts.roughness ?? this.lighting.studioRoughness,
+        metalness: opts.metalness ?? this.lighting.studioMetalness
+      });
+    }
+    const { metalness: _m, roughness: _r, ...rest } = opts;
+    return new THREE4.MeshPhongMaterial(rest);
+  }
+  _stripeTexture(layerH) {
+    let tex = this._stripeTexCache.get(layerH);
+    if (tex) return tex;
+    const H = 64;
+    const cv = document.createElement("canvas");
+    cv.width = 2;
+    cv.height = H;
+    const ctx = cv.getContext("2d");
+    for (let y = 0; y < H; y++) {
+      const t = y / H;
+      const crown = Math.sin(Math.PI * t);
+      const v = Math.round(150 + 105 * Math.pow(crown, 0.7));
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(0, y, 2, 1);
+    }
+    tex = new THREE4.CanvasTexture(cv);
+    tex.wrapS = THREE4.RepeatWrapping;
+    tex.wrapT = THREE4.RepeatWrapping;
+    tex.repeat.set(1, 1 / layerH);
+    tex.anisotropy = 4;
+    this._stripeTexCache.set(layerH, tex);
+    return tex;
+  }
+  /** Build a THREE.Line for a line-type object — dashed material (+ line distances)
+   *  when the style requests it, else a basic line material. */
+  _makeLine(geo, s) {
+    const mat = s.dash ? new THREE4.LineDashedMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1, dashSize: s.dash.size, gapSize: s.dash.gap }) : new THREE4.LineBasicMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1 });
+    const line = new THREE4.Line(geo, mat);
+    if (s.dash) line.computeLineDistances();
+    return line;
+  }
+  convert(obj) {
+    const s = obj.style;
+    switch (obj.type) {
+      case "point": {
+        const geo = new THREE4.SphereGeometry(s.pointSize, 12, 12);
+        const mat = this.makeMaterial({
+          color: s.color,
+          emissive: s.color,
+          emissiveIntensity: 0.3,
+          opacity: s.opacity,
+          transparent: s.opacity < 1,
+          metalness: s.metalness,
+          roughness: s.roughness
+        });
+        const mesh = new THREE4.Mesh(geo, mat);
+        if (obj.position) mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
+        if (s.label) {
+          const group = new THREE4.Group();
+          group.add(mesh);
+          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color, s.labelScale ?? 1);
+          if (obj.position) sprite.position.set(obj.position.x, obj.position.y, obj.position.z);
+          if (this.core.isZUp) sprite.position.z += s.pointSize + 0.15;
+          else sprite.position.y += s.pointSize + 0.15;
+          group.add(sprite);
+          return group;
+        }
+        return mesh;
+      }
+      case "segment": {
+        if (!obj.start || !obj.end) return null;
+        const a = new THREE4.Vector3(obj.start.x, obj.start.y, obj.start.z);
+        const b = new THREE4.Vector3(obj.end.x, obj.end.y, obj.end.z);
+        if (s.tubeRadius && s.tubeRadius > 0) {
+          const dir = new THREE4.Vector3().subVectors(b, a);
+          const len = dir.length();
+          if (len < 1e-8) return null;
+          const geo2 = new THREE4.CylinderGeometry(s.tubeRadius, s.tubeRadius, len, 6, 1);
+          geo2.rotateX(Math.PI / 2);
+          geo2.translate(0, 0, len / 2);
+          const mesh = new THREE4.Mesh(geo2, this.makeMaterial({
+            color: s.color,
+            opacity: s.opacity,
+            transparent: s.opacity < 1,
+            metalness: s.metalness,
+            roughness: s.roughness
+          }));
+          mesh.position.copy(a);
+          mesh.lookAt(b);
+          return mesh;
+        }
+        const geo = new THREE4.BufferGeometry().setFromPoints([a, b]);
+        return this._makeLine(geo, s);
+      }
+      case "polyline": {
+        if (!obj.vertices || obj.vertices.length < 2) return null;
+        const n = obj.vertices.length;
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const v = obj.vertices[i];
+          arr[i * 3] = v.x;
+          arr[i * 3 + 1] = v.y;
+          arr[i * 3 + 2] = v.z;
+        }
+        const geo = new THREE4.BufferGeometry();
+        geo.setAttribute("position", new THREE4.BufferAttribute(arr, 3));
+        return this._makeLine(geo, s);
+      }
+      case "polygon": {
+        if (!obj.vertices || obj.vertices.length < 2) return null;
+        const group = new THREE4.Group();
+        const pts = obj.vertices.map((v) => new THREE4.Vector3(v.x, v.y, v.z));
+        if (pts.length > 2) pts.push(pts[0].clone());
+        const lineGeo = new THREE4.BufferGeometry().setFromPoints(pts);
+        group.add(new THREE4.Line(lineGeo, new THREE4.LineBasicMaterial({ color: s.color })));
+        if (obj.vertices.length >= 3) {
+          if (this.core.isZUp) {
+            const shape = new THREE4.Shape(obj.vertices.map((v) => new THREE4.Vector2(v.x, v.y)));
+            const shapeGeo = new THREE4.ShapeGeometry(shape);
+            group.add(new THREE4.Mesh(shapeGeo, this.makeMaterial({
+              color: s.color,
+              opacity: s.opacity,
+              transparent: true,
+              side: THREE4.DoubleSide,
+              metalness: s.metalness,
+              roughness: s.roughness
+            })));
+          } else {
+            const shape = new THREE4.Shape(obj.vertices.map((v) => new THREE4.Vector2(v.x, v.z)));
+            const shapeGeo = new THREE4.ShapeGeometry(shape);
+            shapeGeo.rotateX(-Math.PI / 2);
+            group.add(new THREE4.Mesh(shapeGeo, this.makeMaterial({
+              color: s.color,
+              opacity: s.opacity,
+              transparent: true,
+              side: THREE4.DoubleSide,
+              metalness: s.metalness,
+              roughness: s.roughness
+            })));
+          }
+        }
+        return group;
+      }
+      case "mesh": {
+        if (obj.flatMeshData) return this.convertFlatMesh(obj.flatMeshData, s);
+        if (!obj.mesh) return null;
+        return this.convertMesh(obj.mesh, s);
+      }
+      case "circle": {
+        if (!obj.center || obj.radius == null) return null;
+        const pts = [];
+        const seg = 64;
+        for (let i = 0; i <= seg; i++) {
+          const a = i / seg * Math.PI * 2;
+          const ca = Math.cos(a) * obj.radius, sa = Math.sin(a) * obj.radius;
+          if (this.core.isZUp) {
+            pts.push(new THREE4.Vector3(obj.center.x + ca, obj.center.y + sa, obj.center.z));
+          } else {
+            pts.push(new THREE4.Vector3(obj.center.x + ca, obj.center.y, obj.center.z + sa));
+          }
+        }
+        const geo = new THREE4.BufferGeometry().setFromPoints(pts);
+        return this._makeLine(geo, s);
+      }
+      case "plane": {
+        if (!obj.normal) return null;
+        const geo = new THREE4.PlaneGeometry(10, 10);
+        const mat = this.makeMaterial({
+          color: s.color,
+          opacity: s.opacity,
+          transparent: true,
+          side: THREE4.DoubleSide,
+          metalness: s.metalness,
+          roughness: s.roughness
+        });
+        const mesh = new THREE4.Mesh(geo, mat);
+        const n = new THREE4.Vector3(obj.normal.x, obj.normal.y, obj.normal.z).normalize();
+        mesh.lookAt(n);
+        mesh.position.copy(n.multiplyScalar(obj.distance ?? 0));
+        return mesh;
+      }
+      default:
+        return null;
+    }
+  }
+  /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
+  convertMesh(gmesh, s) {
+    const data = gmesh.toMeshData();
+    const geo = new THREE4.BufferGeometry();
+    geo.setAttribute("position", new THREE4.BufferAttribute(data.positions, 3));
+    geo.setAttribute("normal", new THREE4.BufferAttribute(data.normals, 3));
+    geo.setIndex(new THREE4.BufferAttribute(data.indices, 1));
+    const pipeUV = gmesh.__pipeUV;
+    if (pipeUV && pipeUV.sides > 0) {
+      const n = data.positions.length / 3;
+      const uv = new Float32Array(n * 2);
+      for (let k = 0; k < n; k++) {
+        const ring = Math.min(Math.floor(k / pipeUV.sides), pipeUV.vAtRing.length - 1);
+        uv[k * 2] = k % pipeUV.sides / pipeUV.sides;
+        uv[k * 2 + 1] = pipeUV.vAtRing[ring] ?? 0;
+      }
+      geo.setAttribute("uv", new THREE4.BufferAttribute(uv, 2));
+    }
+    return this.buildMeshGroup(geo, s);
+  }
+  /** Convert flat mesh data (with optional per-vertex colors) → Three.js group */
+  convertFlatMesh(data, s) {
+    const geo = new THREE4.BufferGeometry();
+    geo.setAttribute("position", new THREE4.BufferAttribute(data.positions, 3));
+    geo.setAttribute("normal", new THREE4.BufferAttribute(data.normals, 3));
+    geo.setIndex(new THREE4.BufferAttribute(data.indices, 1));
+    const hasColors = !!data.colors?.length;
+    if (hasColors) geo.setAttribute("color", new THREE4.BufferAttribute(data.colors, 4));
+    if (data.groups?.length && this.core.gScene.renderMode === "solid" && !hasColors) {
+      const groupColors = s.groupColors ?? {};
+      const side = s.backfaceColor ? THREE4.DoubleSide : s.doubleSided ? THREE4.DoubleSide : THREE4.FrontSide;
+      for (let i = 0; i < data.groups.length; i++) {
+        const g = data.groups[i];
+        geo.addGroup(g.indexStart, g.indexCount, i);
+      }
+      const materials = data.groups.map((g) => this.makeMaterial({
+        color: groupColors[g.name] ?? s.color,
+        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
+        transparent: s.opacity < 1 || s.wireframe,
+        side,
+        flatShading: s.flatShading ?? false,
+        metalness: s.metalness,
+        roughness: s.roughness,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      }));
+      const group = new THREE4.Group();
+      const surface = new THREE4.Mesh(geo, materials);
+      surface.userData.surface = true;
+      group.add(surface);
+      if (!s.wireframe) {
+        group.add(new THREE4.Mesh(geo.clone(), new THREE4.MeshBasicMaterial({
+          color: 16777215,
+          wireframe: true,
+          opacity: 0.04,
+          transparent: true
+        })));
+      }
+      return group;
+    }
+    return this.buildMeshGroup(geo, s, hasColors);
+  }
+  /** Shared mesh group builder — handles solid / wireframe / hiddenline render modes */
+  buildMeshGroup(geo, s, hasVertexColors = false) {
+    const group = new THREE4.Group();
+    const mode = this.core.gScene.renderMode;
+    const side = s.doubleSided ? THREE4.DoubleSide : THREE4.FrontSide;
+    if (mode === "wireframe") {
+      const wireMat = new THREE4.MeshBasicMaterial({
+        color: s.color,
+        wireframe: true,
+        opacity: s.opacity,
+        transparent: s.opacity < 1
+      });
+      group.add(new THREE4.Mesh(geo, wireMat));
+    } else if (mode === "hiddenline") {
+      const occlusionMat = new THREE4.MeshBasicMaterial({
+        color: this.core.config.backgroundColor,
+        side,
+        toneMapped: false,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      });
+      group.add(new THREE4.Mesh(geo, occlusionMat));
+      const edgeAngle = s.edgeAngle ?? 30;
+      const wireMat = new THREE4.LineBasicMaterial({ color: s.edgeColor ?? 3092271, toneMapped: false });
+      group.add(this._edgeLines(geo, edgeAngle, wireMat));
+      const rimMat = new THREE4.MeshBasicMaterial({
+        color: s.edgeColor ?? 3092271,
+        side: THREE4.BackSide,
+        toneMapped: false
+      });
+      group.add(new THREE4.Mesh(geo, rimMat));
+    } else if (mode === "ghost") {
+      const look = surfaceAppearance("ghost", 0);
+      const surface = new THREE4.Mesh(geo, this.makeMaterial({
+        color: hasVertexColors ? 16777215 : s.color,
+        vertexColors: hasVertexColors,
+        emissive: hasVertexColors ? 0 : s.color,
+        emissiveIntensity: 0.8,
+        opacity: look.opacity,
+        transparent: true,
+        depthWrite: look.depthWrite,
+        side: THREE4.DoubleSide
+      }));
+      surface.userData.surface = true;
+      group.add(surface);
+      const edge = edgeStyle("ghost", this.core.config.backgroundColor);
+      group.add(this._edgeLines(geo, s.edgeAngle ?? 30, new THREE4.LineBasicMaterial({
+        color: edge.colour,
+        opacity: edge.opacity,
+        transparent: true,
+        depthWrite: false
+      })));
+    } else {
+      const solidMat = this.makeMaterial({
+        color: hasVertexColors ? 16777215 : s.color,
+        vertexColors: hasVertexColors,
+        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
+        transparent: s.opacity < 1 || s.wireframe,
+        side: s.backfaceColor ? THREE4.DoubleSide : side,
+        flatShading: s.flatShading ?? false,
+        metalness: s.metalness,
+        roughness: s.roughness,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      });
+      if (s.printLayerH && s.printLayerH > 1e-5 && geo.getAttribute("uv")) {
+        const tex = this._stripeTexture(s.printLayerH);
+        solidMat.map = tex;
+        solidMat.bumpMap = tex;
+        solidMat.bumpScale = s.printLayerH * 0.35;
+        solidMat.needsUpdate = true;
+      }
+      if (s.backfaceColor) {
+        const bc = new THREE4.Color(s.backfaceColor);
+        solidMat.onBeforeCompile = (shader) => {
+          shader.uniforms.backfaceColor = { value: bc };
+          shader.fragmentShader = "uniform vec3 backfaceColor;\n" + shader.fragmentShader;
+          shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <color_fragment>",
+            `#include <color_fragment>
+            if (!gl_FrontFacing) { diffuseColor.rgb = backfaceColor; }`
+          );
+        };
+      }
+      const surface = new THREE4.Mesh(geo, solidMat);
+      surface.userData.surface = true;
+      group.add(surface);
+      if (s.wireframe) {
+        const wireMat = new THREE4.MeshBasicMaterial({
+          color: s.color,
+          wireframe: true,
+          opacity: s.opacity * 0.8,
+          transparent: true
+        });
+        group.add(new THREE4.Mesh(geo.clone(), wireMat));
+      } else if (!hasVertexColors) {
+        const subtleWire = new THREE4.MeshBasicMaterial({
+          color: 16777215,
+          wireframe: true,
+          opacity: 0.04,
+          transparent: true
+        });
+        group.add(new THREE4.Mesh(geo.clone(), subtleWire));
+      }
+    }
+    return group;
+  }
+  // ── Text Sprites ──
+  createTextSprite(text, color, labelScale = 1) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const fontSize = 48;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const metrics = ctx.measureText(text);
+    const w = Math.ceil(metrics.width) + 16;
+    const h = fontSize + 16;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText(text, w / 2, h / 2);
+    const tex = new THREE4.CanvasTexture(canvas);
+    tex.minFilter = THREE4.LinearFilter;
+    const mat = new THREE4.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE4.Sprite(mat);
+    const scale = 5e-3 * labelScale;
+    sprite.scale.set(w * scale, h * scale, 1);
+    return sprite;
+  }
+  // ── Edges, a frame at a time ──
+  /** Crease lines for `geo`, built on a later frame (see `buildEdges`): a mode switch on a
+   *  model of thousands of meshes no longer stalls the tab, it draws the creases in. */
+  _edgeLines(geo, angle, mat) {
+    const line = new THREE4.LineSegments(new THREE4.BufferGeometry(), mat);
+    this.edgeQueue.push({ line, source: geo, angle });
+    return line;
+  }
+  /** Build queued crease lines for up to `budgetMs`. Lines whose object is gone are skipped. */
+  buildEdges(budgetMs) {
+    if (!this.edgeQueue.length) return;
+    const t0 = performance.now();
+    let built = 0;
+    while (this.edgeQueue.length && (built === 0 || performance.now() - t0 < budgetMs)) {
+      const { line, source, angle } = this.edgeQueue.shift();
+      let top = line;
+      while (top.parent) top = top.parent;
+      if (top !== this.core.threeScene) continue;
+      line.geometry.dispose();
+      line.geometry = new THREE4.EdgesGeometry(source, angle);
+      built++;
+    }
+    this.core.requestRender();
+  }
+  get pendingEdges() {
+    return this.edgeQueue.length;
+  }
+};
+
+// src/render/Lighting.ts
+import * as THREE5 from "three";
+var Lighting = class {
+  constructor(core) {
+    this.core = core;
+    this.currentLighting = "flat";
+    // Studio-mode default PBR material, used when a mesh sets no explicit
+    // metalness/roughness in its VisualStyle. Configurable via setStudioMaterial.
+    this.studioMetalness = 0;
+    this.studioRoughness = 0.65;
+    // When set, forces this color on studio meshes (overriding their own); null = keep per-mesh color.
+    this.studioColor = null;
+    this.studioFlatShading = false;
+    // Invisible shadow-catcher plane added only in Studio mode so the
+    // PCF-soft shadows have a surface to land on.
+    this.shadowGround = null;
+    // When true, the studio shadow-catcher plane (at the world origin) is hidden —
+    // e.g. when the app provides its own ground to receive shadows.
+    this.shadowGroundHidden = false;
+    // Prefiltered (PMREM) environment map for image-based reflections.
+    // Built lazily once on first enable, then reused. Only visibly affects
+    // studio PBR materials.
+    this.envMap = null;
+    // Optional equirectangular source (e.g. a loaded HDR) for the environment.
+    // null → the built-in procedural gradient. The app owns/disposes this texture.
+    this.envSourceTex = null;
+    this.envEnabled = false;
+    this.envBackground = false;
+    // show the equirect source as the scene backdrop
+    // The sun framed to the content (Studio): its direction, how far back at least, and
+    // whether the content moved since it was framed.
+    this.sunDir = new THREE5.Vector3(8, 10, 15).normalize();
+    this.sunMinDistance = 50;
+    this.sunDirty = true;
+    const isZUp = core.isZUp;
+    this.ambientLight = new THREE5.AmbientLight(16777215, 0.5);
+    core.threeScene.add(this.ambientLight);
+    this.dirLight = new THREE5.DirectionalLight(16777215, 0.7);
+    this.dirLight.position.set(8, isZUp ? 10 : 15, isZUp ? 15 : 10);
+    this.dirLight.target.position.set(0, 0, 0);
+    core.threeScene.add(this.dirLight);
+    core.threeScene.add(this.dirLight.target);
+    this.hemiLight = new THREE5.HemisphereLight(4482730, 3351057, 0.4);
+    core.threeScene.add(this.hemiLight);
+    this.sunDir.copy(this.dirLight.position).normalize();
+  }
+  setStudioMaterial(metalness, roughness, color = null, flatShading = false) {
+    const metalChanged = this.studioMetalness !== metalness || this.studioRoughness !== roughness;
+    this.studioMetalness = metalness;
+    this.studioRoughness = roughness;
+    this.studioColor = color;
+    this.studioFlatShading = flatShading;
+    if (metalChanged && this.currentLighting === "studio") {
+      for (const obj of this.core.gScene.all()) {
+        if (obj.type !== "mesh") continue;
+        const s = obj.style;
+        if (s.metalness !== void 0 && s.roughness !== void 0) continue;
+        const t = this.core.objectMap.get(obj.id);
+        if (!t) continue;
+        t.traverse((c) => {
+          if (!(c instanceof THREE5.Mesh)) return;
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          for (const m of mats) {
+            if (m instanceof THREE5.MeshStandardMaterial) {
+              if (s.metalness === void 0) m.metalness = metalness;
+              if (s.roughness === void 0) m.roughness = roughness;
+            }
+          }
+        });
+      }
+    }
+    this.core.requestRender();
+  }
+  setShadowGroundVisible(visible) {
+    this.shadowGroundHidden = !visible;
+    if (this.shadowGround) this.shadowGround.visible = visible;
+    this.core.requestRender();
+  }
+  setFog(color, density = 0) {
+    this.core.threeScene.fog = density > 1e-6 ? new THREE5.FogExp2(new THREE5.Color(color), density) : null;
+    this.core.requestRender();
+  }
+  setExposure(v) {
+    this.core.renderer.toneMappingExposure = v;
+    this.core.requestRender();
+  }
+  setSunDirection(direction, distance = 50) {
+    const x = direction.x;
+    const y = this.core.isZUp ? direction.y : direction.z;
+    const z = this.core.isZUp ? direction.z : -direction.y;
+    this.sunDir.set(x, y, z).normalize();
+    this.sunMinDistance = distance;
+    this.sunDirty = true;
+    this.fitSun();
+    this.core.requestRender();
+  }
+  /** Aim the sun at the content's centre and fit its shadow camera around it. */
+  fitSun() {
+    this.sunDirty = false;
+    const box = this.core.contentBox();
+    for (const o of this.core.externalObjects.values()) if (o.visible) box.expandByObject(o);
+    const sphere = box.isEmpty() ? new THREE5.Sphere(new THREE5.Vector3(), 10) : box.getBoundingSphere(new THREE5.Sphere());
+    const r = Math.max(sphere.radius, 0.5);
+    const d = Math.max(this.sunMinDistance, r * 3);
+    this.dirLight.position.copy(sphere.center).addScaledVector(this.sunDir, d);
+    this.dirLight.target.position.copy(sphere.center);
+    this.dirLight.target.updateMatrixWorld();
+    this.dirLight.shadow.normalBias = r * 2e-3;
+    const sc = this.dirLight.shadow.camera;
+    sc.left = -r * 1.2;
+    sc.right = r * 1.2;
+    sc.top = r * 1.2;
+    sc.bottom = -r * 1.2;
+    sc.near = Math.max(0.01, d - r * 1.5);
+    sc.far = d + r * 1.5;
+    sc.updateProjectionMatrix();
+  }
+  /**
+   * Reconfigure renderer + lights + scene shadow flags for the given mode.
+   * Material swapping happens after this returns, via `rebuildAllMeshes`.
+   */
+  applyMode(mode) {
+    this.currentLighting = mode;
+    const studio = mode === "studio";
+    this.core.renderer.shadowMap.enabled = studio;
+    this.core.renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
+    this.core.renderer.toneMapping = studio ? THREE5.ACESFilmicToneMapping : THREE5.NoToneMapping;
+    this.core.renderer.toneMappingExposure = 1;
+    this.core.renderer.outputColorSpace = THREE5.SRGBColorSpace;
+    if (studio) {
+      this.ambientLight.intensity = 0.35;
+      this.hemiLight.intensity = 0.3;
+      this.dirLight.intensity = 2.8;
+      this.dirLight.castShadow = true;
+      this.dirLight.shadow.mapSize.set(2048, 2048);
+      this.dirLight.shadow.bias = -5e-4;
+      this.sunDirty = true;
+    } else {
+      this.ambientLight.intensity = 0.5;
+      this.hemiLight.intensity = 0.4;
+      this.dirLight.intensity = 0.7;
+      this.dirLight.castShadow = false;
+    }
+    const cast = studio && this.core.gScene.renderMode !== "ghost";
+    this.core.threeScene.traverse((obj) => {
+      if (obj instanceof THREE5.Mesh) {
+        obj.castShadow = cast;
+        obj.receiveShadow = studio;
+      }
+    });
+    if (studio && !this.shadowGround) {
+      const geo = new THREE5.PlaneGeometry(400, 400);
+      const mat = new THREE5.ShadowMaterial({ opacity: 0.35 });
+      this.shadowGround = new THREE5.Mesh(geo, mat);
+      this.shadowGround.receiveShadow = true;
+      if (!this.core.isZUp) this.shadowGround.rotation.x = -Math.PI / 2;
+      this.shadowGround.position.set(0, this.core.isZUp ? 0 : -1e-3, this.core.isZUp ? -1e-3 : 0);
+      this.shadowGround.visible = !this.shadowGroundHidden;
+      this.core.threeScene.add(this.shadowGround);
+    } else if (!studio && this.shadowGround) {
+      this.core.threeScene.remove(this.shadowGround);
+      this.shadowGround.geometry.dispose();
+      this.shadowGround.material.dispose();
+      this.shadowGround = null;
+    }
+  }
+  /**
+   * Toggle a prefiltered environment map on `threeScene.environment`. Only
+   * studio PBR (`MeshStandardMaterial`) materials sample it, so this is a
+   * no-op visually in flat mode — but it's safe to enable in either mode.
+   * The map is built once on first enable and reused thereafter.
+   */
+  applyEnvironment(enabled) {
+    this.envEnabled = enabled;
+    if (enabled) {
+      if (!this.envMap) this.envMap = this._buildEnvironment();
+      this.core.threeScene.environment = this.envMap;
+    } else {
+      this.core.threeScene.environment = null;
+    }
+  }
+  setEnvironmentSource(equirect) {
+    if (this.envSourceTex === equirect) return;
+    this.envSourceTex = equirect;
+    if (this.envMap) {
+      this.envMap.dispose();
+      this.envMap = null;
+    }
+    if (this.envEnabled) {
+      this.envMap = this._buildEnvironment();
+      this.core.threeScene.environment = this.envMap;
+    }
+    this._applyBackground();
+    this.core.requestRender();
+  }
+  setEnvironmentBackground(visible) {
+    this.envBackground = visible;
+    this._applyBackground();
+    this.core.requestRender();
+  }
+  setEnvironmentRotation(x, y, z) {
+    const s = this.core.threeScene;
+    s.environmentRotation?.set(x, y, z);
+    s.backgroundRotation?.set(x, y, z);
+    this.core.requestRender();
+  }
+  _applyBackground() {
+    if (this.envBackground && this.envSourceTex) {
+      this.envSourceTex.mapping = THREE5.EquirectangularReflectionMapping;
+      this.core.threeScene.background = this.envSourceTex;
+    }
+  }
+  /**
+   * Build a prefiltered (PMREM) environment from a procedural vertical
+   * gradient — bright neutral sky at the top, mid horizon, darker ground —
+   * using core Three only (no `three/examples` RoomEnvironment). Returns the
+   * PMREM-filtered cube texture; the source `DataTexture` and the generator
+   * are disposed before returning.
+   */
+  _buildEnvironment() {
+    if (this.envSourceTex) {
+      this.envSourceTex.mapping = THREE5.EquirectangularReflectionMapping;
+      const pmremSrc = new THREE5.PMREMGenerator(this.core.renderer);
+      const envSrc = pmremSrc.fromEquirectangular(this.envSourceTex).texture;
+      pmremSrc.dispose();
+      return envSrc;
+    }
+    const W = 16, H = 256;
+    const data = new Uint8Array(W * H * 4);
+    const sky = [0.85, 0.88, 0.95];
+    const horizon = [0.55, 0.55, 0.55];
+    const ground = [0.12, 0.12, 0.13];
+    for (let y = 0; y < H; y++) {
+      const t = y / (H - 1);
+      let r, g, b;
+      if (t < 0.5) {
+        const k = t / 0.5;
+        r = ground[0] + (horizon[0] - ground[0]) * k;
+        g = ground[1] + (horizon[1] - ground[1]) * k;
+        b = ground[2] + (horizon[2] - ground[2]) * k;
+      } else {
+        const k = (t - 0.5) / 0.5;
+        r = horizon[0] + (sky[0] - horizon[0]) * k;
+        g = horizon[1] + (sky[1] - horizon[1]) * k;
+        b = horizon[2] + (sky[2] - horizon[2]) * k;
+      }
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        data[i] = Math.round(r * 255);
+        data[i + 1] = Math.round(g * 255);
+        data[i + 2] = Math.round(b * 255);
+        data[i + 3] = 255;
+      }
+    }
+    const tex = new THREE5.DataTexture(data, W, H, THREE5.RGBAFormat);
+    tex.mapping = THREE5.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE5.SRGBColorSpace;
+    tex.needsUpdate = true;
+    const pmrem = new THREE5.PMREMGenerator(this.core.renderer);
+    const env = pmrem.fromEquirectangular(tex).texture;
+    pmrem.dispose();
+    tex.dispose();
+    return env;
+  }
+  dispose() {
+    this.core.threeScene.environment = null;
+    this.envMap?.dispose();
+    this.envMap = null;
+  }
+};
+
+// src/render/CameraRig.ts
+import * as THREE7 from "three";
+
 // src/render/NavGizmo.ts
-import * as THREE4 from "three";
+import * as THREE6 from "three";
 var AXES = [
-  { axis: "x", dir: new THREE4.Vector3(1, 0, 0), colour: "#e0566a" },
-  { axis: "y", dir: new THREE4.Vector3(0, 1, 0), colour: "#7fb648" },
-  { axis: "z", dir: new THREE4.Vector3(0, 0, 1), colour: "#4b8fd6" }
+  { axis: "x", dir: new THREE6.Vector3(1, 0, 0), colour: "#e0566a" },
+  { axis: "y", dir: new THREE6.Vector3(0, 1, 0), colour: "#7fb648" },
+  { axis: "z", dir: new THREE6.Vector3(0, 0, 1), colour: "#4b8fd6" }
 ];
 var SVG = "http://www.w3.org/2000/svg";
 var NavGizmo = class {
@@ -1859,8 +2716,8 @@ var NavGizmo = class {
     this.opts = opts;
     this.balls = [];
     this.projectionButton = null;
-    this.scratch = new THREE4.Vector3();
-    this.inverse = new THREE4.Quaternion();
+    this.scratch = new THREE6.Vector3();
+    this.inverse = new THREE6.Quaternion();
     /** Set while a drag is under way, so the click that ends one is not read as
      *  a click on whichever ball happened to be under the pointer. */
     this.moved = false;
@@ -2050,6 +2907,713 @@ var NavGizmo = class {
   }
 };
 
+// src/render/CameraRig.ts
+var NO_TURN = new THREE7.Quaternion();
+var CameraRig = class {
+  constructor(core, camera, _orthoCam, gizmo) {
+    this.core = core;
+    this.camera = camera;
+    this._orthoCam = _orthoCam;
+    this._isOrtho = false;
+    // Camera position at the previous renderIfNeeded(), to follow orbit damping
+    // below OrbitControls' change threshold (see settleDamping).
+    this._lastCamPos = new THREE7.Vector3(NaN, NaN, NaN);
+    this.navGizmo = null;
+    // A camera move in progress: a turn about the target, and a glide of the target and the distance.
+    this.cameraMove = null;
+    this.projectionListeners = /* @__PURE__ */ new Set();
+    core.controls?.addEventListener("start", () => {
+      this.cameraMove = null;
+    });
+    if (gizmo) {
+      this.navGizmo = new NavGizmo(core.container, {
+        corner: typeof gizmo === "string" ? gizmo : "bottom-right",
+        onAxis: (direction) => this.orbitTo(direction),
+        onDrag: (dx, dy) => this.orbitBy(dx, dy),
+        onSnap: () => this.orbitTo(nearestAxis(this._viewOffset())),
+        onProjection: () => this.setProjection(this._isOrtho ? "perspective" : "orthographic")
+      });
+    }
+  }
+  /** The currently active camera — perspective or orthographic. */
+  get activeCamera() {
+    return this._isOrtho ? this._orthoCam : this.camera;
+  }
+  /** Redraw the axis widget for the camera just drawn. */
+  updateGizmo() {
+    this.navGizmo?.update(this.activeCamera, NO_TURN);
+  }
+  worldToScreen(world) {
+    const v = new THREE7.Vector3(world.x, world.y, world.z).project(this.activeCamera);
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const x = (v.x * 0.5 + 0.5) * rect.width;
+    const y = (-v.y * 0.5 + 0.5) * rect.height;
+    const visible = v.z > -1 && v.z < 1;
+    return { x, y, visible };
+  }
+  setOrbitRotateEnabled(enabled) {
+    if (this.core.controls) this.core.controls.enableRotate = enabled;
+  }
+  cameraState() {
+    const c = this.activeCamera;
+    const t = this.core.controls?.target ?? new THREE7.Vector3();
+    return {
+      projection: this._isOrtho ? "orthographic" : "perspective",
+      position: [c.position.x, c.position.y, c.position.z],
+      target: [t.x, t.y, t.z],
+      up: [c.up.x, c.up.y, c.up.z],
+      fov: this.camera.fov
+    };
+  }
+  /**
+   * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
+   * creeping the camera after that, so the last drawn frame would lag the camera
+   * slightly. Follow the creep frame by frame instead, and once the remaining
+   * glide is under ~0.1 px apply it at once: the camera then rests exactly where
+   * it was last drawn. Returns whether the camera moved this frame.
+   */
+  settleDamping() {
+    const c = this.core.controls;
+    if (!c) return false;
+    const pos = c.object.position;
+    const step = pos.distanceTo(this._lastCamPos);
+    this._lastCamPos.copy(pos);
+    if (!(step > 1e-9 * Math.max(pos.distanceTo(c.target), 1))) return false;
+    if (c.enableDamping && c.dampingFactor > 0) {
+      const f = c.dampingFactor;
+      const rest = step * (1 - f) / f / Math.max(pos.distanceTo(c.target), 1e-9);
+      if (rest < 1e-4) {
+        c.enableDamping = false;
+        c.update();
+        c.enableDamping = true;
+        this._lastCamPos.copy(pos);
+      }
+    }
+    return true;
+  }
+  // ── Projection & View ──
+  /** Compute the orthographic frustum to match the current perspective camera view distance. */
+  syncOrthoFrustum() {
+    const target = this.core.controls?.target ?? new THREE7.Vector3();
+    const dist2 = Math.max(this.camera.position.distanceTo(target), 0.1);
+    const fovRad = this.camera.fov * Math.PI / 180;
+    const halfH = Math.tan(fovRad / 2) * dist2;
+    const halfW = halfH * this.camera.aspect;
+    this._orthoCam.left = -halfW;
+    this._orthoCam.right = halfW;
+    this._orthoCam.top = halfH;
+    this._orthoCam.bottom = -halfH;
+    this._orthoCam.near = -dist2 * 10;
+    this._orthoCam.far = dist2 * 10;
+    this._orthoCam.updateProjectionMatrix();
+  }
+  setProjection(type) {
+    const wasOrtho = this._isOrtho;
+    this._isOrtho = type === "orthographic";
+    if (this._isOrtho && !wasOrtho) {
+      this._orthoCam.position.copy(this.camera.position);
+      this._orthoCam.quaternion.copy(this.camera.quaternion);
+      this._orthoCam.zoom = 1;
+      this.syncOrthoFrustum();
+    } else if (!this._isOrtho && wasOrtho) {
+      this.camera.position.copy(this._orthoCam.position);
+      this.camera.quaternion.copy(this._orthoCam.quaternion);
+      const zoom = this._orthoCam.zoom;
+      if (zoom !== 1 && this.core.controls) {
+        const t = this.core.controls.target;
+        this.camera.position.sub(t).divideScalar(zoom).add(t);
+        this._orthoCam.zoom = 1;
+      }
+    }
+    if (this.core.controls) {
+      this.core.controls.object = this.activeCamera;
+      this.core.controls.update();
+    }
+    this.navGizmo?.setProjection(type);
+    if (wasOrtho !== this._isOrtho) for (const l of this.projectionListeners) l(type);
+    this.core.requestRender();
+  }
+  onProjection(listener) {
+    this.projectionListeners.add(listener);
+    return () => this.projectionListeners.delete(listener);
+  }
+  get projection() {
+    return this._isOrtho ? "orthographic" : "perspective";
+  }
+  setView(view, opts = {}) {
+    this.orbitTo(viewDirection(view, this.core.isZUp ? "z" : "y"), opts);
+  }
+  orbitTo(direction, opts = {}) {
+    const target = this.core.controls?.target ?? new THREE7.Vector3();
+    const cam = this.activeCamera;
+    const offset = cam.position.clone().sub(target);
+    const dist2 = offset.length() || 10;
+    const dir = new THREE7.Vector3(direction.x, direction.y, direction.z).normalize();
+    if (Math.abs(dir.dot(cam.up)) > 1 - 1e-6) {
+      dir.addScaledVector(this.core.isZUp ? new THREE7.Vector3(0, -1, 0) : new THREE7.Vector3(0, 0, 1), 1e-3).normalize();
+    }
+    if (opts.animate === false || offset.lengthSq() === 0) {
+      this.cameraMove = null;
+      this._placeCamera(target, dir.multiplyScalar(dist2));
+      return;
+    }
+    this._moveCamera(dir, target.clone(), dist2, this._orthoCam.zoom);
+  }
+  fitTo(objects, opts = {}) {
+    const box = new THREE7.Box3();
+    for (const t of this.core.resolve(objects)) box.expandByObject(t);
+    if (box.isEmpty()) return;
+    const target = box.getCenter(new THREE7.Vector3());
+    const size = box.getSize(new THREE7.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+    const margin = opts.margin ?? 1.8;
+    const dist2 = fitRadius(radius, this.camera.fov, this.camera.aspect, margin);
+    const halfH = (this._orthoCam.top - this._orthoCam.bottom) / 2;
+    const halfW = (this._orthoCam.right - this._orthoCam.left) / 2;
+    const zoom = Math.min(halfH, halfW) / (radius * margin);
+    const dir = this._viewOffset();
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      if (this.core.controls) this.core.controls.target.copy(target);
+      if (this._isOrtho) {
+        this._orthoCam.zoom = zoom;
+        this._orthoCam.updateProjectionMatrix();
+      }
+      this._placeCamera(target, dir.multiplyScalar(dist2));
+      return;
+    }
+    this._moveCamera(dir, target, dist2, this._isOrtho ? zoom : this._orthoCam.zoom);
+  }
+  /** Start a move to `dir` from `target` at `dist` (and, in orthographic, `zoom`). */
+  _moveCamera(dir, target, dist2, zoom) {
+    const from = this.core.controls?.target.clone() ?? new THREE7.Vector3();
+    const offset = this.activeCamera.position.clone().sub(from);
+    this.cameraMove = {
+      from: offset,
+      turn: new THREE7.Quaternion().setFromUnitVectors(offset.clone().normalize(), dir.clone().normalize()),
+      fromTarget: from,
+      toTarget: target,
+      toDist: dist2,
+      fromZoom: this._orthoCam.zoom,
+      toZoom: zoom,
+      start: performance.now(),
+      ms: 340
+    };
+    this.core.requestRender();
+  }
+  /** Orbit by a pointer travel in pixels — the axis widget's drag. */
+  orbitBy(dx, dy) {
+    this.cameraMove = null;
+    const target = this.core.controls?.target ?? new THREE7.Vector3();
+    const cam = this.activeCamera;
+    const up = cam.up.clone().normalize();
+    const offset = cam.position.clone().sub(target).applyAxisAngle(up, -dx * 5e-3);
+    const polar = offset.angleTo(up);
+    const next = THREE7.MathUtils.clamp(polar - dy * 5e-3, 0.05, Math.PI - 0.05);
+    const side = new THREE7.Vector3().crossVectors(offset, up);
+    if (side.lengthSq() > 0) offset.applyAxisAngle(side.normalize(), polar - next);
+    this._placeCamera(target, offset);
+  }
+  _placeCamera(target, offset) {
+    const cam = this.activeCamera;
+    cam.position.copy(target).add(offset);
+    cam.lookAt(target);
+    this.core.controls?.update();
+    this.core.requestRender();
+  }
+  /** Advance a camera move, if one is running. True while it moves the camera. */
+  stepMove() {
+    const m = this.cameraMove;
+    if (!m) return false;
+    const t = easeInOut((performance.now() - m.start) / m.ms);
+    const q = new THREE7.Quaternion().slerpQuaternions(NO_TURN, m.turn, t);
+    const target = new THREE7.Vector3().lerpVectors(m.fromTarget, m.toTarget, t);
+    const dist2 = THREE7.MathUtils.lerp(m.from.length(), m.toDist, t);
+    if (this.core.controls) this.core.controls.target.copy(target);
+    const cam = this.activeCamera;
+    cam.position.copy(target).add(m.from.clone().applyQuaternion(q).setLength(dist2));
+    cam.lookAt(target);
+    if (m.toZoom !== m.fromZoom) {
+      this._orthoCam.zoom = THREE7.MathUtils.lerp(m.fromZoom, m.toZoom, t);
+      this._orthoCam.updateProjectionMatrix();
+    }
+    if (t >= 1) this.cameraMove = null;
+    return true;
+  }
+  /** Where the camera sits, as a direction from its target. */
+  _viewOffset() {
+    return this.activeCamera.position.clone().sub(this.core.controls?.target ?? new THREE7.Vector3()).normalize();
+  }
+  setCameraUp(x, y, z) {
+    this.camera.up.set(x, y, z);
+    this._orthoCam.up.set(x, y, z);
+    if (this.core.controls) this.core.controls.update();
+    this.core.requestRender();
+  }
+  setCameraPosition(x, y, z) {
+    this.camera.position.set(x, y, z);
+    this.core.requestRender();
+  }
+  lookAt(x, y, z) {
+    this.camera.lookAt(x, y, z);
+    if (this.core.controls) {
+      this.core.controls.target.set(x, y, z);
+      this.core.controls.update();
+    }
+    this.core.requestRender();
+  }
+  fitAll() {
+    const box = new THREE7.Box3();
+    for (const obj of this.core.objectMap.values()) {
+      if (obj.visible) {
+        const b = new THREE7.Box3().setFromObject(obj);
+        if (!b.isEmpty()) box.union(b);
+      }
+    }
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new THREE7.Vector3());
+    const sphere = box.getBoundingSphere(new THREE7.Sphere());
+    const target = this.core.controls?.target.clone() ?? center;
+    let dir = new THREE7.Vector3().subVectors(this.camera.position, target);
+    if (dir.length() < 1e-6) dir.set(1, 1, 1);
+    dir.normalize();
+    const fovRad = this.camera.fov * Math.PI / 180;
+    const dist2 = sphere.radius / Math.tan(fovRad / 2) * 1.3;
+    this.camera.position.copy(center).addScaledVector(dir, dist2);
+    if (this.core.controls) {
+      this.core.controls.target.copy(center);
+      this.core.controls.update();
+    }
+    if (this._isOrtho) {
+      this._orthoCam.position.copy(this.camera.position);
+      this._orthoCam.quaternion.copy(this.camera.quaternion);
+      this.syncOrthoFrustum();
+    }
+    this.core.requestRender();
+  }
+  dispose() {
+    this.navGizmo?.dispose();
+  }
+};
+
+// src/render/Pointer.ts
+import * as THREE8 from "three";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+var Pointer = class {
+  constructor(core, builder, marks) {
+    this.core = core;
+    this.builder = builder;
+    this.marks = marks;
+    this.raycaster = new THREE8.Raycaster();
+    this.pickEnabled = false;
+    this.pickListeners = /* @__PURE__ */ new Set();
+    this.transformControls = null;
+    this.gizmoMode = "translate";
+    this.gizmoAttachedId = null;
+    this.pointerDown = null;
+    // ── Drag handles ──
+    this.dragHandles = /* @__PURE__ */ new Map();
+    this.dragHandleConstraints = /* @__PURE__ */ new Map();
+    this.dragHandlePlanes = /* @__PURE__ */ new Map();
+    this.dragHandleMoveCb = null;
+    this.dragHandleEndCb = null;
+    this.dragHandlePickCb = null;
+    this.activeDragHandle = null;
+    this.selectedDragHandle = null;
+    this.dragPlane = new THREE8.Plane();
+    this.dragSeenThisRun = /* @__PURE__ */ new Set();
+    // ── Hover ──
+    this.hoverListeners = /* @__PURE__ */ new Set();
+    this.hovered = null;
+    this.hoverAt = 0;
+    this.onPointerDown = (e) => {
+      const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
+      if (handleName) {
+        e.preventDefault();
+        this.activeDragHandle = handleName;
+        this.setHandleSelected(handleName);
+        if (this.core.controls) this.core.controls.enabled = false;
+        const handle = this.dragHandles.get(handleName);
+        let normal;
+        if (this.dragHandlePlanes.get(handleName) === "screen") {
+          normal = new THREE8.Vector3();
+          this.core.activeCamera.getWorldDirection(normal);
+        } else {
+          normal = this.core.isZUp ? new THREE8.Vector3(0, 0, 1) : new THREE8.Vector3(0, 1, 0);
+        }
+        this.dragPlane.setFromNormalAndCoplanarPoint(normal, handle.position);
+        const dom = this.core.renderer.domElement;
+        dom.addEventListener("pointermove", this.onPointerMoveDragging);
+        dom.addEventListener("pointerup", this.onPointerUpDragging, { once: true });
+        dom.setPointerCapture(e.pointerId);
+        return;
+      }
+      this.pointerDown = { x: e.clientX, y: e.clientY };
+    };
+    this.onPointerUp = (e) => {
+      if (!this.pointerDown) return;
+      const dx = e.clientX - this.pointerDown.x;
+      const dy = e.clientY - this.pointerDown.y;
+      this.pointerDown = null;
+      if (dx * dx + dy * dy > 25) return;
+      if (this.transformControls?.dragging) return;
+      if (this.selectedDragHandle !== null) this.setHandleSelected(null);
+      const id = this.pickAt(e.clientX, e.clientY);
+      const info = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey };
+      for (const l of this.pickListeners) l(id, info);
+    };
+    this.onPointerMoveDragging = (e) => {
+      if (!this.activeDragHandle) return;
+      const hit = this.raycastPlane(e.clientX, e.clientY, this.dragPlane);
+      if (!hit) return;
+      const handle = this.dragHandles.get(this.activeDragHandle);
+      if (!handle) return;
+      let x = hit.x, y = hit.y, z = hit.z;
+      const constrain = this.dragHandleConstraints.get(this.activeDragHandle);
+      if (constrain) {
+        const c = constrain(x, y, z);
+        x = c[0];
+        y = c[1];
+        z = c[2];
+      }
+      handle.position.set(x, y, z);
+      this.core.requestRender();
+      if (this.dragHandleMoveCb) {
+        this.dragHandleMoveCb(this.activeDragHandle, x, y, z);
+      }
+    };
+    this.onPointerUpDragging = (_e) => {
+      const name = this.activeDragHandle;
+      this.activeDragHandle = null;
+      if (this.core.controls) this.core.controls.enabled = true;
+      const dom = this.core.renderer.domElement;
+      dom.removeEventListener("pointermove", this.onPointerMoveDragging);
+      if (name && this.dragHandlePickCb) this.dragHandlePickCb(name);
+      if (name && this.dragHandleEndCb) this.dragHandleEndCb(name);
+    };
+    this.onHoverMove = (e) => {
+      if (e.buttons !== 0) return;
+      const now = performance.now();
+      if (now - this.hoverAt < 40) return;
+      this.hoverAt = now;
+      this._hover(this.pickAt(e.clientX, e.clientY));
+    };
+    this.onHoverLeave = () => this._hover(null);
+  }
+  setPickEnabled(enabled) {
+    if (enabled === this.pickEnabled) return;
+    this.pickEnabled = enabled;
+    const dom = this.core.renderer.domElement;
+    if (enabled) {
+      dom.addEventListener("pointerdown", this.onPointerDown);
+      dom.addEventListener("pointerup", this.onPointerUp);
+    } else {
+      dom.removeEventListener("pointerdown", this.onPointerDown);
+      dom.removeEventListener("pointerup", this.onPointerUp);
+      this.pointerDown = null;
+    }
+  }
+  onPick(listener) {
+    this.pickListeners.add(listener);
+    return () => this.pickListeners.delete(listener);
+  }
+  /** Returns the handle name under (clientX, clientY) or null. */
+  dragHandleHitTest(clientX, clientY) {
+    if (this.dragHandles.size === 0) return null;
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE8.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.core.activeCamera);
+    const meshes = [...this.dragHandles.values()];
+    const hits = this.raycaster.intersectObjects(meshes, false);
+    return hits.length > 0 ? hits[0].object.userData.handleName : null;
+  }
+  /** Raycast at (clientX, clientY) against a Three.Plane; returns the intersection point. */
+  raycastPlane(clientX, clientY, plane) {
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE8.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.core.activeCamera);
+    const hit = new THREE8.Vector3();
+    return this.raycaster.ray.intersectPlane(plane, hit) ? hit : null;
+  }
+  setDragHandleCallbacks(onMove, onEnd, onPick) {
+    this.dragHandleMoveCb = onMove;
+    this.dragHandleEndCb = onEnd ?? null;
+    this.dragHandlePickCb = onPick ?? null;
+  }
+  beginDragHandleSweep() {
+    this.dragSeenThisRun.clear();
+  }
+  upsertDragHandle(name, x, y, z, color = "#38d9a9", size = 0.12, constrain, plane) {
+    this.dragSeenThisRun.add(name);
+    let mesh = this.dragHandles.get(name);
+    if (!mesh) {
+      const geo = new THREE8.SphereGeometry(size, 16, 12);
+      const mat = this.builder.makeMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 0.55
+      });
+      mesh = new THREE8.Mesh(geo, mat);
+      mesh.userData.handleName = name;
+      mesh.userData.baseSize = size;
+      mesh.userData.baseColor = color;
+      mesh.renderOrder = 999;
+      mesh.material.depthTest = false;
+      this.core.threeScene.add(mesh);
+      this.dragHandles.set(name, mesh);
+    } else {
+      const mat = mesh.material;
+      if (mat.color.getHexString() !== color.replace(/^#/, "").toLowerCase()) {
+        mat.color.set(color);
+        mat.emissive.set(color);
+        mesh.userData.baseColor = color;
+      }
+      const cur = mesh.geometry.parameters?.radius;
+      if (cur !== size) {
+        mesh.geometry.dispose();
+        mesh.geometry = new THREE8.SphereGeometry(size, 16, 12);
+        mesh.userData.baseSize = size;
+      }
+    }
+    if (constrain) this.dragHandleConstraints.set(name, constrain);
+    else this.dragHandleConstraints.delete(name);
+    if (plane) this.dragHandlePlanes.set(name, plane);
+    else this.dragHandlePlanes.delete(name);
+    if (this.activeDragHandle !== name) mesh.position.set(x, y, z);
+    if (this.selectedDragHandle === name) this.applyHandleStyle(name, true);
+    this.core.requestRender();
+  }
+  endDragHandleSweep() {
+    for (const [name, mesh] of this.dragHandles) {
+      if (!this.dragSeenThisRun.has(name)) {
+        this.core.threeScene.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+        this.dragHandles.delete(name);
+        this.dragHandleConstraints.delete(name);
+        this.dragHandlePlanes.delete(name);
+        if (this.selectedDragHandle === name) this.selectedDragHandle = null;
+        this.core.requestRender();
+      }
+    }
+  }
+  getSelectedHandle() {
+    return this.selectedDragHandle;
+  }
+  getActiveDragHandle() {
+    return this.activeDragHandle;
+  }
+  setHandleSelected(name) {
+    if (this.selectedDragHandle === name) return;
+    if (this.selectedDragHandle) this.applyHandleStyle(this.selectedDragHandle, false);
+    this.selectedDragHandle = name;
+    if (name) this.applyHandleStyle(name, true);
+  }
+  applyHandleStyle(name, selected) {
+    const mesh = this.dragHandles.get(name);
+    if (!mesh) return;
+    const mat = mesh.material;
+    if (selected) {
+      mat.emissiveIntensity = 1;
+      mesh.scale.setScalar(1.6);
+    } else {
+      mat.emissiveIntensity = 0.55;
+      mesh.scale.setScalar(1);
+    }
+    this.core.requestRender();
+  }
+  pickAt(clientX, clientY) {
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE8.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.core.activeCamera);
+    const cam = this.core.activeCamera;
+    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
+    const pickable = [];
+    for (const t of this.core.objectMap.values()) {
+      if (t.userData.pickable !== false) pickable.push(t);
+    }
+    const hits = this.raycaster.intersectObjects(pickable, true);
+    for (const h of hits) {
+      if (this.marks.cutAway(h.point)) continue;
+      let cur = h.object;
+      while (cur && !cur.userData.geomId) cur = cur.parent;
+      if (cur?.userData.geomId) return cur.userData.geomId;
+    }
+    return null;
+  }
+  hitAt(clientX, clientY) {
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE8.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.core.activeCamera);
+    const cam = this.core.activeCamera;
+    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
+    const targets = [];
+    for (const t of this.core.objectMap.values()) if (t.visible) targets.push(t);
+    const hits = this.raycaster.intersectObjects(targets, true);
+    for (const h of hits) {
+      if (this.marks.cutAway(h.point)) continue;
+      let cur = h.object;
+      let shown = true;
+      while (cur && !cur.userData.geomId) {
+        if (!cur.visible) shown = false;
+        cur = cur.parent;
+      }
+      if (shown && cur?.userData.geomId) {
+        return { id: cur.userData.geomId, point: new Vec3(h.point.x, h.point.y, h.point.z) };
+      }
+    }
+    return null;
+  }
+  groundAt(clientX, clientY) {
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE8.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.core.activeCamera);
+    const n = this.core.isZUp ? new THREE8.Vector3(0, 0, 1) : new THREE8.Vector3(0, 1, 0);
+    const hit = new THREE8.Vector3();
+    return this.raycaster.ray.intersectPlane(new THREE8.Plane(n, 0), hit) ? new Vec3(hit.x, hit.y, hit.z) : null;
+  }
+  setGizmoMode(mode) {
+    this.gizmoMode = mode;
+    if (mode === "none") {
+      this.detachGizmo();
+    } else {
+      this.ensureGizmo();
+      this.transformControls?.setMode(mode);
+      if (this.gizmoAttachedId) this.attachGizmo(this.gizmoAttachedId);
+    }
+    this.core.requestRender();
+  }
+  getGizmoMode() {
+    return this.gizmoMode;
+  }
+  attachGizmo(id) {
+    const t = this.core.objectMap.get(id);
+    if (!t) {
+      this.detachGizmo();
+      return;
+    }
+    if (this.gizmoMode === "none") {
+      this.gizmoAttachedId = id;
+      return;
+    }
+    this.ensureGizmo();
+    this.transformControls.attach(t);
+    this.gizmoAttachedId = id;
+    this.core.requestRender();
+  }
+  detachGizmo() {
+    this.transformControls?.detach();
+    this.gizmoAttachedId = null;
+    this.core.requestRender();
+  }
+  ensureGizmo() {
+    if (this.transformControls) return;
+    const tc = new TransformControls(this.core.activeCamera, this.core.renderer.domElement);
+    tc.setMode(this.gizmoMode === "none" ? "translate" : this.gizmoMode);
+    tc.addEventListener("dragging-changed", (e) => {
+      const dragging = e.value === true;
+      if (this.core.controls) this.core.controls.enabled = !dragging;
+      if (!dragging && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
+    });
+    tc.addEventListener("objectChange", () => {
+      if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
+    });
+    tc.addEventListener("change", () => this.core.requestRender());
+    this.core.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
+    this.transformControls = tc;
+  }
+  /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */
+  writeBackTransform(id) {
+    const t = this.core.objectMap.get(id);
+    if (!t) return;
+    const obj = this.core.gScene.get(id);
+    if (!obj) return;
+    const transform = {
+      position: new Vec3(t.position.x, t.position.y, t.position.z),
+      rotation: new Vec3(t.rotation.x, t.rotation.y, t.rotation.z),
+      scale: new Vec3(t.scale.x, t.scale.y, t.scale.z)
+    };
+    this.core.gScene.withSuspendedEvents(() => {
+      this.core.gScene.update(id, { transform });
+    });
+  }
+  onHover(listener) {
+    const dom = this.core.renderer.domElement;
+    if (this.hoverListeners.size === 0) {
+      dom.addEventListener("pointermove", this.onHoverMove);
+      dom.addEventListener("pointerleave", this.onHoverLeave);
+    }
+    this.hoverListeners.add(listener);
+    return () => {
+      this.hoverListeners.delete(listener);
+      if (this.hoverListeners.size === 0) {
+        dom.removeEventListener("pointermove", this.onHoverMove);
+        dom.removeEventListener("pointerleave", this.onHoverLeave);
+      }
+    };
+  }
+  _hover(id) {
+    if (id === this.hovered) return;
+    this.hovered = id;
+    for (const l of this.hoverListeners) l(id);
+  }
+  pick(screenX, screenY) {
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE8.Vector2(
+      (screenX - rect.left) / rect.width * 2 - 1,
+      -((screenY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE8.Raycaster();
+    raycaster.setFromCamera(mouse, this.core.camera);
+    const targets = [...this.core.objectMap.values()];
+    const hits = raycaster.intersectObjects(targets, true);
+    for (const hit of hits) {
+      if (this.marks.cutAway(hit.point)) continue;
+      let obj = hit.object;
+      while (obj && !obj.userData.geomId) obj = obj.parent;
+      if (obj?.userData.geomId) {
+        return { id: obj.userData.geomId, point: hit.point };
+      }
+    }
+    return null;
+  }
+  screenToPlane(screenX, screenY, plane) {
+    const defaultNormal = this.core.isZUp ? new THREE8.Vector3(0, 0, 1) : new THREE8.Vector3(0, 1, 0);
+    const p = plane ?? new THREE8.Plane(defaultNormal, 0);
+    const rect = this.core.renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE8.Vector2(
+      (screenX - rect.left) / rect.width * 2 - 1,
+      -((screenY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE8.Raycaster();
+    raycaster.setFromCamera(mouse, this.core.camera);
+    const target = new THREE8.Vector3();
+    return raycaster.ray.intersectPlane(p, target) ? target : null;
+  }
+  dispose() {
+    this.core.renderer.domElement.removeEventListener("pointermove", this.onHoverMove);
+    this.core.renderer.domElement.removeEventListener("pointerleave", this.onHoverLeave);
+  }
+};
+
+// src/render/Marks.ts
+import * as THREE9 from "three";
+
 // src/render/Callouts.ts
 var SVG2 = "http://www.w3.org/2000/svg";
 function labelWidthFor(hostWidth) {
@@ -2232,6 +3796,314 @@ var Callouts = class {
   }
 };
 
+// src/render/Marks.ts
+function seeThrough(m) {
+  return (Array.isArray(m) ? m : [m]).some((x) => x.transparent && x.opacity < 1);
+}
+var Marks = class {
+  constructor(core) {
+    this.core = core;
+    this.selectionMaterials = /* @__PURE__ */ new Map();
+    // ── Section (setSection) ──
+    this.sectionReq = null;
+    this.sectionClip = null;
+    this.sectionColour = null;
+    // One poché material for every cut mesh; its colour follows the render mode.
+    this.pocheMat = null;
+    // ── Callouts (setCallouts) ──
+    this.callouts = null;
+    this.calloutAnchors = /* @__PURE__ */ new Map();
+    this.calloutVisible = /* @__PURE__ */ new Set();
+    this.calloutCheckedAt = 0;
+    this.calloutRecheck = 0;
+    this.calloutsDirty = false;
+    this.calloutHandlers = {};
+    // ── Selection as outlines ──
+    this.selectionStyle = "tint";
+    this.outlineGroup = new THREE9.Group();
+    this.outlined = [];
+    // ── Others' selections (shared presence): outlines in each person's colour ──
+    this.presenceLines = [];
+    this.presenceMats = /* @__PURE__ */ new Map();
+    this.highlightIds = null;
+    this.outlineMat = null;
+    this.outlineGroup.renderOrder = 999;
+    core.threeScene.add(this.outlineGroup);
+  }
+  /** Keep outlines on their objects (a gizmo drag moves them without a rebuild). */
+  followOutlines() {
+    for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
+    for (const o of this.presenceLines) o.line.matrix.copy(o.source.matrixWorld);
+  }
+  setSelectionStyle(style) {
+    this.selectionStyle = style;
+    this.setSelectionHighlight(this.highlightIds);
+  }
+  setSelectionHighlight(ids) {
+    this.core.requestRender();
+    this.highlightIds = ids === null ? null : typeof ids === "string" ? [ids] : [...ids];
+    for (const o of this.outlined) {
+      o.line.geometry.dispose();
+      o.line.removeFromParent();
+    }
+    this.outlined = [];
+    for (const [, info] of this.selectionMaterials) {
+      const m = info.mat;
+      m.emissive.copy(info.oldEmissive);
+      m.emissiveIntensity = info.oldIntensity;
+      m.opacity = info.oldOpacity;
+      m.depthWrite = info.oldDepthWrite;
+    }
+    this.selectionMaterials.clear();
+    const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
+    const ghost = this.core.gScene.renderMode === "ghost";
+    if (this.selectionStyle === "outline") {
+      for (const id of list) {
+        const t = this.core.objectMap.get(id);
+        if (!t) continue;
+        t.updateMatrixWorld(true);
+        t.traverse((c) => {
+          if (!c.userData.surface) return;
+          const line = new THREE9.LineSegments(new THREE9.EdgesGeometry(c.geometry, 30), this._outlineMaterial());
+          line.matrixAutoUpdate = false;
+          line.matrix.copy(c.matrixWorld);
+          line.renderOrder = 999;
+          this.outlineGroup.add(line);
+          this.outlined.push({ line, source: c });
+        });
+      }
+    }
+    for (const id of this.selectionStyle === "outline" ? [] : list) {
+      const t = this.core.objectMap.get(id);
+      if (!t) continue;
+      t.traverse((child) => {
+        const m = child.material;
+        if (m && m.emissive instanceof THREE9.Color) {
+          this.selectionMaterials.set(child.uuid, {
+            mat: m,
+            oldEmissive: m.emissive.clone(),
+            oldIntensity: m.emissiveIntensity ?? 0,
+            oldOpacity: m.opacity,
+            oldDepthWrite: m.depthWrite
+          });
+          m.emissive = new THREE9.Color(3725737);
+          m.emissiveIntensity = 0.35;
+          if (ghost && child.userData.surface) {
+            m.opacity = 0.85;
+            m.depthWrite = true;
+          }
+        }
+      });
+    }
+  }
+  /** Remove the outlines traced from `root`'s meshes (all of them for null). */
+  dropOutlines(root) {
+    const keep = (o) => {
+      let inside2 = root === null;
+      for (let c = o.source; c && !inside2; c = c.parent) inside2 = c === root;
+      if (inside2) {
+        o.line.geometry.dispose();
+        o.line.removeFromParent();
+      }
+      return !inside2;
+    };
+    this.outlined = this.outlined.filter(keep);
+    this.presenceLines = this.presenceLines.filter(keep);
+  }
+  /** Outline what other people have selected, each set in its person's colour, on top of
+   *  everything (and clipped by a section). An empty list clears. */
+  setPresenceHighlight(entries) {
+    for (const o of this.presenceLines) {
+      o.line.geometry.dispose();
+      o.line.removeFromParent();
+    }
+    this.presenceLines = [];
+    for (const e of entries) {
+      const mat = this._presenceMaterial(e.color);
+      for (const id of e.ids) {
+        const t = this.core.objectMap.get(id);
+        if (!t) continue;
+        t.updateMatrixWorld(true);
+        t.traverse((c) => {
+          if (!c.userData.surface) return;
+          const line = new THREE9.LineSegments(new THREE9.EdgesGeometry(c.geometry, 30), mat);
+          line.matrixAutoUpdate = false;
+          line.matrix.copy(c.matrixWorld);
+          line.renderOrder = 998;
+          this.outlineGroup.add(line);
+          this.presenceLines.push({ line, source: c });
+        });
+      }
+    }
+    this.core.requestRender();
+  }
+  _presenceMaterial(color) {
+    let m = this.presenceMats.get(color);
+    if (!m) {
+      m = new THREE9.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.9 });
+      this.presenceMats.set(color, m);
+    }
+    m.clippingPlanes = this.sectionClip ? [this.sectionClip] : null;
+    return m;
+  }
+  _outlineMaterial() {
+    if (!this.outlineMat) this.outlineMat = new THREE9.LineBasicMaterial({ color: 2063072, depthTest: false, transparent: true, opacity: 0.95 });
+    this.outlineMat.clippingPlanes = this.sectionClip ? [this.sectionClip] : null;
+    return this.outlineMat;
+  }
+  setSection(section) {
+    this.sectionReq = section;
+    const axis = section && new THREE9.Vector3(section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
+    this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === void 0 ? this.core.contentBox() : null) : null;
+    this.core.renderer.localClippingEnabled = !!this.sectionClip;
+    for (const t of this.core.objectMap.values()) this.dressSection(t);
+    if (this.outlineMat) this._outlineMaterial();
+    for (const c of this.presenceMats.keys()) this._presenceMaterial(c);
+    this.core.requestRender();
+  }
+  get section() {
+    return this.sectionReq;
+  }
+  setSectionColour(colour) {
+    this.sectionColour = colour === null ? null : new THREE9.Color(colour).getHex();
+    if (this.sectionReq) this.setSection(this.sectionReq);
+  }
+  /** Clip one object's materials with the live section (or unclip it) and give its
+   *  surfaces their poché. */
+  dressSection(t) {
+    const plane = this.sectionClip;
+    const old = [];
+    const surfaces = [];
+    t.traverse((c) => {
+      if (c.userData.poche) {
+        old.push(c);
+        return;
+      }
+      const m = c.material;
+      if (m) {
+        for (const one of Array.isArray(m) ? m : [m]) {
+          if ((one.clippingPlanes?.length ?? 0) === 0 && !plane) continue;
+          one.clippingPlanes = plane ? [plane] : null;
+          one.needsUpdate = true;
+        }
+      }
+      if (plane && c.userData.surface && !seeThrough(c.material)) surfaces.push(c);
+    });
+    for (const o of old) o.removeFromParent();
+    if (!plane || this.core.gScene.renderMode === "hiddenline" || this.core.gScene.renderMode === "ghost") return;
+    const mat = this._poche(plane);
+    for (const s of surfaces) {
+      const p = new THREE9.Mesh(s.geometry, mat);
+      p.userData.poche = true;
+      p.renderOrder = -1;
+      p.raycast = () => {
+      };
+      s.parent.add(p);
+    }
+  }
+  _poche(plane) {
+    const mode = this.core.gScene.renderMode === "ghost" ? "ghost" : "shaded";
+    const colour = this.sectionColour ?? sectionAppearance(mode).colour;
+    const m = this.pocheMat;
+    if (m && m.color.getHex() === colour && m.clippingPlanes?.[0] === plane) return m;
+    m?.dispose();
+    this.pocheMat = new THREE9.MeshBasicMaterial({ color: colour, side: THREE9.BackSide, clippingPlanes: [plane], toneMapped: false });
+    return this.pocheMat;
+  }
+  /** Is this world point on the side the section removed? */
+  cutAway(p) {
+    return !!this.sectionClip && this.sectionClip.distanceToPoint(p) < -1e-9;
+  }
+  setCallouts(items, handlers = {}) {
+    this.calloutHandlers = handlers;
+    if (!items.length && !this.callouts) return;
+    this.callouts ?? (this.callouts = new Callouts(this.core.container, {
+      onPick: (id) => this.calloutHandlers.onPick?.(id),
+      onHover: (id) => this.calloutHandlers.onHover?.(id)
+    }));
+    this.callouts.setItems(items);
+    this.calloutsDirty = true;
+    this.core.requestRender();
+  }
+  /** Re-measure each callout's anchor: the centre of its objects' bounds. */
+  _measureCallouts() {
+    this.calloutsDirty = false;
+    this.calloutAnchors.clear();
+    const box = new THREE9.Box3();
+    for (const id of this.callouts?.ids ?? []) {
+      box.makeEmpty();
+      for (const t of this.core.resolve(this.callouts.objectsOf(id))) if (t.visible) box.expandByObject(t);
+      if (!box.isEmpty()) this.calloutAnchors.set(id, box.getCenter(new THREE9.Vector3()));
+    }
+    this.calloutCheckedAt = 0;
+  }
+  /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
+  _checkCalloutVisibility() {
+    this.calloutVisible.clear();
+    const cam = this.core.activeCamera;
+    const meshes = [...this.core.objectMap.values()].filter((t) => t.visible);
+    const ray = new THREE9.Raycaster();
+    const eye = cam.getWorldPosition(new THREE9.Vector3());
+    for (const [id, anchor] of this.calloutAnchors) {
+      const own = new Set(this.core.resolve(this.callouts.objectsOf(id)));
+      const dir = anchor.clone().sub(eye);
+      const dist2 = dir.length();
+      if (cam.isOrthographicCamera) {
+        cam.getWorldDirection(dir);
+        ray.set(anchor.clone().addScaledVector(dir, -1e4), dir);
+        ray.far = 1e4;
+      } else {
+        ray.set(eye, dir.normalize());
+        ray.far = dist2;
+      }
+      const hit = ray.intersectObjects(meshes, true).find((h) => !this.cutAway(h.point));
+      let owner = hit?.object ?? null;
+      while (owner && !own.has(owner)) owner = owner.parent;
+      if (!hit || owner || hit.distance >= ray.far - 1e-3) this.calloutVisible.add(id);
+    }
+  }
+  /** Project, cull and lay out this frame's labels. */
+  drawCallouts() {
+    if (!this.callouts) return;
+    if (this.calloutsDirty) this._measureCallouts();
+    const w = this.core.container.clientWidth || 1, h = this.core.container.clientHeight || 1;
+    const now = performance.now();
+    if (now - this.calloutCheckedAt > 180) {
+      this._checkCalloutVisibility();
+      this.calloutCheckedAt = now;
+    } else if (!this.calloutRecheck) {
+      this.calloutRecheck = window.setTimeout(() => {
+        this.calloutRecheck = 0;
+        this.calloutCheckedAt = 0;
+        this.core.requestRender();
+      }, 200);
+    }
+    const cam = this.core.activeCamera;
+    cam.updateMatrixWorld();
+    const v = new THREE9.Vector3();
+    const anchors = [];
+    for (const [id, anchor] of this.calloutAnchors) {
+      if (!this.calloutVisible.has(id)) continue;
+      v.copy(anchor).project(cam);
+      if (v.z > 1) continue;
+      anchors.push({ id, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
+    }
+    const labelWidth = labelWidthFor(w);
+    this.callouts.setLabelWidth(labelWidth);
+    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
+    this.callouts.update(placed, dropped.length);
+  }
+  dispose() {
+    this.pocheMat?.dispose();
+    this.outlineMat?.dispose();
+    for (const o of this.outlined) o.line.geometry.dispose();
+    for (const o of this.presenceLines) o.line.geometry.dispose();
+    for (const m of this.presenceMats.values()) m.dispose();
+    this.callouts?.dispose();
+    clearTimeout(this.calloutRecheck);
+  }
+};
+
 // src/render/ThreeRenderer.ts
 var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
 var DEFAULTS = {
@@ -2251,227 +4123,76 @@ var DEFAULTS = {
   navGizmo: false
 };
 var EDGE_BUDGET_MS = 8;
-var NO_TURN = new THREE5.Quaternion();
-function seeThrough(m) {
-  return (Array.isArray(m) ? m : [m]).some((x) => x.transparent && x.opacity < 1);
-}
 var ThreeRenderer = class {
   constructor(gScene, container, config) {
-    this._isOrtho = false;
     this.objectMap = /* @__PURE__ */ new Map();
     this.unsub = null;
     this.rafId = 0;
     // Render on demand: set by anything that can change the picture (scene events,
     // camera, lights, handles, resize); cleared by a draw. See renderIfNeeded().
     this._needsRender = true;
-    // Camera position at the previous renderIfNeeded(), to follow orbit damping
-    // below OrbitControls' change threshold (see _settleDamping).
-    this._lastCamPos = new THREE5.Vector3(NaN, NaN, NaN);
-    this.currentLighting = "flat";
-    // Studio-mode default PBR material, used when a mesh sets no explicit
-    // metalness/roughness in its VisualStyle. Configurable via setStudioMaterial.
-    this.studioMetalness = 0;
-    this.studioRoughness = 0.65;
-    // When set, forces this color on studio meshes (overriding their own); null = keep per-mesh color.
-    this.studioColor = null;
-    this.studioFlatShading = false;
     // When true, line/point "helper" objects are hidden (e.g. a clean render view
     // that shows only solid meshes). Solid geometry is unaffected.
     this.hideHelpers = false;
     this.gridHelper = null;
     this.axesHelper = null;
-    // Invisible shadow-catcher plane added only in Studio mode so the
-    // PCF-soft shadows have a surface to land on.
-    this.shadowGround = null;
-    // When true, the studio shadow-catcher plane (at the world origin) is hidden —
-    // e.g. when the app provides its own ground to receive shadows.
-    this.shadowGroundHidden = false;
     // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
     // sketch re-runs (clearThree only touches objectMap-managed objects).
     this.externalObjects = /* @__PURE__ */ new Map();
-    // Prefiltered (PMREM) environment map for image-based reflections.
-    // Built lazily once on first enable, then reused. Only visibly affects
-    // studio PBR materials.
-    this.envMap = null;
-    // Optional equirectangular source (e.g. a loaded HDR) for the environment.
-    // null → the built-in procedural gradient. The app owns/disposes this texture.
-    this.envSourceTex = null;
-    this.envEnabled = false;
-    this.envBackground = false;
     this.resizeObserver = null;
-    // ── Picking + Gizmo ──
-    this.raycaster = new THREE5.Raycaster();
-    this.pickEnabled = false;
-    this.pickListeners = /* @__PURE__ */ new Set();
-    this.transformControls = null;
-    this.gizmoMode = "translate";
-    this.gizmoAttachedId = null;
-    this.pointerDown = null;
-    this.selectionMaterials = /* @__PURE__ */ new Map();
-    // ── Drag handles ──
-    this.dragHandles = /* @__PURE__ */ new Map();
-    this.dragHandleConstraints = /* @__PURE__ */ new Map();
-    this.dragHandlePlanes = /* @__PURE__ */ new Map();
-    this.dragHandleMoveCb = null;
-    this.dragHandleEndCb = null;
-    this.dragHandlePickCb = null;
-    this.activeDragHandle = null;
-    this.selectedDragHandle = null;
-    this.dragPlane = new THREE5.Plane();
-    this.dragSeenThisRun = /* @__PURE__ */ new Set();
-    // ── Section (setSection) ──
-    this.sectionReq = null;
-    this.sectionClip = null;
-    this.sectionColour = null;
-    // One poché material for every cut mesh; its colour follows the render mode.
-    this.pocheMat = null;
-    // ── Named views (setView / orbitTo) and the axis widget ──
-    this.navGizmo = null;
-    // A camera turn in progress: the offset from the target it started at, the full turn.
-    // A camera move in progress: a turn about the target, and a glide of the target and the distance.
-    this.cameraMove = null;
-    // ── Callouts (setCallouts) ──
-    this.callouts = null;
-    this.calloutAnchors = /* @__PURE__ */ new Map();
-    this.calloutVisible = /* @__PURE__ */ new Set();
-    this.calloutCheckedAt = 0;
-    this.calloutRecheck = 0;
-    this.calloutsDirty = false;
-    this.calloutHandlers = {};
-    this.projectionListeners = /* @__PURE__ */ new Set();
-    // ── Edges built a frame at a time (hidden line, ghost) ──
-    this.edgeQueue = [];
-    // ── The sun framed to the content (Studio) ──
-    this.sunDir = new THREE5.Vector3(8, 10, 15).normalize();
-    this.sunMinDistance = 50;
-    this.sunDirty = true;
-    // ── Selection as outlines, hover ──
-    this.selectionStyle = "tint";
-    this.outlineGroup = new THREE5.Group();
-    this.outlined = [];
-    this.hoverListeners = /* @__PURE__ */ new Set();
-    this.hovered = null;
-    this.hoverAt = 0;
-    /** Cached horizontal-stripe textures for print-layer shading, keyed by layer height (m). One texture
-     *  period = one printed bead: bright rounded crown, dark groove at the layer boundary. The pipe UVs
-     *  carry V in metres, so repeat.y = 1/layerH gives physically-true layer spacing. */
-    this._stripeTexCache = /* @__PURE__ */ new Map();
-    this.onPointerDown = (e) => {
-      const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
-      if (handleName) {
-        e.preventDefault();
-        this.activeDragHandle = handleName;
-        this.setHandleSelected(handleName);
-        if (this.controls) this.controls.enabled = false;
-        const handle = this.dragHandles.get(handleName);
-        let normal;
-        if (this.dragHandlePlanes.get(handleName) === "screen") {
-          normal = new THREE5.Vector3();
-          this.activeCamera.getWorldDirection(normal);
-        } else {
-          normal = this.isZUp ? new THREE5.Vector3(0, 0, 1) : new THREE5.Vector3(0, 1, 0);
-        }
-        this.dragPlane.setFromNormalAndCoplanarPoint(normal, handle.position);
-        const dom = this.renderer.domElement;
-        dom.addEventListener("pointermove", this.onPointerMoveDragging);
-        dom.addEventListener("pointerup", this.onPointerUpDragging, { once: true });
-        dom.setPointerCapture(e.pointerId);
-        return;
-      }
-      this.pointerDown = { x: e.clientX, y: e.clientY };
-    };
-    this.onPointerUp = (e) => {
-      if (!this.pointerDown) return;
-      const dx = e.clientX - this.pointerDown.x;
-      const dy = e.clientY - this.pointerDown.y;
-      this.pointerDown = null;
-      if (dx * dx + dy * dy > 25) return;
-      if (this.transformControls?.dragging) return;
-      if (this.selectedDragHandle !== null) this.setHandleSelected(null);
-      const id = this.pickAt(e.clientX, e.clientY);
-      const info = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey };
-      for (const l of this.pickListeners) l(id, info);
-    };
-    this.onPointerMoveDragging = (e) => {
-      if (!this.activeDragHandle) return;
-      const hit = this.raycastPlane(e.clientX, e.clientY, this.dragPlane);
-      if (!hit) return;
-      const handle = this.dragHandles.get(this.activeDragHandle);
-      if (!handle) return;
-      let x = hit.x, y = hit.y, z = hit.z;
-      const constrain = this.dragHandleConstraints.get(this.activeDragHandle);
-      if (constrain) {
-        const c = constrain(x, y, z);
-        x = c[0];
-        y = c[1];
-        z = c[2];
-      }
-      handle.position.set(x, y, z);
-      this.requestRender();
-      if (this.dragHandleMoveCb) {
-        this.dragHandleMoveCb(this.activeDragHandle, x, y, z);
-      }
-    };
-    this.onPointerUpDragging = (_e) => {
-      const name = this.activeDragHandle;
-      this.activeDragHandle = null;
-      if (this.controls) this.controls.enabled = true;
-      const dom = this.renderer.domElement;
-      dom.removeEventListener("pointermove", this.onPointerMoveDragging);
-      if (name && this.dragHandlePickCb) this.dragHandlePickCb(name);
-      if (name && this.dragHandleEndCb) this.dragHandleEndCb(name);
-    };
-    this.highlightIds = null;
-    this.outlineMat = null;
-    this.onHoverMove = (e) => {
-      if (e.buttons !== 0) return;
-      const now = performance.now();
-      if (now - this.hoverAt < 40) return;
-      this.hoverAt = now;
-      this._hover(this.pickAt(e.clientX, e.clientY));
-    };
-    this.onHoverLeave = () => this._hover(null);
     this.gScene = gScene;
     this.container = container;
     this.config = { ...DEFAULTS, ...config };
     this.isZUp = this.config.up === "z";
     const cfg = this.config;
-    this.threeScene = new THREE5.Scene();
-    this.threeScene.background = new THREE5.Color(cfg.backgroundColor);
+    this.threeScene = new THREE10.Scene();
+    this.threeScene.background = new THREE10.Color(cfg.backgroundColor);
     const aspect = container.clientWidth / container.clientHeight || 1;
-    this.camera = new THREE5.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
+    this.camera = new THREE10.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
     if (this.isZUp) this.camera.up.set(0, 0, 1);
     this.camera.position.set(...cfg.cameraPosition);
     this.camera.lookAt(...cfg.cameraTarget);
-    this._orthoCam = new THREE5.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
-    if (this.isZUp) this._orthoCam.up.set(0, 0, 1);
-    this._orthoCam.position.set(...cfg.cameraPosition);
-    this._orthoCam.lookAt(...cfg.cameraTarget);
-    this.renderer = new THREE5.WebGLRenderer({ antialias: cfg.antialias });
+    const orthoCam = new THREE10.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
+    if (this.isZUp) orthoCam.up.set(0, 0, 1);
+    orthoCam.position.set(...cfg.cameraPosition);
+    orthoCam.lookAt(...cfg.cameraTarget);
+    this.renderer = new THREE10.WebGLRenderer({ antialias: cfg.antialias });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
-    this.ambientLight = new THREE5.AmbientLight(16777215, 0.5);
-    this.threeScene.add(this.ambientLight);
-    this.dirLight = new THREE5.DirectionalLight(16777215, 0.7);
-    this.dirLight.position.set(8, this.isZUp ? 10 : 15, this.isZUp ? 15 : 10);
-    this.dirLight.target.position.set(0, 0, 0);
-    this.threeScene.add(this.dirLight);
-    this.threeScene.add(this.dirLight.target);
-    this.hemiLight = new THREE5.HemisphereLight(4482730, 3351057, 0.4);
-    this.threeScene.add(this.hemiLight);
-    this.sunDir.copy(this.dirLight.position).normalize();
-    this.outlineGroup.renderOrder = 999;
-    this.threeScene.add(this.outlineGroup);
-    this._applyLighting(this.gScene.lightingMode);
+    const self = this;
+    this.core = {
+      gScene,
+      threeScene: this.threeScene,
+      renderer: this.renderer,
+      container,
+      isZUp: this.isZUp,
+      objectMap: this.objectMap,
+      externalObjects: this.externalObjects,
+      config: this.config,
+      camera: this.camera,
+      get controls() {
+        return self.controls;
+      },
+      get activeCamera() {
+        return self.rig.activeCamera;
+      },
+      requestRender: () => this.requestRender(),
+      resolve: (objects) => this.resolve(objects),
+      contentBox: () => this.contentBox()
+    };
+    this.lighting = new Lighting(this.core);
+    this.marks = new Marks(this.core);
+    this.lighting.applyMode(this.gScene.lightingMode);
+    this.builder = new ObjectBuilder(this.core, this.lighting);
     if (cfg.showGrid) {
-      const grid = new THREE5.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
+      const grid = new THREE10.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
       if (this.isZUp) grid.rotation.x = Math.PI / 2;
       this.gridHelper = grid;
       this.threeScene.add(grid);
     }
     if (cfg.showAxes) {
-      this.axesHelper = new THREE5.AxesHelper(cfg.axesSize);
+      this.axesHelper = new THREE10.AxesHelper(cfg.axesSize);
       this.threeScene.add(this.axesHelper);
     }
     if (cfg.enableOrbitControls) {
@@ -2480,19 +4201,9 @@ var ThreeRenderer = class {
       this.controls.dampingFactor = 0.05;
       this.controls.target.set(...cfg.cameraTarget);
       this.controls.addEventListener("change", () => this.requestRender());
-      this.controls.addEventListener("start", () => {
-        this.cameraMove = null;
-      });
     }
-    if (cfg.navGizmo) {
-      this.navGizmo = new NavGizmo(container, {
-        corner: typeof cfg.navGizmo === "string" ? cfg.navGizmo : "bottom-right",
-        onAxis: (direction) => this.orbitTo(direction),
-        onDrag: (dx, dy) => this.orbitBy(dx, dy),
-        onSnap: () => this.orbitTo(nearestAxis(this._viewOffset())),
-        onProjection: () => this.setProjection(this._isOrtho ? "perspective" : "orthographic")
-      });
-    }
+    this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo);
+    this.pointer = new Pointer(this.core, this.builder, this.marks);
     this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -2501,13 +4212,13 @@ var ThreeRenderer = class {
   }
   /** The currently active camera — perspective or orthographic. */
   get activeCamera() {
-    return this._isOrtho ? this._orthoCam : this.camera;
+    return this.rig.activeCamera;
   }
   // ── Event Handling ──
   handleEvent(event) {
     this._needsRender = true;
-    this.sunDirty = true;
-    this.calloutsDirty = true;
+    this.lighting.sunDirty = true;
+    this.marks.calloutsDirty = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -2543,17 +4254,17 @@ var ThreeRenderer = class {
         this.rebuildAllMeshes();
         break;
       case "scene:lightingMode":
-        this._applyLighting(event.mode);
+        this.lighting.applyMode(event.mode);
         this.rebuildAllMeshes();
         break;
       case "scene:environment":
-        this._applyEnvironment(event.enabled);
+        this.lighting.applyEnvironment(event.enabled);
         break;
     }
   }
   // ── Object Conversion ──
   addToThree(obj) {
-    const t = this.convert(obj);
+    const t = this.builder.convert(obj);
     if (!t) return;
     t.userData.geomId = obj.id;
     t.userData.pickable = obj.pickable !== false;
@@ -2561,19 +4272,19 @@ var ThreeRenderer = class {
     t.userData.styleVisible = obj.style.visible;
     t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
     this.applyTransform(t, obj);
-    if (this.currentLighting === "studio") {
+    if (this.lighting.currentLighting === "studio") {
       const cast = this.gScene.renderMode !== "ghost";
       t.traverse((child) => {
-        if (child instanceof THREE5.Mesh) {
+        if (child instanceof THREE10.Mesh) {
           child.castShadow = cast;
           child.receiveShadow = true;
         }
       });
     }
-    if (this.sectionClip) this._dressSection(t);
+    if (this.marks.sectionClip) this.marks.dressSection(t);
     this.threeScene.add(t);
     this.objectMap.set(obj.id, t);
-    if (this.gizmoAttachedId === obj.id) this.attachGizmo(obj.id);
+    if (this.pointer.gizmoAttachedId === obj.id) this.pointer.attachGizmo(obj.id);
   }
   /** Apply a style patch to the existing three object if it only touches colour,
    *  opacity, visibility or inert keys. False → the caller rebuilds the object. */
@@ -2601,9 +4312,9 @@ var ThreeRenderer = class {
     const m = t.material;
     if (!line && !solid || !m || Array.isArray(m)) return false;
     const mat = m;
-    mat.color.set(solid && this.currentLighting === "studio" ? this.studioColor ?? s.color : s.color);
+    mat.color.set(solid && this.lighting.currentLighting === "studio" ? this.lighting.studioColor ?? s.color : s.color);
     if (obj.type === "point") {
-      const sel = this.selectionMaterials.get(t.uuid);
+      const sel = this.marks.selectionMaterials.get(t.uuid);
       (sel ? sel.oldEmissive : mat.emissive).set(s.color);
     }
     const transparent = s.opacity < 1;
@@ -2625,13 +4336,13 @@ var ThreeRenderer = class {
   removeFromThree(id) {
     const t = this.objectMap.get(id);
     if (!t) return;
-    this._dropOutlines(t);
+    this.marks.dropOutlines(t);
     this.threeScene.remove(t);
     this.disposeObject(t);
     this.objectMap.delete(id);
   }
   clearThree() {
-    this._dropOutlines(null);
+    this.marks.dropOutlines(null);
     for (const [, t] of this.objectMap) {
       this.threeScene.remove(t);
       this.disposeObject(t);
@@ -2646,101 +4357,9 @@ var ThreeRenderer = class {
       this.addToThree(obj);
     }
   }
-  /**
-   * Build a material that respects the current lighting mode. Studio mode
-   * returns an `MeshStandardMaterial` (PBR; reacts correctly to shadows
-   * and tonemapping); Flat mode returns the original `MeshPhongMaterial`.
-   * Same option surface — caller doesn't have to care which one comes back.
-   */
-  _makeMaterial(opts) {
-    if (this.currentLighting === "studio") {
-      return new THREE5.MeshStandardMaterial({
-        color: this.studioColor ?? opts.color,
-        emissive: opts.emissive,
-        emissiveIntensity: opts.emissiveIntensity,
-        opacity: opts.opacity,
-        transparent: opts.transparent,
-        side: opts.side,
-        wireframe: opts.wireframe,
-        flatShading: opts.flatShading ?? this.studioFlatShading,
-        depthTest: opts.depthTest,
-        depthWrite: opts.depthWrite,
-        vertexColors: opts.vertexColors,
-        roughness: opts.roughness ?? this.studioRoughness,
-        metalness: opts.metalness ?? this.studioMetalness
-      });
-    }
-    const { metalness: _m, roughness: _r, ...rest } = opts;
-    return new THREE5.MeshPhongMaterial(rest);
-  }
-  _stripeTexture(layerH) {
-    let tex = this._stripeTexCache.get(layerH);
-    if (tex) return tex;
-    const H = 64;
-    const cv = document.createElement("canvas");
-    cv.width = 2;
-    cv.height = H;
-    const ctx = cv.getContext("2d");
-    for (let y = 0; y < H; y++) {
-      const t = y / H;
-      const crown = Math.sin(Math.PI * t);
-      const v = Math.round(150 + 105 * Math.pow(crown, 0.7));
-      ctx.fillStyle = `rgb(${v},${v},${v})`;
-      ctx.fillRect(0, y, 2, 1);
-    }
-    tex = new THREE5.CanvasTexture(cv);
-    tex.wrapS = THREE5.RepeatWrapping;
-    tex.wrapT = THREE5.RepeatWrapping;
-    tex.repeat.set(1, 1 / layerH);
-    tex.anisotropy = 4;
-    this._stripeTexCache.set(layerH, tex);
-    return tex;
-  }
-  /**
-   * Set the Studio-mode default PBR material applied to meshes that don't
-   * carry their own metalness/roughness. Takes effect on the next material
-   * build (e.g. the next sketch re-run). metalness/roughness in 0..1.
-   */
-  setStudioMaterial(metalness, roughness, color = null, flatShading = false) {
-    const metalChanged = this.studioMetalness !== metalness || this.studioRoughness !== roughness;
-    this.studioMetalness = metalness;
-    this.studioRoughness = roughness;
-    this.studioColor = color;
-    this.studioFlatShading = flatShading;
-    if (metalChanged && this.currentLighting === "studio") {
-      for (const obj of this.gScene.all()) {
-        if (obj.type !== "mesh") continue;
-        const s = obj.style;
-        if (s.metalness !== void 0 && s.roughness !== void 0) continue;
-        const t = this.objectMap.get(obj.id);
-        if (!t) continue;
-        t.traverse((c) => {
-          if (!(c instanceof THREE5.Mesh)) return;
-          const mats = Array.isArray(c.material) ? c.material : [c.material];
-          for (const m of mats) {
-            if (m instanceof THREE5.MeshStandardMaterial) {
-              if (s.metalness === void 0) m.metalness = metalness;
-              if (s.roughness === void 0) m.roughness = roughness;
-            }
-          }
-        });
-      }
-    }
-    this.requestRender();
-  }
   // Line/point "helper" object types (vs solid meshes/polygons/planes).
   _isHelper(type) {
     return type === "segment" || type === "polyline" || type === "point" || type === "circle";
-  }
-  /**
-   * Show/hide the studio shadow-catcher plane at the world origin. Hide it when
-   * the app supplies its own ground mesh to receive shadows (avoids a duplicate
-   * shadow at z=0).
-   */
-  setShadowGroundVisible(visible) {
-    this.shadowGroundHidden = !visible;
-    if (this.shadowGround) this.shadowGround.visible = visible;
-    this.requestRender();
   }
   /**
    * Add a raw THREE.Object3D (e.g. a loaded glTF/GLB scene) to the renderer,
@@ -2785,797 +4404,15 @@ var ThreeRenderer = class {
     });
     this.requestRender();
   }
-  /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
-   *  useful range at building scale. */
-  setFog(color, density = 0) {
-    this.threeScene.fog = density > 1e-6 ? new THREE5.FogExp2(new THREE5.Color(color), density) : null;
-    this.requestRender();
-  }
-  /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
-  setExposure(v) {
-    this.renderer.toneMappingExposure = v;
-    this.requestRender();
-  }
-  /**
-   * Light the model from `direction` (FROM the model TO the sun), in Z-up scene coords
-   * (+X east, +Y north, +Z up) — the `SunPosition` convention; a Y-up scene is remapped.
-   * In Studio the shadow camera is framed to whatever the scene shows, so a 1 m object
-   * and a 100 m site both get sharp, complete shadows. `distance` is how far back the
-   * light sits at least (m).
-   */
-  setSunDirection(direction, distance = 50) {
-    const x = direction.x;
-    const y = this.isZUp ? direction.y : direction.z;
-    const z = this.isZUp ? direction.z : -direction.y;
-    this.sunDir.set(x, y, z).normalize();
-    this.sunMinDistance = distance;
-    this.sunDirty = true;
-    this._fitSun();
-    this.requestRender();
-  }
-  /** Aim the sun at the content's centre and fit its shadow camera around it. */
-  _fitSun() {
-    this.sunDirty = false;
-    const box = this._contentBox();
-    for (const o of this.externalObjects.values()) if (o.visible) box.expandByObject(o);
-    const sphere = box.isEmpty() ? new THREE5.Sphere(new THREE5.Vector3(), 10) : box.getBoundingSphere(new THREE5.Sphere());
-    const r = Math.max(sphere.radius, 0.5);
-    const d = Math.max(this.sunMinDistance, r * 3);
-    this.dirLight.position.copy(sphere.center).addScaledVector(this.sunDir, d);
-    this.dirLight.target.position.copy(sphere.center);
-    this.dirLight.target.updateMatrixWorld();
-    this.dirLight.shadow.normalBias = r * 2e-3;
-    const sc = this.dirLight.shadow.camera;
-    sc.left = -r * 1.2;
-    sc.right = r * 1.2;
-    sc.top = r * 1.2;
-    sc.bottom = -r * 1.2;
-    sc.near = Math.max(0.01, d - r * 1.5);
-    sc.far = d + r * 1.5;
-    sc.updateProjectionMatrix();
-  }
-  /**
-   * Reconfigure renderer + lights + scene shadow flags for the given mode.
-   * Material swapping happens after this returns, via `rebuildAllMeshes`.
-   */
-  _applyLighting(mode) {
-    this.currentLighting = mode;
-    const studio = mode === "studio";
-    this.renderer.shadowMap.enabled = studio;
-    this.renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
-    this.renderer.toneMapping = studio ? THREE5.ACESFilmicToneMapping : THREE5.NoToneMapping;
-    this.renderer.toneMappingExposure = 1;
-    this.renderer.outputColorSpace = THREE5.SRGBColorSpace;
-    if (studio) {
-      this.ambientLight.intensity = 0.35;
-      this.hemiLight.intensity = 0.3;
-      this.dirLight.intensity = 2.8;
-      this.dirLight.castShadow = true;
-      this.dirLight.shadow.mapSize.set(2048, 2048);
-      this.dirLight.shadow.bias = -5e-4;
-      this.sunDirty = true;
-    } else {
-      this.ambientLight.intensity = 0.5;
-      this.hemiLight.intensity = 0.4;
-      this.dirLight.intensity = 0.7;
-      this.dirLight.castShadow = false;
-    }
-    const cast = studio && this.gScene.renderMode !== "ghost";
-    this.threeScene.traverse((obj) => {
-      if (obj instanceof THREE5.Mesh) {
-        obj.castShadow = cast;
-        obj.receiveShadow = studio;
-      }
-    });
-    if (studio && !this.shadowGround) {
-      const geo = new THREE5.PlaneGeometry(400, 400);
-      const mat = new THREE5.ShadowMaterial({ opacity: 0.35 });
-      this.shadowGround = new THREE5.Mesh(geo, mat);
-      this.shadowGround.receiveShadow = true;
-      if (!this.isZUp) this.shadowGround.rotation.x = -Math.PI / 2;
-      this.shadowGround.position.set(0, this.isZUp ? 0 : -1e-3, this.isZUp ? -1e-3 : 0);
-      this.shadowGround.visible = !this.shadowGroundHidden;
-      this.threeScene.add(this.shadowGround);
-    } else if (!studio && this.shadowGround) {
-      this.threeScene.remove(this.shadowGround);
-      this.shadowGround.geometry.dispose();
-      this.shadowGround.material.dispose();
-      this.shadowGround = null;
-    }
-  }
-  /**
-   * Toggle a prefiltered environment map on `threeScene.environment`. Only
-   * studio PBR (`MeshStandardMaterial`) materials sample it, so this is a
-   * no-op visually in flat mode — but it's safe to enable in either mode.
-   * The map is built once on first enable and reused thereafter.
-   */
-  _applyEnvironment(enabled) {
-    this.envEnabled = enabled;
-    if (enabled) {
-      if (!this.envMap) this.envMap = this._buildEnvironment();
-      this.threeScene.environment = this.envMap;
-    } else {
-      this.threeScene.environment = null;
-    }
-  }
-  /**
-   * Set an equirectangular source texture for the environment (e.g. a loaded
-   * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
-   * The texture is PMREM-prefiltered here; the caller keeps ownership of it.
-   */
-  setEnvironmentSource(equirect) {
-    if (this.envSourceTex === equirect) return;
-    this.envSourceTex = equirect;
-    if (this.envMap) {
-      this.envMap.dispose();
-      this.envMap = null;
-    }
-    if (this.envEnabled) {
-      this.envMap = this._buildEnvironment();
-      this.threeScene.environment = this.envMap;
-    }
-    this._applyBackground();
-    this.requestRender();
-  }
-  /**
-   * Show the equirectangular environment source as the scene backdrop (sky).
-   * No-op until a source is set via setEnvironmentSource. When off, the
-   * background is left to setBackground().
-   */
-  setEnvironmentBackground(visible) {
-    this.envBackground = visible;
-    this._applyBackground();
-    this.requestRender();
-  }
-  /**
-   * Rotate the environment + background (Euler radians) — e.g. to align a Y-up
-   * HDRI/equirect source with a Z-up scene (tilt ~90° about X).
-   */
-  setEnvironmentRotation(x, y, z) {
-    const s = this.threeScene;
-    s.environmentRotation?.set(x, y, z);
-    s.backgroundRotation?.set(x, y, z);
-    this.requestRender();
-  }
-  _applyBackground() {
-    if (this.envBackground && this.envSourceTex) {
-      this.envSourceTex.mapping = THREE5.EquirectangularReflectionMapping;
-      this.threeScene.background = this.envSourceTex;
-    }
-  }
-  /**
-   * Build a prefiltered (PMREM) environment from a procedural vertical
-   * gradient — bright neutral sky at the top, mid horizon, darker ground —
-   * using core Three only (no `three/examples` RoomEnvironment). Returns the
-   * PMREM-filtered cube texture; the source `DataTexture` and the generator
-   * are disposed before returning.
-   */
-  _buildEnvironment() {
-    if (this.envSourceTex) {
-      this.envSourceTex.mapping = THREE5.EquirectangularReflectionMapping;
-      const pmremSrc = new THREE5.PMREMGenerator(this.renderer);
-      const envSrc = pmremSrc.fromEquirectangular(this.envSourceTex).texture;
-      pmremSrc.dispose();
-      return envSrc;
-    }
-    const W = 16, H = 256;
-    const data = new Uint8Array(W * H * 4);
-    const sky = [0.85, 0.88, 0.95];
-    const horizon = [0.55, 0.55, 0.55];
-    const ground = [0.12, 0.12, 0.13];
-    for (let y = 0; y < H; y++) {
-      const t = y / (H - 1);
-      let r, g, b;
-      if (t < 0.5) {
-        const k = t / 0.5;
-        r = ground[0] + (horizon[0] - ground[0]) * k;
-        g = ground[1] + (horizon[1] - ground[1]) * k;
-        b = ground[2] + (horizon[2] - ground[2]) * k;
-      } else {
-        const k = (t - 0.5) / 0.5;
-        r = horizon[0] + (sky[0] - horizon[0]) * k;
-        g = horizon[1] + (sky[1] - horizon[1]) * k;
-        b = horizon[2] + (sky[2] - horizon[2]) * k;
-      }
-      for (let x = 0; x < W; x++) {
-        const i = (y * W + x) * 4;
-        data[i] = Math.round(r * 255);
-        data[i + 1] = Math.round(g * 255);
-        data[i + 2] = Math.round(b * 255);
-        data[i + 3] = 255;
-      }
-    }
-    const tex = new THREE5.DataTexture(data, W, H, THREE5.RGBAFormat);
-    tex.mapping = THREE5.EquirectangularReflectionMapping;
-    tex.colorSpace = THREE5.SRGBColorSpace;
-    tex.needsUpdate = true;
-    const pmrem = new THREE5.PMREMGenerator(this.renderer);
-    const env = pmrem.fromEquirectangular(tex).texture;
-    pmrem.dispose();
-    tex.dispose();
-    return env;
-  }
-  /** Build a THREE.Line for a line-type object — dashed material (+ line distances)
-   *  when the style requests it, else a basic line material. */
-  _makeLine(geo, s) {
-    const mat = s.dash ? new THREE5.LineDashedMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1, dashSize: s.dash.size, gapSize: s.dash.gap }) : new THREE5.LineBasicMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1 });
-    const line = new THREE5.Line(geo, mat);
-    if (s.dash) line.computeLineDistances();
-    return line;
-  }
-  convert(obj) {
-    const s = obj.style;
-    switch (obj.type) {
-      case "point": {
-        const geo = new THREE5.SphereGeometry(s.pointSize, 12, 12);
-        const mat = this._makeMaterial({
-          color: s.color,
-          emissive: s.color,
-          emissiveIntensity: 0.3,
-          opacity: s.opacity,
-          transparent: s.opacity < 1,
-          metalness: s.metalness,
-          roughness: s.roughness
-        });
-        const mesh = new THREE5.Mesh(geo, mat);
-        if (obj.position) mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
-        if (s.label) {
-          const group = new THREE5.Group();
-          group.add(mesh);
-          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color, s.labelScale ?? 1);
-          if (obj.position) sprite.position.set(obj.position.x, obj.position.y, obj.position.z);
-          if (this.isZUp) sprite.position.z += s.pointSize + 0.15;
-          else sprite.position.y += s.pointSize + 0.15;
-          group.add(sprite);
-          return group;
-        }
-        return mesh;
-      }
-      case "segment": {
-        if (!obj.start || !obj.end) return null;
-        const a = new THREE5.Vector3(obj.start.x, obj.start.y, obj.start.z);
-        const b = new THREE5.Vector3(obj.end.x, obj.end.y, obj.end.z);
-        if (s.tubeRadius && s.tubeRadius > 0) {
-          const dir = new THREE5.Vector3().subVectors(b, a);
-          const len = dir.length();
-          if (len < 1e-8) return null;
-          const geo2 = new THREE5.CylinderGeometry(s.tubeRadius, s.tubeRadius, len, 6, 1);
-          geo2.rotateX(Math.PI / 2);
-          geo2.translate(0, 0, len / 2);
-          const mesh = new THREE5.Mesh(geo2, this._makeMaterial({
-            color: s.color,
-            opacity: s.opacity,
-            transparent: s.opacity < 1,
-            metalness: s.metalness,
-            roughness: s.roughness
-          }));
-          mesh.position.copy(a);
-          mesh.lookAt(b);
-          return mesh;
-        }
-        const geo = new THREE5.BufferGeometry().setFromPoints([a, b]);
-        return this._makeLine(geo, s);
-      }
-      case "polyline": {
-        if (!obj.vertices || obj.vertices.length < 2) return null;
-        const n = obj.vertices.length;
-        const arr = new Float32Array(n * 3);
-        for (let i = 0; i < n; i++) {
-          const v = obj.vertices[i];
-          arr[i * 3] = v.x;
-          arr[i * 3 + 1] = v.y;
-          arr[i * 3 + 2] = v.z;
-        }
-        const geo = new THREE5.BufferGeometry();
-        geo.setAttribute("position", new THREE5.BufferAttribute(arr, 3));
-        return this._makeLine(geo, s);
-      }
-      case "polygon": {
-        if (!obj.vertices || obj.vertices.length < 2) return null;
-        const group = new THREE5.Group();
-        const pts = obj.vertices.map((v) => new THREE5.Vector3(v.x, v.y, v.z));
-        if (pts.length > 2) pts.push(pts[0].clone());
-        const lineGeo = new THREE5.BufferGeometry().setFromPoints(pts);
-        group.add(new THREE5.Line(lineGeo, new THREE5.LineBasicMaterial({ color: s.color })));
-        if (obj.vertices.length >= 3) {
-          if (this.isZUp) {
-            const shape = new THREE5.Shape(obj.vertices.map((v) => new THREE5.Vector2(v.x, v.y)));
-            const shapeGeo = new THREE5.ShapeGeometry(shape);
-            group.add(new THREE5.Mesh(shapeGeo, this._makeMaterial({
-              color: s.color,
-              opacity: s.opacity,
-              transparent: true,
-              side: THREE5.DoubleSide,
-              metalness: s.metalness,
-              roughness: s.roughness
-            })));
-          } else {
-            const shape = new THREE5.Shape(obj.vertices.map((v) => new THREE5.Vector2(v.x, v.z)));
-            const shapeGeo = new THREE5.ShapeGeometry(shape);
-            shapeGeo.rotateX(-Math.PI / 2);
-            group.add(new THREE5.Mesh(shapeGeo, this._makeMaterial({
-              color: s.color,
-              opacity: s.opacity,
-              transparent: true,
-              side: THREE5.DoubleSide,
-              metalness: s.metalness,
-              roughness: s.roughness
-            })));
-          }
-        }
-        return group;
-      }
-      case "mesh": {
-        if (obj.flatMeshData) return this.convertFlatMesh(obj.flatMeshData, s);
-        if (!obj.mesh) return null;
-        return this.convertMesh(obj.mesh, s);
-      }
-      case "circle": {
-        if (!obj.center || obj.radius == null) return null;
-        const pts = [];
-        const seg = 64;
-        for (let i = 0; i <= seg; i++) {
-          const a = i / seg * Math.PI * 2;
-          const ca = Math.cos(a) * obj.radius, sa = Math.sin(a) * obj.radius;
-          if (this.isZUp) {
-            pts.push(new THREE5.Vector3(obj.center.x + ca, obj.center.y + sa, obj.center.z));
-          } else {
-            pts.push(new THREE5.Vector3(obj.center.x + ca, obj.center.y, obj.center.z + sa));
-          }
-        }
-        const geo = new THREE5.BufferGeometry().setFromPoints(pts);
-        return this._makeLine(geo, s);
-      }
-      case "plane": {
-        if (!obj.normal) return null;
-        const geo = new THREE5.PlaneGeometry(10, 10);
-        const mat = this._makeMaterial({
-          color: s.color,
-          opacity: s.opacity,
-          transparent: true,
-          side: THREE5.DoubleSide,
-          metalness: s.metalness,
-          roughness: s.roughness
-        });
-        const mesh = new THREE5.Mesh(geo, mat);
-        const n = new THREE5.Vector3(obj.normal.x, obj.normal.y, obj.normal.z).normalize();
-        mesh.lookAt(n);
-        mesh.position.copy(n.multiplyScalar(obj.distance ?? 0));
-        return mesh;
-      }
-      default:
-        return null;
-    }
-  }
-  /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
-  convertMesh(gmesh, s) {
-    const data = gmesh.toMeshData();
-    const geo = new THREE5.BufferGeometry();
-    geo.setAttribute("position", new THREE5.BufferAttribute(data.positions, 3));
-    geo.setAttribute("normal", new THREE5.BufferAttribute(data.normals, 3));
-    geo.setIndex(new THREE5.BufferAttribute(data.indices, 1));
-    const pipeUV = gmesh.__pipeUV;
-    if (pipeUV && pipeUV.sides > 0) {
-      const n = data.positions.length / 3;
-      const uv = new Float32Array(n * 2);
-      for (let k = 0; k < n; k++) {
-        const ring = Math.min(Math.floor(k / pipeUV.sides), pipeUV.vAtRing.length - 1);
-        uv[k * 2] = k % pipeUV.sides / pipeUV.sides;
-        uv[k * 2 + 1] = pipeUV.vAtRing[ring] ?? 0;
-      }
-      geo.setAttribute("uv", new THREE5.BufferAttribute(uv, 2));
-    }
-    return this.buildMeshGroup(geo, s);
-  }
-  /** Convert flat mesh data (with optional per-vertex colors) → Three.js group */
-  convertFlatMesh(data, s) {
-    const geo = new THREE5.BufferGeometry();
-    geo.setAttribute("position", new THREE5.BufferAttribute(data.positions, 3));
-    geo.setAttribute("normal", new THREE5.BufferAttribute(data.normals, 3));
-    geo.setIndex(new THREE5.BufferAttribute(data.indices, 1));
-    const hasColors = !!data.colors?.length;
-    if (hasColors) geo.setAttribute("color", new THREE5.BufferAttribute(data.colors, 4));
-    if (data.groups?.length && this.gScene.renderMode === "solid" && !hasColors) {
-      const groupColors = s.groupColors ?? {};
-      const side = s.backfaceColor ? THREE5.DoubleSide : s.doubleSided ? THREE5.DoubleSide : THREE5.FrontSide;
-      for (let i = 0; i < data.groups.length; i++) {
-        const g = data.groups[i];
-        geo.addGroup(g.indexStart, g.indexCount, i);
-      }
-      const materials = data.groups.map((g) => this._makeMaterial({
-        color: groupColors[g.name] ?? s.color,
-        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
-        transparent: s.opacity < 1 || s.wireframe,
-        side,
-        flatShading: s.flatShading ?? false,
-        metalness: s.metalness,
-        roughness: s.roughness,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      }));
-      const group = new THREE5.Group();
-      const surface = new THREE5.Mesh(geo, materials);
-      surface.userData.surface = true;
-      group.add(surface);
-      if (!s.wireframe) {
-        group.add(new THREE5.Mesh(geo.clone(), new THREE5.MeshBasicMaterial({
-          color: 16777215,
-          wireframe: true,
-          opacity: 0.04,
-          transparent: true
-        })));
-      }
-      return group;
-    }
-    return this.buildMeshGroup(geo, s, hasColors);
-  }
-  /** Shared mesh group builder — handles solid / wireframe / hiddenline render modes */
-  buildMeshGroup(geo, s, hasVertexColors = false) {
-    const group = new THREE5.Group();
-    const mode = this.gScene.renderMode;
-    const side = s.doubleSided ? THREE5.DoubleSide : THREE5.FrontSide;
-    if (mode === "wireframe") {
-      const wireMat = new THREE5.MeshBasicMaterial({
-        color: s.color,
-        wireframe: true,
-        opacity: s.opacity,
-        transparent: s.opacity < 1
-      });
-      group.add(new THREE5.Mesh(geo, wireMat));
-    } else if (mode === "hiddenline") {
-      const occlusionMat = new THREE5.MeshBasicMaterial({
-        color: this.config.backgroundColor,
-        side,
-        toneMapped: false,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      });
-      group.add(new THREE5.Mesh(geo, occlusionMat));
-      const edgeAngle = s.edgeAngle ?? 30;
-      const wireMat = new THREE5.LineBasicMaterial({ color: s.edgeColor ?? 3092271, toneMapped: false });
-      group.add(this._edgeLines(geo, edgeAngle, wireMat));
-      const rimMat = new THREE5.MeshBasicMaterial({
-        color: s.edgeColor ?? 3092271,
-        side: THREE5.BackSide,
-        toneMapped: false
-      });
-      group.add(new THREE5.Mesh(geo, rimMat));
-    } else if (mode === "ghost") {
-      const look = surfaceAppearance("ghost", 0);
-      const surface = new THREE5.Mesh(geo, this._makeMaterial({
-        color: hasVertexColors ? 16777215 : s.color,
-        vertexColors: hasVertexColors,
-        emissive: hasVertexColors ? 0 : s.color,
-        emissiveIntensity: 0.8,
-        opacity: look.opacity,
-        transparent: true,
-        depthWrite: look.depthWrite,
-        side: THREE5.DoubleSide
-      }));
-      surface.userData.surface = true;
-      group.add(surface);
-      const edge = edgeStyle("ghost", this.config.backgroundColor);
-      group.add(this._edgeLines(geo, s.edgeAngle ?? 30, new THREE5.LineBasicMaterial({
-        color: edge.colour,
-        opacity: edge.opacity,
-        transparent: true,
-        depthWrite: false
-      })));
-    } else {
-      const solidMat = this._makeMaterial({
-        color: hasVertexColors ? 16777215 : s.color,
-        vertexColors: hasVertexColors,
-        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
-        transparent: s.opacity < 1 || s.wireframe,
-        side: s.backfaceColor ? THREE5.DoubleSide : side,
-        flatShading: s.flatShading ?? false,
-        metalness: s.metalness,
-        roughness: s.roughness,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      });
-      if (s.printLayerH && s.printLayerH > 1e-5 && geo.getAttribute("uv")) {
-        const tex = this._stripeTexture(s.printLayerH);
-        solidMat.map = tex;
-        solidMat.bumpMap = tex;
-        solidMat.bumpScale = s.printLayerH * 0.35;
-        solidMat.needsUpdate = true;
-      }
-      if (s.backfaceColor) {
-        const bc = new THREE5.Color(s.backfaceColor);
-        solidMat.onBeforeCompile = (shader) => {
-          shader.uniforms.backfaceColor = { value: bc };
-          shader.fragmentShader = "uniform vec3 backfaceColor;\n" + shader.fragmentShader;
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "#include <color_fragment>",
-            `#include <color_fragment>
-            if (!gl_FrontFacing) { diffuseColor.rgb = backfaceColor; }`
-          );
-        };
-      }
-      const surface = new THREE5.Mesh(geo, solidMat);
-      surface.userData.surface = true;
-      group.add(surface);
-      if (s.wireframe) {
-        const wireMat = new THREE5.MeshBasicMaterial({
-          color: s.color,
-          wireframe: true,
-          opacity: s.opacity * 0.8,
-          transparent: true
-        });
-        group.add(new THREE5.Mesh(geo.clone(), wireMat));
-      } else if (!hasVertexColors) {
-        const subtleWire = new THREE5.MeshBasicMaterial({
-          color: 16777215,
-          wireframe: true,
-          opacity: 0.04,
-          transparent: true
-        });
-        group.add(new THREE5.Mesh(geo.clone(), subtleWire));
-      }
-    }
-    return group;
-  }
-  // ── Text Sprites ──
-  createTextSprite(text, color, labelScale = 1) {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const fontSize = 48;
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    const metrics = ctx.measureText(text);
-    const w = Math.ceil(metrics.width) + 16;
-    const h = fontSize + 16;
-    canvas.width = w;
-    canvas.height = h;
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    ctx.fillStyle = color;
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    ctx.fillText(text, w / 2, h / 2);
-    const tex = new THREE5.CanvasTexture(canvas);
-    tex.minFilter = THREE5.LinearFilter;
-    const mat = new THREE5.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-    const sprite = new THREE5.Sprite(mat);
-    const scale = 5e-3 * labelScale;
-    sprite.scale.set(w * scale, h * scale, 1);
-    return sprite;
-  }
   // ── Get Three.js object for a scene ID ──
   getThreeObject(id) {
     return this.objectMap.get(id);
-  }
-  /**
-   * Project a world-space point into the viewport. Returned `x`, `y` are
-   * relative to the canvas's bounding rect (top-left = 0, 0).
-   * `visible` is false when the point is behind the camera or outside
-   * the normalised device cube — caller should hide the overlay.
-   */
-  worldToScreen(world) {
-    const v = new THREE5.Vector3(world.x, world.y, world.z).project(this.activeCamera);
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const x = (v.x * 0.5 + 0.5) * rect.width;
-    const y = (-v.y * 0.5 + 0.5) * rect.height;
-    const visible = v.z > -1 && v.z < 1;
-    return { x, y, visible };
-  }
-  // ── Picking ──
-  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
-  setOrbitRotateEnabled(enabled) {
-    if (this.controls) this.controls.enableRotate = enabled;
-  }
-  /** Enable/disable click-to-pick on the canvas. */
-  setPickEnabled(enabled) {
-    if (enabled === this.pickEnabled) return;
-    this.pickEnabled = enabled;
-    const dom = this.renderer.domElement;
-    if (enabled) {
-      dom.addEventListener("pointerdown", this.onPointerDown);
-      dom.addEventListener("pointerup", this.onPointerUp);
-    } else {
-      dom.removeEventListener("pointerdown", this.onPointerDown);
-      dom.removeEventListener("pointerup", this.onPointerUp);
-      this.pointerDown = null;
-    }
-  }
-  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
-   *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
-  onPick(listener) {
-    this.pickListeners.add(listener);
-    return () => this.pickListeners.delete(listener);
-  }
-  /** Returns the handle name under (clientX, clientY) or null. */
-  dragHandleHitTest(clientX, clientY) {
-    if (this.dragHandles.size === 0) return null;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE5.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const meshes = [...this.dragHandles.values()];
-    const hits = this.raycaster.intersectObjects(meshes, false);
-    return hits.length > 0 ? hits[0].object.userData.handleName : null;
-  }
-  /** Raycast at (clientX, clientY) against a Three.Plane; returns the intersection point. */
-  raycastPlane(clientX, clientY, plane) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE5.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const hit = new THREE5.Vector3();
-    return this.raycaster.ray.intersectPlane(plane, hit) ? hit : null;
-  }
-  // ── Drag handles API ──
-  /** Register the per-drag, per-drag-end, and per-pick callbacks. */
-  setDragHandleCallbacks(onMove, onEnd, onPick) {
-    this.dragHandleMoveCb = onMove;
-    this.dragHandleEndCb = onEnd ?? null;
-    this.dragHandlePickCb = onPick ?? null;
-  }
-  /** Mark the start of a sketch run: clear the "seen this run" set. */
-  beginDragHandleSweep() {
-    this.dragSeenThisRun.clear();
-  }
-  /**
-   * Create or update a drag handle by stable name. Position is world-space.
-   * `constrain` (optional) snaps the dragged position — e.g. to a polyline.
-   */
-  upsertDragHandle(name, x, y, z, color = "#38d9a9", size = 0.12, constrain, plane) {
-    this.dragSeenThisRun.add(name);
-    let mesh = this.dragHandles.get(name);
-    if (!mesh) {
-      const geo = new THREE5.SphereGeometry(size, 16, 12);
-      const mat = this._makeMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 0.55
-      });
-      mesh = new THREE5.Mesh(geo, mat);
-      mesh.userData.handleName = name;
-      mesh.userData.baseSize = size;
-      mesh.userData.baseColor = color;
-      mesh.renderOrder = 999;
-      mesh.material.depthTest = false;
-      this.threeScene.add(mesh);
-      this.dragHandles.set(name, mesh);
-    } else {
-      const mat = mesh.material;
-      if (mat.color.getHexString() !== color.replace(/^#/, "").toLowerCase()) {
-        mat.color.set(color);
-        mat.emissive.set(color);
-        mesh.userData.baseColor = color;
-      }
-      const cur = mesh.geometry.parameters?.radius;
-      if (cur !== size) {
-        mesh.geometry.dispose();
-        mesh.geometry = new THREE5.SphereGeometry(size, 16, 12);
-        mesh.userData.baseSize = size;
-      }
-    }
-    if (constrain) this.dragHandleConstraints.set(name, constrain);
-    else this.dragHandleConstraints.delete(name);
-    if (plane) this.dragHandlePlanes.set(name, plane);
-    else this.dragHandlePlanes.delete(name);
-    if (this.activeDragHandle !== name) mesh.position.set(x, y, z);
-    if (this.selectedDragHandle === name) this.applyHandleStyle(name, true);
-    this.requestRender();
-  }
-  /** Remove any drag handles that weren't visited in this run. */
-  endDragHandleSweep() {
-    for (const [name, mesh] of this.dragHandles) {
-      if (!this.dragSeenThisRun.has(name)) {
-        this.threeScene.remove(mesh);
-        mesh.geometry.dispose();
-        mesh.material.dispose();
-        this.dragHandles.delete(name);
-        this.dragHandleConstraints.delete(name);
-        this.dragHandlePlanes.delete(name);
-        if (this.selectedDragHandle === name) this.selectedDragHandle = null;
-        this.requestRender();
-      }
-    }
-  }
-  /** Currently selected drag handle, or null. */
-  getSelectedHandle() {
-    return this.selectedDragHandle;
-  }
-  /** The handle currently being DRAGGED (set on pointer-down, cleared on pointer-up); null when idle. */
-  getActiveDragHandle() {
-    return this.activeDragHandle;
-  }
-  /** Programmatically select / deselect a drag handle (visual + callback). */
-  setHandleSelected(name) {
-    if (this.selectedDragHandle === name) return;
-    if (this.selectedDragHandle) this.applyHandleStyle(this.selectedDragHandle, false);
-    this.selectedDragHandle = name;
-    if (name) this.applyHandleStyle(name, true);
-  }
-  applyHandleStyle(name, selected) {
-    const mesh = this.dragHandles.get(name);
-    if (!mesh) return;
-    const mat = mesh.material;
-    if (selected) {
-      mat.emissiveIntensity = 1;
-      mesh.scale.setScalar(1.6);
-    } else {
-      mat.emissiveIntensity = 0.55;
-      mesh.scale.setScalar(1);
-    }
-    this.requestRender();
-  }
-  /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
-  pickAt(clientX, clientY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE5.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const cam = this.activeCamera;
-    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
-    const pickable = [];
-    for (const t of this.objectMap.values()) {
-      if (t.userData.pickable !== false) pickable.push(t);
-    }
-    const hits = this.raycaster.intersectObjects(pickable, true);
-    for (const h of hits) {
-      if (this._cutAway(h.point)) continue;
-      let cur = h.object;
-      while (cur && !cur.userData.geomId) cur = cur.parent;
-      if (cur?.userData.geomId) return cur.userData.geomId;
-    }
-    return null;
-  }
-  /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
-   *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
-  hitAt(clientX, clientY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE5.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const cam = this.activeCamera;
-    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
-    const targets = [];
-    for (const t of this.objectMap.values()) if (t.visible) targets.push(t);
-    const hits = this.raycaster.intersectObjects(targets, true);
-    for (const h of hits) {
-      if (this._cutAway(h.point)) continue;
-      let cur = h.object;
-      let shown = true;
-      while (cur && !cur.userData.geomId) {
-        if (!cur.visible) shown = false;
-        cur = cur.parent;
-      }
-      if (shown && cur?.userData.geomId) {
-        return { id: cur.userData.geomId, point: new Vec3(h.point.x, h.point.y, h.point.z) };
-      }
-    }
-    return null;
-  }
-  /** Where a viewport ray meets the ground plane (z=0 for Z-up, y=0 otherwise), via the active camera. */
-  groundAt(clientX, clientY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE5.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const n = this.isZUp ? new THREE5.Vector3(0, 0, 1) : new THREE5.Vector3(0, 1, 0);
-    const hit = new THREE5.Vector3();
-    return this.raycaster.ray.intersectPlane(new THREE5.Plane(n, 0), hit) ? new Vec3(hit.x, hit.y, hit.z) : null;
   }
   /** World-space bounds of a scene object as currently rendered, or null if empty/unknown. */
   objectBounds(id) {
     const t = this.objectMap.get(id);
     if (!t) return null;
-    const b = new THREE5.Box3().setFromObject(t);
+    const b = new THREE10.Box3().setFromObject(t);
     if (b.isEmpty()) return null;
     return { min: new Vec3(b.min.x, b.min.y, b.min.z), max: new Vec3(b.max.x, b.max.y, b.max.z) };
   }
@@ -3586,329 +4423,34 @@ var ThreeRenderer = class {
     for (; cur; cur = cur.parent) if (!cur.visible) return false;
     return true;
   }
-  /** The camera as plain numbers, enough to reproduce the view. */
-  cameraState() {
-    const c = this.activeCamera;
-    const t = this.controls?.target ?? new THREE5.Vector3();
-    return {
-      projection: this._isOrtho ? "orthographic" : "perspective",
-      position: [c.position.x, c.position.y, c.position.z],
-      target: [t.x, t.y, t.z],
-      up: [c.up.x, c.up.y, c.up.z],
-      fov: this.camera.fov
-    };
-  }
   /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
    *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
   snapshotPng() {
-    this._buildEdges(Infinity);
+    this.builder.buildEdges(Infinity);
     this.render();
     return this.renderer.domElement.toDataURL("image/png");
   }
-  // ── Gizmo (transform controls) ──
-  setGizmoMode(mode) {
-    this.gizmoMode = mode;
-    if (mode === "none") {
-      this.detachGizmo();
-    } else {
-      this.ensureGizmo();
-      this.transformControls?.setMode(mode);
-      if (this.gizmoAttachedId) this.attachGizmo(this.gizmoAttachedId);
-    }
-    this.requestRender();
-  }
-  getGizmoMode() {
-    return this.gizmoMode;
-  }
-  attachGizmo(id) {
-    const t = this.objectMap.get(id);
-    if (!t) {
-      this.detachGizmo();
-      return;
-    }
-    if (this.gizmoMode === "none") {
-      this.gizmoAttachedId = id;
-      return;
-    }
-    this.ensureGizmo();
-    this.transformControls.attach(t);
-    this.gizmoAttachedId = id;
-    this.requestRender();
-  }
-  detachGizmo() {
-    this.transformControls?.detach();
-    this.gizmoAttachedId = null;
-    this.requestRender();
-  }
-  ensureGizmo() {
-    if (this.transformControls) return;
-    const tc = new TransformControls(this.activeCamera, this.renderer.domElement);
-    tc.setMode(this.gizmoMode === "none" ? "translate" : this.gizmoMode);
-    tc.addEventListener("dragging-changed", (e) => {
-      const dragging = e.value === true;
-      if (this.controls) this.controls.enabled = !dragging;
-      if (!dragging && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
-    });
-    tc.addEventListener("objectChange", () => {
-      if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
-    });
-    tc.addEventListener("change", () => this.requestRender());
-    this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
-    this.transformControls = tc;
-  }
-  /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */
-  writeBackTransform(id) {
-    const t = this.objectMap.get(id);
-    if (!t) return;
-    const obj = this.gScene.get(id);
-    if (!obj) return;
-    const transform = {
-      position: new Vec3(t.position.x, t.position.y, t.position.z),
-      rotation: new Vec3(t.rotation.x, t.rotation.y, t.rotation.z),
-      scale: new Vec3(t.scale.x, t.scale.y, t.scale.z)
-    };
-    this.gScene.withSuspendedEvents(() => {
-      this.gScene.update(id, { transform });
-    });
-  }
-  // ── Selection visual feedback ──
-  /**
-   * How `setSelectionHighlight` marks a selection: `"tint"` (default) lights it up in the
-   * accent colour; `"outline"` draws its edges on top of everything instead and leaves its
-   * fill alone — for apps whose colours mean something (a product, a state, a grade), and
-   * so a selection behind other parts still shows.
-   */
-  setSelectionStyle(style) {
-    this.selectionStyle = style;
-    this.setSelectionHighlight(this.highlightIds);
-  }
-  /** Highlight one object, several (a record's objects, a multi-selection), or none. */
-  setSelectionHighlight(ids) {
-    this.requestRender();
-    this.highlightIds = ids === null ? null : typeof ids === "string" ? [ids] : [...ids];
-    for (const o of this.outlined) {
-      o.line.geometry.dispose();
-      o.line.removeFromParent();
-    }
-    this.outlined = [];
-    for (const [, info] of this.selectionMaterials) {
-      const m = info.mat;
-      m.emissive.copy(info.oldEmissive);
-      m.emissiveIntensity = info.oldIntensity;
-      m.opacity = info.oldOpacity;
-      m.depthWrite = info.oldDepthWrite;
-    }
-    this.selectionMaterials.clear();
-    const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
-    const ghost = this.gScene.renderMode === "ghost";
-    if (this.selectionStyle === "outline") {
-      for (const id of list) {
-        const t = this.objectMap.get(id);
-        if (!t) continue;
-        t.updateMatrixWorld(true);
-        t.traverse((c) => {
-          if (!c.userData.surface) return;
-          const line = new THREE5.LineSegments(new THREE5.EdgesGeometry(c.geometry, 30), this._outlineMaterial());
-          line.matrixAutoUpdate = false;
-          line.matrix.copy(c.matrixWorld);
-          line.renderOrder = 999;
-          this.outlineGroup.add(line);
-          this.outlined.push({ line, source: c });
-        });
-      }
-    }
-    for (const id of this.selectionStyle === "outline" ? [] : list) {
-      const t = this.objectMap.get(id);
-      if (!t) continue;
-      t.traverse((child) => {
-        const m = child.material;
-        if (m && m.emissive instanceof THREE5.Color) {
-          this.selectionMaterials.set(child.uuid, {
-            mat: m,
-            oldEmissive: m.emissive.clone(),
-            oldIntensity: m.emissiveIntensity ?? 0,
-            oldOpacity: m.opacity,
-            oldDepthWrite: m.depthWrite
-          });
-          m.emissive = new THREE5.Color(3725737);
-          m.emissiveIntensity = 0.35;
-          if (ghost && child.userData.surface) {
-            m.opacity = 0.85;
-            m.depthWrite = true;
-          }
-        }
-      });
-    }
-  }
-  /** Remove the outlines traced from `root`'s meshes (all of them for null). */
-  _dropOutlines(root) {
-    this.outlined = this.outlined.filter((o) => {
-      let inside2 = root === null;
-      for (let c = o.source; c && !inside2; c = c.parent) inside2 = c === root;
-      if (inside2) {
-        o.line.geometry.dispose();
-        o.line.removeFromParent();
-      }
-      return !inside2;
-    });
-  }
-  _outlineMaterial() {
-    if (!this.outlineMat) this.outlineMat = new THREE5.LineBasicMaterial({ color: 2063072, depthTest: false, transparent: true, opacity: 0.95 });
-    this.outlineMat.clippingPlanes = this.sectionClip ? [this.sectionClip] : null;
-    return this.outlineMat;
-  }
-  // ── Edges, a frame at a time ──
-  /** Crease lines for `geo`, built on a later frame (see `_buildEdges`): a mode switch on a
-   *  model of thousands of meshes no longer stalls the tab, it draws the creases in. */
-  _edgeLines(geo, angle, mat) {
-    const line = new THREE5.LineSegments(new THREE5.BufferGeometry(), mat);
-    this.edgeQueue.push({ line, source: geo, angle });
-    return line;
-  }
-  /** Build queued crease lines for up to `budgetMs`. Lines whose object is gone are skipped. */
-  _buildEdges(budgetMs) {
-    if (!this.edgeQueue.length) return;
-    const t0 = performance.now();
-    let built = 0;
-    while (this.edgeQueue.length && (built === 0 || performance.now() - t0 < budgetMs)) {
-      const { line, source, angle } = this.edgeQueue.shift();
-      let top = line;
-      while (top.parent) top = top.parent;
-      if (top !== this.threeScene) continue;
-      line.geometry.dispose();
-      line.geometry = new THREE5.EdgesGeometry(source, angle);
-      built++;
-    }
-    this.requestRender();
-  }
-  /** Crease lines still to be drawn (hidden line and ghost build them a frame at a time). */
-  get pendingEdges() {
-    return this.edgeQueue.length;
-  }
-  // ── Hover ──
-  /**
-   * Hear which object the pointer is over (null over nothing): reported only when it
-   * changes, never while a button is held (an orbit), at most every 40 ms — so an app can
-   * light what a click would select without a raycast per frame. Returns the unsubscribe.
-   */
-  onHover(listener) {
-    const dom = this.renderer.domElement;
-    if (this.hoverListeners.size === 0) {
-      dom.addEventListener("pointermove", this.onHoverMove);
-      dom.addEventListener("pointerleave", this.onHoverLeave);
-    }
-    this.hoverListeners.add(listener);
-    return () => {
-      this.hoverListeners.delete(listener);
-      if (this.hoverListeners.size === 0) {
-        dom.removeEventListener("pointermove", this.onHoverMove);
-        dom.removeEventListener("pointerleave", this.onHoverLeave);
-      }
-    };
-  }
-  _hover(id) {
-    if (id === this.hovered) return;
-    this.hovered = id;
-    for (const l of this.hoverListeners) l(id);
-  }
-  // ── Section ──
-  /**
-   * Cut the model with a plane and fill the cut, so it reads as solid: `{ axis: "z",
-   * coordinate: 1.2 }` is a plan cut at 1.2 m (what is above goes), `{ axis: "x", at: 0.5 }`
-   * a section through the middle of the content, `flip` keeps the other side. Null clears.
-   * Everything the scene draws is clipped (grid, axes, handles and the gizmo are not); a
-   * click picks what is still there. The cut stays while the scene is rebuilt — a `sketch()`
-   * re-run keeps it; `at` is measured against the content present when it is set.
-   *
-   * The cut face is the meshes' inside — their back faces, painted flat (poché) — not a
-   * capped polygon, so it needs nothing of the geometry: no closed solids, no winding. Only
-   * opaque surfaces get it: through a translucent one the inside would show uncut too.
-   */
-  setSection(section) {
-    this.sectionReq = section;
-    const axis = section && new THREE5.Vector3(section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
-    this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === void 0 ? this._contentBox() : null) : null;
-    this.renderer.localClippingEnabled = !!this.sectionClip;
-    for (const t of this.objectMap.values()) this._dressSection(t);
-    if (this.outlineMat) this._outlineMaterial();
-    this.requestRender();
-  }
-  /** The section in force, or null. */
-  get section() {
-    return this.sectionReq;
-  }
-  /** Paint the cut this colour; null follows the render mode (dark, pale in ghost). */
-  setSectionColour(colour) {
-    this.sectionColour = colour === null ? null : new THREE5.Color(colour).getHex();
-    if (this.sectionReq) this.setSection(this.sectionReq);
-  }
-  /** Clip one object's materials with the live section (or unclip it) and give its
-   *  surfaces their poché. */
-  _dressSection(t) {
-    const plane = this.sectionClip;
-    const old = [];
-    const surfaces = [];
-    t.traverse((c) => {
-      if (c.userData.poche) {
-        old.push(c);
-        return;
-      }
-      const m = c.material;
-      if (m) {
-        for (const one of Array.isArray(m) ? m : [m]) {
-          if ((one.clippingPlanes?.length ?? 0) === 0 && !plane) continue;
-          one.clippingPlanes = plane ? [plane] : null;
-          one.needsUpdate = true;
-        }
-      }
-      if (plane && c.userData.surface && !seeThrough(c.material)) surfaces.push(c);
-    });
-    for (const o of old) o.removeFromParent();
-    if (!plane || this.gScene.renderMode === "hiddenline" || this.gScene.renderMode === "ghost") return;
-    const mat = this._poche(plane);
-    for (const s of surfaces) {
-      const p = new THREE5.Mesh(s.geometry, mat);
-      p.userData.poche = true;
-      p.renderOrder = -1;
-      p.raycast = () => {
-      };
-      s.parent.add(p);
-    }
-  }
-  _poche(plane) {
-    const mode = this.gScene.renderMode === "ghost" ? "ghost" : "shaded";
-    const colour = this.sectionColour ?? sectionAppearance(mode).colour;
-    const m = this.pocheMat;
-    if (m && m.color.getHex() === colour && m.clippingPlanes?.[0] === plane) return m;
-    m?.dispose();
-    this.pocheMat = new THREE5.MeshBasicMaterial({ color: colour, side: THREE5.BackSide, clippingPlanes: [plane], toneMapped: false });
-    return this.pocheMat;
-  }
-  /** Is this world point on the side the section removed? */
-  _cutAway(p) {
-    return !!this.sectionClip && this.sectionClip.distanceToPoint(p) < -1e-9;
-  }
   /** Bounds of what the scene shows. */
-  _contentBox() {
-    const box = new THREE5.Box3();
+  contentBox() {
+    const box = new THREE10.Box3();
     for (const t of this.objectMap.values()) if (t.visible) box.expandByObject(t);
     return box;
   }
   // ── Render ──
   /** Draw now, unconditionally. */
   render() {
-    this._stepCameraMove();
-    this._buildEdges(EDGE_BUDGET_MS);
+    this.rig.stepMove();
+    this.builder.buildEdges(EDGE_BUDGET_MS);
     this.controls?.update();
     this._draw();
   }
   _draw() {
-    if (this.sunDirty && this.currentLighting === "studio") this._fitSun();
-    for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
+    if (this.lighting.sunDirty && this.lighting.currentLighting === "studio") this.lighting.fitSun();
+    this.marks.followOutlines();
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
-    this.navGizmo?.update(this.activeCamera, NO_TURN);
-    this._drawCallouts();
+    this.rig.updateGizmo();
+    this.marks.drawCallouts();
   }
   /**
    * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
@@ -3925,38 +4467,12 @@ var ThreeRenderer = class {
    * objects otherwise costs a full draw on every animation frame.
    */
   renderIfNeeded() {
-    const turning = this._stepCameraMove();
-    this._buildEdges(EDGE_BUDGET_MS);
+    const turning = this.rig.stepMove();
+    this.builder.buildEdges(EDGE_BUDGET_MS);
     const moved = this.controls?.update() ?? false;
-    const settling = this._settleDamping();
+    const settling = this.rig.settleDamping();
     if (!moved && !settling && !turning && !this._needsRender) return false;
     this._draw();
-    return true;
-  }
-  /**
-   * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
-   * creeping the camera after that, so the last drawn frame would lag the camera
-   * slightly. Follow the creep frame by frame instead, and once the remaining
-   * glide is under ~0.1 px apply it at once: the camera then rests exactly where
-   * it was last drawn. Returns whether the camera moved this frame.
-   */
-  _settleDamping() {
-    const c = this.controls;
-    if (!c) return false;
-    const pos = c.object.position;
-    const step = pos.distanceTo(this._lastCamPos);
-    this._lastCamPos.copy(pos);
-    if (!(step > 1e-9 * Math.max(pos.distanceTo(c.target), 1))) return false;
-    if (c.enableDamping && c.dampingFactor > 0) {
-      const f = c.dampingFactor;
-      const rest = step * (1 - f) / f / Math.max(pos.distanceTo(c.target), 1e-9);
-      if (rest < 1e-4) {
-        c.enableDamping = false;
-        c.update();
-        c.enableDamping = true;
-        this._lastCamPos.copy(pos);
-      }
-    }
     return true;
   }
   startLoop() {
@@ -3979,144 +4495,12 @@ var ThreeRenderer = class {
     if (w === 0 || h === 0) return;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this._syncOrthoCamFrustum();
+    this.rig.syncOrthoFrustum();
     this.renderer.setSize(w, h);
     this.render();
   }
-  // ── Projection & View ──
-  /** Compute the orthographic frustum to match the current perspective camera view distance. */
-  _syncOrthoCamFrustum() {
-    const target = this.controls?.target ?? new THREE5.Vector3();
-    const dist2 = Math.max(this.camera.position.distanceTo(target), 0.1);
-    const fovRad = this.camera.fov * Math.PI / 180;
-    const halfH = Math.tan(fovRad / 2) * dist2;
-    const halfW = halfH * this.camera.aspect;
-    this._orthoCam.left = -halfW;
-    this._orthoCam.right = halfW;
-    this._orthoCam.top = halfH;
-    this._orthoCam.bottom = -halfH;
-    this._orthoCam.near = -dist2 * 10;
-    this._orthoCam.far = dist2 * 10;
-    this._orthoCam.updateProjectionMatrix();
-  }
-  /**
-   * Switch between perspective and orthographic projection.
-   * Transfers the current camera position/orientation so the view is continuous.
-   */
-  setProjection(type) {
-    const wasOrtho = this._isOrtho;
-    this._isOrtho = type === "orthographic";
-    if (this._isOrtho && !wasOrtho) {
-      this._orthoCam.position.copy(this.camera.position);
-      this._orthoCam.quaternion.copy(this.camera.quaternion);
-      this._orthoCam.zoom = 1;
-      this._syncOrthoCamFrustum();
-    } else if (!this._isOrtho && wasOrtho) {
-      this.camera.position.copy(this._orthoCam.position);
-      this.camera.quaternion.copy(this._orthoCam.quaternion);
-      const zoom = this._orthoCam.zoom;
-      if (zoom !== 1 && this.controls) {
-        const t = this.controls.target;
-        this.camera.position.sub(t).divideScalar(zoom).add(t);
-        this._orthoCam.zoom = 1;
-      }
-    }
-    if (this.controls) {
-      this.controls.object = this.activeCamera;
-      this.controls.update();
-    }
-    this.navGizmo?.setProjection(type);
-    if (wasOrtho !== this._isOrtho) for (const l of this.projectionListeners) l(type);
-    this.requestRender();
-  }
-  /** Hear about projection changes from anywhere (the axis widget, a toolbar, code), so
-   *  every control that shows the projection stays true. Returns the unsubscribe. */
-  onProjection(listener) {
-    this.projectionListeners.add(listener);
-    return () => this.projectionListeners.delete(listener);
-  }
-  /** "perspective" or "orthographic". */
-  get projection() {
-    return this._isOrtho ? "orthographic" : "perspective";
-  }
-  // ── Named views ──
-  /**
-   * Look at the model from a named side, keeping the distance: `"top"` is a plan,
-   * `"front"` / `"back"` / `"left"` / `"right"` are elevations, `"iso"` the diagonal. With
-   * `setProjection("orthographic")` they are drawings rather than pictures. Turns there
-   * (about a third of a second) unless `{ animate: false }`.
-   */
-  setView(view, opts = {}) {
-    this.orbitTo(viewDirection(view, this.isZUp ? "z" : "y"), opts);
-  }
-  /** Put the camera on `direction` from the target, looking back along it, at the same
-   *  distance. What `setView` and the axis widget do. */
-  orbitTo(direction, opts = {}) {
-    const target = this.controls?.target ?? new THREE5.Vector3();
-    const cam = this.activeCamera;
-    const offset = cam.position.clone().sub(target);
-    const dist2 = offset.length() || 10;
-    const dir = new THREE5.Vector3(direction.x, direction.y, direction.z).normalize();
-    if (Math.abs(dir.dot(cam.up)) > 1 - 1e-6) {
-      dir.addScaledVector(this.isZUp ? new THREE5.Vector3(0, -1, 0) : new THREE5.Vector3(0, 0, 1), 1e-3).normalize();
-    }
-    if (opts.animate === false || offset.lengthSq() === 0) {
-      this.cameraMove = null;
-      this._placeCamera(target, dir.multiplyScalar(dist2));
-      return;
-    }
-    this._moveCamera(dir, target.clone(), dist2, this._orthoCam.zoom);
-  }
-  /**
-   * Frame part of the model — a selection, a storey, one element: centre on it and come
-   * close enough that it fills the view with room around it (`margin`, default 1.8, so the
-   * surroundings still say which part it is). `objects` are scene ids or record keys.
-   * Animated unless `{ animate: false }`, keeping the direction you look from.
-   */
-  fitTo(objects, opts = {}) {
-    const box = new THREE5.Box3();
-    for (const t of this._resolve(objects)) box.expandByObject(t);
-    if (box.isEmpty()) return;
-    const target = box.getCenter(new THREE5.Vector3());
-    const size = box.getSize(new THREE5.Vector3());
-    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
-    const margin = opts.margin ?? 1.8;
-    const dist2 = fitRadius(radius, this.camera.fov, this.camera.aspect, margin);
-    const halfH = (this._orthoCam.top - this._orthoCam.bottom) / 2;
-    const halfW = (this._orthoCam.right - this._orthoCam.left) / 2;
-    const zoom = Math.min(halfH, halfW) / (radius * margin);
-    const dir = this._viewOffset();
-    if (opts.animate === false) {
-      this.cameraMove = null;
-      if (this.controls) this.controls.target.copy(target);
-      if (this._isOrtho) {
-        this._orthoCam.zoom = zoom;
-        this._orthoCam.updateProjectionMatrix();
-      }
-      this._placeCamera(target, dir.multiplyScalar(dist2));
-      return;
-    }
-    this._moveCamera(dir, target, dist2, this._isOrtho ? zoom : this._orthoCam.zoom);
-  }
-  /** Start a move to `dir` from `target` at `dist` (and, in orthographic, `zoom`). */
-  _moveCamera(dir, target, dist2, zoom) {
-    const from = this.controls?.target.clone() ?? new THREE5.Vector3();
-    const offset = this.activeCamera.position.clone().sub(from);
-    this.cameraMove = {
-      from: offset,
-      turn: new THREE5.Quaternion().setFromUnitVectors(offset.clone().normalize(), dir.clone().normalize()),
-      fromTarget: from,
-      toTarget: target,
-      toDist: dist2,
-      fromZoom: this._orthoCam.zoom,
-      toZoom: zoom,
-      start: performance.now(),
-      ms: 340
-    };
-    this.requestRender();
-  }
   /** Scene ids, or record keys resolved through the scene, to the three objects drawn for them. */
-  _resolve(objects) {
+  resolve(objects) {
     const out = [];
     for (const s of objects) {
       const t = this.objectMap.get(s);
@@ -4131,238 +4515,15 @@ var ThreeRenderer = class {
     }
     return out;
   }
-  /** Orbit by a pointer travel in pixels — the axis widget's drag. */
-  orbitBy(dx, dy) {
-    this.cameraMove = null;
-    const target = this.controls?.target ?? new THREE5.Vector3();
-    const cam = this.activeCamera;
-    const up = cam.up.clone().normalize();
-    const offset = cam.position.clone().sub(target).applyAxisAngle(up, -dx * 5e-3);
-    const polar = offset.angleTo(up);
-    const next = THREE5.MathUtils.clamp(polar - dy * 5e-3, 0.05, Math.PI - 0.05);
-    const side = new THREE5.Vector3().crossVectors(offset, up);
-    if (side.lengthSq() > 0) offset.applyAxisAngle(side.normalize(), polar - next);
-    this._placeCamera(target, offset);
-  }
-  _placeCamera(target, offset) {
-    const cam = this.activeCamera;
-    cam.position.copy(target).add(offset);
-    cam.lookAt(target);
-    this.controls?.update();
-    this.requestRender();
-  }
-  /** Advance a camera move, if one is running. True while it moves the camera. */
-  _stepCameraMove() {
-    const m = this.cameraMove;
-    if (!m) return false;
-    const t = easeInOut((performance.now() - m.start) / m.ms);
-    const q = new THREE5.Quaternion().slerpQuaternions(NO_TURN, m.turn, t);
-    const target = new THREE5.Vector3().lerpVectors(m.fromTarget, m.toTarget, t);
-    const dist2 = THREE5.MathUtils.lerp(m.from.length(), m.toDist, t);
-    if (this.controls) this.controls.target.copy(target);
-    const cam = this.activeCamera;
-    cam.position.copy(target).add(m.from.clone().applyQuaternion(q).setLength(dist2));
-    cam.lookAt(target);
-    if (m.toZoom !== m.fromZoom) {
-      this._orthoCam.zoom = THREE5.MathUtils.lerp(m.fromZoom, m.toZoom, t);
-      this._orthoCam.updateProjectionMatrix();
-    }
-    if (t >= 1) this.cameraMove = null;
-    return true;
-  }
-  // ── Callouts ──
-  /**
-   * Labels in the margins with leaders to what they name, the way a drawing is annotated:
-   * they never overlap and don't swim as the model turns; a label whose thing is hidden
-   * behind other things is left out; what doesn't fit is counted, not dropped silently.
-   * `objects` are scene ids or record keys (a key follows its record through rebuilds).
-   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
-   */
-  setCallouts(items, handlers = {}) {
-    this.calloutHandlers = handlers;
-    if (!items.length && !this.callouts) return;
-    this.callouts ?? (this.callouts = new Callouts(this.container, {
-      onPick: (id) => this.calloutHandlers.onPick?.(id),
-      onHover: (id) => this.calloutHandlers.onHover?.(id)
-    }));
-    this.callouts.setItems(items);
-    this.calloutsDirty = true;
-    this.requestRender();
-  }
-  /** Re-measure each callout's anchor: the centre of its objects' bounds. */
-  _measureCallouts() {
-    this.calloutsDirty = false;
-    this.calloutAnchors.clear();
-    const box = new THREE5.Box3();
-    for (const id of this.callouts?.ids ?? []) {
-      box.makeEmpty();
-      for (const t of this._resolve(this.callouts.objectsOf(id))) if (t.visible) box.expandByObject(t);
-      if (!box.isEmpty()) this.calloutAnchors.set(id, box.getCenter(new THREE5.Vector3()));
-    }
-    this.calloutCheckedAt = 0;
-  }
-  /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
-  _checkCalloutVisibility() {
-    this.calloutVisible.clear();
-    const cam = this.activeCamera;
-    const meshes = [...this.objectMap.values()].filter((t) => t.visible);
-    const ray = new THREE5.Raycaster();
-    const eye = cam.getWorldPosition(new THREE5.Vector3());
-    for (const [id, anchor] of this.calloutAnchors) {
-      const own = new Set(this._resolve(this.callouts.objectsOf(id)));
-      const dir = anchor.clone().sub(eye);
-      const dist2 = dir.length();
-      if (cam.isOrthographicCamera) {
-        cam.getWorldDirection(dir);
-        ray.set(anchor.clone().addScaledVector(dir, -1e4), dir);
-        ray.far = 1e4;
-      } else {
-        ray.set(eye, dir.normalize());
-        ray.far = dist2;
-      }
-      const hit = ray.intersectObjects(meshes, true).find((h) => !this._cutAway(h.point));
-      let owner = hit?.object ?? null;
-      while (owner && !own.has(owner)) owner = owner.parent;
-      if (!hit || owner || hit.distance >= ray.far - 1e-3) this.calloutVisible.add(id);
-    }
-  }
-  /** Project, cull and lay out this frame's labels. */
-  _drawCallouts() {
-    if (!this.callouts) return;
-    if (this.calloutsDirty) this._measureCallouts();
-    const w = this.container.clientWidth || 1, h = this.container.clientHeight || 1;
-    const now = performance.now();
-    if (now - this.calloutCheckedAt > 180) {
-      this._checkCalloutVisibility();
-      this.calloutCheckedAt = now;
-    } else if (!this.calloutRecheck) {
-      this.calloutRecheck = window.setTimeout(() => {
-        this.calloutRecheck = 0;
-        this.calloutCheckedAt = 0;
-        this.requestRender();
-      }, 200);
-    }
-    const cam = this.activeCamera;
-    cam.updateMatrixWorld();
-    const v = new THREE5.Vector3();
-    const anchors = [];
-    for (const [id, anchor] of this.calloutAnchors) {
-      if (!this.calloutVisible.has(id)) continue;
-      v.copy(anchor).project(cam);
-      if (v.z > 1) continue;
-      anchors.push({ id, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
-    }
-    const labelWidth = labelWidthFor(w);
-    this.callouts.setLabelWidth(labelWidth);
-    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length);
-  }
-  /** Where the camera sits, as a direction from its target. */
-  _viewOffset() {
-    return this.activeCamera.position.clone().sub(this.controls?.target ?? new THREE5.Vector3()).normalize();
-  }
-  /**
-   * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
-   * and restore (0,0,1) for side/elevation views.
-   */
-  setCameraUp(x, y, z) {
-    this.camera.up.set(x, y, z);
-    this._orthoCam.up.set(x, y, z);
-    if (this.controls) this.controls.update();
-    this.requestRender();
-  }
   /** The WebGL canvas element (for attaching input listeners / overlays). */
   get canvasEl() {
     return this.renderer.domElement;
   }
   /** Set the viewport background color. */
   setBackground(color) {
-    this.threeScene.background = new THREE5.Color(color);
+    this.threeScene.background = new THREE10.Color(color);
     this.config.backgroundColor = color;
     this.requestRender();
-  }
-  /** Move the camera without changing its target. */
-  setCameraPosition(x, y, z) {
-    this.camera.position.set(x, y, z);
-    this.requestRender();
-  }
-  /** Aim the camera (and orbit-controls target) at a point. */
-  lookAt(x, y, z) {
-    this.camera.lookAt(x, y, z);
-    if (this.controls) {
-      this.controls.target.set(x, y, z);
-      this.controls.update();
-    }
-    this.requestRender();
-  }
-  /**
-   * Fit all visible scene objects inside the current view.
-   * Preserves the camera direction; only adjusts distance and target.
-   */
-  fitAll() {
-    const box = new THREE5.Box3();
-    for (const obj of this.objectMap.values()) {
-      if (obj.visible) {
-        const b = new THREE5.Box3().setFromObject(obj);
-        if (!b.isEmpty()) box.union(b);
-      }
-    }
-    if (box.isEmpty()) return;
-    const center = box.getCenter(new THREE5.Vector3());
-    const sphere = box.getBoundingSphere(new THREE5.Sphere());
-    const target = this.controls?.target.clone() ?? center;
-    let dir = new THREE5.Vector3().subVectors(this.camera.position, target);
-    if (dir.length() < 1e-6) dir.set(1, 1, 1);
-    dir.normalize();
-    const fovRad = this.camera.fov * Math.PI / 180;
-    const dist2 = sphere.radius / Math.tan(fovRad / 2) * 1.3;
-    this.camera.position.copy(center).addScaledVector(dir, dist2);
-    if (this.controls) {
-      this.controls.target.copy(center);
-      this.controls.update();
-    }
-    if (this._isOrtho) {
-      this._orthoCam.position.copy(this.camera.position);
-      this._orthoCam.quaternion.copy(this.camera.quaternion);
-      this._syncOrthoCamFrustum();
-    }
-    this.requestRender();
-  }
-  // ── Raycasting ──
-  /** Pick scene objects under a screen coordinate */
-  pick(screenX, screenY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE5.Vector2(
-      (screenX - rect.left) / rect.width * 2 - 1,
-      -((screenY - rect.top) / rect.height) * 2 + 1
-    );
-    const raycaster = new THREE5.Raycaster();
-    raycaster.setFromCamera(mouse, this.camera);
-    const targets = [...this.objectMap.values()];
-    const hits = raycaster.intersectObjects(targets, true);
-    for (const hit of hits) {
-      if (this._cutAway(hit.point)) continue;
-      let obj = hit.object;
-      while (obj && !obj.userData.geomId) obj = obj.parent;
-      if (obj?.userData.geomId) {
-        return { id: obj.userData.geomId, point: hit.point };
-      }
-    }
-    return null;
-  }
-  /** Project a screen position onto a plane */
-  screenToPlane(screenX, screenY, plane) {
-    const defaultNormal = this.isZUp ? new THREE5.Vector3(0, 0, 1) : new THREE5.Vector3(0, 1, 0);
-    const p = plane ?? new THREE5.Plane(defaultNormal, 0);
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE5.Vector2(
-      (screenX - rect.left) / rect.width * 2 - 1,
-      -((screenY - rect.top) / rect.height) * 2 + 1
-    );
-    const raycaster = new THREE5.Raycaster();
-    raycaster.setFromCamera(mouse, this.camera);
-    const target = new THREE5.Vector3();
-    return raycaster.ray.intersectPlane(p, target) ? target : null;
   }
   // ── Cleanup ──
   disposeObject(obj) {
@@ -4379,18 +4540,11 @@ var ThreeRenderer = class {
   dispose() {
     this.unsub?.();
     this.clearThree();
-    this.pocheMat?.dispose();
-    this.outlineMat?.dispose();
-    for (const o of this.outlined) o.line.geometry.dispose();
-    this.renderer.domElement.removeEventListener("pointermove", this.onHoverMove);
-    this.renderer.domElement.removeEventListener("pointerleave", this.onHoverLeave);
-    this.threeScene.environment = null;
-    this.envMap?.dispose();
-    this.envMap = null;
+    this.marks.dispose();
+    this.pointer.dispose();
+    this.lighting.dispose();
     cancelAnimationFrame(this.rafId);
-    this.navGizmo?.dispose();
-    this.callouts?.dispose();
-    clearTimeout(this.calloutRecheck);
+    this.rig.dispose();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.controls?.dispose();
@@ -4400,6 +4554,283 @@ var ThreeRenderer = class {
     }
     this.renderer.dispose();
     this.renderer.domElement.remove();
+  }
+  // ── Lighting ──
+  /**
+   * Set the Studio-mode default PBR material applied to meshes that don't
+   * carry their own metalness/roughness. Takes effect on the next material
+   * build (e.g. the next sketch re-run). metalness/roughness in 0..1.
+   */
+  setStudioMaterial(metalness, roughness, color = null, flatShading = false) {
+    this.lighting.setStudioMaterial(metalness, roughness, color, flatShading);
+  }
+  /**
+   * Show/hide the studio shadow-catcher plane at the world origin. Hide it when
+   * the app supplies its own ground mesh to receive shadows (avoids a duplicate
+   * shadow at z=0).
+   */
+  setShadowGroundVisible(visible) {
+    this.lighting.setShadowGroundVisible(visible);
+  }
+  /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
+   *  useful range at building scale. */
+  setFog(color, density = 0) {
+    this.lighting.setFog(color, density);
+  }
+  /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
+  setExposure(v) {
+    this.lighting.setExposure(v);
+  }
+  /**
+   * Light the model from `direction` (FROM the model TO the sun), in Z-up scene coords
+   * (+X east, +Y north, +Z up) — the `SunPosition` convention; a Y-up scene is remapped.
+   * In Studio the shadow camera is framed to whatever the scene shows, so a 1 m object
+   * and a 100 m site both get sharp, complete shadows. `distance` is how far back the
+   * light sits at least (m).
+   */
+  setSunDirection(direction, distance = 50) {
+    this.lighting.setSunDirection(direction, distance);
+  }
+  /**
+   * Set an equirectangular source texture for the environment (e.g. a loaded
+   * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
+   * The texture is PMREM-prefiltered here; the caller keeps ownership of it.
+   */
+  setEnvironmentSource(equirect) {
+    this.lighting.setEnvironmentSource(equirect);
+  }
+  /**
+   * Show the equirectangular environment source as the scene backdrop (sky).
+   * No-op until a source is set via setEnvironmentSource. When off, the
+   * background is left to setBackground().
+   */
+  setEnvironmentBackground(visible) {
+    this.lighting.setEnvironmentBackground(visible);
+  }
+  /**
+   * Rotate the environment + background (Euler radians) — e.g. to align a Y-up
+   * HDRI/equirect source with a Z-up scene (tilt ~90° about X).
+   */
+  setEnvironmentRotation(x, y, z) {
+    this.lighting.setEnvironmentRotation(x, y, z);
+  }
+  // ── Camera ──
+  /**
+   * Project a world-space point into the viewport. Returned `x`, `y` are
+   * relative to the canvas's bounding rect (top-left = 0, 0).
+   * `visible` is false when the point is behind the camera or outside
+   * the normalised device cube — caller should hide the overlay.
+   */
+  worldToScreen(world) {
+    return this.rig.worldToScreen(world);
+  }
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
+  setOrbitRotateEnabled(enabled) {
+    this.rig.setOrbitRotateEnabled(enabled);
+  }
+  /** The camera as plain numbers, enough to reproduce the view. */
+  cameraState() {
+    return this.rig.cameraState();
+  }
+  /**
+   * Switch between perspective and orthographic projection.
+   * Transfers the current camera position/orientation so the view is continuous.
+   */
+  setProjection(type) {
+    this.rig.setProjection(type);
+  }
+  /** Hear about projection changes from anywhere (the axis widget, a toolbar, code), so
+   *  every control that shows the projection stays true. Returns the unsubscribe. */
+  onProjection(listener) {
+    return this.rig.onProjection(listener);
+  }
+  /** "perspective" or "orthographic". */
+  get projection() {
+    return this.rig.projection;
+  }
+  /**
+   * Look at the model from a named side, keeping the distance: `"top"` is a plan,
+   * `"front"` / `"back"` / `"left"` / `"right"` are elevations, `"iso"` the diagonal. With
+   * `setProjection("orthographic")` they are drawings rather than pictures. Turns there
+   * (about a third of a second) unless `{ animate: false }`.
+   */
+  setView(view, opts = {}) {
+    this.rig.setView(view, opts);
+  }
+  /** Put the camera on `direction` from the target, looking back along it, at the same
+   *  distance. What `setView` and the axis widget do. */
+  orbitTo(direction, opts = {}) {
+    this.rig.orbitTo(direction, opts);
+  }
+  /**
+   * Frame part of the model — a selection, a storey, one element: centre on it and come
+   * close enough that it fills the view with room around it (`margin`, default 1.8, so the
+   * surroundings still say which part it is). `objects` are scene ids or record keys.
+   * Animated unless `{ animate: false }`, keeping the direction you look from.
+   */
+  fitTo(objects, opts = {}) {
+    this.rig.fitTo(objects, opts);
+  }
+  /**
+   * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
+   * and restore (0,0,1) for side/elevation views.
+   */
+  setCameraUp(x, y, z) {
+    this.rig.setCameraUp(x, y, z);
+  }
+  /** Move the camera without changing its target. */
+  setCameraPosition(x, y, z) {
+    this.rig.setCameraPosition(x, y, z);
+  }
+  /** Aim the camera (and orbit-controls target) at a point. */
+  lookAt(x, y, z) {
+    this.rig.lookAt(x, y, z);
+  }
+  /**
+   * Fit all visible scene objects inside the current view.
+   * Preserves the camera direction; only adjusts distance and target.
+   */
+  fitAll() {
+    this.rig.fitAll();
+  }
+  // ── Picking, hover, drag handles, transform gizmo ──
+  /** Enable/disable click-to-pick on the canvas. */
+  setPickEnabled(enabled) {
+    this.pointer.setPickEnabled(enabled);
+  }
+  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
+   *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
+  onPick(listener) {
+    return this.pointer.onPick(listener);
+  }
+  /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
+  pickAt(clientX, clientY) {
+    return this.pointer.pickAt(clientX, clientY);
+  }
+  /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
+   *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
+  hitAt(clientX, clientY) {
+    return this.pointer.hitAt(clientX, clientY);
+  }
+  /** Where a viewport ray meets the ground plane (z=0 for Z-up, y=0 otherwise), via the active camera. */
+  groundAt(clientX, clientY) {
+    return this.pointer.groundAt(clientX, clientY);
+  }
+  /** Pick scene objects under a screen coordinate */
+  pick(screenX, screenY) {
+    return this.pointer.pick(screenX, screenY);
+  }
+  /** Project a screen position onto a plane */
+  screenToPlane(screenX, screenY, plane) {
+    return this.pointer.screenToPlane(screenX, screenY, plane);
+  }
+  /**
+   * Hear which object the pointer is over (null over nothing): reported only when it
+   * changes, never while a button is held (an orbit), at most every 40 ms — so an app can
+   * light what a click would select without a raycast per frame. Returns the unsubscribe.
+   */
+  onHover(listener) {
+    return this.pointer.onHover(listener);
+  }
+  /** Register the per-drag, per-drag-end, and per-pick callbacks. */
+  setDragHandleCallbacks(onMove, onEnd, onPick) {
+    this.pointer.setDragHandleCallbacks(onMove, onEnd, onPick);
+  }
+  /** Mark the start of a sketch run: clear the "seen this run" set. */
+  beginDragHandleSweep() {
+    this.pointer.beginDragHandleSweep();
+  }
+  /**
+   * Create or update a drag handle by stable name. Position is world-space.
+   * `constrain` (optional) snaps the dragged position — e.g. to a polyline.
+   */
+  upsertDragHandle(name, x, y, z, color = "#38d9a9", size = 0.12, constrain, plane) {
+    this.pointer.upsertDragHandle(name, x, y, z, color, size, constrain, plane);
+  }
+  /** Remove any drag handles that weren't visited in this run. */
+  endDragHandleSweep() {
+    this.pointer.endDragHandleSweep();
+  }
+  /** Currently selected drag handle, or null. */
+  getSelectedHandle() {
+    return this.pointer.getSelectedHandle();
+  }
+  /** The handle currently being DRAGGED (set on pointer-down, cleared on pointer-up); null when idle. */
+  getActiveDragHandle() {
+    return this.pointer.getActiveDragHandle();
+  }
+  /** Programmatically select / deselect a drag handle (visual + callback). */
+  setHandleSelected(name) {
+    this.pointer.setHandleSelected(name);
+  }
+  setGizmoMode(mode) {
+    this.pointer.setGizmoMode(mode);
+  }
+  getGizmoMode() {
+    return this.pointer.getGizmoMode();
+  }
+  attachGizmo(id) {
+    this.pointer.attachGizmo(id);
+  }
+  detachGizmo() {
+    this.pointer.detachGizmo();
+  }
+  // ── Marks: selection, section, callouts ──
+  /**
+   * How `setSelectionHighlight` marks a selection: `"tint"` (default) lights it up in the
+   * accent colour; `"outline"` draws its edges on top of everything instead and leaves its
+   * fill alone — for apps whose colours mean something (a product, a state, a grade), and
+   * so a selection behind other parts still shows.
+   */
+  setSelectionStyle(style) {
+    this.marks.setSelectionStyle(style);
+  }
+  /** Highlight one object, several (a record's objects, a multi-selection), or none. */
+  setSelectionHighlight(ids) {
+    this.marks.setSelectionHighlight(ids);
+  }
+  /** Outline what other people have selected, each set in its person's colour (see
+   *  `shareSelection`); an empty list clears. Drawn on top, clipped by a section. */
+  setPresenceHighlight(entries) {
+    this.marks.setPresenceHighlight(entries);
+  }
+  /**
+   * Cut the model with a plane and fill the cut, so it reads as solid: `{ axis: "z",
+   * coordinate: 1.2 }` is a plan cut at 1.2 m (what is above goes), `{ axis: "x", at: 0.5 }`
+   * a section through the middle of the content, `flip` keeps the other side. Null clears.
+   * Everything the scene draws is clipped (grid, axes, handles and the gizmo are not); a
+   * click picks what is still there. The cut stays while the scene is rebuilt — a `sketch()`
+   * re-run keeps it; `at` is measured against the content present when it is set.
+   *
+   * The cut face is the meshes' inside — their back faces, painted flat (poché) — not a
+   * capped polygon, so it needs nothing of the geometry: no closed solids, no winding. Only
+   * opaque surfaces get it: through a translucent one the inside would show uncut too.
+   */
+  setSection(section) {
+    this.marks.setSection(section);
+  }
+  /** The section in force, or null. */
+  get section() {
+    return this.marks.section;
+  }
+  /** Paint the cut this colour; null follows the render mode (dark, pale in ghost). */
+  setSectionColour(colour) {
+    this.marks.setSectionColour(colour);
+  }
+  /**
+   * Labels in the margins with leaders to what they name, the way a drawing is annotated:
+   * they never overlap and don't swim as the model turns; a label whose thing is hidden
+   * behind other things is left out; what doesn't fit is counted, not dropped silently.
+   * `objects` are scene ids or record keys (a key follows its record through rebuilds).
+   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
+   */
+  setCallouts(items, handlers = {}) {
+    this.marks.setCallouts(items, handlers);
+  }
+  // ── Crease lines ──
+  /** Crease lines still to be drawn (hidden line and ghost build them a frame at a time). */
+  get pendingEdges() {
+    return this.builder.pendingEdges;
   }
 };
 
@@ -4498,6 +4929,21 @@ var SVGRenderer = class {
         const line = this.createSVGLine(a.x, a.y, b.x, b.y, s.color, 0.03, s.opacity);
         line.dataset.geomId = obj.id;
         this.contentGroup.appendChild(line);
+        break;
+      }
+      case "polyline": {
+        if (!obj.vertices || obj.vertices.length < 2) break;
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        el.setAttribute("points", obj.vertices.map((v) => {
+          const p = this.project(v);
+          return `${p.x},${p.y}`;
+        }).join(" "));
+        el.setAttribute("fill", "none");
+        el.setAttribute("stroke", s.color);
+        el.setAttribute("stroke-width", "0.03");
+        el.setAttribute("opacity", String(s.opacity));
+        el.dataset.geomId = obj.id;
+        this.contentGroup.appendChild(el);
         break;
       }
       case "polygon": {
@@ -4721,6 +5167,591 @@ var LayerPanel = class {
     }
   }
 };
+
+// src/sketch/sketchLayout.ts
+function buildSketchLayout(container, config, t) {
+  const defaultWidth = config.panelWidth ?? 320;
+  const storageKey = `tekto.panelWidth.${config.title ?? "default"}`;
+  const stored = parseInt(localStorage.getItem(storageKey) ?? "", 10);
+  const panelWidth = Number.isFinite(stored) && stored >= 200 && stored <= 800 ? stored : defaultWidth;
+  const inShell = container instanceof HTMLElement && container.dataset.shell != null;
+  const showHeader = config.showHeader ?? !inShell;
+  const headerRow = showHeader ? "44px " : "";
+  let fileMenusEl = null;
+  const root = document.createElement("div");
+  root.style.cssText = `
+    display:grid; grid-template-columns:${panelWidth}px 1fr; grid-template-rows:${headerRow}1fr;
+    height:100%; width:100%; overflow:hidden; position:relative;
+    background:${t.bg};
+    color:${t.text};
+    font-family:${t.font};
+  `;
+  if (showHeader) {
+    const header = document.createElement("div");
+    header.style.cssText = `
+      grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
+      background:${t.panelBg};
+      border-bottom:1px solid ${t.border};
+    `;
+    header.innerHTML = `
+      <span style="font-weight:600;font-size:14px;color:${t.accent}">
+        &#x2B21; ${config.title ?? "Tekto Sketch"}
+      </span>
+      <span style="font-size:9px;padding:2px 6px;border-radius:3px;
+        background:${t.hoverBg};color:${t.accent}">LIVE</span>
+    `;
+    fileMenusEl = document.createElement("div");
+    fileMenusEl.style.cssText = "margin-left:auto;display:flex;gap:8px;position:relative;";
+    header.appendChild(fileMenusEl);
+    root.appendChild(header);
+  }
+  const panelEl = document.createElement("div");
+  panelEl.style.cssText = `
+    overflow-y:auto; overflow-x:hidden; padding:0;
+    background:${t.panelBg};
+    border-right:1px solid ${t.border};
+    position:relative; grid-column:1;
+  `;
+  root.appendChild(panelEl);
+  const resizeHandle = document.createElement("div");
+  resizeHandle.title = "Drag to resize panel \xB7 double-click to reset";
+  const handleIdle = t.isDark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.14)";
+  const handleHover = t.isDark ? "rgba(255,255,255,.35)" : "rgba(0,0,0,.30)";
+  resizeHandle.style.cssText = `
+    position:absolute; top:${showHeader ? 44 : 0}px; bottom:0;
+    left:${panelWidth - 3}px; width:6px;
+    cursor:col-resize; z-index:10;
+    background:${handleIdle};
+    transition:background .15s;
+  `;
+  resizeHandle.addEventListener("mouseenter", () => {
+    resizeHandle.style.background = handleHover;
+  });
+  resizeHandle.addEventListener("mouseleave", () => {
+    resizeHandle.style.background = handleIdle;
+  });
+  resizeHandle.addEventListener("dblclick", () => applyWidth(defaultWidth));
+  resizeHandle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = parseInt(root.style.gridTemplateColumns, 10) || panelWidth;
+    const onMove = (ev) => {
+      const next = Math.max(200, Math.min(800, startWidth + (ev.clientX - startX)));
+      applyWidth(next);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "col-resize";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+  root.appendChild(resizeHandle);
+  let curWidth = panelWidth;
+  const applyWidth = (w) => {
+    curWidth = w;
+    root.style.gridTemplateColumns = `${w}px 1fr`;
+    resizeHandle.style.left = `${w - 3}px`;
+    collapseBtn.style.left = `${w - 26}px`;
+    localStorage.setItem(storageKey, String(w));
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  };
+  const collapseKey = `tekto.panelCollapsed.${config.title ?? "default"}`;
+  const btnCss = (left) => `
+    position:absolute; top:${(showHeader ? 44 : 0) + 6}px; left:${left}px;
+    width:20px; height:24px; z-index:11; cursor:pointer; user-select:none;
+    display:flex; align-items:center; justify-content:center;
+    font:13px/1 ui-monospace,monospace;
+    border:1px solid ${t.controlBorder}; border-radius:4px;
+    background:${t.panelBg}; color:${t.accent};
+  `;
+  const collapseBtn = document.createElement("div");
+  collapseBtn.title = "Collapse panel";
+  collapseBtn.textContent = "\u2039";
+  collapseBtn.style.cssText = btnCss(panelWidth - 26);
+  root.appendChild(collapseBtn);
+  const expandBtn = document.createElement("div");
+  expandBtn.title = "Show panel";
+  expandBtn.textContent = "\u203A";
+  expandBtn.style.cssText = btnCss(4);
+  expandBtn.style.display = "none";
+  root.appendChild(expandBtn);
+  const applyCollapsed = (c) => {
+    root.style.gridTemplateColumns = c ? "28px 1fr" : `${curWidth}px 1fr`;
+    panelEl.style.display = c ? "none" : "";
+    resizeHandle.style.display = c ? "none" : "";
+    collapseBtn.style.display = c ? "none" : "flex";
+    collapseBtn.style.left = `${curWidth - 26}px`;
+    expandBtn.style.display = c ? "flex" : "none";
+    localStorage.setItem(collapseKey, c ? "1" : "0");
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  };
+  collapseBtn.addEventListener("click", () => applyCollapsed(true));
+  expandBtn.addEventListener("click", () => applyCollapsed(false));
+  if (localStorage.getItem(collapseKey) === "1") applyCollapsed(true);
+  const vpWrap = document.createElement("div");
+  vpWrap.style.cssText = "position:relative;overflow:hidden;grid-column:2;";
+  const viewportEl = document.createElement("div");
+  viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
+  vpWrap.appendChild(viewportEl);
+  const logEl = document.createElement("div");
+  logEl.style.cssText = `
+    position:absolute; bottom:12px; left:12px;
+    padding:8px 12px; border-radius:6px;
+    background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
+    font-size:11px; line-height:1.7; color:#7a80a0;
+    pointer-events:none; max-width:300px;
+    border:1px solid rgba(22,24,42,.8);
+    display:none;
+  `;
+  vpWrap.appendChild(logEl);
+  root.appendChild(vpWrap);
+  if (container === document.body) {
+    container.style.margin = "0";
+    container.style.height = "100vh";
+    container.style.overflow = "hidden";
+  }
+  container.appendChild(root);
+  return { root, fileMenusEl, panelEl, viewportEl, viewportWrap: vpWrap, logEl };
+}
+function renderFileMenus(host, exports, imports, t) {
+  host.innerHTML = "";
+  const menu = (label, items) => {
+    if (!items.length) return;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;";
+    const btn = document.createElement("button");
+    btn.textContent = `${label} \u25BE`;
+    btn.style.cssText = `font:12px ${t.font};padding:4px 10px;border-radius:4px;cursor:pointer;
+      background:${t.panelBg};color:${t.text};border:1px solid ${t.controlBorder};`;
+    const list = document.createElement("div");
+    list.style.cssText = `position:absolute;right:0;top:calc(100% + 4px);min-width:180px;z-index:30;display:none;
+      background:${t.panelBg};border:1px solid ${t.controlBorder};border-radius:6px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
+    for (const it of items) {
+      const b = document.createElement("button");
+      b.textContent = it.name;
+      if (it.title) b.title = it.title;
+      b.style.cssText = `display:block;width:100%;text-align:left;font:12px ${t.font};padding:6px 10px;border:0;border-radius:4px;
+        background:transparent;color:${t.text};cursor:pointer;`;
+      b.addEventListener("mouseenter", () => {
+        b.style.background = t.hoverBg;
+      });
+      b.addEventListener("mouseleave", () => {
+        b.style.background = "transparent";
+      });
+      b.addEventListener("click", async () => {
+        list.style.display = "none";
+        try {
+          await it.run();
+        } catch (e) {
+          console.error(`tekto ${label.toLowerCase()} "${it.name}":`, e);
+        }
+      });
+      list.appendChild(b);
+    }
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = list.style.display === "none";
+      for (const l of host.querySelectorAll("[data-tekto-menu]")) l.style.display = "none";
+      list.style.display = open ? "block" : "none";
+    });
+    list.dataset.tektoMenu = "";
+    document.addEventListener("click", () => {
+      list.style.display = "none";
+    });
+    wrap.append(btn, list);
+    host.appendChild(wrap);
+  };
+  menu("Export", exports.map((it) => ({
+    name: it.name,
+    title: `Download as ${it.fileName}`,
+    run: async () => download(await it.handler(), it.fileName, it.mimeType ? { type: it.mimeType } : {})
+  })));
+  menu("Import", imports.map((it) => ({
+    name: it.name,
+    run: () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = it.accept ?? "";
+      input.onchange = async () => {
+        const f = input.files?.[0];
+        if (f) await it.handler(f);
+      };
+      input.click();
+    }
+  })));
+}
+
+// src/sketch/handles.ts
+function meshHandle(scene, mesh, style) {
+  const obj = scene.addMesh(mesh, style);
+  const handle = {
+    get id() {
+      return obj.id;
+    },
+    get mesh() {
+      return mesh;
+    },
+    color(c) {
+      scene.setStyle(obj.id, { color: c });
+      return handle;
+    },
+    opacity(o) {
+      scene.setStyle(obj.id, { opacity: o });
+      return handle;
+    },
+    wireframe(w = true) {
+      scene.setStyle(obj.id, { wireframe: w });
+      return handle;
+    },
+    visible(v = true) {
+      scene.setStyle(obj.id, { visible: v });
+      return handle;
+    },
+    label(l) {
+      scene.setStyle(obj.id, { label: l });
+      return handle;
+    },
+    labelScale(s) {
+      scene.setStyle(obj.id, { labelScale: s });
+      return handle;
+    },
+    doubleSided(d = true) {
+      scene.setStyle(obj.id, { doubleSided: d });
+      return handle;
+    },
+    backfaceColor(c) {
+      scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c });
+      return handle;
+    },
+    groupColor(_name, _color) {
+      return handle;
+    },
+    noExport(v = true) {
+      scene.setStyle(obj.id, { noExport: v });
+      return handle;
+    },
+    layer(name) {
+      scene.setStyle(obj.id, { layer: name });
+      return handle;
+    },
+    printLayers(heightM) {
+      scene.setStyle(obj.id, { printLayerH: heightM });
+      return handle;
+    },
+    translate(x, y, z) {
+      for (const n of mesh.nodes()) {
+        n.position = n.position.add(new Vec3(x, y, z));
+      }
+      mesh.computeVertexNormals();
+      scene.update(obj.id, { mesh });
+      return handle;
+    },
+    scale(s) {
+      for (const n of mesh.nodes()) {
+        n.position = n.position.mul(s);
+      }
+      mesh.computeVertexNormals();
+      scene.update(obj.id, { mesh });
+      return handle;
+    },
+    rotateX(rad) {
+      const c = Math.cos(rad), s = Math.sin(rad);
+      for (const n of mesh.nodes()) {
+        const p = n.position;
+        n.position = new Vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
+      }
+      mesh.computeVertexNormals();
+      scene.update(obj.id, { mesh });
+      return handle;
+    },
+    rotateY(rad) {
+      const c = Math.cos(rad), s = Math.sin(rad);
+      for (const n of mesh.nodes()) {
+        const p = n.position;
+        n.position = new Vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
+      }
+      mesh.computeVertexNormals();
+      scene.update(obj.id, { mesh });
+      return handle;
+    },
+    rotateZ(rad) {
+      const c = Math.cos(rad), s = Math.sin(rad);
+      for (const n of mesh.nodes()) {
+        const p = n.position;
+        n.position = new Vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z);
+      }
+      mesh.computeVertexNormals();
+      scene.update(obj.id, { mesh });
+      return handle;
+    },
+    subdivide(iterations = 1, opts) {
+      let m = mesh;
+      for (let i = 0; i < iterations; i++) m = MeshFactory.subdivide(m, opts);
+      scene.remove(obj.id);
+      return meshHandle(scene, m, obj.style);
+    },
+    smooth(iterations = 1, factor = 0.5) {
+      Algo.laplacianSmooth(mesh, iterations, factor);
+      scene.update(obj.id, { mesh });
+      return handle;
+    },
+    volume() {
+      return Algo.meshVolume(mesh);
+    },
+    surfaceArea() {
+      return Algo.meshSurfaceArea(mesh);
+    },
+    nodeCount() {
+      return mesh.nodeCount;
+    },
+    faceCount() {
+      return mesh.faceCount;
+    },
+    edgeCount() {
+      return mesh.edgeCount;
+    }
+  };
+  return handle;
+}
+function flatMeshHandle(scene, data, style) {
+  const obj = scene.addFlatMesh(data, style);
+  const handle = {
+    get id() {
+      return obj.id;
+    },
+    get mesh() {
+      return null;
+    },
+    // flat data has no Mesh object behind it
+    color(c) {
+      scene.setStyle(obj.id, { color: c });
+      return handle;
+    },
+    opacity(o) {
+      scene.setStyle(obj.id, { opacity: o });
+      return handle;
+    },
+    wireframe(w = true) {
+      scene.setStyle(obj.id, { wireframe: w });
+      return handle;
+    },
+    visible(v = true) {
+      scene.setStyle(obj.id, { visible: v });
+      return handle;
+    },
+    label(l) {
+      scene.setStyle(obj.id, { label: l });
+      return handle;
+    },
+    labelScale(s) {
+      scene.setStyle(obj.id, { labelScale: s });
+      return handle;
+    },
+    doubleSided(d = true) {
+      scene.setStyle(obj.id, { doubleSided: d });
+      return handle;
+    },
+    backfaceColor(c) {
+      scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c });
+      return handle;
+    },
+    groupColor(name, color) {
+      const existing = scene.get(obj.id)?.style.groupColors ?? {};
+      scene.setStyle(obj.id, { groupColors: { ...existing, [name]: color } });
+      return handle;
+    },
+    noExport(v = true) {
+      scene.setStyle(obj.id, { noExport: v });
+      return handle;
+    },
+    layer(name) {
+      scene.setStyle(obj.id, { layer: name });
+      return handle;
+    },
+    printLayers(heightM) {
+      scene.setStyle(obj.id, { printLayerH: heightM });
+      return handle;
+    },
+    translate() {
+      return handle;
+    },
+    scale() {
+      return handle;
+    },
+    rotateX() {
+      return handle;
+    },
+    rotateY() {
+      return handle;
+    },
+    rotateZ() {
+      return handle;
+    },
+    subdivide() {
+      return handle;
+    },
+    smooth() {
+      return handle;
+    },
+    volume() {
+      return 0;
+    },
+    surfaceArea() {
+      return 0;
+    },
+    nodeCount() {
+      return data.positions.length / 3;
+    },
+    faceCount() {
+      return data.indices.length / 3;
+    },
+    edgeCount() {
+      return 0;
+    }
+  };
+  return handle;
+}
+function pointHandle(scene, pos) {
+  const obj = scene.addPoint(pos);
+  const handle = {
+    get id() {
+      return obj.id;
+    },
+    color(c) {
+      scene.setStyle(obj.id, { color: c });
+      return handle;
+    },
+    size(s) {
+      scene.setStyle(obj.id, { pointSize: s });
+      return handle;
+    },
+    label(l) {
+      scene.setStyle(obj.id, { label: l });
+      return handle;
+    },
+    labelScale(s) {
+      scene.setStyle(obj.id, { labelScale: s });
+      return handle;
+    },
+    layer(name) {
+      scene.setStyle(obj.id, { layer: name });
+      return handle;
+    },
+    moveTo(x, y, z) {
+      scene.update(obj.id, { position: new Vec3(x, y, z) });
+      return handle;
+    },
+    position() {
+      return scene.get(obj.id)?.position ?? pos;
+    }
+  };
+  return handle;
+}
+function lineHandle(scene, a, b) {
+  const obj = scene.addSegment(a, b);
+  const handle = {
+    get id() {
+      return obj.id;
+    },
+    color(c) {
+      scene.setStyle(obj.id, { color: c });
+      return handle;
+    },
+    opacity(o) {
+      scene.setStyle(obj.id, { opacity: o });
+      return handle;
+    },
+    radius(r) {
+      scene.setStyle(obj.id, { tubeRadius: r });
+      return handle;
+    },
+    layer(name) {
+      scene.setStyle(obj.id, { layer: name });
+      return handle;
+    },
+    dashed(size, gap) {
+      scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
+      return handle;
+    },
+    pickTag(tag) {
+      scene.update(obj.id, { pickTag: tag });
+      return handle;
+    },
+    pickable(p = true) {
+      scene.update(obj.id, { pickable: p });
+      return handle;
+    }
+  };
+  return handle;
+}
+function polylineHandle(scene, points) {
+  const obj = scene.addPolyline(points);
+  const handle = {
+    get id() {
+      return obj.id;
+    },
+    color(c) {
+      scene.setStyle(obj.id, { color: c });
+      return handle;
+    },
+    opacity(o) {
+      scene.setStyle(obj.id, { opacity: o });
+      return handle;
+    },
+    // tubeRadius has no effect on the buffered Line — kept for API parity.
+    radius(_r) {
+      return handle;
+    },
+    layer(name) {
+      scene.setStyle(obj.id, { layer: name });
+      return handle;
+    },
+    dashed(size, gap) {
+      scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
+      return handle;
+    },
+    pickTag(tag) {
+      scene.update(obj.id, { pickTag: tag });
+      return handle;
+    },
+    pickable(p = true) {
+      scene.update(obj.id, { pickable: p });
+      return handle;
+    }
+  };
+  return handle;
+}
+function shapeHandle(scene, obj) {
+  const handle = {
+    get id() {
+      return obj.id;
+    },
+    color(c) {
+      scene.setStyle(obj.id, { color: c });
+      return handle;
+    },
+    opacity(o) {
+      scene.setStyle(obj.id, { opacity: o });
+      return handle;
+    },
+    visible(v = true) {
+      scene.setStyle(obj.id, { visible: v });
+      return handle;
+    },
+    label(l) {
+      scene.setStyle(obj.id, { label: l });
+      return handle;
+    },
+    layer(name) {
+      scene.setStyle(obj.id, { layer: name });
+      return handle;
+    }
+  };
+  return handle;
+}
 
 // src/sketch/Markup.ts
 var INK = "#ff00d4";
@@ -5250,6 +6281,13 @@ function sketch(fn, config) {
 }
 var SketchInstance = class {
   constructor(fn, config) {
+    /** What the sketch can do, with its keys — the view commands, and what `lab.command`
+     *  declares in the current run. Agents list and run them through `window.__tekto`. */
+    this.commands = new Commands();
+    this.overlays = [];
+    this.overlayByName = /* @__PURE__ */ new Map();
+    this._runCommands = [];
+    this._unbindCommandKeys = null;
     // Param model: values live in the shared ParamStore, panel placement in
     // `items`, and the DOM is rendered by the shared ControlPanel (src/gui/).
     this.store = new ParamStore({});
@@ -5366,6 +6404,8 @@ var SketchInstance = class {
     }
     this.buildDOM();
     this.initRenderer();
+    this.commands.add(viewCommands(this.renderer));
+    this._unbindCommandKeys = this.commands.bindKeys();
     this.wireInput();
     this.runSketch();
     this.startLoop();
@@ -5373,49 +6413,14 @@ var SketchInstance = class {
   }
   // ── DOM Construction ──
   buildDOM() {
-    const defaultWidth = this.config.panelWidth ?? 320;
-    const storageKey = `tekto.panelWidth.${this.config.title ?? "default"}`;
-    const stored = parseInt(localStorage.getItem(storageKey) ?? "", 10);
-    const panelWidth = Number.isFinite(stored) && stored >= 200 && stored <= 800 ? stored : defaultWidth;
-    const t = this.theme = getTheme(this.config.theme);
-    const inShell = this.container instanceof HTMLElement && this.container.dataset.shell != null;
-    const showHeader = this.config.showHeader ?? !inShell;
-    const headerRow = showHeader ? "44px " : "";
-    const root = document.createElement("div");
-    root.style.cssText = `
-      display:grid; grid-template-columns:${panelWidth}px 1fr; grid-template-rows:${headerRow}1fr;
-      height:100%; width:100%; overflow:hidden; position:relative;
-      background:${t.bg};
-      color:${t.text};
-      font-family:${t.font};
-    `;
-    if (showHeader) {
-      const header = document.createElement("div");
-      header.style.cssText = `
-        grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
-        background:${t.panelBg};
-        border-bottom:1px solid ${t.border};
-      `;
-      header.innerHTML = `
-        <span style="font-weight:600;font-size:14px;color:${t.accent}">
-          &#x2B21; ${this.config.title ?? "Tekto Sketch"}
-        </span>
-        <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-          background:${t.hoverBg};color:${t.accent}">LIVE</span>
-      `;
-      this._fileMenusEl = document.createElement("div");
-      this._fileMenusEl.style.cssText = "margin-left:auto;display:flex;gap:8px;position:relative;";
-      header.appendChild(this._fileMenusEl);
-      root.appendChild(header);
-    }
-    this.panelEl = document.createElement("div");
-    this.panelEl.style.cssText = `
-      overflow-y:auto; overflow-x:hidden; padding:0;
-      background:${t.panelBg};
-      border-right:1px solid ${t.border};
-      position:relative; grid-column:1;
-    `;
-    root.appendChild(this.panelEl);
+    this.theme = getTheme(this.config.theme);
+    const layout = buildSketchLayout(this.container, this.config, this.theme);
+    this._fileMenusEl = layout.fileMenusEl;
+    this.panelEl = layout.panelEl;
+    this.viewportEl = layout.viewportEl;
+    this.viewportWrap = layout.viewportWrap;
+    this.logEl = layout.logEl;
+    const t = this.theme;
     this.panel = new ControlPanel({
       store: this.store,
       theme: t,
@@ -5440,107 +6445,6 @@ var SketchInstance = class {
     this._panelFooterLogEl = document.createElement("div");
     this._panelFooterLogEl.style.cssText = `padding:10px 14px;border-bottom:1px solid ${t.border};display:none;`;
     this.panel.footer.append(this._panelInfoEl, this._panelFooterLogEl);
-    const resizeHandle = document.createElement("div");
-    resizeHandle.title = "Drag to resize panel \xB7 double-click to reset";
-    const handleIdle = t.isDark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.14)";
-    const handleHover = t.isDark ? "rgba(255,255,255,.35)" : "rgba(0,0,0,.30)";
-    resizeHandle.style.cssText = `
-      position:absolute; top:${showHeader ? 44 : 0}px; bottom:0;
-      left:${panelWidth - 3}px; width:6px;
-      cursor:col-resize; z-index:10;
-      background:${handleIdle};
-      transition:background .15s;
-    `;
-    resizeHandle.addEventListener("mouseenter", () => {
-      resizeHandle.style.background = handleHover;
-    });
-    resizeHandle.addEventListener("mouseleave", () => {
-      resizeHandle.style.background = handleIdle;
-    });
-    resizeHandle.addEventListener("dblclick", () => applyWidth(defaultWidth));
-    resizeHandle.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = parseInt(root.style.gridTemplateColumns, 10) || panelWidth;
-      const onMove = (ev) => {
-        const next = Math.max(200, Math.min(800, startWidth + (ev.clientX - startX)));
-        applyWidth(next);
-      };
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-      };
-      document.body.style.cursor = "col-resize";
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    });
-    root.appendChild(resizeHandle);
-    let curWidth = panelWidth;
-    const applyWidth = (w) => {
-      curWidth = w;
-      root.style.gridTemplateColumns = `${w}px 1fr`;
-      resizeHandle.style.left = `${w - 3}px`;
-      collapseBtn.style.left = `${w - 26}px`;
-      localStorage.setItem(storageKey, String(w));
-      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-    };
-    const collapseKey = `tekto.panelCollapsed.${this.config.title ?? "default"}`;
-    const btnCss = (left) => `
-      position:absolute; top:${(showHeader ? 44 : 0) + 6}px; left:${left}px;
-      width:20px; height:24px; z-index:11; cursor:pointer; user-select:none;
-      display:flex; align-items:center; justify-content:center;
-      font:13px/1 ui-monospace,monospace;
-      border:1px solid ${t.controlBorder}; border-radius:4px;
-      background:${t.panelBg}; color:${t.accent};
-    `;
-    const collapseBtn = document.createElement("div");
-    collapseBtn.title = "Collapse panel";
-    collapseBtn.textContent = "\u2039";
-    collapseBtn.style.cssText = btnCss(panelWidth - 26);
-    root.appendChild(collapseBtn);
-    const expandBtn = document.createElement("div");
-    expandBtn.title = "Show panel";
-    expandBtn.textContent = "\u203A";
-    expandBtn.style.cssText = btnCss(4);
-    expandBtn.style.display = "none";
-    root.appendChild(expandBtn);
-    const applyCollapsed = (c) => {
-      root.style.gridTemplateColumns = c ? "28px 1fr" : `${curWidth}px 1fr`;
-      this.panelEl.style.display = c ? "none" : "";
-      resizeHandle.style.display = c ? "none" : "";
-      collapseBtn.style.display = c ? "none" : "flex";
-      collapseBtn.style.left = `${curWidth - 26}px`;
-      expandBtn.style.display = c ? "flex" : "none";
-      localStorage.setItem(collapseKey, c ? "1" : "0");
-      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-    };
-    collapseBtn.addEventListener("click", () => applyCollapsed(true));
-    expandBtn.addEventListener("click", () => applyCollapsed(false));
-    if (localStorage.getItem(collapseKey) === "1") applyCollapsed(true);
-    const vpWrap = document.createElement("div");
-    vpWrap.style.cssText = "position:relative;overflow:hidden;grid-column:2;";
-    this.viewportEl = document.createElement("div");
-    this.viewportEl.style.cssText = "width:100%;height:100%;";
-    vpWrap.appendChild(this.viewportEl);
-    this.logEl = document.createElement("div");
-    this.logEl.style.cssText = `
-      position:absolute; bottom:12px; left:12px;
-      padding:8px 12px; border-radius:6px;
-      background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
-      font-size:11px; line-height:1.7; color:#7a80a0;
-      pointer-events:none; max-width:300px;
-      border:1px solid rgba(22,24,42,.8);
-      display:none;
-    `;
-    vpWrap.appendChild(this.logEl);
-    root.appendChild(vpWrap);
-    if (this.container === document.body) {
-      this.container.style.margin = "0";
-      this.container.style.height = "100vh";
-      this.container.style.overflow = "hidden";
-    }
-    this.container.appendChild(root);
   }
   initRenderer() {
     const zUp = this.config.up === "z";
@@ -5686,6 +6590,8 @@ var SketchInstance = class {
     this._retain = false;
     this.separatorCount = 0;
     this._onceSeq = 0;
+    for (const c of this._runCommands) this.commands.remove(c.id);
+    this._runCommands = [];
     this._onMouseClicked = null;
     this._onMouseDragged = null;
     this._onKeyPressed = null;
@@ -5889,6 +6795,14 @@ var SketchInstance = class {
       separator() {
         self.separatorCount++;
       },
+      overlay(name = "default") {
+        return self.overlay(name);
+      },
+      command(cmd) {
+        const list = Array.isArray(cmd) ? cmd : [cmd];
+        self.commands.add(list);
+        self._runCommands.push(...list);
+      },
       registerExport(opts) {
         self.exports.set(opts.name, { ...opts });
         for (const l of self._exportListeners) l();
@@ -5901,49 +6815,49 @@ var SketchInstance = class {
       },
       // ── Geometry Builders ──
       mesh(m, style) {
-        return self.addMeshHandle(m, style);
+        return meshHandle(self.scene, m, style);
       },
       flatMesh(data, style) {
-        return self.addFlatMeshHandle(data, style);
+        return flatMeshHandle(self.scene, data, style);
       },
       sphere(r = 1, seg = 24, rings = 16) {
-        return self.addMeshHandle(MeshFactory.sphere(r, seg, rings));
+        return meshHandle(self.scene, MeshFactory.sphere(r, seg, rings));
       },
       box(w = 1, h = 1, d = 1) {
-        return self.addMeshHandle(MeshFactory.box(w, h, d));
+        return meshHandle(self.scene, MeshFactory.box(w, h, d));
       },
       torus(R = 1, r = 0.3, seg = 32, sides = 16) {
-        return self.addMeshHandle(MeshFactory.torus(R, r, seg, sides));
+        return meshHandle(self.scene, MeshFactory.torus(R, r, seg, sides));
       },
       cylinder(rt = 1, rb = 1, h = 2, seg = 24) {
-        return self.addMeshHandle(MeshFactory.cylinder(rt, rb, h, seg));
+        return meshHandle(self.scene, MeshFactory.cylinder(rt, rb, h, seg));
       },
       grid(w = 10, d = 10, dx = 24, dz = 24, hfn) {
-        return self.addMeshHandle(MeshFactory.grid(w, d, dx, dz, hfn));
+        return meshHandle(self.scene, MeshFactory.grid(w, d, dx, dz, hfn));
       },
       revolve(profile, seg = 32) {
-        return self.addMeshHandle(MeshFactory.revolve(profile, seg));
+        return meshHandle(self.scene, MeshFactory.revolve(profile, seg));
       },
       extrude(polygon, direction) {
-        return self.addMeshHandle(MeshFactory.extrude(polygon, direction));
+        return meshHandle(self.scene, MeshFactory.extrude(polygon, direction));
       },
       point(x, y, z) {
-        return self.addPointHandle(new Vec3(x, y, z));
+        return pointHandle(self.scene, new Vec3(x, y, z));
       },
       points(positions) {
-        return positions.map((p) => self.addPointHandle(p));
+        return positions.map((p) => pointHandle(self.scene, p));
       },
       line(x1, y1, z1, x2, y2, z2) {
-        return self.addLineHandle(new Vec3(x1, y1, z1), new Vec3(x2, y2, z2));
+        return lineHandle(self.scene, new Vec3(x1, y1, z1), new Vec3(x2, y2, z2));
       },
       polyline(points) {
-        return self.addPolylineHandle(points);
+        return polylineHandle(self.scene, points);
       },
       polygon(vertices, style) {
-        return self.addShapeHandle(self.scene.addPolygon(vertices, style));
+        return shapeHandle(self.scene, self.scene.addPolygon(vertices, style));
       },
       circle(cx, cy, cz, radius) {
-        return self.addShapeHandle(self.scene.addCircle(new Vec3(cx, cy, cz), radius));
+        return shapeHandle(self.scene, self.scene.addCircle(new Vec3(cx, cy, cz), radius));
       },
       // ── Algorithms ──
       algo: Algo,
@@ -6205,14 +7119,14 @@ var SketchInstance = class {
           const handles = [];
           if (mode === "lines") {
             for (let i = 0; i + 1 < verts.length; i += 2) {
-              handles.push(self.addLineHandle(verts[i], verts[i + 1]));
+              handles.push(lineHandle(self.scene, verts[i], verts[i + 1]));
             }
           } else {
             for (let i = 0; i < verts.length - 1; i++) {
-              handles.push(self.addLineHandle(verts[i], verts[i + 1]));
+              handles.push(lineHandle(self.scene, verts[i], verts[i + 1]));
             }
             if (close && verts.length >= 3) {
-              handles.push(self.addLineHandle(verts[verts.length - 1], verts[0]));
+              handles.push(lineHandle(self.scene, verts[verts.length - 1], verts[0]));
             }
           }
           self._shapeVerts = [];
@@ -6265,7 +7179,7 @@ var SketchInstance = class {
         }
         mesh.computeVertexNormals();
         self._shapeVerts = [];
-        return self.addMeshHandle(mesh);
+        return meshHandle(self.scene, mesh);
       },
       // ── Time ──
       get frame() {
@@ -6289,380 +7203,6 @@ var SketchInstance = class {
       }
     };
     return lab;
-  }
-  // ── Handle Factories ──
-  addMeshHandle(mesh, style) {
-    const obj = this.scene.addMesh(mesh, style);
-    const self = this;
-    const handle = {
-      get id() {
-        return obj.id;
-      },
-      get mesh() {
-        return mesh;
-      },
-      color(c) {
-        self.scene.setStyle(obj.id, { color: c });
-        return handle;
-      },
-      opacity(o) {
-        self.scene.setStyle(obj.id, { opacity: o });
-        return handle;
-      },
-      wireframe(w = true) {
-        self.scene.setStyle(obj.id, { wireframe: w });
-        return handle;
-      },
-      visible(v = true) {
-        self.scene.setStyle(obj.id, { visible: v });
-        return handle;
-      },
-      label(l) {
-        self.scene.setStyle(obj.id, { label: l });
-        return handle;
-      },
-      labelScale(s) {
-        self.scene.setStyle(obj.id, { labelScale: s });
-        return handle;
-      },
-      doubleSided(d = true) {
-        self.scene.setStyle(obj.id, { doubleSided: d });
-        return handle;
-      },
-      backfaceColor(c) {
-        self.scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c });
-        return handle;
-      },
-      groupColor(_name, _color) {
-        return handle;
-      },
-      noExport(v = true) {
-        self.scene.setStyle(obj.id, { noExport: v });
-        return handle;
-      },
-      layer(name) {
-        self.scene.setStyle(obj.id, { layer: name });
-        return handle;
-      },
-      printLayers(heightM) {
-        self.scene.setStyle(obj.id, { printLayerH: heightM });
-        return handle;
-      },
-      translate(x, y, z) {
-        for (const n of mesh.nodes()) {
-          n.position = n.position.add(new Vec3(x, y, z));
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-      scale(s) {
-        for (const n of mesh.nodes()) {
-          n.position = n.position.mul(s);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-      rotateX(rad) {
-        const c = Math.cos(rad), s = Math.sin(rad);
-        for (const n of mesh.nodes()) {
-          const p = n.position;
-          n.position = new Vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-      rotateY(rad) {
-        const c = Math.cos(rad), s = Math.sin(rad);
-        for (const n of mesh.nodes()) {
-          const p = n.position;
-          n.position = new Vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-      rotateZ(rad) {
-        const c = Math.cos(rad), s = Math.sin(rad);
-        for (const n of mesh.nodes()) {
-          const p = n.position;
-          n.position = new Vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-      subdivide(iterations = 1, opts) {
-        let m = mesh;
-        for (let i = 0; i < iterations; i++) m = MeshFactory.subdivide(m, opts);
-        self.scene.remove(obj.id);
-        return self.addMeshHandle(m, obj.style);
-      },
-      smooth(iterations = 1, factor = 0.5) {
-        Algo.laplacianSmooth(mesh, iterations, factor);
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-      volume() {
-        return Algo.meshVolume(mesh);
-      },
-      surfaceArea() {
-        return Algo.meshSurfaceArea(mesh);
-      },
-      nodeCount() {
-        return mesh.nodeCount;
-      },
-      faceCount() {
-        return mesh.faceCount;
-      },
-      edgeCount() {
-        return mesh.edgeCount;
-      }
-    };
-    return handle;
-  }
-  addFlatMeshHandle(data, style) {
-    const obj = this.scene.addFlatMesh(data, style);
-    const self = this;
-    const handle = {
-      get id() {
-        return obj.id;
-      },
-      get mesh() {
-        return null;
-      },
-      // flat data has no Mesh object behind it
-      color(c) {
-        self.scene.setStyle(obj.id, { color: c });
-        return handle;
-      },
-      opacity(o) {
-        self.scene.setStyle(obj.id, { opacity: o });
-        return handle;
-      },
-      wireframe(w = true) {
-        self.scene.setStyle(obj.id, { wireframe: w });
-        return handle;
-      },
-      visible(v = true) {
-        self.scene.setStyle(obj.id, { visible: v });
-        return handle;
-      },
-      label(l) {
-        self.scene.setStyle(obj.id, { label: l });
-        return handle;
-      },
-      labelScale(s) {
-        self.scene.setStyle(obj.id, { labelScale: s });
-        return handle;
-      },
-      doubleSided(d = true) {
-        self.scene.setStyle(obj.id, { doubleSided: d });
-        return handle;
-      },
-      backfaceColor(c) {
-        self.scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c });
-        return handle;
-      },
-      groupColor(name, color) {
-        const existing = self.scene.get(obj.id)?.style.groupColors ?? {};
-        self.scene.setStyle(obj.id, { groupColors: { ...existing, [name]: color } });
-        return handle;
-      },
-      noExport(v = true) {
-        self.scene.setStyle(obj.id, { noExport: v });
-        return handle;
-      },
-      layer(name) {
-        self.scene.setStyle(obj.id, { layer: name });
-        return handle;
-      },
-      printLayers(heightM) {
-        self.scene.setStyle(obj.id, { printLayerH: heightM });
-        return handle;
-      },
-      translate() {
-        return handle;
-      },
-      scale() {
-        return handle;
-      },
-      rotateX() {
-        return handle;
-      },
-      rotateY() {
-        return handle;
-      },
-      rotateZ() {
-        return handle;
-      },
-      subdivide() {
-        return handle;
-      },
-      smooth() {
-        return handle;
-      },
-      volume() {
-        return 0;
-      },
-      surfaceArea() {
-        return 0;
-      },
-      nodeCount() {
-        return data.positions.length / 3;
-      },
-      faceCount() {
-        return data.indices.length / 3;
-      },
-      edgeCount() {
-        return 0;
-      }
-    };
-    return handle;
-  }
-  addPointHandle(pos) {
-    const obj = this.scene.addPoint(pos);
-    const self = this;
-    const handle = {
-      get id() {
-        return obj.id;
-      },
-      color(c) {
-        self.scene.setStyle(obj.id, { color: c });
-        return handle;
-      },
-      size(s) {
-        self.scene.setStyle(obj.id, { pointSize: s });
-        return handle;
-      },
-      label(l) {
-        self.scene.setStyle(obj.id, { label: l });
-        return handle;
-      },
-      labelScale(s) {
-        self.scene.setStyle(obj.id, { labelScale: s });
-        return handle;
-      },
-      layer(name) {
-        self.scene.setStyle(obj.id, { layer: name });
-        return handle;
-      },
-      moveTo(x, y, z) {
-        self.scene.update(obj.id, { position: new Vec3(x, y, z) });
-        return handle;
-      },
-      position() {
-        return self.scene.get(obj.id)?.position ?? pos;
-      }
-    };
-    return handle;
-  }
-  addLineHandle(a, b) {
-    const obj = this.scene.addSegment(a, b);
-    const self = this;
-    const handle = {
-      get id() {
-        return obj.id;
-      },
-      color(c) {
-        self.scene.setStyle(obj.id, { color: c });
-        return handle;
-      },
-      opacity(o) {
-        self.scene.setStyle(obj.id, { opacity: o });
-        return handle;
-      },
-      radius(r) {
-        self.scene.setStyle(obj.id, { tubeRadius: r });
-        return handle;
-      },
-      layer(name) {
-        self.scene.setStyle(obj.id, { layer: name });
-        return handle;
-      },
-      dashed(size, gap) {
-        self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
-        return handle;
-      },
-      pickTag(tag) {
-        self.scene.update(obj.id, { pickTag: tag });
-        return handle;
-      },
-      pickable(p = true) {
-        self.scene.update(obj.id, { pickable: p });
-        return handle;
-      }
-    };
-    return handle;
-  }
-  addPolylineHandle(points) {
-    const obj = this.scene.addPolyline(points);
-    const self = this;
-    const handle = {
-      get id() {
-        return obj.id;
-      },
-      color(c) {
-        self.scene.setStyle(obj.id, { color: c });
-        return handle;
-      },
-      opacity(o) {
-        self.scene.setStyle(obj.id, { opacity: o });
-        return handle;
-      },
-      // tubeRadius has no effect on the buffered Line — kept for API parity.
-      radius(_r) {
-        return handle;
-      },
-      layer(name) {
-        self.scene.setStyle(obj.id, { layer: name });
-        return handle;
-      },
-      dashed(size, gap) {
-        self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } });
-        return handle;
-      },
-      pickTag(tag) {
-        self.scene.update(obj.id, { pickTag: tag });
-        return handle;
-      },
-      pickable(p = true) {
-        self.scene.update(obj.id, { pickable: p });
-        return handle;
-      }
-    };
-    return handle;
-  }
-  addShapeHandle(obj) {
-    const self = this;
-    const handle = {
-      get id() {
-        return obj.id;
-      },
-      color(c) {
-        self.scene.setStyle(obj.id, { color: c });
-        return handle;
-      },
-      opacity(o) {
-        self.scene.setStyle(obj.id, { opacity: o });
-        return handle;
-      },
-      visible(v = true) {
-        self.scene.setStyle(obj.id, { visible: v });
-        return handle;
-      },
-      label(l) {
-        self.scene.setStyle(obj.id, { label: l });
-        return handle;
-      },
-      layer(name) {
-        self.scene.setStyle(obj.id, { layer: name });
-        return handle;
-      }
-    };
-    return handle;
   }
   // ── Log Display ──
   updateLog() {
@@ -6759,6 +7299,20 @@ var SketchInstance = class {
   /** Change the scene render mode (solid / wireframe / hiddenline / ghost). */
   setRenderMode(mode) {
     this.scene.setRenderMode(mode);
+  }
+  /**
+   * A layer over the 3D view, kept across re-runs — mount a 2D view there (a `SheetCanvas`
+   * showing the drawing of what the sketch builds). The same `name` gives the same layer;
+   * hide it (`style.display = "none"`) to show the 3D view again. Its canvases marked
+   * `data-tekto-overlay` are in snapshots and ✎ Markup.
+   */
+  overlay(name = "default") {
+    let el = this.overlayByName.get(name);
+    if (!el) {
+      el = addOverlay(this.viewportEl, this.overlays);
+      this.overlayByName.set(name, el);
+    }
+    return el;
   }
   /** Cut the model with a section (see `ThreeRenderer.setSection`); null clears. */
   setSection(section) {
@@ -6874,7 +7428,7 @@ var SketchInstance = class {
       title: this.config.title ?? "sketch",
       hitAt: (x, y) => this.renderer.hitAt(x, y),
       groundAt: (x, y) => this.renderer.groundAt(x, y),
-      snapshotPng: () => this.renderer.snapshotPng(),
+      snapshotPng: () => snapshotWithOverlays(this.renderer, this.viewportWrap),
       describe: (id) => this.describeObject(id),
       context: () => this.markupContext(),
       setTracking(on) {
@@ -6887,6 +7441,7 @@ var SketchInstance = class {
       owner: this,
       harness: "sketch",
       store: this.store,
+      commands: this.commands,
       snapshot: (opts) => this.markup.capture(opts),
       camera: (pos, target) => {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
@@ -6905,86 +7460,17 @@ var SketchInstance = class {
       up: this.config.up ?? "y",
       params: this.store.getAll(),
       logs: this.logs.map((l) => ({ ...l })),
-      errors: this.bridge?.errors() ?? []
+      errors: this.bridge?.errors() ?? [],
+      commands: this.commands.list()
     };
   }
-  /**
-   * Export ▾ / Import ▾ in the sketch's own header, from `lab.registerExport/registerImport`.
-   * Without a header (inside a shell) the shell's top bar shows them instead. Rebuilt only
-   * when the registered names change, not on every re-run.
-   */
+  /** Rebuild the header's Export / Import menus when the registered names change. */
   renderFileMenus() {
-    const host = this._fileMenusEl;
-    if (!host) return;
+    if (!this._fileMenusEl) return;
     const sig = [...this.exports.keys()].join("\0") + "|" + [...this.imports.keys()].join("\0");
     if (sig === this._fileMenusSig) return;
     this._fileMenusSig = sig;
-    host.innerHTML = "";
-    const t = this.theme;
-    const menu = (label, items) => {
-      if (!items.length) return;
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "position:relative;";
-      const btn = document.createElement("button");
-      btn.textContent = `${label} \u25BE`;
-      btn.style.cssText = `font:12px ${t.font};padding:4px 10px;border-radius:4px;cursor:pointer;
-        background:${t.panelBg};color:${t.text};border:1px solid ${t.controlBorder};`;
-      const list = document.createElement("div");
-      list.style.cssText = `position:absolute;right:0;top:calc(100% + 4px);min-width:180px;z-index:30;display:none;
-        background:${t.panelBg};border:1px solid ${t.controlBorder};border-radius:6px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
-      for (const it of items) {
-        const b = document.createElement("button");
-        b.textContent = it.name;
-        if (it.title) b.title = it.title;
-        b.style.cssText = `display:block;width:100%;text-align:left;font:12px ${t.font};padding:6px 10px;border:0;border-radius:4px;
-          background:transparent;color:${t.text};cursor:pointer;`;
-        b.addEventListener("mouseenter", () => {
-          b.style.background = t.hoverBg;
-        });
-        b.addEventListener("mouseleave", () => {
-          b.style.background = "transparent";
-        });
-        b.addEventListener("click", async () => {
-          list.style.display = "none";
-          try {
-            await it.run();
-          } catch (e) {
-            console.error(`tekto ${label.toLowerCase()} "${it.name}":`, e);
-          }
-        });
-        list.appendChild(b);
-      }
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const open = list.style.display === "none";
-        for (const l of host.querySelectorAll("[data-tekto-menu]")) l.style.display = "none";
-        list.style.display = open ? "block" : "none";
-      });
-      list.dataset.tektoMenu = "";
-      document.addEventListener("click", () => {
-        list.style.display = "none";
-      });
-      wrap.append(btn, list);
-      host.appendChild(wrap);
-    };
-    menu("Export", this.getExports().map((it) => ({
-      name: it.name,
-      title: `Download as ${it.fileName}`,
-      run: async () => download(await it.handler(), it.fileName, it.mimeType ? { type: it.mimeType } : {})
-    })));
-    menu("Import", this.getImports().map((it) => ({
-      name: it.name,
-      run: () => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = it.accept ?? "";
-        input.onchange = async () => {
-          const f = input.files?.[0];
-          if (f) await it.handler(f);
-        };
-        input.click();
-      }
-    })));
+    renderFileMenus(this._fileMenusEl, this.getExports(), this.getImports(), this.theme);
   }
   /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
   getParams() {
@@ -7002,6 +7488,7 @@ var SketchInstance = class {
     this.disposed = true;
     this.markup?.dispose();
     this.bridge?.dispose();
+    this._unbindCommandKeys?.();
     if (this._boundKeyDown) window.removeEventListener("keydown", this._boundKeyDown);
     if (this._boundKeyUp) window.removeEventListener("keyup", this._boundKeyUp);
     this._boundKeyDown = null;
@@ -7095,6 +7582,9 @@ function appShell(config) {
     navGizmo: config.navGizmo ?? false,
     ...config.renderer
   });
+  const commands = new Commands();
+  commands.add(viewCommands(renderer));
+  const unbindKeys = commands.bindKeys();
   if (config.topBar !== false) {
     buildTopBar(header, scene, renderer, t, config.topBar === true || config.topBar === void 0 ? {} : config.topBar);
   }
@@ -7130,6 +7620,7 @@ function appShell(config) {
     scene,
     renderer,
     panel,
+    commands,
     onAnimate(fn) {
       animateFn = fn;
     },
@@ -7153,43 +7644,26 @@ function appShell(config) {
       }
     },
     overlay() {
-      const el = document.createElement("div");
-      el.style.cssText = "position:absolute;inset:0;";
-      (overlays[overlays.length - 1] ?? viewportEl).after(el);
-      overlays.push(el);
-      return el;
+      return addOverlay(viewportEl, overlays);
     },
     dispose() {
       disposed = true;
       markup?.dispose();
       bridge.dispose();
+      unbindKeys();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
     }
   };
-  const snapshotPng = () => {
-    const base = renderer.snapshotPng();
-    const shown = [...vpWrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
-    if (!shown.length) return base;
-    const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
-    const out = document.createElement("canvas");
-    out.width = src.width;
-    out.height = src.height;
-    const g = out.getContext("2d");
-    g.drawImage(src, 0, 0);
-    for (const c of shown) {
-      const r = c.getBoundingClientRect();
-      g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
-    }
-    return out.toDataURL("image/png");
-  };
+  const snapshotPng = () => snapshotWithOverlays(renderer, vpWrap);
   const context = () => ({
     harness: "appShell",
     ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
     up: config.up ?? "z",
     params: params.getAll(),
     logs: statusText ? [{ label: "status", value: statusText }] : [],
+    commands: commands.list(),
     errors: bridge.errors()
   });
   const markup = config.markup === false ? null : new MarkupOverlay({
@@ -7205,6 +7679,7 @@ function appShell(config) {
   });
   const bridge = installAgentBridge({
     owner: instance,
+    commands,
     harness: "appShell",
     store: params,
     snapshot: (opts) => markup ? markup.capture(opts) : plainBundle({
@@ -7499,6 +7974,7 @@ export {
   Callouts,
   Capsule2D,
   CltConstruction,
+  Commands,
   ControlPanel,
   CubicBezierCurve,
   Curvature,
@@ -7655,6 +8131,7 @@ export {
   findAdjacent,
   fitRadius,
   fitSheet,
+  formatKeys,
   getTheme,
   groundAppearance,
   hiddenLineIdBuffer,
@@ -7662,6 +8139,7 @@ export {
   joistDirectionFromBounds,
   joistDirectionFromPCA,
   joistDirectionFromSupports,
+  keyMatches,
   labelWidthFor,
   layoutLabels,
   lightBalance,
@@ -7690,6 +8168,7 @@ export {
   segmentSegmentClosest,
   selectOnClick,
   setClipSnap,
+  shareSelection,
   shortestTurn,
   sketch,
   sketch2d,
@@ -7697,6 +8176,7 @@ export {
   standardOrbit,
   supabaseAdapter,
   surfaceAppearance,
+  viewCommands,
   writeDxf2D,
   writeDxf3D
 };

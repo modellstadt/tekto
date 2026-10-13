@@ -807,6 +807,10 @@ var ParamStore = class {
       value = Math.max(def.min, Math.min(def.max, value));
       if (def.type === "int") value = Math.round(value);
     }
+    if (def.type === "vec3" && Array.isArray(value)) {
+      const lo = def.min, hi = def.max;
+      value = value.map((v, i) => Math.max(lo?.[i] ?? -Infinity, Math.min(hi?.[i] ?? Infinity, v)));
+    }
     if (def.type === "select" && !def.options.includes(value)) return;
     this.values[key] = value;
     for (const l of this.listeners) l(key, value, this.values);
@@ -1534,7 +1538,10 @@ function installAgentBridge(host) {
       }
       return r;
     },
-    ...host.camera ? { camera: host.camera } : {}
+    ...host.camera ? { camera: host.camera } : {},
+    // What the app can do — undo, delete, the views … — by id, as a person would by key.
+    commands: () => host.commands?.list() ?? [],
+    run: (id) => host.commands ? host.commands.run(id) : Promise.resolve(false)
   };
   return {
     errors: () => [...errors],
@@ -2024,7 +2031,6 @@ var Sketch2DInstance = class {
     };
     requestAnimationFrame(loop);
   }
-  /** Tear down the sketch */
   /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
   getParams() {
     return { ...this.store.getAll() };
@@ -2033,6 +2039,7 @@ var Sketch2DInstance = class {
   setParams(values) {
     return this.store.setByName(values);
   }
+  /** Tear down the sketch */
   dispose() {
     this.disposed = true;
     this.bridge?.dispose();
