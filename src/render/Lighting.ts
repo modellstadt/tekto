@@ -34,6 +34,8 @@ export class Lighting {
   // Optional equirectangular source (e.g. a loaded HDR) for the environment.
   // null → the built-in procedural gradient. The app owns/disposes this texture.
   private envSourceTex: THREE.Texture | null = null;
+  // A sky texture setSky made from an image or a canvas (the app's own textures stay the app's).
+  private ownSky: THREE.Texture | null = null;
   private envEnabled = false;
   private envBackground = false;   // show the equirect source as the scene backdrop
   // The sun framed to the content (Studio): its direction, how far back at least, and
@@ -322,7 +324,35 @@ export class Lighting {
     if (this.envBackground && this.envSourceTex) {
       this.envSourceTex.mapping = THREE.EquirectangularReflectionMapping;
       this.core.threeScene.background = this.envSourceTex;
+    } else if ((this.core.threeScene.background as THREE.Texture | null)?.isTexture) {
+      // The image off: the plain background comes back (it stayed up before).
+      this.core.threeScene.background = new THREE.Color(this.core.config.backgroundColor);
     }
+  }
+
+  /** A sky: an equirectangular image lighting the scene and, by default, behind it. */
+  setSky(source: THREE.Texture | HTMLImageElement | HTMLCanvasElement | null, opts: { background?: boolean; intensity?: number } = {}): void {
+    const s = this.core.threeScene as THREE.Scene & { environmentIntensity?: number; backgroundIntensity?: number };
+    // An image or a canvas (an LDR panorama) is wrapped here, and the wrapper is ours to free.
+    this.ownSky?.dispose();
+    this.ownSky = null;
+    let texture: THREE.Texture | null = null;
+    if (source && (source as THREE.Texture).isTexture) texture = source as THREE.Texture;
+    else if (source) {
+      texture = this.ownSky = new THREE.Texture(source as HTMLImageElement | HTMLCanvasElement);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.needsUpdate = true;
+    }
+    const intensity = opts.intensity ?? 1;
+    if (!(intensity >= 0)) throw new Error(`setSky: intensity must be 0 or more, got ${opts.intensity}`);
+    s.environmentIntensity = texture ? intensity : 1;
+    s.backgroundIntensity = texture ? intensity : 1;
+    this.envBackground = !!texture && (opts.background ?? true);
+    this.setEnvironmentSource(texture);
+    // An equirect's up is +Y: stand it up in a Z-up scene.
+    if (texture && this.core.isZUp) this.setEnvironmentRotation(Math.PI / 2, 0, 0);
+    this.core.gScene.setEnvironment(!!texture);
+    this.core.requestRender();
   }
 
 
@@ -404,5 +434,7 @@ export class Lighting {
     this.core.threeScene.environment = null;
     this.envMap?.dispose();
     this.envMap = null;
+    this.ownSky?.dispose();
+    this.ownSky = null;
   }
 }

@@ -701,6 +701,18 @@ export class ThreeRenderer {
    */
   setEnvironmentRotation(x: number, y: number, z: number): void { this.lighting.setEnvironmentRotation(x, y, z); }
 
+  /**
+   * A sky in one call: an equirectangular image (an .hdr from three's `HDRLoader`, or
+   * `RGBELoader` before r180, or a plain panorama as an image or a canvas) lights the scene
+   * (Studio's PBR materials) and, unless
+   * `background: false`, shows behind it. In a Z-up scene it is stood upright (an equirect's
+   * up is +Y). `intensity` (default 1) scales both: turn it down for an interior view, since
+   * image-based light ignores walls. `null` takes it away and brings the plain background back.
+   *
+   *   renderer.setSky(await new HDRLoader().loadAsync("sky.hdr"));
+   */
+  setSky(sky: THREE.Texture | HTMLImageElement | HTMLCanvasElement | null, opts: { background?: boolean; intensity?: number } = {}): void { this.lighting.setSky(sky, opts); }
+
   // ── Camera ──
 
   /**
