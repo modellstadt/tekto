@@ -12,6 +12,7 @@ import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection, calloutSamples, occludes,
+  groundGrid, gridLineColour,
 } from "../src/render/viewRules";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
@@ -292,5 +293,27 @@ describe("callout visibility", () => {
     expect(occludes(new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.11, depthWrite: false }))).toBe(false);
     expect(occludes(new THREE.MeshStandardMaterial({ visible: false }))).toBe(false);
     expect(occludes([new THREE.MeshBasicMaterial()])).toBe(true);
+  });
+});
+
+describe("fading grid ground", () => {
+  it("spaces the grid in round metres for the size of the content", () => {
+    expect(groundGrid(8)).toMatchObject({ minor: 1, major: 5 });       // a house
+    expect(groundGrid(60)).toMatchObject({ minor: 10, major: 50 });    // a block
+    expect(groundGrid(1).minor).toBeCloseTo(0.1);                      // a component
+    // solid under the content, gone well inside the sheet, so no edge shows
+    const g = groundGrid(8);
+    expect(g.fadeFrom).toBeGreaterThan(8);
+    expect(g.fadeTo).toBeLessThan(g.size / 2);
+    // never zero or negative, whatever it is handed
+    expect(groundGrid(0).minor).toBeGreaterThan(0);
+  });
+
+  it("rules its lines a step off the page, toward the other end", () => {
+    for (const page of [0x0a0b14, 0xf4f6f9]) {
+      const step = luminance(gridLineColour(page)) - luminance(page);
+      expect(Math.sign(step)).toBe(luminance(page) > 127 ? -1 : 1);
+      expect(Math.abs(step)).toBeLessThan(64);                          // a rule, not a drawing
+    }
   });
 });
