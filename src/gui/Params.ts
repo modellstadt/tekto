@@ -218,6 +218,54 @@ export class ParamStore<S extends ParamSchema = ParamSchema> {
       }
     }
   }
+
+  /**
+   * The keys a person or an agent means by `name`, most specific first: the exact key;
+   * else the control's label, ignoring case ("Radius"); else "Group:Label" for sketch
+   * keys, which read `type:group:label`. One key when the name is unambiguous.
+   */
+  findKeys(name: string): string[] {
+    if (name in this.schema) return [name];
+    const n = name.trim().toLowerCase();
+    const keys = Object.keys(this.schema);
+    const byLabel = keys.filter(k => ((this.schema[k] as ParamDef).label ?? k).toLowerCase() === n);
+    if (byLabel.length) return byLabel;
+    return keys.filter(k => {
+      const parts = k.split(":");
+      return parts.length >= 3 && `${parts[1]}:${parts.slice(2).join(":")}`.toLowerCase() === n;
+    });
+  }
+
+  /**
+   * Set params by key or label (see `findKeys`) and say what could not be applied,
+   * instead of dropping it the way `loadJSON` does. For tools and agents.
+   */
+  setByName(values: Record<string, unknown>): {
+    applied: string[];
+    unknown: string[];
+    ambiguous: { name: string; keys: string[] }[];
+  } {
+    const applied: string[] = [], unknown: string[] = [];
+    const ambiguous: { name: string; keys: string[] }[] = [];
+    for (const [name, value] of Object.entries(values)) {
+      const keys = this.findKeys(name);
+      if (keys.length === 0) unknown.push(name);
+      else if (keys.length > 1) ambiguous.push({ name, keys });
+      else { this.set(keys[0] as any, value as any); applied.push(keys[0]); }
+    }
+    return { applied, unknown, ambiguous };
+  }
+
+  /** Every param as the name to use with `setByName`: its label, or "Group:Label" when two share a label. */
+  names(): string[] {
+    const keys = Object.keys(this.schema);
+    const label = (k: string) => (this.schema[k] as ParamDef).label ?? k;
+    return keys.map(k => {
+      if (keys.filter(o => label(o).toLowerCase() === label(k).toLowerCase()).length === 1) return label(k);
+      const parts = k.split(":");
+      return parts.length >= 3 && parts[1] ? `${parts[1]}:${parts.slice(2).join(":")}` : k;
+    });
+  }
 }
 
 /** Convenience factory */

@@ -7,8 +7,12 @@
  * dev-server plugin as the ✎ Markup button, so it lands in `.tekto/markup/<stamp>-snap/`
  * (and `.tekto/markup/latest/`). Console errors from the page are printed too.
  *
- *   node tools/snap.mjs "http://localhost:5173/testbench.html?page=primitives"
- *        [--params '{"Radius":2}'] [--camera 8,6,10[,0,0,0]] [--size 1400x900]
+ *   node tools/snap.mjs "http://localhost:5173/testbench.html?page=mesh-factory"
+ *        [--params '{"Subdivision Levels":2}'] [--camera 8,6,10[,0,0,0]] [--size 1400x900]
+ *
+ * --params names controls by label (case-insensitive), "Group:Label" when two share a
+ * label, or the internal key; a name that matches nothing fails the run and lists the
+ * page's controls.
  *        [--note "after raising the riser"] [--wait 800]
  *
  * No dependencies: talks to Chrome over the DevTools protocol with Node's WebSocket.
@@ -42,7 +46,12 @@ const proc = spawn(chrome, [
   "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "about:blank",
 ], { stdio: ["ignore", "ignore", "pipe"] });
 
-const cleanup = () => { try { proc.kill(); } catch {} fs.rmSync(profile, { recursive: true, force: true }); };
+// Chrome may still be writing its profile for a moment after the kill; a temp folder that
+// lingers is harmless, a throw inside the exit handler is not (it masks the real exit code).
+const cleanup = () => {
+  try { proc.kill(); } catch {}
+  try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch {}
+};
 process.on("exit", cleanup);
 
 try {
@@ -77,7 +86,16 @@ try {
     if (Date.now() - t0 > 30000) throw new Error("page never exposed window.__tekto (is it a 3D sketch()? is the dev server running?)");
     await sleep(200);
   }
-  if (flag("params")) await evaluate(`window.__tekto.setParams(${flag("params")})`);
+  if (flag("params")) {
+    const r = await evaluate(`window.__tekto.setParams(${flag("params")})`);
+    if (r && (r.unknown.length || r.ambiguous.length)) {
+      const names = await evaluate("window.__tekto.paramNames ? window.__tekto.paramNames() : []");
+      for (const n of r.unknown) console.error(`--params: no control named "${n}"`);
+      for (const a of r.ambiguous) console.error(`--params: "${a.name}" matches ${a.keys.length} controls — write "Group:Label"`);
+      console.error(`controls on this page: ${names.join(", ") || "(none)"}`);
+      throw new Error("params not applied");
+    }
+  }
   if (flag("camera")) {
     const c = flag("camera").split(",").map(Number);
     await evaluate(`window.__tekto.camera(${JSON.stringify(c.slice(0, 3))}, ${c.length >= 6 ? JSON.stringify(c.slice(3, 6)) : "undefined"})`);
