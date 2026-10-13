@@ -65,3 +65,21 @@ test("the top bar follows render mode and lighting changed from code", async ({ 
   await page.evaluate(() => (window as any).__tekto.owner.scene.setLightingMode("studio"));
   expect(await lit("Studio")).toBe(true);
 });
+
+test("the toolbar's AO button and the Sun popover's daylight box drive the renderer", async ({ page }) => {
+  await page.goto("/testbench.html?page=framed-wall");
+  await page.waitForFunction(() => (window as any).framedWall?.parts.length > 10, null, { timeout: 15_000 });
+  const state = () => page.evaluate(() => {
+    const r = (window as any).__tekto.owner.renderer;
+    return { ao: r.ambientOcclusion, daylight: r.daylight };
+  });
+  expect(await state()).toEqual({ ao: false, daylight: false });
+  await page.getByRole("button", { name: "AO", exact: true }).click();
+  expect(await state()).toMatchObject({ ao: true });
+  await expect(page.getByRole("button", { name: "AO", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /Sun/ }).click();
+  await page.getByLabel("Light follows the sun (Studio)").check();
+  expect(await state()).toEqual({ ao: true, daylight: true });
+  await page.getByRole("button", { name: "AO", exact: true }).click();
+  expect(await state()).toMatchObject({ ao: false });
+});
