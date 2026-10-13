@@ -860,6 +860,26 @@ declare class ParamStore<S extends ParamSchema = ParamSchema> {
     /** Serialization */
     toJSON(): Record<string, any>;
     loadJSON(json: Record<string, any>): void;
+    /**
+     * The keys a person or an agent means by `name`, most specific first: the exact key;
+     * else the control's label, ignoring case ("Radius"); else "Group:Label" for sketch
+     * keys, which read `type:group:label`. One key when the name is unambiguous.
+     */
+    findKeys(name: string): string[];
+    /**
+     * Set params by key or label (see `findKeys`) and say what could not be applied,
+     * instead of dropping it the way `loadJSON` does. For tools and agents.
+     */
+    setByName(values: Record<string, unknown>): {
+        applied: string[];
+        unknown: string[];
+        ambiguous: {
+            name: string;
+            keys: string[];
+        }[];
+    };
+    /** Every param as the name to use with `setByName`: its label, or "Group:Label" when two share a label. */
+    names(): string[];
 }
 /** Convenience factory */
 declare function createParams<S extends ParamSchema>(schema: S): ParamStore<S>;

@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.6.1 — 2026-10-13
+
 - **Fix — `NurbsCurve` now uses its weights.** Evaluation ignored them, so every rational
   curve came out as a plain B-spline (a quarter circle bulged to radius 1.06 at its midpoint)
   and disagreed with `NurbsSurface`, which did use them. Curves built with weights change
@@ -32,6 +34,10 @@ before 1.0, breaking changes bump the minor version. See
   still writing its temp profile.
 - **Docs:** README "For LLMs" matches the code again (two coordinate conventions, one `Mesh`,
   no claims of a demo or JSDoc for every export, no stale test counts).
+- **Build:** `dist/` is cleaned before each build (stale chunks from earlier releases were
+  shipped), and `"sideEffects": false` lets app bundlers tree-shake the barrel.
+- **Tests:** a flaky render-on-demand browser test (exact float comparison of the camera)
+  compares within 1e-9.
 
 ## 0.6.0 — 2026-10-05
 

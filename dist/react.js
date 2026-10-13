@@ -420,10 +420,6 @@ var Plane = class _Plane {
   }
 };
 
-// src/core/math/VecMath.ts
-var EPSILON = HMath.EPSILON;
-var TWO_PI = Math.PI * 2;
-
 // src/core/geometry/Segment.ts
 function closestPointOnSegment(p, a, b) {
   const ab = b.sub(a);
