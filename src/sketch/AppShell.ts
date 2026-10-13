@@ -45,6 +45,7 @@ import { getTheme, Theme } from "../gui/theme";
 import { SunPosition } from "../core/solar/SunPosition";
 import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
 import { Commands, viewCommands } from "../gui/Commands";
+import { viewModeIconSvg } from "../gui/viewModeIcons";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
 
 // ─── Config ──────────────────────────────────
@@ -405,7 +406,8 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
     return el;
   };
 
-  function segmented<T extends string>(opts: Array<[string, T]>, initial: T, onSel: (v: T) => void, follow?: (set: (v: T) => void) => void): HTMLElement {
+  /** Buttons of which one is on: [label, value, optional SVG icon before the label]. */
+  function segmented<T extends string>(opts: Array<[string, T, string?]>, initial: T, onSel: (v: T) => void, follow?: (set: (v: T) => void) => void): HTMLElement {
     const wrap = document.createElement("div");
     wrap.style.cssText = `display:flex; border:1px solid ${t.border}; border-radius:5px; overflow:hidden;`;
     const btns: Array<[HTMLButtonElement, T]> = [];
@@ -416,10 +418,14 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
         b.style.color = on ? t.panelBg : t.textDim;
       }
     };
-    for (const [label, val] of opts) {
+    for (const [label, val, icon] of opts) {
       const b = document.createElement("button");
       b.textContent = label;
       b.style.cssText = "padding:3px 9px; border:0; background:transparent; font:inherit; font-size:11px; cursor:pointer;";
+      if (icon) {
+        b.insertAdjacentHTML("afterbegin", icon);
+        b.style.cssText += "display:flex; align-items:center; gap:4px; padding-left:6px;";
+      }
       b.onclick = () => { set(val); onSel(val); };
       wrap.appendChild(b);
       btns.push([b, val]);
@@ -440,7 +446,9 @@ function buildTopBar(header: HTMLElement, scene: Scene, renderer: ThreeRenderer,
     [["Flat", "flat"], ["Studio", "studio"]], scene.lightingMode, (v) => scene.setLightingMode(v),
     (set) => scene.on((e) => { if (e.type === "scene:lightingMode") set(e.mode); }))));
   if (show.mode !== false) bar.appendChild(group("Mode", segmented<RenderMode>(
-    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]], scene.renderMode, (v) => scene.setRenderMode(v),
+    ([["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]] as const)
+      .map(([label, mode]): [string, RenderMode, string] => [label, mode, viewModeIconSvg(mode, 14)]),
+    scene.renderMode, (v) => scene.setRenderMode(v),
     (set) => scene.on((e) => { if (e.type === "scene:renderMode") set(e.mode); }))));
   if (show.camera !== false) {
     const cam = group("Cam", segmented<"perspective" | "orthographic">(
