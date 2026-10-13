@@ -39,16 +39,17 @@ import { Vec2, Vec3, MathUtils } from "../core/math/vectors";
 import { Mesh } from "../core/geometry/mesh/Mesh";
 import { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import { Algo } from "../core/algo/algorithms";
-import { Scene, VisualStyle, FlatMeshData, RenderMode } from "../scene/Scene";
+import { Scene, RenderMode } from "../scene/Scene";
 import { LayerPanel, LayerMap, LayerNode, LayerState } from "../gui/LayerPanel";
 import { ParamStore } from "../gui/Params";
 import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
 import { ThreeRenderer } from "../render/ThreeRenderer";
+import { buildSketchLayout, renderFileMenus } from "./sketchLayout";
+import { meshHandle, flatMeshHandle, pointHandle, lineHandle, polylineHandle, shapeHandle } from "./handles";
 import type { SectionRequest } from "../scene/Scene";
 import { MarkupOverlay, MarkupCaptureOptions } from "./Markup";
 import { installAgentBridge, AgentBridge, describeSceneObject, sceneSummary } from "./AgentBridge";
-import { download } from "../io/download";
 import { noise } from "../core/math/noise";
 import { createRandom, SeededRandom } from "../core/math/random";
 
@@ -63,7 +64,7 @@ export type {
 } from "./SketchTypes";
 import type {
   Lab, SketchConfig, ExportRegistration, ImportRegistration,
-  MeshHandle, PointHandle, LineHandle, ShapeHandle, ShapeMode,
+  MeshHandle, LineHandle, ShapeMode,
   Reactive, DragSpace, HandleSetOpts,
 } from "./SketchTypes";
 
@@ -301,61 +302,13 @@ export class SketchInstance {
   // ── DOM Construction ──
 
   private buildDOM() {
-    const defaultWidth = this.config.panelWidth ?? 320;
-    const storageKey = `tekto.panelWidth.${this.config.title ?? "default"}`;
-    const stored = parseInt(localStorage.getItem(storageKey) ?? "", 10);
-    const panelWidth = Number.isFinite(stored) && stored >= 200 && stored <= 800 ? stored : defaultWidth;
-    const t = this.theme = getTheme(this.config.theme);
-    // Default the internal header off when the container is tagged by a
-    // shell (`<div data-shell="testbench">…</div>`) — the shell's top bar
-    // already shows the page title, so the sketch's own 44 px title bar
-    // would be redundant. Sketches can still force-show with
-    // `{ showHeader: true }`.
-    const inShell = this.container instanceof HTMLElement && this.container.dataset.shell != null;
-    const showHeader = this.config.showHeader ?? !inShell;
-    const headerRow = showHeader ? "44px " : "";
-
-    // Root
-    const root = document.createElement("div");
-    root.style.cssText = `
-      display:grid; grid-template-columns:${panelWidth}px 1fr; grid-template-rows:${headerRow}1fr;
-      height:100%; width:100%; overflow:hidden; position:relative;
-      background:${t.bg};
-      color:${t.text};
-      font-family:${t.font};
-    `;
-
-    // Header (the sketch's own title bar; suppressed when host shell
-    // already shows a top bar). White chrome — see CLAUDE.md "GUI defaults".
-    if (showHeader) {
-      const header = document.createElement("div");
-      header.style.cssText = `
-        grid-column:1/-1; display:flex; align-items:center; padding:0 16px; gap:12px;
-        background:${t.panelBg};
-        border-bottom:1px solid ${t.border};
-      `;
-      header.innerHTML = `
-        <span style="font-weight:600;font-size:14px;color:${t.accent}">
-          &#x2B21; ${this.config.title ?? "Tekto Sketch"}
-        </span>
-        <span style="font-size:9px;padding:2px 6px;border-radius:3px;
-          background:${t.hoverBg};color:${t.accent}">LIVE</span>
-      `;
-      this._fileMenusEl = document.createElement("div");
-      this._fileMenusEl.style.cssText = "margin-left:auto;display:flex;gap:8px;position:relative;";
-      header.appendChild(this._fileMenusEl);
-      root.appendChild(header);
-    }
-
-    // Panel
-    this.panelEl = document.createElement("div");
-    this.panelEl.style.cssText = `
-      overflow-y:auto; overflow-x:hidden; padding:0;
-      background:${t.panelBg};
-      border-right:1px solid ${t.border};
-      position:relative; grid-column:1;
-    `;
-    root.appendChild(this.panelEl);
+    this.theme = getTheme(this.config.theme);
+    const layout = buildSketchLayout(this.container, this.config, this.theme);
+    this._fileMenusEl = layout.fileMenusEl;
+    this.panelEl = layout.panelEl;
+    this.viewportEl = layout.viewportEl;
+    this.logEl = layout.logEl;
+    const t = this.theme;
 
     // Shared control renderer — values live in this.store; panelRender()
     // feeds it the current control structure after each sketch run.
@@ -382,122 +335,6 @@ export class SketchInstance {
     this._panelFooterLogEl = document.createElement("div");
     this._panelFooterLogEl.style.cssText = `padding:10px 14px;border-bottom:1px solid ${t.border};display:none;`;
     this.panel.footer.append(this._panelInfoEl, this._panelFooterLogEl);
-
-    // Resize handle (vertical bar on the panel's right edge).
-    const resizeHandle = document.createElement("div");
-    resizeHandle.title = "Drag to resize panel · double-click to reset";
-    const handleIdle   = t.isDark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.14)";
-    const handleHover  = t.isDark ? "rgba(255,255,255,.35)" : "rgba(0,0,0,.30)";
-    resizeHandle.style.cssText = `
-      position:absolute; top:${showHeader ? 44 : 0}px; bottom:0;
-      left:${panelWidth - 3}px; width:6px;
-      cursor:col-resize; z-index:10;
-      background:${handleIdle};
-      transition:background .15s;
-    `;
-    resizeHandle.addEventListener("mouseenter", () => { resizeHandle.style.background = handleHover; });
-    resizeHandle.addEventListener("mouseleave", () => { resizeHandle.style.background = handleIdle; });
-    resizeHandle.addEventListener("dblclick", () => applyWidth(defaultWidth));
-    resizeHandle.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = parseInt(root.style.gridTemplateColumns, 10) || panelWidth;
-      const onMove = (ev: MouseEvent) => {
-        const next = Math.max(200, Math.min(800, startWidth + (ev.clientX - startX)));
-        applyWidth(next);
-      };
-      const onUp = () => {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        document.body.style.cursor = "";
-      };
-      document.body.style.cursor = "col-resize";
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    });
-    root.appendChild(resizeHandle);
-
-    let curWidth = panelWidth;
-    const applyWidth = (w: number) => {
-      curWidth = w;
-      root.style.gridTemplateColumns = `${w}px 1fr`;
-      resizeHandle.style.left = `${w - 3}px`;
-      collapseBtn.style.left = `${w - 26}px`;
-      localStorage.setItem(storageKey, String(w));
-      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-    };
-
-    // Collapse / expand the panel to reclaim the full canvas width.
-    const collapseKey = `tekto.panelCollapsed.${this.config.title ?? "default"}`;
-    const btnCss = (left: number) => `
-      position:absolute; top:${(showHeader ? 44 : 0) + 6}px; left:${left}px;
-      width:20px; height:24px; z-index:11; cursor:pointer; user-select:none;
-      display:flex; align-items:center; justify-content:center;
-      font:13px/1 ui-monospace,monospace;
-      border:1px solid ${t.controlBorder}; border-radius:4px;
-      background:${t.panelBg}; color:${t.accent};
-    `;
-    const collapseBtn = document.createElement("div");
-    collapseBtn.title = "Collapse panel";
-    collapseBtn.textContent = "‹";   // ‹
-    collapseBtn.style.cssText = btnCss(panelWidth - 26);
-    root.appendChild(collapseBtn);
-    const expandBtn = document.createElement("div");
-    expandBtn.title = "Show panel";
-    expandBtn.textContent = "›";      // ›
-    expandBtn.style.cssText = btnCss(4);   // sits on the collapsed 28px rail
-    expandBtn.style.display = "none";
-    root.appendChild(expandBtn);
-
-    const applyCollapsed = (c: boolean) => {
-      // Collapsed = a slim RAIL (not 0px): the expand chevron stays visible in a stable spot and the
-      // canvas reclaims the rest. An explicit resize nudge follows the reflow — the renderer's
-      // ResizeObserver usually catches it, but a forced event makes the canvas resize deterministic.
-      root.style.gridTemplateColumns = c ? "28px 1fr" : `${curWidth}px 1fr`;
-      this.panelEl.style.display = c ? "none" : "";
-      resizeHandle.style.display = c ? "none" : "";
-      collapseBtn.style.display = c ? "none" : "flex";
-      collapseBtn.style.left = `${curWidth - 26}px`;
-      expandBtn.style.display = c ? "flex" : "none";
-      localStorage.setItem(collapseKey, c ? "1" : "0");
-      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-    };
-    collapseBtn.addEventListener("click", () => applyCollapsed(true));
-    expandBtn.addEventListener("click", () => applyCollapsed(false));
-    if (localStorage.getItem(collapseKey) === "1") applyCollapsed(true);
-
-    // Viewport container (holds 3D canvas + log overlay). Grid column pinned explicitly: when the
-    // panel collapses via display:none it leaves the grid flow, and without the pin the viewport
-    // auto-places into column 1 (the slim rail) leaving column 2 black.
-    const vpWrap = document.createElement("div");
-    vpWrap.style.cssText = "position:relative;overflow:hidden;grid-column:2;";
-
-    this.viewportEl = document.createElement("div");
-    this.viewportEl.style.cssText = "width:100%;height:100%;";
-    vpWrap.appendChild(this.viewportEl);
-
-    // Log overlay
-    this.logEl = document.createElement("div");
-    this.logEl.style.cssText = `
-      position:absolute; bottom:12px; left:12px;
-      padding:8px 12px; border-radius:6px;
-      background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
-      font-size:11px; line-height:1.7; color:#7a80a0;
-      pointer-events:none; max-width:300px;
-      border:1px solid rgba(22,24,42,.8);
-      display:none;
-    `;
-    vpWrap.appendChild(this.logEl);
-
-    root.appendChild(vpWrap);
-
-    // Mount
-    if (this.container === document.body) {
-      this.container.style.margin = "0";
-      this.container.style.height = "100vh";
-      this.container.style.overflow = "hidden";
-    }
-    this.container.appendChild(root);
   }
 
   private initRenderer() {
@@ -936,63 +773,63 @@ export class SketchInstance {
       // ── Geometry Builders ──
 
       mesh(m, style) {
-        return self.addMeshHandle(m, style);
+        return meshHandle(self.scene, m, style);
       },
 
       flatMesh(data, style) {
-        return self.addFlatMeshHandle(data, style);
+        return flatMeshHandle(self.scene, data, style);
       },
 
       sphere(r = 1, seg = 24, rings = 16) {
-        return self.addMeshHandle(MeshFactory.sphere(r, seg, rings));
+        return meshHandle(self.scene, MeshFactory.sphere(r, seg, rings));
       },
 
       box(w = 1, h = 1, d = 1) {
-        return self.addMeshHandle(MeshFactory.box(w, h, d));
+        return meshHandle(self.scene, MeshFactory.box(w, h, d));
       },
 
       torus(R = 1, r = 0.3, seg = 32, sides = 16) {
-        return self.addMeshHandle(MeshFactory.torus(R, r, seg, sides));
+        return meshHandle(self.scene, MeshFactory.torus(R, r, seg, sides));
       },
 
       cylinder(rt = 1, rb = 1, h = 2, seg = 24) {
-        return self.addMeshHandle(MeshFactory.cylinder(rt, rb, h, seg));
+        return meshHandle(self.scene, MeshFactory.cylinder(rt, rb, h, seg));
       },
 
       grid(w = 10, d = 10, dx = 24, dz = 24, hfn) {
-        return self.addMeshHandle(MeshFactory.grid(w, d, dx, dz, hfn));
+        return meshHandle(self.scene, MeshFactory.grid(w, d, dx, dz, hfn));
       },
 
       revolve(profile, seg = 32) {
-        return self.addMeshHandle(MeshFactory.revolve(profile, seg));
+        return meshHandle(self.scene, MeshFactory.revolve(profile, seg));
       },
 
       extrude(polygon, direction) {
-        return self.addMeshHandle(MeshFactory.extrude(polygon, direction));
+        return meshHandle(self.scene, MeshFactory.extrude(polygon, direction));
       },
 
       point(x, y, z) {
-        return self.addPointHandle(new Vec3(x, y, z));
+        return pointHandle(self.scene, new Vec3(x, y, z));
       },
 
       points(positions) {
-        return positions.map(p => self.addPointHandle(p));
+        return positions.map(p => pointHandle(self.scene, p));
       },
 
       line(x1, y1, z1, x2, y2, z2) {
-        return self.addLineHandle(new Vec3(x1, y1, z1), new Vec3(x2, y2, z2));
+        return lineHandle(self.scene, new Vec3(x1, y1, z1), new Vec3(x2, y2, z2));
       },
 
       polyline(points) {
-        return self.addPolylineHandle(points);
+        return polylineHandle(self.scene, points);
       },
 
       polygon(vertices, style) {
-        return self.addShapeHandle(self.scene.addPolygon(vertices, style));
+        return shapeHandle(self.scene, self.scene.addPolygon(vertices, style));
       },
 
       circle(cx, cy, cz, radius) {
-        return self.addShapeHandle(self.scene.addCircle(new Vec3(cx, cy, cz), radius));
+        return shapeHandle(self.scene, self.scene.addCircle(new Vec3(cx, cy, cz), radius));
       },
 
       // ── Algorithms ──
@@ -1196,15 +1033,15 @@ export class SketchInstance {
 
           if (mode === "lines") {
             for (let i = 0; i + 1 < verts.length; i += 2) {
-              handles.push(self.addLineHandle(verts[i], verts[i + 1]));
+              handles.push(lineHandle(self.scene, verts[i], verts[i + 1]));
             }
           } else {
             // line_strip
             for (let i = 0; i < verts.length - 1; i++) {
-              handles.push(self.addLineHandle(verts[i], verts[i + 1]));
+              handles.push(lineHandle(self.scene, verts[i], verts[i + 1]));
             }
             if (close && verts.length >= 3) {
-              handles.push(self.addLineHandle(verts[verts.length - 1], verts[0]));
+              handles.push(lineHandle(self.scene, verts[verts.length - 1], verts[0]));
             }
           }
 
@@ -1240,7 +1077,7 @@ export class SketchInstance {
 
         mesh.computeVertexNormals();
         self._shapeVerts = [];
-        return self.addMeshHandle(mesh);
+        return meshHandle(self.scene, mesh);
       },
 
       // ── Time ──
@@ -1260,208 +1097,6 @@ export class SketchInstance {
     };
 
     return lab;
-  }
-
-  // ── Handle Factories ──
-
-  private addMeshHandle(mesh: Mesh, style?: Partial<VisualStyle>): MeshHandle {
-    const obj = this.scene.addMesh(mesh, style);
-    const self = this;
-
-    const handle: MeshHandle = {
-      get id() { return obj.id; },
-      get mesh() { return mesh; },
-
-      color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
-      opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
-      wireframe(w = true) { self.scene.setStyle(obj.id, { wireframe: w }); return handle; },
-      visible(v = true) { self.scene.setStyle(obj.id, { visible: v }); return handle; },
-      label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
-      labelScale(s) { self.scene.setStyle(obj.id, { labelScale: s }); return handle; },
-      doubleSided(d = true) { self.scene.setStyle(obj.id, { doubleSided: d }); return handle; },
-      backfaceColor(c) { self.scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c }); return handle; },
-      groupColor(_name, _color) { return handle; },
-      noExport(v = true) { self.scene.setStyle(obj.id, { noExport: v }); return handle; },
-      layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
-      printLayers(heightM) { self.scene.setStyle(obj.id, { printLayerH: heightM }); return handle; },
-
-      translate(x, y, z) {
-        for (const n of mesh.nodes()) {
-          n.position = n.position.add(new Vec3(x, y, z));
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-
-      scale(s) {
-        for (const n of mesh.nodes()) {
-          n.position = n.position.mul(s);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-
-      rotateX(rad) {
-        const c = Math.cos(rad), s = Math.sin(rad);
-        for (const n of mesh.nodes()) {
-          const p = n.position;
-          n.position = new Vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-
-      rotateY(rad) {
-        const c = Math.cos(rad), s = Math.sin(rad);
-        for (const n of mesh.nodes()) {
-          const p = n.position;
-          n.position = new Vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-
-      rotateZ(rad) {
-        const c = Math.cos(rad), s = Math.sin(rad);
-        for (const n of mesh.nodes()) {
-          const p = n.position;
-          n.position = new Vec3(p.x * c - p.y * s, p.x * s + p.y * c, p.z);
-        }
-        mesh.computeVertexNormals();
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-
-      subdivide(iterations = 1, opts?: { creaseAngleDeg?: number; creaseEdge?: (a: Vec3, b: Vec3) => boolean; pinVertex?: (p: Vec3) => boolean }) {
-        let m = mesh;
-        for (let i = 0; i < iterations; i++) m = MeshFactory.subdivide(m, opts);
-        self.scene.remove(obj.id);
-        return self.addMeshHandle(m, obj.style);
-      },
-
-      smooth(iterations = 1, factor = 0.5) {
-        Algo.laplacianSmooth(mesh, iterations, factor);
-        self.scene.update(obj.id, { mesh });
-        return handle;
-      },
-
-      volume() { return Algo.meshVolume(mesh); },
-      surfaceArea() { return Algo.meshSurfaceArea(mesh); },
-      nodeCount() { return mesh.nodeCount; },
-      faceCount() { return mesh.faceCount; },
-      edgeCount() { return mesh.edgeCount; },
-    };
-
-    return handle;
-  }
-
-  private addFlatMeshHandle(data: FlatMeshData, style?: Partial<VisualStyle>): MeshHandle {
-    const obj = this.scene.addFlatMesh(data, style);
-    const self = this;
-
-    // FlatMeshHandle supports style changes but not geometry transforms
-    const handle: MeshHandle = {
-      get id() { return obj.id; },
-      get mesh() { return null as any; }, // flat data has no Mesh object behind it
-      color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
-      opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
-      wireframe(w = true) { self.scene.setStyle(obj.id, { wireframe: w }); return handle; },
-      visible(v = true) { self.scene.setStyle(obj.id, { visible: v }); return handle; },
-      label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
-      labelScale(s) { self.scene.setStyle(obj.id, { labelScale: s }); return handle; },
-      doubleSided(d = true) { self.scene.setStyle(obj.id, { doubleSided: d }); return handle; },
-      backfaceColor(c) { self.scene.setStyle(obj.id, { backfaceColor: c, doubleSided: !!c }); return handle; },
-      groupColor(name, color) {
-        const existing = self.scene.get(obj.id)?.style.groupColors ?? {};
-        self.scene.setStyle(obj.id, { groupColors: { ...existing, [name]: color } });
-        return handle;
-      },
-      noExport(v = true) { self.scene.setStyle(obj.id, { noExport: v }); return handle; },
-      layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
-      printLayers(heightM) { self.scene.setStyle(obj.id, { printLayerH: heightM }); return handle; },
-      translate() { return handle; },
-      scale() { return handle; },
-      rotateX() { return handle; },
-      rotateY() { return handle; },
-      rotateZ() { return handle; },
-      subdivide() { return handle; },
-      smooth() { return handle; },
-      volume() { return 0; },
-      surfaceArea() { return 0; },
-      nodeCount() { return data.positions.length / 3; },
-      faceCount() { return data.indices.length / 3; },
-      edgeCount() { return 0; },
-    };
-    return handle;
-  }
-
-  private addPointHandle(pos: Vec3): PointHandle {
-    const obj = this.scene.addPoint(pos);
-    const self = this;
-
-    const handle: PointHandle = {
-      get id() { return obj.id; },
-      color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
-      size(s) { self.scene.setStyle(obj.id, { pointSize: s }); return handle; },
-      label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
-      labelScale(s) { self.scene.setStyle(obj.id, { labelScale: s }); return handle; },
-      layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
-      moveTo(x, y, z) { self.scene.update(obj.id, { position: new Vec3(x, y, z) }); return handle; },
-      position() { return self.scene.get(obj.id)?.position ?? pos; },
-    };
-    return handle;
-  }
-
-  private addLineHandle(a: Vec3, b: Vec3): LineHandle {
-    const obj = this.scene.addSegment(a, b);
-    const self = this;
-
-    const handle: LineHandle = {
-      get id() { return obj.id; },
-      color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
-      opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
-      radius(r) { self.scene.setStyle(obj.id, { tubeRadius: r }); return handle; },
-      layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
-      dashed(size, gap) { self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } }); return handle; },
-      pickTag(tag) { self.scene.update(obj.id, { pickTag: tag }); return handle; },
-      pickable(p = true) { self.scene.update(obj.id, { pickable: p }); return handle; },
-    };
-    return handle;
-  }
-
-  private addPolylineHandle(points: Vec3[]): LineHandle {
-    const obj = this.scene.addPolyline(points);
-    const self = this;
-
-    const handle: LineHandle = {
-      get id() { return obj.id; },
-      color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
-      opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
-      // tubeRadius has no effect on the buffered Line — kept for API parity.
-      radius(_r) { return handle; },
-      layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
-      dashed(size, gap) { self.scene.setStyle(obj.id, { dash: { size: size ?? 0.05, gap: gap ?? size ?? 0.05 } }); return handle; },
-      pickTag(tag) { self.scene.update(obj.id, { pickTag: tag }); return handle; },
-      pickable(p = true) { self.scene.update(obj.id, { pickable: p }); return handle; },
-    };
-    return handle;
-  }
-
-  private addShapeHandle(obj: import("../scene/Scene").SceneObject): ShapeHandle {
-    const self = this;
-    const handle: ShapeHandle = {
-      get id() { return obj.id; },
-      color(c) { self.scene.setStyle(obj.id, { color: c }); return handle; },
-      opacity(o) { self.scene.setStyle(obj.id, { opacity: o }); return handle; },
-      visible(v = true) { self.scene.setStyle(obj.id, { visible: v }); return handle; },
-      label(l) { self.scene.setStyle(obj.id, { label: l }); return handle; },
-      layer(name) { self.scene.setStyle(obj.id, { layer: name }); return handle; },
-    };
-    return handle;
   }
 
   // ── Log Display ──
@@ -1745,69 +1380,13 @@ export class SketchInstance {
     };
   }
 
-  /**
-   * Export ▾ / Import ▾ in the sketch's own header, from `lab.registerExport/registerImport`.
-   * Without a header (inside a shell) the shell's top bar shows them instead. Rebuilt only
-   * when the registered names change, not on every re-run.
-   */
+  /** Rebuild the header's Export / Import menus when the registered names change. */
   private renderFileMenus() {
-    const host = this._fileMenusEl;
-    if (!host) return;
+    if (!this._fileMenusEl) return;
     const sig = [...this.exports.keys()].join("\u0000") + "|" + [...this.imports.keys()].join("\u0000");
     if (sig === this._fileMenusSig) return;
     this._fileMenusSig = sig;
-    host.innerHTML = "";
-    const t = this.theme;
-    const menu = (label: string, items: { name: string; title?: string; run: () => void | Promise<void> }[]) => {
-      if (!items.length) return;
-      const wrap = document.createElement("div");
-      wrap.style.cssText = "position:relative;";
-      const btn = document.createElement("button");
-      btn.textContent = `${label} ▾`;
-      btn.style.cssText = `font:12px ${t.font};padding:4px 10px;border-radius:4px;cursor:pointer;
-        background:${t.panelBg};color:${t.text};border:1px solid ${t.controlBorder};`;
-      const list = document.createElement("div");
-      list.style.cssText = `position:absolute;right:0;top:calc(100% + 4px);min-width:180px;z-index:30;display:none;
-        background:${t.panelBg};border:1px solid ${t.controlBorder};border-radius:6px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
-      for (const it of items) {
-        const b = document.createElement("button");
-        b.textContent = it.name;
-        if (it.title) b.title = it.title;
-        b.style.cssText = `display:block;width:100%;text-align:left;font:12px ${t.font};padding:6px 10px;border:0;border-radius:4px;
-          background:transparent;color:${t.text};cursor:pointer;`;
-        b.addEventListener("mouseenter", () => { b.style.background = t.hoverBg; });
-        b.addEventListener("mouseleave", () => { b.style.background = "transparent"; });
-        b.addEventListener("click", async () => {
-          list.style.display = "none";
-          try { await it.run(); } catch (e) { console.error(`tekto ${label.toLowerCase()} "${it.name}":`, e); }
-        });
-        list.appendChild(b);
-      }
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const open = list.style.display === "none";
-        for (const l of host.querySelectorAll<HTMLElement>("[data-tekto-menu]")) l.style.display = "none";
-        list.style.display = open ? "block" : "none";
-      });
-      list.dataset.tektoMenu = "";
-      document.addEventListener("click", () => { list.style.display = "none"; });
-      wrap.append(btn, list);
-      host.appendChild(wrap);
-    };
-    menu("Export", this.getExports().map(it => ({
-      name: it.name, title: `Download as ${it.fileName}`,
-      run: async () => download(await it.handler(), it.fileName, it.mimeType ? { type: it.mimeType } : {}),
-    })));
-    menu("Import", this.getImports().map(it => ({
-      name: it.name,
-      run: () => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = it.accept ?? "";
-        input.onchange = async () => { const f = input.files?.[0]; if (f) await it.handler(f); };
-        input.click();
-      },
-    })));
+    renderFileMenus(this._fileMenusEl, this.getExports(), this.getImports(), this.theme);
   }
 
   /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
