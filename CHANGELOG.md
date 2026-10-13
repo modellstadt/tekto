@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.7.1 — 2026-10-13
+
+The retained CAD model: a document, a scene that follows it, selection, Markup, and an example.
+
 - **New `Doc` — the document of a retained app** (`tekto/core`). Typed records in named
   collections, each with a stable id (`doc.add("walls", {...})` → the object's handle through
   edits, undo, saving and reopening); `update` merges or maps, `remove`; `transact(label, fn)`

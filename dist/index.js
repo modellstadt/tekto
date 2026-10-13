@@ -46,6 +46,7 @@ __export(index_exports, {
   DEFAULT_BACKGROUND: () => DEFAULT_BACKGROUND,
   Delaunay2D: () => Delaunay2D,
   DistanceTransform: () => DistanceTransform,
+  Doc: () => Doc,
   DxfExporter: () => DxfExporter,
   ExtrudedRibbon: () => ExtrudedRibbon,
   FloodFill: () => FloodFill,
@@ -134,6 +135,7 @@ __export(index_exports, {
   SdfUtils: () => SdfUtils,
   SdfVoronoi: () => SdfVoronoi,
   Segment: () => Segment,
+  Selection: () => Selection,
   SharedStore: () => SharedStore,
   Sketch2DInstance: () => Sketch2DInstance,
   SketchInstance: () => SketchInstance,
@@ -165,6 +167,7 @@ __export(index_exports, {
   WallSystem: () => WallSystem,
   WallType: () => WallType,
   appShell: () => appShell,
+  bindScene: () => bindScene,
   boundingWalls: () => boundingWalls,
   boxOf: () => boxOf,
   buildCutList: () => buildCutList,
@@ -197,6 +200,7 @@ __export(index_exports, {
   layoutLabels: () => layoutLabels,
   lightBalance: () => lightBalance,
   lineClipPolygon: () => lineClipPolygon,
+  localAdapter: () => localAdapter,
   memoryAdapter: () => memoryAdapter,
   modeBackground: () => modeBackground,
   nearestAxis: () => nearestAxis,
@@ -216,6 +220,7 @@ __export(index_exports, {
   reverseContact: () => reverse,
   sectionAppearance: () => sectionAppearance,
   segmentSegmentClosest: () => segmentSegmentClosest,
+  selectOnClick: () => selectOnClick,
   setClipSnap: () => setClipSnap,
   shortestTurn: () => shortestTurn,
   sketch: () => sketch,
@@ -18614,9 +18619,30 @@ var Scene = class _Scene {
   }
   // ── Object Management ──
   add(obj) {
+    if (this.currentKey !== void 0 && obj.key === void 0) obj.key = this.currentKey;
     this.objects.set(obj.id, obj);
     this.emit({ type: "object:add", id: obj.id });
     return obj;
+  }
+  /**
+   * Run `fn`; every object it adds carries `key` (the record it shows) from creation, so
+   * listeners — renderer, Markup, snapshots — see it with the add. Nested calls use the
+   * innermost key. `bindScene` does this for each record.
+   */
+  withKey(key, fn) {
+    const outer = this.currentKey;
+    this.currentKey = key;
+    try {
+      return fn();
+    } finally {
+      this.currentKey = outer;
+    }
+  }
+  /** The objects showing one record (see `withKey`). */
+  byKey(key) {
+    const out = [];
+    for (const o of this.objects.values()) if (o.key === key) out.push(o);
+    return out;
   }
   get(id) {
     return this.objects.get(id);
@@ -19344,14 +19370,14 @@ function memoryAdapter(opts = {}) {
   const subs = /* @__PURE__ */ new Map();
   const presence = /* @__PURE__ */ new Map();
   let clock = 0;
-  const now = () => clock = Math.max(clock + 1, Date.now());
+  const now2 = () => clock = Math.max(clock + 1, Date.now());
   const docOf = (m, doc) => m.get(doc) ?? m.set(doc, /* @__PURE__ */ new Map()).get(doc);
   const make = (user) => ({
     async load(doc) {
       return [...docOf(docs, doc).values()].map((r) => ({ ...r }));
     },
     async put(doc, key, value) {
-      const rec = { key, value: value ?? null, by: user?.id ?? "guest", at: now() };
+      const rec = { key, value: value ?? null, by: user?.id ?? "guest", at: now2() };
       docOf(docs, doc).set(key, rec);
       queueMicrotask(() => {
         for (const s of docOf(subs, doc).values()) s.record({ ...rec });
@@ -19549,6 +19575,434 @@ function supabaseAdapter(client, opts = {}) {
       const { data } = client.auth.onAuthStateChange((_e, s) => cb(supabaseUser(s?.user)));
       return () => data.subscription.unsubscribe();
     }
+  };
+}
+
+// src/collab/Doc.ts
+var SEP = "/";
+function newId() {
+  return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3);
+}
+var Doc = class {
+  constructor(opts) {
+    this.past = [];
+    this.future = [];
+    this.open = null;
+    // the transaction being written
+    this.depth = 0;
+    this.applying = null;
+    this.pendingKeys = /* @__PURE__ */ new Set();
+    // changed during a transaction, emitted once at the end
+    this.pendingSource = "local";
+    this.listeners = /* @__PURE__ */ new Set();
+    this.historyL = /* @__PURE__ */ new Set();
+    this.name = opts.name;
+    this.historyLimit = opts.historyLimit ?? 200;
+    this.coalesceMs = opts.coalesceMs ?? 800;
+    this.store = new SharedStore({ doc: opts.name, adapter: opts.adapter ?? memoryAdapter() });
+    this.unsubStore = this.store.onChange((keys, source) => {
+      const src = this.applying ?? source;
+      if (this.depth > 0) {
+        for (const k of keys) this.pendingKeys.add(k);
+        this.pendingSource = src;
+        return;
+      }
+      this.emit(keys, src);
+    });
+    this.ready = this.store.connect();
+  }
+  // ── Reading ──
+  get(collection, id) {
+    return this.store.get(collection + SEP + id);
+  }
+  has(collection, id) {
+    return this.store.has(collection + SEP + id);
+  }
+  /** `[id, record]` for every record of a collection, in insertion order. */
+  all(collection) {
+    const prefix = collection + SEP;
+    return this.store.entries().filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]);
+  }
+  ids(collection) {
+    return this.all(collection).map(([id]) => id);
+  }
+  count(collection) {
+    return this.all(collection).length;
+  }
+  // ── Writing ──
+  /** Add a record; returns its id (or uses `id` if given). */
+  add(collection, value, opts = {}) {
+    if (collection.includes(SEP)) throw new Error(`Doc: a collection name can't contain "${SEP}" (got "${collection}")`);
+    const id = opts.id ?? newId();
+    if (this.has(collection, id)) throw new Error(`Doc.add: ${collection}${SEP}${id} already exists`);
+    this.write(collection + SEP + id, value, opts, `Add ${collection}`);
+    return id;
+  }
+  /**
+   * Change a record: an object merges into it (`{ h: 12 }`), a function maps it
+   * (`b => ({ ...b, h: b.h * 2 })`). Throws if the record doesn't exist.
+   */
+  update(collection, id, change, opts = {}) {
+    const cur = this.get(collection, id);
+    if (cur === void 0) throw new Error(`Doc.update: ${collection}${SEP}${id} does not exist`);
+    const next = typeof change === "function" ? change(cur) : { ...cur, ...change };
+    this.write(collection + SEP + id, next, opts, `Edit ${collection}`);
+  }
+  /** Remove a record (a no-op if it is already gone). */
+  remove(collection, id, opts = {}) {
+    if (!this.has(collection, id)) return;
+    this.write(collection + SEP + id, null, opts, `Delete ${collection}`);
+  }
+  /**
+   * Run several edits as one undo step and one change notification. Nested transactions
+   * join the outer one.
+   *
+   *   doc.transact("Duplicate", () => { for (const id of sel) doc.add("blocks", { ...doc.get("blocks", id)!, x: … }); });
+   */
+  transact(label, fn, opts = {}) {
+    const outer = this.depth === 0;
+    if (outer) this.open = { label, changes: /* @__PURE__ */ new Map(), coalesce: opts.coalesce, at: now() };
+    this.depth++;
+    try {
+      return fn();
+    } finally {
+      this.depth--;
+      if (outer) {
+        const step = this.open;
+        this.open = null;
+        if (step.changes.size && opts.undoable !== false) this.record(step);
+        const keys = [...this.pendingKeys];
+        this.pendingKeys.clear();
+        if (keys.length) this.emit(keys, this.pendingSource);
+      }
+    }
+  }
+  // ── Undo / redo ──
+  undo() {
+    return this.travel(this.past, this.future, "before");
+  }
+  redo() {
+    return this.travel(this.future, this.past, "after");
+  }
+  canUndo() {
+    return this.past.length > 0;
+  }
+  canRedo() {
+    return this.future.length > 0;
+  }
+  /** "Undo <this>": the label of the step `undo()` would revert. */
+  undoLabel() {
+    return this.past[this.past.length - 1]?.label;
+  }
+  redoLabel() {
+    return this.future[this.future.length - 1]?.label;
+  }
+  /** Forget the history (after Open, or to make a state the new baseline). */
+  clearHistory() {
+    this.past = [];
+    this.future = [];
+    this.notifyHistory();
+  }
+  // ── Listening ──
+  /** Records that changed, once per transaction, and where the change came from. */
+  onChange(cb) {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  /** The undo/redo history changed (enable or relabel Undo / Redo). */
+  onHistory(cb) {
+    this.historyL.add(cb);
+    return () => this.historyL.delete(cb);
+  }
+  // ── Save / Open ──
+  toJSON() {
+    var _a;
+    const collections = {};
+    for (const [key, value] of this.store.entries()) {
+      const i = key.indexOf(SEP);
+      if (i < 0) continue;
+      (collections[_a = key.slice(0, i)] ?? (collections[_a] = {}))[key.slice(i + 1)] = value;
+    }
+    return { format: "tekto-doc/1", name: this.name, collections };
+  }
+  /**
+   * Replace the document's records with `json` (from `toJSON()`): records not in it are
+   * removed. Not undoable by default — Open starts a new history — pass `undoable: true`
+   * to make it one undo step ("Load").
+   */
+  load(json, opts = {}) {
+    if (json?.format !== "tekto-doc/1") throw new Error(`Doc.load: not a tekto document (format ${String(json?.format)})`);
+    const wanted = /* @__PURE__ */ new Map();
+    for (const [c, recs] of Object.entries(json.collections ?? {})) {
+      for (const [id, v] of Object.entries(recs)) wanted.set(c + SEP + id, v);
+    }
+    this.transact("Load", () => {
+      for (const [k] of this.store.entries()) if (!wanted.has(k)) this.write(k, null, {}, "Load");
+      for (const [k, v] of wanted) this.write(k, v, {}, "Load");
+    }, { undoable: opts.undoable ?? false });
+    if (!opts.undoable) this.clearHistory();
+  }
+  dispose() {
+    this.unsubStore();
+    this.store.disconnect();
+  }
+  // ── Internals ──
+  write(key, value, opts, defaultLabel) {
+    if (this.depth > 0) {
+      this.track(this.open, key, value);
+      this.store.set(key, value ?? null);
+      return;
+    }
+    this.transact(opts.label ?? defaultLabel, () => {
+      this.track(this.open, key, value);
+      this.store.set(key, value ?? null);
+    }, { coalesce: opts.coalesce, undoable: opts.undoable });
+  }
+  track(step, key, after) {
+    const prev = step.changes.get(key);
+    const before = prev ? prev.before : this.store.get(key) ?? null;
+    step.changes.set(key, { before, after: after ?? null });
+  }
+  record(step) {
+    const top = this.past[this.past.length - 1];
+    if (step.coalesce && top && top.coalesce === step.coalesce && step.at - top.at < this.coalesceMs) {
+      for (const [k, c] of step.changes) {
+        const t = top.changes.get(k);
+        top.changes.set(k, { before: t ? t.before : c.before, after: c.after });
+      }
+      top.at = step.at;
+    } else {
+      this.past.push(step);
+      if (this.past.length > this.historyLimit) this.past.shift();
+    }
+    this.future = [];
+    this.notifyHistory();
+  }
+  travel(from, to, side) {
+    const step = from.pop();
+    if (!step) return false;
+    this.applying = "history";
+    try {
+      this.depth++;
+      for (const [k, c] of step.changes) this.store.set(k, c[side] ?? null);
+    } finally {
+      this.depth--;
+      this.applying = null;
+    }
+    step.coalesce = void 0;
+    to.push(step);
+    const keys = [...this.pendingKeys];
+    this.pendingKeys.clear();
+    if (keys.length) this.emit(keys, "history");
+    this.notifyHistory();
+    return true;
+  }
+  emit(keys, source) {
+    const changes = [];
+    for (const key of new Set(keys)) {
+      const i = key.indexOf(SEP);
+      if (i < 0) continue;
+      changes.push({ collection: key.slice(0, i), id: key.slice(i + 1), value: this.store.get(key) });
+    }
+    if (!changes.length) return;
+    for (const l of this.listeners) l(changes, source);
+  }
+  notifyHistory() {
+    for (const l of this.historyL) l();
+  }
+};
+function now() {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+function localAdapter(opts = {}) {
+  const prefix = opts.prefix ?? "tekto.doc.";
+  const storage = opts.storage ?? (typeof localStorage !== "undefined" ? localStorage : null);
+  const docs = /* @__PURE__ */ new Map();
+  let clock = 0;
+  const tick = () => clock = Math.max(clock + 1, Date.now());
+  const read = (doc) => {
+    let m = docs.get(doc);
+    if (m) return m;
+    m = /* @__PURE__ */ new Map();
+    try {
+      const raw = storage?.getItem(prefix + doc);
+      if (raw) for (const r of JSON.parse(raw)) m.set(r.key, r);
+    } catch {
+    }
+    docs.set(doc, m);
+    return m;
+  };
+  const save = (doc) => {
+    try {
+      storage?.setItem(prefix + doc, JSON.stringify([...read(doc).values()].filter((r) => r.value !== null)));
+    } catch (e) {
+      console.warn(`localAdapter: could not save "${doc}" (${String(e)})`);
+    }
+  };
+  const user = { id: "local", name: "You" };
+  return {
+    async load(doc) {
+      return [...read(doc).values()].map((r) => ({ ...r }));
+    },
+    async put(doc, key, value) {
+      const rec = { key, value: value ?? null, by: user.id, at: tick() };
+      read(doc).set(key, rec);
+      save(doc);
+      return { ...rec };
+    },
+    subscribe(_doc, _session, on) {
+      queueMicrotask(() => on.status("online"));
+      return () => on.status("offline");
+    },
+    setPresence(_doc, _p) {
+    },
+    broadcast() {
+    },
+    async user() {
+      return user;
+    }
+  };
+}
+function bindScene(doc, collection, scene, render) {
+  const objects = /* @__PURE__ */ new Map();
+  const keyOf = (id) => `${collection}${SEP}${id}`;
+  let capturing = null;
+  const unsubScene = scene.on((e) => {
+    if (e.type === "object:add" && capturing) capturing.push(e.id);
+    else if (e.type === "scene:clear") objects.clear();
+  });
+  const drop = (id) => {
+    for (const sid of objects.get(id) ?? []) scene.remove(sid);
+    objects.delete(id);
+  };
+  const draw = (id, record) => {
+    drop(id);
+    if (record === void 0) return;
+    const added = [];
+    capturing = added;
+    try {
+      scene.withKey(keyOf(id), () => render(record, id));
+    } catch (e) {
+      console.error(`bindScene("${collection}"): rendering ${keyOf(id)} failed:`, e);
+    } finally {
+      capturing = null;
+    }
+    objects.set(id, added);
+  };
+  for (const [id, rec] of doc.all(collection)) draw(id, rec);
+  const unsubDoc = doc.onChange((changes) => {
+    for (const c of changes) if (c.collection === collection) draw(c.id, c.value);
+  });
+  return {
+    collection,
+    objectsOf: (id) => [...objects.get(id) ?? []],
+    recordOf: (sceneId) => {
+      const key = scene.get(sceneId)?.key;
+      return key && key.startsWith(collection + SEP) ? key.slice(collection.length + 1) : void 0;
+    },
+    refresh: (id) => {
+      if (id !== void 0) draw(id, doc.get(collection, id));
+      else for (const [rid, rec] of doc.all(collection)) draw(rid, rec);
+    },
+    dispose: () => {
+      unsubDoc();
+      unsubScene();
+      for (const id of [...objects.keys()]) drop(id);
+    }
+  };
+}
+var Selection = class {
+  constructor() {
+    this.set = /* @__PURE__ */ new Set();
+    this.listeners = /* @__PURE__ */ new Set();
+  }
+  keys() {
+    return [...this.set];
+  }
+  has(key) {
+    return this.set.has(key);
+  }
+  get size() {
+    return this.set.size;
+  }
+  /** The ids of the selected records of one collection. */
+  ids(collection) {
+    const prefix = collection + SEP;
+    return this.keys().filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+  }
+  /** Replace the selection. */
+  select(keys) {
+    const next = new Set(keys);
+    if (next.size === this.set.size && [...next].every((k) => this.set.has(k))) return;
+    this.set = next;
+    this.emit();
+  }
+  add(key) {
+    if (!this.set.has(key)) {
+      this.set.add(key);
+      this.emit();
+    }
+  }
+  remove(key) {
+    if (this.set.delete(key)) this.emit();
+  }
+  toggle(key) {
+    if (!this.set.delete(key)) this.set.add(key);
+    this.emit();
+  }
+  clear() {
+    if (this.set.size) {
+      this.set.clear();
+      this.emit();
+    }
+  }
+  onChange(cb) {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  emit() {
+    const keys = this.keys();
+    for (const l of this.listeners) l(keys);
+  }
+};
+function selectOnClick(view, scene, selection) {
+  view.setPickEnabled(true);
+  const highlight = () => {
+    if (!selection.size) {
+      view.setSelectionHighlight(null);
+      return;
+    }
+    const ids = [];
+    for (const o of scene.all()) if (o.key && selection.has(o.key)) ids.push(o.id);
+    view.setSelectionHighlight(ids);
+  };
+  const offPick = view.onPick((sceneId, info) => {
+    const key = sceneId ? scene.get(sceneId)?.key : void 0;
+    if (!key) {
+      if (!info.shiftKey && !info.metaKey && !info.ctrlKey) selection.clear();
+      return;
+    }
+    if (info.shiftKey || info.metaKey || info.ctrlKey) selection.toggle(key);
+    else selection.select([key]);
+  });
+  const offSel = selection.onChange(highlight);
+  let queued = false;
+  const offScene = scene.on((e) => {
+    if (e.type !== "object:add" || !selection.size || queued) return;
+    const key = scene.get(e.id)?.key;
+    if (!key || !selection.has(key)) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      highlight();
+    });
+  });
+  highlight();
+  return () => {
+    offPick();
+    offSel();
+    offScene();
+    view.setSelectionHighlight(null);
   };
 }
 
@@ -21752,7 +22206,8 @@ var ThreeRenderer = class {
       if (this.transformControls?.dragging) return;
       if (this.selectedDragHandle !== null) this.setHandleSelected(null);
       const id = this.pickAt(e.clientX, e.clientY);
-      for (const l of this.pickListeners) l(id);
+      const info = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey };
+      for (const l of this.pickListeners) l(id, info);
     };
     this.onPointerMoveDragging = (e) => {
       if (!this.activeDragHandle) return;
@@ -22675,7 +23130,8 @@ var ThreeRenderer = class {
       this.pointerDown = null;
     }
   }
-  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background. */
+  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
+   *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
   onPick(listener) {
     this.pickListeners.add(listener);
     return () => this.pickListeners.delete(listener);
@@ -22963,7 +23419,8 @@ var ThreeRenderer = class {
     });
   }
   // ── Selection visual feedback ──
-  setSelectionHighlight(id) {
+  /** Highlight one object, several (a record's objects, a multi-selection), or none. */
+  setSelectionHighlight(ids) {
     this.requestRender();
     for (const [, info] of this.selectionMaterials) {
       const m = info.mat;
@@ -22971,21 +23428,23 @@ var ThreeRenderer = class {
       m.emissiveIntensity = info.oldIntensity;
     }
     this.selectionMaterials.clear();
-    if (!id) return;
-    const t = this.objectMap.get(id);
-    if (!t) return;
-    t.traverse((child) => {
-      const m = child.material;
-      if (m && m.emissive instanceof THREE3.Color) {
-        this.selectionMaterials.set(child.uuid, {
-          mat: m,
-          oldEmissive: m.emissive.clone(),
-          oldIntensity: m.emissiveIntensity ?? 0
-        });
-        m.emissive = new THREE3.Color(3725737);
-        m.emissiveIntensity = 0.35;
-      }
-    });
+    const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
+    for (const id of list) {
+      const t = this.objectMap.get(id);
+      if (!t) continue;
+      t.traverse((child) => {
+        const m = child.material;
+        if (m && m.emissive instanceof THREE3.Color) {
+          this.selectionMaterials.set(child.uuid, {
+            mat: m,
+            oldEmissive: m.emissive.clone(),
+            oldIntensity: m.emissiveIntensity ?? 0
+          });
+          m.emissive = new THREE3.Color(3725737);
+          m.emissiveIntensity = 0.35;
+        }
+      });
+    }
   }
   // ── Render ──
   /** Draw now, unconditionally. */
@@ -24133,9 +24592,9 @@ var Viewport = class {
    *  every pixel of travel. */
   hover(e) {
     if (!this.opts.onHover) return;
-    const now = performance.now();
-    if (now - this.lastHover < 40) return;
-    this.lastHover = now;
+    const now2 = performance.now();
+    if (now2 - this.lastHover < 40) return;
+    this.lastHover = now2;
     const hit = this.meshAt(e.clientX, e.clientY);
     if (hit === this.hovered) return;
     this.hovered = hit;
@@ -24370,10 +24829,10 @@ var Viewport = class {
     if (!this.callouts) return;
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
     const camera = this.camera;
-    const now = performance.now();
-    if (now - this.calloutCheckedAt > 180) {
+    const now2 = performance.now();
+    if (now2 - this.calloutCheckedAt > 180) {
       this.checkCalloutVisibility();
-      this.calloutCheckedAt = now;
+      this.calloutCheckedAt = now2;
     }
     const v = new THREE5.Vector3();
     const anchors = [];
@@ -24985,6 +25444,7 @@ function describeSceneObject(scene, id, src) {
     ...o.style.label ? { label: o.style.label } : {},
     ...o.pickTag ? { tag: o.pickTag } : {},
     ...typeof o.style.color === "string" ? { color: o.style.color } : {},
+    ...o.key ? { key: o.key } : {},
     ...src ? { src } : {}
   };
 }
@@ -25457,7 +25917,7 @@ function summarize(kind, hits) {
   if (!hits.length) return `${kind} ${verb} empty space`;
   const names = /* @__PURE__ */ new Map();
   for (const h of hits) {
-    const name = h.label ?? h.layer ?? h.tag ?? (h.color ? `${h.type} ${h.color}` : h.type);
+    const name = h.label ?? h.key ?? h.layer ?? h.tag ?? (h.color ? `${h.type} ${h.color}` : h.type);
     const key = h.src ? `${name} (${h.src})` : name;
     names.set(key, (names.get(key) ?? 0) + 1);
   }
@@ -26133,7 +26593,7 @@ var SketchInstance = class {
   }
   buildLab(usedParams) {
     const self = this;
-    const now = performance.now();
+    const now2 = performance.now();
     const declare = (key, def, item, display) => {
       usedParams.add(key);
       if (display) this._displayKeys.add(key);
@@ -26627,10 +27087,10 @@ var SketchInstance = class {
         return self.frame;
       },
       get time() {
-        return (now - self.startTime) / 1e3;
+        return (now2 - self.startTime) / 1e3;
       },
       get dt() {
-        return (now - self.lastTime) / 1e3;
+        return (now2 - self.lastTime) / 1e3;
       },
       // ── Animation ──
       animate(fn, opts) {
@@ -27045,14 +27505,14 @@ var SketchInstance = class {
     const loop = () => {
       if (this.disposed) return;
       this.frame++;
-      const now = performance.now();
-      const dt = (now - this.lastTime) / 1e3;
-      this.lastTime = now;
+      const now2 = performance.now();
+      const dt = (now2 - this.lastTime) / 1e3;
+      this.lastTime = now2;
       if (this._continuous && !this._retain) {
         this.runSketch();
       }
       if (this.animateFn) {
-        this.animateFn((now - this.startTime) / 1e3, dt);
+        this.animateFn((now2 - this.startTime) / 1e3, dt);
       }
       this.renderer.renderIfNeeded();
       requestAnimationFrame(loop);
@@ -27465,10 +27925,10 @@ function appShell(config) {
   let disposed = false;
   function loop() {
     if (disposed) return;
-    const now = performance.now();
-    const dt = Math.min((now - lastTime) / 1e3, 1 / 15);
-    lastTime = now;
-    if (animateFn) animateFn(dt, (now - startTime) / 1e3);
+    const now2 = performance.now();
+    const dt = Math.min((now2 - lastTime) / 1e3, 1 / 15);
+    lastTime = now2;
+    if (animateFn) animateFn(dt, (now2 - startTime) / 1e3);
     renderer.render();
     requestAnimationFrame(loop);
   }
@@ -27503,29 +27963,43 @@ function appShell(config) {
     },
     dispose() {
       disposed = true;
+      markup?.dispose();
       bridge.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
     }
   };
+  const context = () => ({
+    harness: "appShell",
+    ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
+    up: config.up ?? "z",
+    params: params.getAll(),
+    logs: statusText ? [{ label: "status", value: statusText }] : [],
+    errors: bridge.errors()
+  });
+  const markup = config.markup === false ? null : new MarkupOverlay({
+    viewport: vpWrap,
+    title: config.title ?? "app",
+    hitAt: (x, y) => renderer.hitAt(x, y),
+    groundAt: (x, y) => renderer.groundAt(x, y),
+    snapshotPng: () => renderer.snapshotPng(),
+    describe: (id) => describeSceneObject(scene, id),
+    context,
+    setTracking: () => {
+    }
+  });
   const bridge = installAgentBridge({
     owner: instance,
     harness: "appShell",
     store: params,
-    snapshot: (opts) => plainBundle({
+    snapshot: (opts) => markup ? markup.capture(opts) : plainBundle({
       ...opts,
       title: config.title ?? "app",
       harness: "appShell",
       png: renderer.snapshotPng(),
       viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
-      context: {
-        ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
-        up: config.up ?? "z",
-        params: params.getAll(),
-        logs: statusText ? [{ label: "status", value: statusText }] : [],
-        errors: bridge.errors()
-      }
+      context: context()
     }),
     camera: (pos, target) => {
       renderer.setCameraPosition(pos[0], pos[1], pos[2]);
@@ -28142,11 +28616,11 @@ var Sketch2DInstance = class {
     const loop = () => {
       if (this.disposed) return;
       if (this.continuous && this.animateFn) {
-        const now = performance.now();
-        const dt = (now - this.lastTime) / 1e3;
-        this.lastTime = now;
+        const now2 = performance.now();
+        const dt = (now2 - this.lastTime) / 1e3;
+        this.lastTime = now2;
         this.logs.length = this._baseLogCount;
-        this.animateFn((now - this.startTime) / 1e3, Math.min(dt, 1 / 15));
+        this.animateFn((now2 - this.startTime) / 1e3, Math.min(dt, 1 / 15));
         this.redraw();
         this.updateLog();
       }
@@ -28188,6 +28662,7 @@ var Sketch2DInstance = class {
   DEFAULT_BACKGROUND,
   Delaunay2D,
   DistanceTransform,
+  Doc,
   DxfExporter,
   ExtrudedRibbon,
   FloodFill,
@@ -28276,6 +28751,7 @@ var Sketch2DInstance = class {
   SdfUtils,
   SdfVoronoi,
   Segment,
+  Selection,
   SharedStore,
   Sketch2DInstance,
   SketchInstance,
@@ -28307,6 +28783,7 @@ var Sketch2DInstance = class {
   WallSystem,
   WallType,
   appShell,
+  bindScene,
   boundingWalls,
   boxOf,
   buildCutList,
@@ -28339,6 +28816,7 @@ var Sketch2DInstance = class {
   layoutLabels,
   lightBalance,
   lineClipPolygon,
+  localAdapter,
   memoryAdapter,
   modeBackground,
   nearestAxis,
@@ -28358,6 +28836,7 @@ var Sketch2DInstance = class {
   reverseContact,
   sectionAppearance,
   segmentSegmentClosest,
+  selectOnClick,
   setClipSnap,
   shortestTurn,
   sketch,

@@ -9,7 +9,7 @@ import {
   sceneSummary,
   sketch2d,
   slug
-} from "./chunk-3WSXZOOI.mjs";
+} from "./chunk-WYU5UG63.mjs";
 import {
   Algo,
   ArcCurve,
@@ -23,6 +23,7 @@ import {
   CurveUtils,
   Delaunay2D,
   DistanceTransform,
+  Doc,
   ExtrudedRibbon,
   FloodFill,
   Graph,
@@ -95,6 +96,7 @@ import {
   SdfUnion,
   SdfUtils,
   SdfVoronoi,
+  Selection,
   SharedStore,
   Slab,
   SlabOpening,
@@ -116,6 +118,7 @@ import {
   WallOpening,
   WallSystem,
   WallType,
+  bindScene,
   boundingWalls,
   boxOf,
   buildCutList,
@@ -132,6 +135,7 @@ import {
   joistDirectionFromPCA,
   joistDirectionFromSupports,
   lineClipPolygon,
+  localAdapter,
   memoryAdapter,
   neighboursOf,
   perpVisibility,
@@ -141,8 +145,9 @@ import {
   realizeSlab,
   repelBodies,
   reverse,
+  selectOnClick,
   supabaseAdapter
-} from "./chunk-GR7OHNEI.mjs";
+} from "./chunk-BEIQQYD6.mjs";
 import {
   OBB2D,
   ParamStore,
@@ -167,7 +172,7 @@ import {
   Plane,
   Scene,
   Triangle
-} from "./chunk-7UDZ2EE6.mjs";
+} from "./chunk-IYZEH7EG.mjs";
 import {
   AABB,
   HMath,
@@ -1813,7 +1818,8 @@ var ThreeRenderer = class {
       if (this.transformControls?.dragging) return;
       if (this.selectedDragHandle !== null) this.setHandleSelected(null);
       const id = this.pickAt(e.clientX, e.clientY);
-      for (const l of this.pickListeners) l(id);
+      const info = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey };
+      for (const l of this.pickListeners) l(id, info);
     };
     this.onPointerMoveDragging = (e) => {
       if (!this.activeDragHandle) return;
@@ -2736,7 +2742,8 @@ var ThreeRenderer = class {
       this.pointerDown = null;
     }
   }
-  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background. */
+  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
+   *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
   onPick(listener) {
     this.pickListeners.add(listener);
     return () => this.pickListeners.delete(listener);
@@ -3024,7 +3031,8 @@ var ThreeRenderer = class {
     });
   }
   // ── Selection visual feedback ──
-  setSelectionHighlight(id) {
+  /** Highlight one object, several (a record's objects, a multi-selection), or none. */
+  setSelectionHighlight(ids) {
     this.requestRender();
     for (const [, info] of this.selectionMaterials) {
       const m = info.mat;
@@ -3032,21 +3040,23 @@ var ThreeRenderer = class {
       m.emissiveIntensity = info.oldIntensity;
     }
     this.selectionMaterials.clear();
-    if (!id) return;
-    const t = this.objectMap.get(id);
-    if (!t) return;
-    t.traverse((child) => {
-      const m = child.material;
-      if (m && m.emissive instanceof THREE3.Color) {
-        this.selectionMaterials.set(child.uuid, {
-          mat: m,
-          oldEmissive: m.emissive.clone(),
-          oldIntensity: m.emissiveIntensity ?? 0
-        });
-        m.emissive = new THREE3.Color(3725737);
-        m.emissiveIntensity = 0.35;
-      }
-    });
+    const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
+    for (const id of list) {
+      const t = this.objectMap.get(id);
+      if (!t) continue;
+      t.traverse((child) => {
+        const m = child.material;
+        if (m && m.emissive instanceof THREE3.Color) {
+          this.selectionMaterials.set(child.uuid, {
+            mat: m,
+            oldEmissive: m.emissive.clone(),
+            oldIntensity: m.emissiveIntensity ?? 0
+          });
+          m.emissive = new THREE3.Color(3725737);
+          m.emissiveIntensity = 0.35;
+        }
+      });
+    }
   }
   // ── Render ──
   /** Draw now, unconditionally. */
@@ -5339,7 +5349,7 @@ function summarize(kind, hits) {
   if (!hits.length) return `${kind} ${verb} empty space`;
   const names = /* @__PURE__ */ new Map();
   for (const h of hits) {
-    const name = h.label ?? h.layer ?? h.tag ?? (h.color ? `${h.type} ${h.color}` : h.type);
+    const name = h.label ?? h.key ?? h.layer ?? h.tag ?? (h.color ? `${h.type} ${h.color}` : h.type);
     const key = h.src ? `${name} (${h.src})` : name;
     names.set(key, (names.get(key) ?? 0) + 1);
   }
@@ -7385,29 +7395,43 @@ function appShell(config) {
     },
     dispose() {
       disposed = true;
+      markup?.dispose();
       bridge.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
     }
   };
+  const context = () => ({
+    harness: "appShell",
+    ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
+    up: config.up ?? "z",
+    params: params.getAll(),
+    logs: statusText ? [{ label: "status", value: statusText }] : [],
+    errors: bridge.errors()
+  });
+  const markup = config.markup === false ? null : new MarkupOverlay({
+    viewport: vpWrap,
+    title: config.title ?? "app",
+    hitAt: (x, y) => renderer.hitAt(x, y),
+    groundAt: (x, y) => renderer.groundAt(x, y),
+    snapshotPng: () => renderer.snapshotPng(),
+    describe: (id) => describeSceneObject(scene, id),
+    context,
+    setTracking: () => {
+    }
+  });
   const bridge = installAgentBridge({
     owner: instance,
     harness: "appShell",
     store: params,
-    snapshot: (opts) => plainBundle({
+    snapshot: (opts) => markup ? markup.capture(opts) : plainBundle({
       ...opts,
       title: config.title ?? "app",
       harness: "appShell",
       png: renderer.snapshotPng(),
       viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
-      context: {
-        ...sceneSummary(scene, renderer, (id) => describeSceneObject(scene, id)),
-        up: config.up ?? "z",
-        params: params.getAll(),
-        logs: statusText ? [{ label: "status", value: statusText }] : [],
-        errors: bridge.errors()
-      }
+      context: context()
     }),
     camera: (pos, target) => {
       renderer.setCameraPosition(pos[0], pos[1], pos[2]);
@@ -7643,6 +7667,7 @@ export {
   DEFAULT_BACKGROUND,
   Delaunay2D,
   DistanceTransform,
+  Doc,
   DxfExporter,
   ExtrudedRibbon,
   FloodFill,
@@ -7731,6 +7756,7 @@ export {
   SdfUtils,
   SdfVoronoi,
   Segment,
+  Selection,
   SharedStore,
   Sketch2DInstance,
   SketchInstance,
@@ -7762,6 +7788,7 @@ export {
   WallSystem,
   WallType,
   appShell,
+  bindScene,
   boundingWalls,
   boxOf,
   buildCutList,
@@ -7794,6 +7821,7 @@ export {
   layoutLabels,
   lightBalance,
   lineClipPolygon,
+  localAdapter,
   memoryAdapter,
   modeBackground,
   nearestAxis,
@@ -7813,6 +7841,7 @@ export {
   reverse as reverseContact,
   sectionAppearance,
   segmentSegmentClosest,
+  selectOnClick,
   setClipSnap,
   shortestTurn,
   sketch,

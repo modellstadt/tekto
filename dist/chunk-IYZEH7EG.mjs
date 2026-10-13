@@ -1416,9 +1416,30 @@ var Scene = class _Scene {
   }
   // ── Object Management ──
   add(obj) {
+    if (this.currentKey !== void 0 && obj.key === void 0) obj.key = this.currentKey;
     this.objects.set(obj.id, obj);
     this.emit({ type: "object:add", id: obj.id });
     return obj;
+  }
+  /**
+   * Run `fn`; every object it adds carries `key` (the record it shows) from creation, so
+   * listeners — renderer, Markup, snapshots — see it with the add. Nested calls use the
+   * innermost key. `bindScene` does this for each record.
+   */
+  withKey(key, fn) {
+    const outer = this.currentKey;
+    this.currentKey = key;
+    try {
+      return fn();
+    } finally {
+      this.currentKey = outer;
+    }
+  }
+  /** The objects showing one record (see `withKey`). */
+  byKey(key) {
+    const out = [];
+    for (const o of this.objects.values()) if (o.key === key) out.push(o);
+    return out;
   }
   get(id) {
     return this.objects.get(id);

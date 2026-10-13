@@ -11,6 +11,7 @@ import {
   CurveUtils,
   Delaunay2D,
   DistanceTransform,
+  Doc,
   ExtrudedRibbon,
   FloodFill,
   Graph,
@@ -83,6 +84,7 @@ import {
   SdfUnion,
   SdfUtils,
   SdfVoronoi,
+  Selection,
   SharedStore,
   Slab,
   SlabOpening,
@@ -104,6 +106,7 @@ import {
   WallOpening,
   WallSystem,
   WallType,
+  bindScene,
   boundingWalls,
   boxOf,
   buildCutList,
@@ -120,6 +123,7 @@ import {
   joistDirectionFromPCA,
   joistDirectionFromSupports,
   lineClipPolygon,
+  localAdapter,
   memoryAdapter,
   neighboursOf,
   perpVisibility,
@@ -129,8 +133,9 @@ import {
   realizeSlab,
   repelBodies,
   reverse,
+  selectOnClick,
   supabaseAdapter
-} from "./chunk-GR7OHNEI.mjs";
+} from "./chunk-BEIQQYD6.mjs";
 import {
   OBB2D,
   ParamStore,
@@ -151,7 +156,7 @@ import {
   Plane,
   Scene,
   Triangle
-} from "./chunk-7UDZ2EE6.mjs";
+} from "./chunk-IYZEH7EG.mjs";
 import {
   AABB,
   HMath,
@@ -179,6 +184,7 @@ export {
   CurveUtils,
   Delaunay2D,
   DistanceTransform,
+  Doc,
   ExtrudedRibbon,
   FloodFill,
   Graph,
@@ -262,6 +268,7 @@ export {
   SdfUtils,
   SdfVoronoi,
   Segment,
+  Selection,
   SharedStore,
   Slab,
   SlabOpening,
@@ -288,6 +295,7 @@ export {
   WallOpening,
   WallSystem,
   WallType,
+  bindScene,
   boundingWalls,
   boxOf,
   buildCutList,
@@ -308,6 +316,7 @@ export {
   joistDirectionFromPCA,
   joistDirectionFromSupports,
   lineClipPolygon,
+  localAdapter,
   memoryAdapter,
   neighboursOf,
   noise,
@@ -320,6 +329,7 @@ export {
   repelBodies,
   reverse as reverseContact,
   segmentSegmentClosest,
+  selectOnClick,
   setClipSnap,
   stampName,
   supabaseAdapter,
