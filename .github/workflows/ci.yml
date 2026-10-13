@@ -31,6 +31,11 @@ jobs:
           node --input-type=module -e "const m = await import('./dist/index.mjs'); if (Math.abs(m.MeshFactory.box(1, 1, 1).volume() - 1) > 1e-9) throw new Error('box volume')"
           node -e "const m = require('./dist/index.js'); if (typeof m.Mesh !== 'function') throw new Error('no Mesh')"
 
+      # "tekto/core" and "tekto/2d" promise no three.js / React: walk what they load,
+      # then run them in Node with three and react blocked.
+      - name: tekto/core and tekto/2d stay three-free
+        run: node tools/check-entries.mjs
+
       # dist/ is committed so `github:` installs need no build step. It is rebuilt
       # ONLY in release PRs (branch release/vX.Y.Z); anywhere else, two open PRs
       # would conflict on generated files.

@@ -12,7 +12,7 @@ Tekto is an **AI-first platform for online CAD experiments**: people and agents 
 - **Readable diffs** over clever refactors.
 - **One concrete change per request** — do not bundle unrelated cleanups unless asked.
 - **Reading the surrounding code before editing.** One name per concept (`Mesh`, `MeshFactory`, `Plane` …). Never add a backward-compat alias — rename the callers instead. See [README.md → One mesh](README.md#one-mesh).
-- **Anything an outside consumer needs must be re-exported from `src/index.ts`.** Deep imports like `from "tekto/src/scene/Scene"` are forbidden — apps can only see the public surface. If you add a new module that an app will use, also add the export here. **Exception — the React layer:** React components/hooks are exported from `src/react.ts` (the separate `tekto/react` entry), *not* `src/index.ts`. This keeps the core `tekto` barrel React-free so non-React apps don't need react installed. Anything that imports `react` belongs in `src/react.ts`, never in the core barrel.
+- **Anything an outside consumer needs must be re-exported from an entry file** (`src/core.ts`, else `src/index.ts`). Deep imports like `from "tekto/src/scene/Scene"` are forbidden — apps can only see the public surface. If you add a new module that an app will use, also add the export here. **Exception — the React layer:** React components/hooks are exported from `src/react.ts` (the separate `tekto/react` entry), *not* `src/index.ts`. This keeps the core `tekto` barrel React-free so non-React apps don't need react installed. Anything that imports `react` belongs in `src/react.ts`, never in the core barrel.
 
 ## Rebuilt vs retained scenes
 
@@ -25,7 +25,7 @@ Asked for something with selection, an outliner, undo or save/load? That is the 
 
 ## Where things live
 
-The public surface is [src/index.ts](src/index.ts) — **read it first**; it's the authoritative export map. The [README Architecture tree](README.md#architecture) matches the folders today; if they ever diverge, the folders win and the tree gets fixed. Layout:
+The public surface is three entry files — **read them first**; they are the authoritative export map: [src/core.ts](src/core.ts) (`tekto/core`: geometry and data, no three.js, no DOM — runs in Node), [src/index.ts](src/index.ts) (`tekto`: re-exports core plus the browser layer — renderers, panels, `sketch()`, `appShell()`), and [src/2d.ts](src/2d.ts) (`tekto/2d`: `sketch2d` and 2D geometry). A new export that doesn't need three.js or the DOM goes in `core.ts`; `tools/check-entries.mjs` (CI) fails if `tekto/core` or `tekto/2d` ever reaches three or React. The [README Architecture tree](README.md#architecture) matches the folders today; if they ever diverge, the folders win and the tree gets fixed. Layout:
 
 - math → `src/core/math/`
 - geometry primitives (Ray, Plane, Triangle, AABB, Sphere), 2D polygon ops, curves, surfaces → `src/core/geometry/` (**not** `core/primitives/` — that dir was removed)

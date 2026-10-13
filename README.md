@@ -24,6 +24,17 @@ npm install github:modellstadt/tekto three
 # add `react react-dom` only if you import from "tekto/react"
 ```
 
+### Entry points
+
+| Import | What | Needs |
+|---|---|---|
+| `"tekto"` | everything: geometry + three.js renderers, panels, `sketch()`, `appShell()` | a browser, `three` |
+| `"tekto/core"` | geometry and data only: `Mesh`, `MeshFactory`, curves, NURBS, polygons, BIM, IFC/OBJ/DXF writers, `Scene`, `ParamStore`, `SharedStore` | nothing — runs in Node, workers, tests |
+| `"tekto/2d"` | `sketch2d` plus `Vec2`, `Polygon2D`, `PolygonBool`, noise: the small on-ramp | a browser, no `three` |
+| `"tekto/react"` | React components | `react`, `react-dom` |
+
+Use `tekto/core` for scripts and checks (`node check.mjs` with `import { MeshFactory } from "tekto/core"`) and in workers; CI guarantees it never pulls in three.js.
+
 ### Sketch API (easiest)
 
 Write a single function, get an interactive 3D app with auto-generated sliders:
