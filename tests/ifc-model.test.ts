@@ -5,6 +5,7 @@ import { WallType, SolidConstruction } from "../src/bim/walls";
 import { IfcWriter } from "../src/io/IfcWriter";
 import { IfcModel } from "../src/io/IfcModel";
 import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
+import { Slab, SlabOpening } from "../src/bim/slabs";
 
 /**
  * Reading an element's properties back out of a file.
@@ -111,5 +112,25 @@ describe("IfcWriter storeys, read back by web-ifc", () => {
     expect(heights(/Wall/i)[0]).toBeCloseTo(3, 6);
     expect(heights(/Wall/i)[1]).toBeCloseTo(5.5, 6);
     expect(heights(/Member/i)[0]).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("IfcWriter slab openings, read back by web-ifc", () => {
+  it("the slab comes back with its stair well cut out", async () => {
+    const w = new IfcWriter({});
+    w.addSlab(new Slab({
+      boundary: [new Vec2(0, 0), new Vec2(5, 0), new Vec2(5, 4), new Vec2(0, 4)], thickness: 0.2, elevation: 3,
+      openings: [new SlabOpening(3.5, 2, 1, 2.5, "Stair well")],
+    }), { includeParts: false });
+    const model = await IfcModel.parse(w.saveBytes().buffer as ArrayBuffer, { wasmPath: "", tree: false, recenter: false, relations: false, properties: false });
+    const { positions: p, indices: ix } = model.elements.find((e) => /Slab/i.test(e.ifcClass))!.mesh;
+    // web-ifc hands geometry back Y-up: the top face is at y = 3. Sum its area in plan (x, z).
+    let top = 0;
+    for (let t = 0; t < ix.length; t += 3) {
+      const [a, b, c] = [ix[t] * 3, ix[t + 1] * 3, ix[t + 2] * 3];
+      if ([a, b, c].some((k) => Math.abs(p[k + 1] - 3) > 1e-6)) continue;
+      top += Math.abs((p[b] - p[a]) * (p[c + 2] - p[a + 2]) - (p[c] - p[a]) * (p[b + 2] - p[a + 2])) / 2;
+    }
+    expect(top).toBeCloseTo(20 - 1 * 2.5, 3);
   });
 });

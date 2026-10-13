@@ -21,6 +21,7 @@
  *   download(sheet.toDXF(), "drawings.dxf"); download(sheet.toSVG(), "drawings.svg");
  */
 import type { Vec3 } from "../math/vectors";
+import { Polygon2D } from "../geometry/Polygon2D";
 import { writeDxf2D, aciFromHex, type Dxf2DContent, type DxfLayerDef } from "../../io/DxfWriter";
 
 /** A point in a view or on the sheet. `Vec2` fits, or any `{ x, y }`. */
@@ -623,71 +624,8 @@ function sheetToDXF(sheet: Sheet, opts: { units?: "mm" | "m" }): string {
   return writeDxf2D({ ...c, layers }, { scale: units === "mm" ? 1000 : 1, linetypeScale: sheet.scale * (units === "mm" ? 1 : 0.001) });
 }
 
-/** Triangles covering rings ([outer, …holes]) — ear clipping on the outer ring after
- *  bridging holes in. Good for poché; not for self-intersecting input. */
+/** Triangles covering rings ([outer, …holes]), as points: see `Polygon2D.triangulateWithHoles`. */
 function triangulateRings(rings: Pt[][]): Pt[][] {
-  let poly = normalize(rings[0], true);
-  for (const hole of rings.slice(1)) poly = bridge(poly, normalize(hole, false));
-  return earClip(poly);
-}
-function area(r: Pt[]): number { let a = 0; for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; a += p.x * q.y - q.x * p.y; } return a / 2; }
-function normalize(r: Pt[], ccw: boolean): Pt[] {
-  let ring = r.length > 1 && r[0].x === r[r.length - 1].x && r[0].y === r[r.length - 1].y ? r.slice(0, -1) : r.slice();
-  if ((area(ring) > 0) !== ccw) ring = ring.reverse();
-  return ring;
-}
-/** Join a hole into the outer ring through a cut from the hole's rightmost point. */
-function bridge(outer: Pt[], hole: Pt[]): Pt[] {
-  let hi = 0; for (let i = 1; i < hole.length; i++) if (hole[i].x > hole[hi].x) hi = i;
-  const h = hole[hi];
-  let best = -1, bestD = Infinity;
-  for (let i = 0; i < outer.length; i++) {
-    const o = outer[i];
-    if (o.x < h.x) continue;
-    const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2;
-    if (d < bestD && !crossesAny(h, o, outer, hole)) { bestD = d; best = i; }
-  }
-  if (best < 0) best = 0;
-  const holeLoop = [...hole.slice(hi), ...hole.slice(0, hi), h];
-  return [...outer.slice(0, best + 1), ...holeLoop, ...outer.slice(best)];
-}
-function crossesAny(a: Pt, b: Pt, ...rings: Pt[][]): boolean {
-  for (const r of rings) for (let i = 0; i < r.length; i++) {
-    const p = r[i], q = r[(i + 1) % r.length];
-    if (p === a || q === a || p === b || q === b) continue;
-    if (segX(a, b, p, q)) return true;
-  }
-  return false;
-}
-function segX(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
-  const o = (p: Pt, q: Pt, r: Pt) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
-  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
-}
-function earClip(poly: Pt[]): Pt[][] {
-  const tris: Pt[][] = [];
-  const idx = poly.map((_, i) => i);
-  const isEar = (i: number, j: number, k: number) => {
-    const a = poly[i], b = poly[j], c = poly[k];
-    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 1e-18) return false;
-    for (const m of idx) {
-      if (m === i || m === j || m === k) continue;
-      const p = poly[m];
-      const s1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-      const s2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
-      const s3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
-      if (s1 >= 0 && s2 >= 0 && s3 >= 0 && !(p.x === a.x && p.y === a.y) && !(p.x === b.x && p.y === b.y) && !(p.x === c.x && p.y === c.y)) return false;
-    }
-    return true;
-  };
-  let guard = 0;
-  while (idx.length > 3 && guard++ < 10000) {
-    let clipped = false;
-    for (let n = 0; n < idx.length; n++) {
-      const i = idx[(n + idx.length - 1) % idx.length], j = idx[n], k = idx[(n + 1) % idx.length];
-      if (isEar(i, j, k)) { tris.push([poly[i], poly[j], poly[k]]); idx.splice(n, 1); clipped = true; break; }
-    }
-    if (!clipped) break;   // degenerate input: stop rather than loop
-  }
-  if (idx.length === 3) tris.push(idx.map(i => poly[i]));
-  return tris;
+  const all = rings.flat();
+  return Polygon2D.triangulateWithHoles(rings[0], rings.slice(1)).map((t) => t.map((i) => all[i]));
 }
