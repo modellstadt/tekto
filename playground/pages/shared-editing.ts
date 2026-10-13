@@ -14,7 +14,9 @@ const START: XYZ[] = [[-3, 0, 0], [-1, 0, 2.5], [1, 0, -2.5], [3, 0, 0]];
 const KNOTS = [0, 0, 0, 0, 1, 1, 1, 1];
 
 export default function (container: HTMLElement): { dispose(): void } {
-  const store = new SharedStore<XYZ>({ doc: "shared-editing", adapter: devServerAdapter() });
+  // `?doc=name` edits another document (the browser test uses a fresh one per run).
+  const doc = new URLSearchParams(location.search).get("doc") || "shared-editing";
+  const store = new SharedStore<XYZ>({ doc, adapter: devServerAdapter() });
   let bar: PresenceBar | null = null;
   let last = "—";   // the last change: which point, by whom
   const inst = sketch((lab) => {

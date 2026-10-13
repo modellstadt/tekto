@@ -2,13 +2,21 @@
  * Shared editing: two windows on the same dev server edit one document. Dragging a control
  * point in one must move it in the other (SharedStore + devServerAdapter + the collab plugin).
  */
+import fs from "node:fs";
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+
+// The dev server persists every edit to .tekto/collab/<doc>.json, and each run drags the
+// point 60 px: on one shared document, local runs push it further each time until it is off
+// screen. A fresh document per run keeps runs independent; it is removed afterwards.
+const DOC = `e2e-shared-editing-${Date.now()}`;
+test.afterAll(() => fs.rmSync(path.join(".tekto", "collab", `${DOC}.json`), { force: true }));
 
 /** The page's log block ("Status online  Online Ann, Bob  Last change p1 by Bob"). */
 const log = (page: Page) => page.locator("div").filter({ hasText: /^Status/ }).last();
 
 async function open(page: Page) {
-  await page.goto("/testbench.html?page=shared-editing");
+  await page.goto(`/testbench.html?page=shared-editing&doc=${DOC}`);
   await expect(page.locator("canvas").first()).toBeVisible({ timeout: 15_000 });
   await expect(log(page)).toContainText(/Status\s*online/, { timeout: 15_000 });
 }
