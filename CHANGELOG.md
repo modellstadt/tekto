@@ -6,6 +6,19 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Controls can be set from code.** Every control handle (`lab.slider`, `toggle`, `select`,
+  `colorPicker`, `layerTree`, `dragHandle`; `sketch2d` too) gains `.set(value)`: the panel
+  moves and the sketch re-runs (during a run it only stores the value). `layerTree().set`
+  takes partial updates per layer (`{ beams: { visible: false } }`). `SketchInstance` and
+  `Sketch2DInstance` gain `getParams()` / `setParams(values)` — save a design and reopen it
+  without reloading the page (`setParams` takes labels, `"Group:Label"` or keys and reports
+  what it couldn't apply).
+- **Breaking (types only) — `ParamStore` values are typed from the schema.** `get("radius")`
+  returns `number` for a float param, `boolean` for a bool, and so on (it returned `any`);
+  `getAll()` is typed the same way. Casts like `params.get("radius") as number` still compile.
+  A store declared as `ParamSchema` (e.g. `const schema: ParamSchema = {…}`) yields a union:
+  write `{…} satisfies ParamSchema` to keep exact types, or cast where a dynamic key is read.
+
 - **Changed — certain bugs now throw where they happen** instead of producing quiet garbage
   (each message names the call and the value): `Mesh.addNode`/`setPosition` with a non-finite
   position; `Mesh.addFace` with fewer than 3 nodes or a node that doesn't exist (it went into
