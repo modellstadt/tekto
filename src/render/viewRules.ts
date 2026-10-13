@@ -272,6 +272,49 @@ export function gridLineColour(background: THREE.ColorRepresentation): number {
   return out;
 }
 
+/** Studio light at one sun altitude (see `daylight`). */
+export interface Daylight {
+  sun: number; sunIntensity: number;
+  sky: number; ground: number; skyIntensity: number;
+  ambient: number; exposure: number;
+  /** Mixed over the app's background by `backgroundAmount` (0: the app's own). */
+  background: number; backgroundAmount: number;
+}
+
+// Altitude (degrees) → light, high sun first. Noon is Studio's own balance; the evening stop
+// is 7DHouse's (sun 0xffc898 at ~20°, sky 0x6a7ca6, exposure 1.25, background 0x1c2536).
+const DAYLIGHT: [number, Daylight][] = [
+  [35, { sun: 0xffffff, sunIntensity: 2.8, sky: 0x4466aa, ground: 0x332211, skyIntensity: 0.30, ambient: 0.35, exposure: 1.00, background: 0x1c2536, backgroundAmount: 0 }],
+  [20, { sun: 0xffc898, sunIntensity: 2.4, sky: 0x6a7ca6, ground: 0x3a2c22, skyIntensity: 0.32, ambient: 0.30, exposure: 1.25, background: 0x1c2536, backgroundAmount: 0.6 }],
+  [5, { sun: 0xffa060, sunIntensity: 1.5, sky: 0x55648c, ground: 0x2a2018, skyIntensity: 0.30, ambient: 0.22, exposure: 1.35, background: 0x1a2232, backgroundAmount: 1 }],
+  [-4, { sun: 0xff7a40, sunIntensity: 0.25, sky: 0x3a4870, ground: 0x181410, skyIntensity: 0.26, ambient: 0.14, exposure: 1.5, background: 0x121826, backgroundAmount: 1 }],
+  [-12, { sun: 0x8090c0, sunIntensity: 0, sky: 0x1a2238, ground: 0x0c0c10, skyIntensity: 0.18, ambient: 0.08, exposure: 1.6, background: 0x07090f, backgroundAmount: 1 }],
+];
+
+/**
+ * Studio light for a sun `altitudeDeg` above the horizon, so dusk follows from the hour
+ * rather than a preset: Studio's own balance above 35°, warming and dimming through the
+ * evening, a blue dusk below the horizon and night from −12°. Interpolated between stops.
+ */
+export function daylight(altitudeDeg: number): Daylight {
+  const a = Number.isFinite(altitudeDeg) ? altitudeDeg : 90;
+  if (a >= DAYLIGHT[0][0]) return { ...DAYLIGHT[0][1] };
+  for (let i = 1; i < DAYLIGHT.length; i++) {
+    const [hi, from] = DAYLIGHT[i - 1], [lo, to] = DAYLIGHT[i];
+    if (a < lo) continue;
+    const t = (hi - a) / (hi - lo);
+    const mix = (x: number, y: number) => new THREE.Color(x).lerp(new THREE.Color(y), t).getHex();
+    const num = (x: number, y: number) => x + (y - x) * t;
+    return {
+      sun: mix(from.sun, to.sun), sunIntensity: num(from.sunIntensity, to.sunIntensity),
+      sky: mix(from.sky, to.sky), ground: mix(from.ground, to.ground), skyIntensity: num(from.skyIntensity, to.skyIntensity),
+      ambient: num(from.ambient, to.ambient), exposure: num(from.exposure, to.exposure),
+      background: mix(from.background, to.background), backgroundAmount: num(from.backgroundAmount, to.backgroundAmount),
+    };
+  }
+  return { ...DAYLIGHT[DAYLIGHT.length - 1][1] };
+}
+
 /** Is this object drawn: itself and every parent visible? (The raycaster ignores it.) */
 export function shown(o: THREE.Object3D | null): boolean {
   for (; o; o = o.parent) if (!o.visible) return false;

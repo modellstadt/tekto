@@ -7,6 +7,7 @@ import * as THREE from "three";
 import type { Vec3 } from "../core/math/vectors";
 import type { LightingMode } from "../scene/Scene";
 import type { RendererCore } from "./RendererCore";
+import { daylight } from "./viewRules";
 
 export class Lighting {
   ambientLight: THREE.AmbientLight;
@@ -40,6 +41,8 @@ export class Lighting {
   private sunDir = new THREE.Vector3(8, 10, 15).normalize();
   private sunMinDistance = 50;
   sunDirty = true;
+  /** Studio's light follows the sun's altitude (setDaylight). */
+  daylightOn = false;
 
   constructor(private core: RendererCore) {
     const isZUp = core.isZUp;
@@ -143,8 +146,11 @@ export class Lighting {
     this.dirLight.target.position.copy(sphere.center);
     this.dirLight.target.updateMatrixWorld();
     // A framed shadow map has small texels: push the lookup out along the normal, scaled to
-    // the content, or lit faces shadow themselves (acne).
-    this.dirLight.shadow.normalBias = r * 0.002;
+    // the content, or lit faces shadow themselves (acne); a low sun grazes the facades and
+    // needs more.
+    const lift = Math.max(this.sunAltitude(), 0) * Math.PI / 180;
+    this.dirLight.shadow.normalBias = r * 0.002 * (Math.sin(lift) >= 0.5 ? 1 : 0.5 / Math.max(Math.sin(lift), 0.1));
+    this._applyDaylight();
     const sc = this.dirLight.shadow.camera;
     sc.left = -r * 1.2; sc.right = r * 1.2; sc.top = r * 1.2; sc.bottom = -r * 1.2;
     sc.near = Math.max(0.01, d - r * 1.5);
@@ -152,6 +158,44 @@ export class Lighting {
     sc.updateProjectionMatrix();
   }
 
+
+  /** The sun's altitude above the ground plane, in degrees. */
+  sunAltitude(): number {
+    const up = this.core.isZUp ? this.sunDir.z : this.sunDir.y;
+    return Math.asin(Math.max(-1, Math.min(1, up))) * 180 / Math.PI;
+  }
+
+  setDaylight(on: boolean): void {
+    this.daylightOn = on;
+    if (on) this.sunDirty = true;
+    else this._resetDaylight();
+    this.core.requestRender();
+  }
+
+  /** In Studio with daylight on: sun, sky, ambient, exposure and background from the altitude. */
+  private _applyDaylight(): void {
+    if (!this.daylightOn || this.currentLighting !== "studio") return;
+    const d = daylight(this.sunAltitude());
+    this.dirLight.color.setHex(d.sun);
+    this.dirLight.intensity = d.sunIntensity;
+    this.hemiLight.color.setHex(d.sky);
+    this.hemiLight.groundColor.setHex(d.ground);
+    this.hemiLight.intensity = d.skyIntensity;
+    this.ambientLight.intensity = d.ambient;
+    this.core.renderer.toneMappingExposure = d.exposure;
+    if (!(this.envBackground && this.envSourceTex)) {
+      this.core.threeScene.background = new THREE.Color(this.core.config.backgroundColor).lerp(new THREE.Color(d.background), d.backgroundAmount);
+    }
+  }
+
+  /** Back to the plain balance of the current mode. */
+  private _resetDaylight(): void {
+    this.dirLight.color.setHex(0xffffff);
+    this.hemiLight.color.setHex(0x4466aa);
+    this.hemiLight.groundColor.setHex(0x332211);
+    if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE.Color(this.core.config.backgroundColor);
+    this.applyMode(this.currentLighting);
+  }
 
   /**
    * Reconfigure renderer + lights + scene shadow flags for the given mode.
@@ -183,6 +227,13 @@ export class Lighting {
       this.hemiLight.intensity    = 0.40;
       this.dirLight.intensity     = 0.70;
       this.dirLight.castShadow    = false;
+      // Daylight is Studio's: flat draws in the plain colours.
+      if (this.daylightOn) {
+        this.dirLight.color.setHex(0xffffff);
+        this.hemiLight.color.setHex(0x4466aa);
+        this.hemiLight.groundColor.setHex(0x332211);
+        if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE.Color(this.core.config.backgroundColor);
+      }
     }
 
     // ── Mesh cast/receive flags ───────────────────────────────────

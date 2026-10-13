@@ -650,6 +650,21 @@ export class ThreeRenderer {
   setLamps(lamps: readonly { at: Vec3; colour?: number | string; intensity?: number; distance?: number }[]): void { this.lighting.setLamps(lamps); }
 
   /**
+   * Let Studio's light follow the sun: with it on, the sun's colour and strength, the sky,
+   * the exposure and the background come from the sun's altitude (`setSunDirection`, which
+   * the shell's Sun popover drives by date and hour), so evening and dusk follow from the
+   * hour: noon as Studio is, a warm low sun, a blue dusk, night. Flat lighting is unchanged.
+   * Off by default.
+   */
+  setDaylight(on: boolean): void { this.lighting.setDaylight(on); }
+
+  /** Whether Studio's light follows the sun (`setDaylight`). */
+  get daylight(): boolean { return this.lighting.daylightOn; }
+
+  /** The sun's altitude above the ground, in degrees (from `setSunDirection`). */
+  get sunAltitude(): number { return this.lighting.sunAltitude(); }
+
+  /**
    * Set an equirectangular source texture for the environment (e.g. a loaded
    * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
    * The texture is PMREM-prefiltered here; the caller keeps ownership of it.

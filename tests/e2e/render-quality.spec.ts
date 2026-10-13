@@ -168,3 +168,32 @@ test("lamps: a point light at each point, replaced and removed, no shadows", asy
     catch (e) { return String(e); }
   })).toMatch(/non-finite/);
 });
+
+test("daylight: Studio's light follows the sun's altitude, and goes back when it is off", async ({ page }) => {
+  await page.goto("/testbench.html?page=app-shell");                 // appShell: Z-up
+  await page.waitForFunction(() => (window as any).__tekto?.owner?.scene.all().length >= 12, null, { timeout: 15_000 });
+  const light = () => page.evaluate(() => {
+    const r = (window as any).__tekto.owner.renderer;
+    r.render();
+    const sun = r.lighting.dirLight.color;
+    return {
+      altitude: Math.round(r.sunAltitude), warm: sun.r > sun.b + 0.05, exposure: r.renderer.toneMappingExposure,
+      background: r.threeScene.background.getHex(),
+    };
+  });
+  const sunAt = (deg: number) => page.evaluate((deg) => {
+    const a = deg * Math.PI / 180;
+    (window as any).__tekto.owner.renderer.setSunDirection({ x: Math.cos(a), y: 0, z: Math.sin(a) });
+  }, deg);
+  await page.evaluate(() => { const o = (window as any).__tekto.owner; o.scene.setLightingMode("studio"); o.renderer.setDaylight(true); });
+  const plain = 0x0a0b14;
+  await sunAt(60);
+  expect(await light()).toMatchObject({ altitude: 60, warm: false, exposure: 1, background: plain });
+  await sunAt(8);
+  const evening = await light();
+  expect(evening).toMatchObject({ altitude: 8, warm: true });
+  expect(evening.exposure).toBeGreaterThan(1.2);
+  expect(evening.background).not.toBe(plain);
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setDaylight(false));
+  expect(await light()).toMatchObject({ warm: false, exposure: 1, background: plain });
+});
