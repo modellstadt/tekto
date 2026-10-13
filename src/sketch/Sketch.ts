@@ -46,6 +46,7 @@ import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../
 import { getTheme, Theme } from "../gui/theme";
 import { ThreeRenderer } from "../render/ThreeRenderer";
 import { MarkupOverlay, MarkupCaptureOptions } from "./Markup";
+import { installAgentBridge, AgentBridge, describeSceneObject, sceneSummary } from "./AgentBridge";
 import { noise } from "../core/math/noise";
 import { createRandom, SeededRandom } from "../core/math/random";
 
@@ -222,6 +223,7 @@ export class SketchInstance {
   // Markup overlay (Markup.ts). While it is open, every object added to the scene
   // records the user-code line that created it, so a mark can point at source.
   private markup: MarkupOverlay | null = null;
+  private bridge: AgentBridge | null = null;
   private _trackSource = false;
   private _srcById = new Map<string, string>();
   private separatorCount = 0;
@@ -1670,78 +1672,32 @@ export class SketchInstance {
         if (on) self.runSketch();   // re-create the scene so every object gets its site
       },
     });
-    // One handle per page for agents driving a browser (tools/snap.mjs). Last sketch wins.
-    (window as any).__tekto = {
+    // window.__tekto for agents driving a browser (tools/snap.mjs). Last app on a page wins.
+    this.bridge = installAgentBridge({
       owner: this,
+      harness: "sketch",
+      store: this.store,
       snapshot: (opts?: MarkupCaptureOptions) => this.markup!.capture(opts),
-      params: () => this.store.getAll(),
-      paramNames: () => this.store.names(),
-      // By label ("Radius"), "Group:Label" or key. Names that match nothing, or more than
-      // one control, are reported (and warned about) instead of silently dropped.
-      setParams: (p: Record<string, unknown>) => {
-        const r = this.store.setByName(p);
-        if (r.unknown.length || r.ambiguous.length) {
-          console.warn("tekto setParams:", [
-            ...r.unknown.map(n => `no control named "${n}"`),
-            ...r.ambiguous.map(a => `"${a.name}" matches ${a.keys.length} controls — use Group:Label`),
-          ].join("; "), "| controls:", this.store.names().join(", "));
-        }
-        return r;
-      },
       camera: (pos: number[], target?: number[]) => {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
         if (target) this.renderer.lookAt(target[0], target[1], target[2]);
       },
-    };
+    });
   }
 
   private describeObject(id: string) {
-    const o = this.scene.get(id);
-    if (!o) return null;
-    return {
-      id, type: o.type,
-      ...(o.style.layer ? { layer: o.style.layer } : {}),
-      ...(o.style.label ? { label: o.style.label } : {}),
-      ...(o.pickTag ? { tag: o.pickTag } : {}),
-      ...(typeof o.style.color === "string" ? { color: o.style.color } : {}),
-      ...(this._srcById.has(id) ? { src: this._srcById.get(id) } : {}),
-    };
+    return describeSceneObject(this.scene, id, this._srcById.get(id));
   }
 
-  /** Camera, params and a scene summary grouped by (layer, label, type, source line). */
+  /** Camera, params, logs, errors and a scene summary grouped by (layer, label, type, source line). */
   private markupContext(): Record<string, unknown> {
-    const groups = new Map<string, { layer?: string; label?: string; type: string; src?: string; color?: string; count: number; ids: string[]; min: number[]; max: number[] }>();
-    const objects: unknown[] = [];
-    let shown = 0;
-    for (const o of this.scene.all()) {
-      if (!this.renderer.isObjectShown(o.id)) continue;
-      const b = this.renderer.objectBounds(o.id);
-      if (!b) continue;
-      shown++;
-      const d = this.describeObject(o.id)!;
-      const key = [d.layer, d.label, d.type, d.src, d.color].join("|");
-      let g = groups.get(key);
-      if (!g) {
-        g = { layer: d.layer, label: d.label, type: d.type, src: d.src, color: d.color, count: 0, ids: [], min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
-        groups.set(key, g);
-      }
-      g.count++;
-      if (g.ids.length < 10) g.ids.push(o.id);
-      const lo = [b.min.x, b.min.y, b.min.z], hi = [b.max.x, b.max.y, b.max.z];
-      for (let i = 0; i < 3; i++) { g.min[i] = Math.min(g.min[i], lo[i]); g.max[i] = Math.max(g.max[i], hi[i]); }
-      if (objects.length < 150) objects.push({ ...d, bounds: [lo, hi].map((v) => v.map((n) => +n.toFixed(4))) });
-    }
-    const r4 = (v: number[]) => v.map((n) => +n.toFixed(4));
-    const cam = this.renderer.cameraState();
     return {
-      camera: { ...cam, position: r4(cam.position), target: r4(cam.target) },
+      harness: "sketch",
+      ...sceneSummary(this.scene, this.renderer, (id) => this.describeObject(id)),
       up: this.config.up ?? "y",
       params: this.store.getAll(),
-      scene: {
-        shownObjects: shown,
-        groups: [...groups.values()].map(({ min, max, ...g }) => ({ ...g, bounds: [r4(min), r4(max)] })),
-        ...(shown <= 150 ? { objects } : {}),
-      },
+      logs: this.logs.map(l => ({ ...l })),
+      errors: this.bridge?.errors() ?? [],
     };
   }
 
@@ -1749,7 +1705,7 @@ export class SketchInstance {
   dispose() {
     this.disposed = true;
     this.markup?.dispose();
-    if ((window as any).__tekto?.owner === this) delete (window as any).__tekto;
+    this.bridge?.dispose();
     if (this._boundKeyDown) window.removeEventListener("keydown", this._boundKeyDown);
     if (this._boundKeyUp) window.removeEventListener("keyup", this._boundKeyUp);
     this._boundKeyDown = null;

@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The agent loop works on every app.** `sketch2d()` and `appShell()` now install
+  `window.__tekto` too (it was `sketch()` only), so `snap` captures all three. New
+  `__tekto.schema()` lists every control with type, range, default and value. `markup.json`
+  now carries the app's `lab.log` lines (`appShell`: its status) and the errors the page hit
+  (window errors, rejected promises, `console.error`). `snap` prints the log lines and exits 1
+  when the page reported an error (`--allow-errors` to accept); `--camera` on a 2D app fails
+  clearly. New playground page **App Shell (retained)** — the first `appShell` example.
+
 - **New entry points `tekto/core` and `tekto/2d`.** `tekto/core` is the geometry and data
   layer — meshes, curves, NURBS, polygons, BIM, IFC/OBJ writers, `writeDxf3D`, `Scene`,
   `ParamStore`, `SharedStore` — with no three.js and no DOM: it runs in Node scripts, workers

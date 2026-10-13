@@ -325,7 +325,7 @@ npm run snap -- "http://localhost:5173/testbench.html?page=mesh-factory" \
   [--params '{"Subdivision Levels":2}'] [--camera 8,6,10,0,0,0] [--size 1400x900]
 ```
 
-`snap` drives headless Chrome over the DevTools protocol (no extra dependency), prints page errors, and writes to `.tekto/markup/<stamp>-snap/`. `--params` names controls by their label (case-insensitive), or `"Group:Label"` when two share a label; a name that matches nothing fails the run and lists the page's controls, so a change that didn't apply is never photographed as if it had.
+`snap` drives headless Chrome over the DevTools protocol (no extra dependency) and writes to `.tekto/markup/<stamp>-snap/`. It works on every kind of app — `sketch()`, `sketch2d()` and `appShell()` all install `window.__tekto` — prints the app's `lab.log` lines, and **exits 1 when the page threw or logged an error** (`--allow-errors` accepts that), so a broken page is never taken for a finished one. `markup.json` carries the params, the log lines and those errors; in the page, `window.__tekto.schema()` lists every control with its range and value. `--params` names controls by their label (case-insensitive), or `"Group:Label"` when two share a label; a name that matches nothing fails the run and lists the page's controls, so a change that didn't apply is never photographed as if it had.
 
 Saving to disk and mapping stack positions to `.ts` lines is done by a small Vite plugin; the playground already has it. In an app's `vite.config`:
 
