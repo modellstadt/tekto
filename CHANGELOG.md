@@ -20,6 +20,10 @@ before 1.0, breaking changes bump the minor version. See
   elevation where it places an element inside the storey. Members (world-coordinate meshes)
   are placed under the building, as stairs are, so a wall and its studs agree. Files made
   with an upper storey before this need re-exporting.
+- **`IfcWriter.addRoof(parts, { storey, predefinedType })`** writes an `IfcRoof` that
+  gathers slabs and members already written and is contained in the storey in their place.
+  **`addMember(…, { storey })`** contains a free-standing element (a railing, a column) in
+  its storey. (#63)
 - `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
   experimental: BuildGraph uses them. 47 exports keep the tag.
 
