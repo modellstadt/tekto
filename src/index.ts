@@ -38,6 +38,7 @@ export type {
 // Renderers
 export { ThreeRenderer } from "./render/ThreeRenderer";
 export type { ThreeRendererConfig, PickInfo } from "./render/ThreeRenderer";
+export type { AmbientOcclusionOptions } from "./render/AmbientOcclusion";
 export { SVGRenderer } from "./render/SVGRenderer";
 export { SheetCanvas, drawSheet, fitSheet } from "./render/SheetCanvas";
 export type { SheetCanvasOptions, SheetTransform, DrawSheetOptions } from "./render/SheetCanvas";

@@ -26,6 +26,7 @@ import { CameraRig } from "./CameraRig";
 import { Pointer, type GizmoMode, type PickInfo } from "./Pointer";
 import { Marks } from "./Marks";
 import { FadingGrid } from "./FadingGrid";
+import { AmbientOcclusion, type AmbientOcclusionOptions } from "./AmbientOcclusion";
 import { shown } from "./viewRules";
 
 export type { GizmoMode, PickInfo } from "./Pointer";
@@ -111,6 +112,7 @@ export class ThreeRenderer {
   private hideHelpers = false;
   private gridHelper: THREE.Object3D | null = null;
   private fadingGrid: FadingGrid | null = null;
+  private ao: AmbientOcclusion;
   private gridDirty = true;
   private axesHelper: THREE.Object3D | null = null;
   // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
@@ -171,6 +173,7 @@ export class ThreeRenderer {
 
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
+    this.ao = new AmbientOcclusion(this.core);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -484,6 +487,7 @@ export class ThreeRenderer {
     }
     this.marks.followOutlines();
     this.renderer.render(this.threeScene, this.activeCamera);
+    this.ao.apply(this.activeCamera, this.marks.sectionClip);
     this._needsRender = false;
     this.rig.updateGizmo();
     this.marks.drawCallouts();
@@ -583,6 +587,7 @@ export class ThreeRenderer {
     this.unsub?.();
     this.clearThree();
     this.marks.dispose();
+    this.ao.dispose();
     this.fadingGrid?.dispose();
     this.pointer.dispose();
     this.lighting.dispose();
@@ -663,6 +668,18 @@ export class ThreeRenderer {
 
   /** The sun's altitude above the ground, in degrees (from `setSunDirection`). */
   get sunAltitude(): number { return this.lighting.sunAltitude(); }
+
+  /**
+   * Ambient occlusion: darken where surfaces meet and close in (corners, reveals, under
+   * decks and steps), with three's GTAO multiplied over the drawn frame, so tone mapping,
+   * background, grid and the section stay as they are; it follows the section. Perspective
+   * views only: the orthographic drawing views go without. `true`, `false`, or
+   * `{ radius, intensity }`: how far it reaches (m, default 0.6) and how dark (0..1, 0.85).
+   */
+  setAmbientOcclusion(on: boolean | AmbientOcclusionOptions): void { this.ao.set(on); }
+
+  /** Whether ambient occlusion is on. */
+  get ambientOcclusion(): boolean { return this.ao.enabled; }
 
   /**
    * Set an equirectangular source texture for the environment (e.g. a loaded
