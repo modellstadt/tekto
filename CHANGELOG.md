@@ -29,6 +29,10 @@ before 1.0, breaking changes bump the minor version. See
   `Slab.openingRings(direction?)` gives their outlines, and fails loudly for one outside the
   slab. `Polygon2D.triangulateWithHoles(outer, holes)` (the drawing sheet's, now shared)
   triangulates a polygon with holes. A clockwise slab boundary no longer gives inward faces.
+- **`JoistedSlab` frames its openings** (#63): a trimmer along each long side, in place of
+  the joists there; a header across each end, between the trimmers; the joists in between
+  stop at the headers with the bearing gap. The sheathing and ceiling leave the opening
+  out. New part role `"trimmer"`. Playground: **Framed Floor** (a stair well, Export IFC).
 - `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
   experimental: BuildGraph uses them. 47 exports keep the tag.
 
