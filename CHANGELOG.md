@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fix — `NurbsCurve` now uses its weights.** Evaluation ignored them, so every rational
+  curve came out as a plain B-spline (a quarter circle bulged to radius 1.06 at its midpoint)
+  and disagreed with `NurbsSurface`, which did use them. Curves built with weights change
+  shape — to the shape they were meant to have; check anything that compensated (e.g. a
+  workaround for "getPoint ignores weights"). A weights array of the wrong length now throws.
+
 ## 0.6.0 — 2026-10-05
 
 - **Breaking — render on demand.** The `sketch()` viewport draws a frame only when something

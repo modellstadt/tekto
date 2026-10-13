@@ -257,6 +257,11 @@ export class CubicBezierCurve implements IMetricCurve {
 
 // ─── NurbsCurve ──────────────────────────────
 
+/**
+ * Non-uniform rational B-spline curve. `t` in [0, 1] maps onto the valid knot range.
+ * With `weights` the curve is rational (exact circles and conics: a quarter circle is
+ * degree 2 with weights `[1, √½, 1]`); without them it is a plain B-spline.
+ */
 export class NurbsCurve implements IMetricCurve {
   private cache = new ArcLengthCache(100);
 
@@ -266,6 +271,9 @@ export class NurbsCurve implements IMetricCurve {
     public knots: number[],
     public weights?: number[]
   ) {
+    if (weights && weights.length !== controlPoints.length) {
+      throw new Error(`NurbsCurve: ${weights.length} weights for ${controlPoints.length} control points — need one weight per control point`);
+    }
     this.cache.rebuild(t => this.getPoint(t));
   }
 
@@ -287,21 +295,28 @@ export class NurbsCurve implements IMetricCurve {
   getTFromDistance(distance: number): number { return this.cache.getTFromDistance(distance); }
   getPointAtDistance(distance: number): Vec3 { return this.getPoint(this.getTFromDistance(distance)); }
 
+  /** De Boor in homogeneous coordinates: blend (w·P, w), then divide. Weights of 1 reduce to the plain B-spline. */
   private evaluateDeBoor(u: number): Vec3 {
     const k = this.findKnotSpan(u);
+    const w = this.weights;
     const d: Vec3[] = [];
+    const dw: number[] = [];
     for (let j = 0; j <= this.degree; j++) {
-      d[j] = this.controlPoints[k - this.degree + j];
+      const i = k - this.degree + j;
+      const wi = w ? w[i] : 1;
+      d[j] = this.controlPoints[i].mul(wi);
+      dw[j] = wi;
     }
 
     for (let r = 1; r <= this.degree; r++) {
       for (let j = this.degree; j >= r; j--) {
         const denom = this.knots[k + 1 + j - r] - this.knots[k - this.degree + j];
-        const alpha = (u - this.knots[k - this.degree + j]) / denom;
+        const alpha = denom > 0 ? (u - this.knots[k - this.degree + j]) / denom : 0;
         d[j] = d[j - 1].mul(1 - alpha).add(d[j].mul(alpha));
+        dw[j] = dw[j - 1] * (1 - alpha) + dw[j] * alpha;
       }
     }
-    return d[this.degree];
+    return d[this.degree].div(dw[this.degree]);
   }
 
   private findKnotSpan(u: number): number {
