@@ -197,3 +197,43 @@ test("daylight: Studio's light follows the sun's altitude, and goes back when it
   await page.evaluate(() => (window as any).__tekto.owner.renderer.setDaylight(false));
   expect(await light()).toMatchObject({ warm: false, exposure: 1, background: plain });
 });
+
+test("ambient occlusion darkens the frame in perspective, never lightens it, and skips orthographic", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.goto("/testbench.html?page=app-shell");
+  await page.waitForFunction(() => (window as any).__tekto?.owner?.scene.all().length >= 12, null, { timeout: 15_000 });
+  /** The frame with AO off and on: how many pixels got darker, and how many lighter. */
+  const compare = () => page.evaluate(async () => {
+    const r = (window as any).__tekto.owner.renderer;
+    const grab = async () => {
+      const img = new Image();
+      img.src = r.snapshotPng();
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width; c.height = img.height;
+      const g = c.getContext("2d")!;
+      g.drawImage(img, 0, 0);
+      return g.getImageData(0, 0, c.width, c.height).data;
+    };
+    r.setAmbientOcclusion(false);
+    const off = await grab();
+    r.setAmbientOcclusion(true);
+    const on = await grab();
+    let darker = 0, lighter = 0;
+    for (let i = 0; i < off.length; i += 4) {
+      const d = (on[i] + on[i + 1] + on[i + 2]) - (off[i] + off[i + 1] + off[i + 2]);
+      if (d < -6) darker++;
+      if (d > 6) lighter++;
+    }
+    r.setAmbientOcclusion(false);
+    return { darker, lighter };
+  });
+  const persp = await compare();
+  expect(persp.darker).toBeGreaterThan(500);                     // the slabs' undersides and the floor plates
+  expect(persp.lighter).toBe(0);
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setProjection("orthographic"));
+  expect(await compare()).toEqual({ darker: 0, lighter: 0 });
+  expect(errors).toEqual([]);
+});

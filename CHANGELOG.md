@@ -6,6 +6,11 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`renderer.setAmbientOcclusion(true | { radius, intensity })`**: three's GTAO multiplied
+  over the drawn frame (tone mapping, background, grid and section as they are), following
+  the section; perspective views only. Ported from 7DHouse. (#66)
+  **Note:** the `three` peer range now starts at 0.159 (for `GTAOPass`); every known app is
+  on 0.169 or later.
 - **`renderer.setDaylight(true)`**: Studio's sun colour and strength, sky, exposure and
   background follow the sun's altitude, so dusk follows from the hour (the shell's Sun
   popover drives it): Studio's own balance above 35°, a warm evening, a blue dusk, night.
