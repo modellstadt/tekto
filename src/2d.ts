@@ -23,3 +23,8 @@ export type { FilletResult } from "./core/geometry/Polygon2D";
 export { PolygonBool } from "./core/geometry/PolygonBool";
 export type { Ring2, Poly2, MultiPoly2 } from "./core/geometry/PolygonBool";
 export { Segment, closestPointOnSegment, segmentSegmentClosest } from "./core/geometry/Segment";
+
+// Exporting a drawing: writeDxf2D(...) → download(..., "plan.dxf")
+export { writeDxf2D } from "./io/DxfWriter";
+export type { Dxf2DContent, Dxf2DPolyline, Dxf2DLine, Dxf2DCircle, Dxf2DArc, Dxf2DText, Dxf2DPoint, DxfLayerDef } from "./io/DxfWriter";
+export { download, stampName } from "./io/download";

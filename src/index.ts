@@ -7,6 +7,9 @@ export * from "./core";
 
 // ── Browser layer: three.js renderers, panels, sketch(), appShell() ──
 
+// Save a file from the browser (DOM; stampName is in core)
+export { download } from "./io/download";
+
 // IO that renders (GPU hidden line) or projects through three.js
 export { DxfExporter, processWorkerRequest } from "./io/DxfExporter";
 export type { DxfView, DxfMeshOptions, DxfEdgeOptions, DxfWriteOptions, DxfSegment, DxfWorkerRequest } from "./io/DxfExporter";

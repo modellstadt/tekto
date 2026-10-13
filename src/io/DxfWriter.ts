@@ -171,3 +171,102 @@ export function writeDxf3D(content: Dxf3DContent): string {
 
   return lines.join('\r\n') + '\r\n';
 }
+
+// ── 2D drawings (for writeDxf2D) ────────────────────────────────────────────────
+
+/** A point in the drawing plane. `Vec2`, or anything with x and y. */
+export interface Dxf2DPoint { x: number; y: number; }
+/** A polyline in the drawing plane; emitted as an R12 2D POLYLINE (closed = the ring is shut). */
+export interface Dxf2DPolyline { layer: string; points: Dxf2DPoint[]; closed?: boolean; }
+export interface Dxf2DLine { layer: string; start: Dxf2DPoint; end: Dxf2DPoint; }
+export interface Dxf2DCircle { layer: string; center: Dxf2DPoint; radius: number; }
+/** CCW arc, angles in degrees; a full sweep is written as a CIRCLE (AutoCAD drops a 0→360 ARC). */
+export interface Dxf2DArc { layer: string; center: Dxf2DPoint; radius: number; startDeg: number; endDeg: number; }
+/** Single-line text at `at` (its baseline start), `height` in drawing units, rotated CCW. */
+export interface Dxf2DText { layer: string; at: Dxf2DPoint; text: string; height: number; rotationDeg?: number; }
+/** Input to {@link writeDxf2D}. Any layer an entity uses but `layers` doesn't list is declared colour 7. */
+export interface Dxf2DContent {
+  polylines?: Dxf2DPolyline[];
+  lines?: Dxf2DLine[];
+  circles?: Dxf2DCircle[];
+  arcs?: Dxf2DArc[];
+  texts?: Dxf2DText[];
+  layers?: DxfLayerDef[];
+}
+
+/**
+ * Write a 2D drawing (plan, section, cut sheet) as DXF R12: POLYLINEs, LINEs, CIRCLEs,
+ * ARCs and TEXT on named layers — the same AutoCAD-safe writer as {@link writeDxf3D}
+ * (every layer declared, R12 names, plain decimals).
+ *
+ * `scale` multiplies every coordinate, radius and text height and sets the file's unit:
+ * 1 (default) writes your numbers as metres, 1000 writes metres as millimetres (the usual
+ * CAD drawing unit). A NaN or infinite coordinate throws; a circle or arc with a degenerate
+ * radius is dropped, as in `writeDxf3D`.
+ *
+ *   download(writeDxf2D({ polylines: [{ layer: "cut", points: outline, closed: true }],
+ *     texts: [{ layer: "text", at: { x: 0, y: -0.5 }, text: "Plan 1:50", height: 0.25 }] },
+ *     { scale: 1000 }), "plan.dxf");
+ */
+export function writeDxf2D(content: Dxf2DContent, opts: { scale?: number } = {}): string {
+  const scale = opts.scale ?? 1;
+  if (!(Number.isFinite(scale) && scale > 0)) throw new Error(`writeDxf2D: scale must be a positive number, got ${scale}`);
+  const polylines = content.polylines ?? [];
+  const lineSegs = content.lines ?? [];
+  const circles = content.circles ?? [];
+  const arcs = content.arcs ?? [];
+  const texts = content.texts ?? [];
+  const okR = (r: number) => Number.isFinite(r) && r > 1e-9;
+  const finite = (p: Dxf2DPoint) => Number.isFinite(p.x) && Number.isFinite(p.y);
+  const bad = (what: string, i: number, layer: string, why = "a non-finite coordinate") => {
+    throw new Error(`writeDxf2D: ${what} ${i} (layer "${layer}") has ${why}`);
+  };
+  polylines.forEach((p, i) => { if (!p.points.every(finite)) bad("polyline", i, p.layer); });
+  lineSegs.forEach((l, i) => { if (!finite(l.start) || !finite(l.end)) bad("line", i, l.layer); });
+  circles.forEach((c, i) => { if (okR(c.radius) && !finite(c.center)) bad("circle", i, c.layer); });
+  arcs.forEach((a, i) => { if (okR(a.radius) && (!finite(a.center) || !Number.isFinite(a.startDeg) || !Number.isFinite(a.endDeg))) bad("arc", i, a.layer); });
+  texts.forEach((t, i) => {
+    if (!finite(t.at)) bad("text", i, t.layer);
+    if (!(Number.isFinite(t.height) && t.height > 0)) bad("text", i, t.layer, `a height of ${t.height} (needs > 0)`);
+  });
+
+  const used = new Set<string>();
+  for (const p of polylines) if (p.points.length >= 2) used.add(p.layer);
+  for (const l of lineSegs) used.add(l.layer);
+  for (const c of circles) if (okR(c.radius)) used.add(c.layer);
+  for (const a of arcs) if (okR(a.radius)) used.add(a.layer);
+  for (const t of texts) used.add(t.layer);
+  const lines: string[] = [];
+  const { names, colorOf } = _resolveLayers(content.layers ?? [], used);
+  _writeR12Prologue(lines, names, colorOf, scale);
+
+  const v = (n: number) => _real(n * scale);
+  const xy = (p: Dxf2DPoint) => ['10', v(p.x), '20', v(p.y), '30', '0'];
+  const emitCircle = (layer: string, c: Dxf2DPoint, r: number) => lines.push('0', 'CIRCLE', '8', _sanLayer(layer), ...xy(c), '40', v(r));
+
+  lines.push('0', 'SECTION', '2', 'ENTITIES');
+  for (const poly of polylines) {
+    if (poly.points.length < 2) continue;
+    const layer = _sanLayer(poly.layer);
+    lines.push('0', 'POLYLINE', '8', layer, '66', '1', '70', poly.closed ? '1' : '0', '10', '0', '20', '0', '30', '0');
+    for (const p of poly.points) lines.push('0', 'VERTEX', '8', layer, ...xy(p), '70', '0');
+    lines.push('0', 'SEQEND', '8', layer);
+  }
+  for (const l of lineSegs) {
+    lines.push('0', 'LINE', '8', _sanLayer(l.layer), ...xy(l.start), '11', v(l.end.x), '21', v(l.end.y), '31', '0');
+  }
+  for (const c of circles) if (okR(c.radius)) emitCircle(c.layer, c.center, c.radius);
+  for (const a of arcs) {
+    if (!okR(a.radius)) continue;
+    if (Math.abs(a.endDeg - a.startDeg) >= 360 - 1e-6) { emitCircle(a.layer, a.center, a.radius); continue; }
+    const norm = (d: number) => { let x = d % 360; if (x < 0) x += 360; return x; };
+    lines.push('0', 'ARC', '8', _sanLayer(a.layer), ...xy(a.center), '40', v(a.radius), '50', _real(norm(a.startDeg)), '51', _real(norm(a.endDeg)));
+  }
+  for (const t of texts) {
+    lines.push('0', 'TEXT', '8', _sanLayer(t.layer), ...xy(t.at), '40', v(t.height),
+      '1', t.text.replace(/[\r\n]+/g, ' '), '50', _real(t.rotationDeg ?? 0));
+  }
+  lines.push('0', 'ENDSEC', '0', 'EOF');
+  return lines.join('\r\n') + '\r\n';
+}
+

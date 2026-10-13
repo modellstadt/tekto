@@ -66,3 +66,16 @@ test("controls can be set from code, and a design round-trips through getParams/
   expect(r.unknown).toEqual([]);
   await expect.poll(level).toBe(3);
 });
+
+test("a standalone sketch shows its registered exports and downloads them", async ({ page }) => {
+  await page.goto("/");                                   // playground/main.ts: a sketch() with no shell
+  const exportBtn = page.getByRole("button", { name: "Export ▾" });
+  await expect(exportBtn).toBeVisible({ timeout: 15_000 });
+  await exportBtn.click();
+  const [dl] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Plan (DXF)" }).click(),
+  ]);
+  expect(dl.suggestedFilename()).toBe("playground-plan.dxf");
+  expect(await dl.failure()).toBeNull();                   // the file arrived whole (content: tests/dxf-2d)
+});

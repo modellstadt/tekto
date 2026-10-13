@@ -47,6 +47,7 @@ import { getTheme, Theme } from "../gui/theme";
 import { ThreeRenderer } from "../render/ThreeRenderer";
 import { MarkupOverlay, MarkupCaptureOptions } from "./Markup";
 import { installAgentBridge, AgentBridge, describeSceneObject, sceneSummary } from "./AgentBridge";
+import { download } from "../io/download";
 import { noise } from "../core/math/noise";
 import { createRandom, SeededRandom } from "../core/math/random";
 
@@ -224,6 +225,9 @@ export class SketchInstance {
   // records the user-code line that created it, so a mark can point at source.
   private markup: MarkupOverlay | null = null;
   private bridge: AgentBridge | null = null;
+  // Export ▾ / Import ▾ in the sketch's own header (a shell's top bar does it otherwise).
+  private _fileMenusEl: HTMLElement | null = null;
+  private _fileMenusSig = "";
   private _trackSource = false;
   private _srcById = new Map<string, string>();
   private separatorCount = 0;
@@ -327,6 +331,9 @@ export class SketchInstance {
         <span style="font-size:9px;padding:2px 6px;border-radius:3px;
           background:${t.hoverBg};color:${t.accent}">LIVE</span>
       `;
+      this._fileMenusEl = document.createElement("div");
+      this._fileMenusEl.style.cssText = "margin-left:auto;display:flex;gap:8px;position:relative;";
+      header.appendChild(this._fileMenusEl);
       root.appendChild(header);
     }
 
@@ -906,11 +913,13 @@ export class SketchInstance {
       registerExport(opts) {
         self.exports.set(opts.name, { ...opts });
         for (const l of self._exportListeners) l();
+        self.renderFileMenus();
       },
 
       registerImport(opts) {
         self.imports.set(opts.name, { ...opts });
         for (const l of self._importListeners) l();
+        self.renderFileMenus();
       },
 
       // ── Geometry Builders ──
@@ -1716,6 +1725,71 @@ export class SketchInstance {
       logs: this.logs.map(l => ({ ...l })),
       errors: this.bridge?.errors() ?? [],
     };
+  }
+
+  /**
+   * Export ▾ / Import ▾ in the sketch's own header, from `lab.registerExport/registerImport`.
+   * Without a header (inside a shell) the shell's top bar shows them instead. Rebuilt only
+   * when the registered names change, not on every re-run.
+   */
+  private renderFileMenus() {
+    const host = this._fileMenusEl;
+    if (!host) return;
+    const sig = [...this.exports.keys()].join("\u0000") + "|" + [...this.imports.keys()].join("\u0000");
+    if (sig === this._fileMenusSig) return;
+    this._fileMenusSig = sig;
+    host.innerHTML = "";
+    const t = this.theme;
+    const menu = (label: string, items: { name: string; title?: string; run: () => void | Promise<void> }[]) => {
+      if (!items.length) return;
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "position:relative;";
+      const btn = document.createElement("button");
+      btn.textContent = `${label} ▾`;
+      btn.style.cssText = `font:12px ${t.font};padding:4px 10px;border-radius:4px;cursor:pointer;
+        background:${t.panelBg};color:${t.text};border:1px solid ${t.controlBorder};`;
+      const list = document.createElement("div");
+      list.style.cssText = `position:absolute;right:0;top:calc(100% + 4px);min-width:180px;z-index:30;display:none;
+        background:${t.panelBg};border:1px solid ${t.controlBorder};border-radius:6px;padding:4px;box-shadow:0 4px 16px rgba(0,0,0,.3);`;
+      for (const it of items) {
+        const b = document.createElement("button");
+        b.textContent = it.name;
+        if (it.title) b.title = it.title;
+        b.style.cssText = `display:block;width:100%;text-align:left;font:12px ${t.font};padding:6px 10px;border:0;border-radius:4px;
+          background:transparent;color:${t.text};cursor:pointer;`;
+        b.addEventListener("mouseenter", () => { b.style.background = t.hoverBg; });
+        b.addEventListener("mouseleave", () => { b.style.background = "transparent"; });
+        b.addEventListener("click", async () => {
+          list.style.display = "none";
+          try { await it.run(); } catch (e) { console.error(`tekto ${label.toLowerCase()} "${it.name}":`, e); }
+        });
+        list.appendChild(b);
+      }
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = list.style.display === "none";
+        for (const l of host.querySelectorAll<HTMLElement>("[data-tekto-menu]")) l.style.display = "none";
+        list.style.display = open ? "block" : "none";
+      });
+      list.dataset.tektoMenu = "";
+      document.addEventListener("click", () => { list.style.display = "none"; });
+      wrap.append(btn, list);
+      host.appendChild(wrap);
+    };
+    menu("Export", this.getExports().map(it => ({
+      name: it.name, title: `Download as ${it.fileName}`,
+      run: async () => download(await it.handler(), it.fileName, it.mimeType ? { type: it.mimeType } : {}),
+    })));
+    menu("Import", this.getImports().map(it => ({
+      name: it.name,
+      run: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = it.accept ?? "";
+        input.onchange = async () => { const f = input.files?.[0]; if (f) await it.handler(f); };
+        input.click();
+      },
+    })));
   }
 
   /** The current value of every control, keyed for `setParams` — save it to reopen a design. */

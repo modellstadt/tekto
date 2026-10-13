@@ -3,7 +3,7 @@
  * POINT in world space), as opposed to DxfExporter's projected 2D hidden-line views. Build a helix,
  * preview it, and download an AutoCAD-safe R12 DXF.
  */
-import { sketch, Vec3, writeDxf3D, SketchInstance } from "../../src";
+import { sketch, Vec3, writeDxf3D, SketchInstance, download } from "../../src";
 import type { Dxf3DArc, Dxf3DCircle, Dxf3DLine, Dxf3DPoint, Dxf3DPolyline } from "../../src";
 
 export default function (container: HTMLElement): SketchInstance {
@@ -68,12 +68,7 @@ export default function (container: HTMLElement): SketchInstance {
           { name: "nodes", color: 2 }, // yellow
         ],
       });
-      const blob = new Blob([dxf], { type: "application/dxf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "tekto_helix_3d.dxf";
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      download(dxf, "tekto_helix_3d.dxf");
     }, { group: "Export" });
   }, {
     container,

@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Export pipeline.** New `writeDxf2D` (in `tekto/core` and `tekto/2d`): plans, sections and
+  cut sheets as AutoCAD-safe R12 — closed/open polylines, lines, circles, arcs, single-line
+  text — with `scale: 1000` writing metres as millimetres (and saying so in the header). New
+  `download(data, fileName, { stamp })` (browser): a string, bytes or Blob as a file, the URL
+  kept alive past the click (revoking at once truncates large files — the testbench's own menu
+  did that; fixed). `stampName` dates a file name. A standalone `sketch()` now shows
+  **Export ▾ / Import ▾** in its header for `lab.registerExport/registerImport` (only the
+  testbench shell showed them, so no app used them); export handlers may return a string.
+
 - **Controls can be set from code.** Every control handle (`lab.slider`, `toggle`, `select`,
   `colorPicker`, `layerTree`, `dragHandle`; `sketch2d` too) gains `.set(value)`: the panel
   moves and the sketch re-runs (during a run it only stores the value). `layerTree().set`
