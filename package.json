@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "sideEffects": false,
   "files": [
     "dist",
     "src",
@@ -25,7 +26,7 @@
     "./collab-vite": "./tools/collab-vite-plugin.mjs"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/react.ts --format cjs,esm --dts --external three --external react --external react-dom --external web-ifc",
+    "build": "tsup src/index.ts src/react.ts --format cjs,esm --dts --clean --external three --external react --external react-dom --external web-ifc",
     "dev": "tsup src/index.ts src/react.ts --format cjs,esm --dts --watch --external three --external react --external react-dom --external web-ifc",
     "lint": "tsc --noEmit -p tsconfig.lint.json",
     "test": "vitest run",
