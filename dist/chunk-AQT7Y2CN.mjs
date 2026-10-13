@@ -1,8 +1,11 @@
 import {
+  DASH_PATTERNS,
   ParamStore,
+  boundsOf,
   createRandom,
-  noise
-} from "./chunk-TZW7QNPY.mjs";
+  noise,
+  pickPrim
+} from "./chunk-K5F6U4JJ.mjs";
 import {
   MathUtils,
   Vec2
@@ -1183,6 +1186,265 @@ var Sketch2DInstance = class {
   }
 };
 
+// src/render/SheetCanvas.ts
+var FONT = "Helvetica, Arial, sans-serif";
+var MIN_PEN_PX = 0.75;
+var HIGHLIGHT = "#1e88e5";
+function fitSheet(bounds, width, height, margin = 24) {
+  if (!bounds) return { scale: 1, x: width / 2, y: height / 2 };
+  const bw = Math.max(bounds.max.x - bounds.min.x, 1e-9), bh = Math.max(bounds.max.y - bounds.min.y, 1e-9);
+  const scale = Math.max(1e-9, Math.min((width - 2 * margin) / bw, (height - 2 * margin) / bh));
+  const cx = (bounds.min.x + bounds.max.x) / 2, cy = (bounds.min.y + bounds.max.y) / 2;
+  return { scale, x: width / 2 - cx * scale, y: height / 2 + cy * scale };
+}
+function drawSheet(ctx, sheet, t, opts = {}) {
+  const prims = opts.prims ?? sheet.explode();
+  const hl = opts.highlight ? new Set(opts.highlight) : null;
+  const hlColor = opts.highlightColor ?? HIGHLIGHT;
+  const mmPx = sheet.scale / 1e3 * t.scale;
+  const X = (p) => t.x + p.x * t.scale, Y = (p) => t.y - p.y * t.scale;
+  const pen = (s, lit) => {
+    ctx.strokeStyle = lit ? hlColor : s.color;
+    ctx.lineWidth = Math.max(MIN_PEN_PX, s.weight * mmPx) + (lit ? 1.5 : 0);
+    ctx.setLineDash(s.dash === "solid" ? [] : DASH_PATTERNS[s.dash].map((d) => Math.max(d * mmPx, 0.5)));
+  };
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const p of prims) {
+    const lit = !!(hl && p.key && hl.has(p.key));
+    if (p.kind === "fill") {
+      ctx.beginPath();
+      for (const r of p.rings) r.forEach((q, i) => i ? ctx.lineTo(X(q), Y(q)) : ctx.moveTo(X(q), Y(q)));
+      ctx.fillStyle = p.color;
+      ctx.fill("evenodd");
+      if (lit) {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = hlColor;
+        ctx.fill("evenodd");
+        ctx.globalAlpha = 1;
+      }
+    } else if (p.kind === "polyline") {
+      pen(p.style, lit);
+      ctx.beginPath();
+      p.points.forEach((q, i) => i ? ctx.lineTo(X(q), Y(q)) : ctx.moveTo(X(q), Y(q)));
+      if (p.closed) ctx.closePath();
+      ctx.stroke();
+    } else if (p.kind === "circle") {
+      pen(p.style, lit);
+      ctx.beginPath();
+      ctx.arc(X(p.center), Y(p.center), p.radius * t.scale, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (p.kind === "arc") {
+      let sweep = (p.endDeg - p.startDeg) % 360;
+      if (sweep <= 0) sweep += 360;
+      const a0 = -p.startDeg * Math.PI / 180, a1 = -(p.startDeg + sweep) * Math.PI / 180;
+      pen(p.style, lit);
+      ctx.beginPath();
+      ctx.arc(X(p.center), Y(p.center), p.radius * t.scale, a0, a1, true);
+      ctx.stroke();
+    } else {
+      const px = p.height * t.scale;
+      if (px < 0.5) continue;
+      ctx.save();
+      ctx.translate(X(p.at), Y(p.at));
+      if (p.rotation) ctx.rotate(-p.rotation * Math.PI / 180);
+      ctx.font = `${px}px ${FONT}`;
+      ctx.fillStyle = lit ? hlColor : p.style.color;
+      ctx.textAlign = p.align;
+      ctx.textBaseline = p.baseline === "bottom" ? "alphabetic" : p.baseline === "middle" ? "middle" : "hanging";
+      ctx.fillText(p.text, 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+var SheetCanvas = class {
+  constructor(container, opts = {}) {
+    this._sheet = null;
+    this.prims = [];
+    this.t = { scale: 1, x: 0, y: 0 };
+    this.fitted = false;
+    this.highlight = [];
+    this.pickFns = [];
+    this.drawFns = [];
+    this.frame = 0;
+    this.opts = opts;
+    this.canvas = document.createElement("canvas");
+    this.canvas.dataset.tektoOverlay = "";
+    this.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;";
+    if (getComputedStyle(container).position === "static") container.style.position = "relative";
+    container.appendChild(this.canvas);
+    this.ctx = this.canvas.getContext("2d");
+    this.off = this.wire();
+    this.ro = new ResizeObserver(() => this.resize());
+    this.ro.observe(container);
+    this.resize();
+    if (opts.sheet) this.setSheet(opts.sheet);
+  }
+  get sheet() {
+    return this._sheet;
+  }
+  /** The primitives on screen (the sheet, exploded once per `setSheet`). */
+  get primitives() {
+    return this.prims;
+  }
+  get transform() {
+    return { ...this.t };
+  }
+  /** Show a sheet. The first one is fitted; later ones keep the zoom, so a sheet rebuilt on
+   *  every edit stays put (`fit: true` to refit). */
+  setSheet(sheet, opts = {}) {
+    this._sheet = sheet;
+    this.prims = sheet ? sheet.explode() : [];
+    if (opts.fit || !this.fitted) this.fit();
+    else this.redraw();
+  }
+  setTransform(t) {
+    this.t = { ...t };
+    this.redraw();
+  }
+  fit() {
+    const { width, height } = this.size();
+    if (!this._sheet || !width || !height) {
+      this.redraw();
+      return;
+    }
+    this.t = fitSheet(boundsOf(this.prims), width, height, this.opts.margin ?? 24);
+    this.fitted = true;
+    this.redraw();
+  }
+  toSheet(x, y) {
+    return { x: (x - this.t.x) / this.t.scale, y: (this.t.y - y) / this.t.scale };
+  }
+  toScreen(p) {
+    return { x: this.t.x + p.x * this.t.scale, y: this.t.y - p.y * this.t.scale };
+  }
+  /** The primitive at a canvas position (CSS pixels), or null. */
+  pick(x, y) {
+    return pickPrim(this.prims, this.toSheet(x, y), (this.opts.pickTolerance ?? 6) / this.t.scale);
+  }
+  /** Clicks (not drags): the picked primitive, or null for paper. Returns the unsubscribe. */
+  onPick(fn) {
+    this.pickFns.push(fn);
+    return () => {
+      this.pickFns = this.pickFns.filter((f) => f !== fn);
+    };
+  }
+  /** Draw primitives with these keys highlighted (a selection); null clears. */
+  setHighlight(keys) {
+    this.highlight = keys ? [...keys] : [];
+    this.redraw();
+  }
+  /** Paint over the sheet in screen pixels after every redraw. Returns the unsubscribe. */
+  onDraw(fn) {
+    this.drawFns.push(fn);
+    this.redraw();
+    return () => {
+      this.drawFns = this.drawFns.filter((f) => f !== fn);
+      this.redraw();
+    };
+  }
+  /** Redraw on the next frame (calls coalesce). */
+  redraw() {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      this.paint();
+    });
+  }
+  /** Draw now — before reading the canvas back. */
+  paint() {
+    const { width, height, dpr } = this.size();
+    const ctx = this.ctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const bg = this.opts.background ?? "#ffffff";
+    if (bg !== "transparent") {
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+    }
+    if (this._sheet) drawSheet(ctx, this._sheet, this.t, { prims: this.prims, highlight: this.highlight, highlightColor: this.opts.highlightColor });
+    for (const fn of this.drawFns) {
+      ctx.save();
+      fn(ctx, this.transform);
+      ctx.restore();
+    }
+  }
+  dispose() {
+    cancelAnimationFrame(this.frame);
+    this.ro.disconnect();
+    this.off();
+    this.canvas.remove();
+  }
+  size() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    return { width: this.canvas.clientWidth, height: this.canvas.clientHeight, dpr };
+  }
+  resize() {
+    const { width, height, dpr } = this.size();
+    if (!width || !height) return;
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
+    if (!this.fitted && this._sheet) this.fit();
+    else this.paint();
+  }
+  wire() {
+    const c = this.canvas;
+    const local = (e) => {
+      const r = c.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const onWheel = (e) => {
+      e.preventDefault();
+      const p = local(e), k = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 15e-4));
+      this.t = { scale: this.t.scale * k, x: p.x - (p.x - this.t.x) * k, y: p.y - (p.y - this.t.y) * k };
+      this.redraw();
+    };
+    let drag = null;
+    const onDown = (e) => {
+      if (e.button !== 0 && e.button !== 1) return;
+      const p = local(e);
+      drag = { id: e.pointerId, x: p.x, y: p.y, t: { ...this.t }, moved: false };
+      c.setPointerCapture(e.pointerId);
+    };
+    const onMove = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const p = local(e);
+      if (!drag.moved && Math.hypot(p.x - drag.x, p.y - drag.y) < 4) return;
+      drag.moved = true;
+      this.t = { ...drag.t, x: drag.t.x + p.x - drag.x, y: drag.t.y + p.y - drag.y };
+      this.redraw();
+    };
+    const onUp = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const wasClick = !drag.moved && e.button === 0;
+      drag = null;
+      if (!wasClick) return;
+      const p = local(e), prim = this.pick(p.x, p.y);
+      for (const fn of this.pickFns) fn(prim, { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey });
+    };
+    const onCancel = () => {
+      drag = null;
+    };
+    const onDbl = () => this.fit();
+    c.addEventListener("wheel", onWheel, { passive: false });
+    c.addEventListener("pointerdown", onDown);
+    c.addEventListener("pointermove", onMove);
+    c.addEventListener("pointerup", onUp);
+    c.addEventListener("pointercancel", onCancel);
+    c.addEventListener("dblclick", onDbl);
+    return () => {
+      c.removeEventListener("wheel", onWheel);
+      c.removeEventListener("pointerdown", onDown);
+      c.removeEventListener("pointermove", onMove);
+      c.removeEventListener("pointerup", onUp);
+      c.removeEventListener("pointercancel", onCancel);
+      c.removeEventListener("dblclick", onDbl);
+    };
+  }
+};
+
 export {
   getTheme,
   ControlPanel,
@@ -1193,5 +1455,8 @@ export {
   slug,
   saveBundle,
   sketch2d,
-  Sketch2DInstance
+  Sketch2DInstance,
+  fitSheet,
+  drawSheet,
+  SheetCanvas
 };

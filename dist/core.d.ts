@@ -1,7 +1,7 @@
 import { V as Vec3, b as Vec2, e as Mat4, T as Triangle, A as AABB, M as Mesh, c as MeshData, S as Scene } from './Scene-CVb27q1H.js';
 export { F as ColoredMeshData, d as LegacyMeshJSON, L as LightingMode, f as MeshEdge, g as MeshFace, h as MeshJSON, i as MeshNode, j as MeshValidation, O as ObjFile, k as ObjMeshData, R as RenderMode, l as SceneEvent, m as SceneEventListener, n as SceneJSON, a as SceneObject, o as SceneObjectType, p as Vec4, q as VisualStyle } from './Scene-CVb27q1H.js';
-import { R as Ring2, o as MultiPoly2 } from './download-Cqz8J3Ud.js';
-export { A as Algo, a as Dxf2DArc, b as Dxf2DCircle, c as Dxf2DContent, d as Dxf2DLine, e as Dxf2DPoint, f as Dxf2DPolyline, g as Dxf2DText, h as Dxf3DArc, i as Dxf3DCircle, j as Dxf3DContent, k as Dxf3DLine, l as Dxf3DPoint, m as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, M as MathUtils, n as MeshFactory, O as OBB2D, P as Poly2, p as Polygon2D, q as PolygonBool, S as SeededRandom, r as Segment, s as closestPointOnSegment, t as createRandom, v as noise, w as polygonIntersection, x as segmentSegmentClosest, y as setClipSnap, z as stampName, B as writeDxf2D, C as writeDxf3D } from './download-Cqz8J3Ud.js';
+import { z as Ring2, v as MultiPoly2 } from './download-BhsA6Zpm.js';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-BhsA6Zpm.js';
 export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, b as ParamSchema, P as ParamStore, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-C5uOYti3.js';
 
 /**
@@ -3802,6 +3802,14 @@ declare class Selection {
     remove(key: string): void;
     toggle(key: string): void;
     clear(): void;
+    /** A click on a record (`key`) or on nothing (null): it selects the record, Shift/⌘/Ctrl
+     *  adds or removes it, a plain click on nothing clears. The rule every view shares — a
+     *  3D viewport (`selectOnClick`), a drawing (`SheetCanvas.onPick`), a list. */
+    click(key: string | null | undefined, mods?: {
+        shiftKey?: boolean;
+        metaKey?: boolean;
+        ctrlKey?: boolean;
+    }): void;
     onChange(cb: (keys: string[]) => void): () => void;
     private emit;
 }

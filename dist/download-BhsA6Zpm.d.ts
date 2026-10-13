@@ -1,4 +1,4 @@
-import { M as Mesh, V as Vec3, b as Vec2, A as AABB } from './Scene-CVb27q1H.mjs';
+import { M as Mesh, V as Vec3, b as Vec2, A as AABB } from './Scene-CVb27q1H.js';
 
 /**
  * Tekto HMath — Scalar math utilities.
@@ -489,6 +489,308 @@ declare function segmentSegmentClosest(a1: Vec3, a2: Vec3, b1: Vec3, b2: Vec3): 
 };
 
 /**
+ * Sheet — a 2D drawing drawn on screen and exported to SVG and DXF from one source.
+ *
+ * Apps drew their plans, elevations and unrolled strips twice: once for the screen, once in
+ * a separate export path that had to repeat every transform — and drifted. A Sheet is data:
+ * views placed on the sheet, each holding entities (lines, polylines, arcs, circles, fills,
+ * text, dimensions, leaders, level marks). `explode()` turns it into plain primitives in
+ * sheet coordinates, and every output draws exactly that list — what you see is what you
+ * export, by construction.
+ *
+ * Units, the way CAD does it: geometry in model units (metres), annotation in paper
+ * millimetres at the sheet's scale (`scale: 50` = 1:50). A 2.5 mm label stays 2.5 mm on
+ * paper whether the view is a site plan or a joint detail.
+ *
+ *   const sheet = new Sheet({ scale: 50, layers: { cut: { weight: 0.5 }, hidden: { dash: "hidden" } } });
+ *   const plan = sheet.view("plan");
+ *   plan.polyline(outline, { layer: "cut", closed: true, fill: "#ddd" });
+ *   plan.dim(outline[0], outline[1], { offset: 8 });
+ *   const east = sheet.view("east", { at: [0, 12], project: { right: new Vec3(0, 1, 0), up: new Vec3(0, 0, 1) } });
+ *   east.polyline(points3D, { layer: "cut" });                   // 3D points, projected into the view
+ *   download(sheet.toDXF(), "drawings.dxf"); download(sheet.toSVG(), "drawings.svg");
+ */
+
+/** A point in a view or on the sheet. `Vec2` fits, or any `{ x, y }`. */
+interface Pt {
+    x: number;
+    y: number;
+}
+type PtIn = Pt | readonly [number, number];
+/** Line patterns, sized in paper millimetres. */
+type Dash = "solid" | "dashed" | "dotted" | "center" | "hidden";
+/** How lines look. `weight` is a pen width in paper millimetres (0.13–0.7 are usual). */
+interface LineStyle {
+    color?: string;
+    weight?: number;
+    dash?: Dash;
+}
+/** Per-entity style: a layer (whose style applies) and overrides. `key` names the document
+ *  record the entity shows, like `SceneObject.key` — kept through explode for picking. */
+interface DrawOptions extends LineStyle {
+    layer?: string;
+    key?: string;
+}
+interface TextOptions extends DrawOptions {
+    /** Height in paper millimetres (default 2.5). */
+    size?: number;
+    /** Degrees, counter-clockwise, in the view. */
+    rotation?: number;
+    align?: "left" | "center" | "right";
+    baseline?: "bottom" | "middle" | "top";
+}
+interface DimOptions extends DrawOptions {
+    /** Distance of the dimension line from the measured points, in paper mm (default 8;
+     *  negative puts it on the other side). */
+    offset?: number;
+    /** "aligned" (default) measures along a→b; "horizontal" / "vertical" measure one axis. */
+    direction?: "aligned" | "horizontal" | "vertical";
+    /** Replace the measured text. */
+    text?: string;
+    /** Unit of the measured text (default "mm", the drawing convention). */
+    unit?: "mm" | "cm" | "m";
+    decimals?: number;
+    /** Text height in paper mm (default 2.5). */
+    size?: number;
+}
+interface LevelOptions extends DrawOptions {
+    /** The level to write (default: the point's y in the view — its height in an elevation). */
+    value?: number;
+    /** Replace the text ("OK FFB"). */
+    text?: string;
+    /** Decimals of the value in metres (default 3: "+2.450"). */
+    decimals?: number;
+    /** Text height in paper mm (default 2.5). */
+    size?: number;
+}
+interface ViewOptions {
+    /** Where the view's origin sits on the sheet, in sheet (model) units. */
+    at?: PtIn;
+    /** Degrees, counter-clockwise. */
+    rotation?: number;
+    /** Enlarge the view relative to the sheet's scale: 5 on a 1:50 sheet draws it at 1:10. */
+    scale?: number;
+    /** For 3D input: the view's x and y axes in the model, and its origin — points given as
+     *  `Vec3` are projected onto them (an elevation: right = east, up = z). Or a function for
+     *  any other mapping (an unrolled strip); circles and arcs then map their centre only. */
+    project?: {
+        right: Vec3;
+        up: Vec3;
+        origin?: Vec3;
+    } | ((p: Vec3) => PtIn);
+    /** Title drawn under the view's bounds ("Plan 1:50"); sized in paper mm. */
+    title?: string;
+}
+interface SheetOptions {
+    /** Drawing scale: 50 means 1:50 (default 1). */
+    scale?: number;
+    /** Named layers and their styles; entities without a layer use "0". */
+    layers?: Record<string, LineStyle & {
+        fill?: string;
+    }>;
+}
+interface ResolvedStyle {
+    layer: string;
+    color: string;
+    weight: number;
+    dash: Dash;
+}
+type SheetPrim = {
+    kind: "polyline";
+    points: Pt[];
+    closed: boolean;
+    style: ResolvedStyle;
+    key?: string;
+} | {
+    kind: "circle";
+    center: Pt;
+    radius: number;
+    style: ResolvedStyle;
+    key?: string;
+} | {
+    kind: "arc";
+    center: Pt;
+    radius: number;
+    startDeg: number;
+    endDeg: number;
+    style: ResolvedStyle;
+    key?: string;
+} | {
+    kind: "fill";
+    rings: Pt[][];
+    color: string;
+    layer: string;
+    key?: string;
+} | {
+    kind: "text";
+    at: Pt;
+    text: string;
+    height: number;
+    rotation: number;
+    align: "left" | "center" | "right";
+    baseline: "bottom" | "middle" | "top";
+    style: ResolvedStyle;
+    key?: string;
+};
+/** Dash patterns in paper mm (dash, gap, …). */
+declare const DASH_PATTERNS: Record<Exclude<Dash, "solid">, number[]>;
+type Entity = {
+    t: "polyline";
+    points: Pt[];
+    closed: boolean;
+    fill?: string;
+    o: DrawOptions;
+} | {
+    t: "circle";
+    c: Pt;
+    r: number;
+    o: DrawOptions;
+} | {
+    t: "arc";
+    c: Pt;
+    r: number;
+    a0: number;
+    a1: number;
+    o: DrawOptions;
+} | {
+    t: "fill";
+    rings: Pt[][];
+    color?: string;
+    o: DrawOptions;
+} | {
+    t: "text";
+    at: Pt;
+    text: string;
+    o: TextOptions;
+} | {
+    t: "dim";
+    a: Pt;
+    b: Pt;
+    o: DimOptions;
+} | {
+    t: "radius";
+    c: Pt;
+    r: number;
+    angle: number;
+    o: DimOptions;
+} | {
+    t: "leader";
+    points: Pt[];
+    text: string;
+    o: TextOptions;
+} | {
+    t: "level";
+    at: Pt;
+    o: LevelOptions;
+};
+/** One view on the sheet: a plan, an elevation, an unrolled strip, a detail. */
+declare class SheetView {
+    readonly name: string;
+    readonly entities: Entity[];
+    private opts;
+    private sheet;
+    /** @internal — views come from `sheet.view(name)`. */
+    constructor(sheet: Sheet, name: string, opts: ViewOptions);
+    get options(): Readonly<ViewOptions>;
+    /** Lines through points; `closed` shuts the ring, `fill` colours its inside. Accepts 2D
+     *  points, or `Vec3` when the view has `project`. */
+    polyline(points: readonly (PtIn | Vec3)[], opts?: DrawOptions & {
+        closed?: boolean;
+        fill?: string;
+    }): this;
+    line(a: PtIn | Vec3, b: PtIn | Vec3, opts?: DrawOptions): this;
+    /** Axis-aligned rectangle from its lower-left corner. */
+    rect(x: number, y: number, w: number, h: number, opts?: DrawOptions & {
+        fill?: string;
+    }): this;
+    circle(center: PtIn | Vec3, radius: number, opts?: DrawOptions): this;
+    /** Counter-clockwise arc from `startDeg` to `endDeg`. */
+    arc(center: PtIn | Vec3, radius: number, startDeg: number, endDeg: number, opts?: DrawOptions): this;
+    /** A solid fill (poché): one ring, or [outer, ...holes]. */
+    fill(rings: readonly (PtIn | Vec3)[] | readonly (readonly (PtIn | Vec3)[])[], opts?: DrawOptions & {
+        color?: string;
+    }): this;
+    text(text: string, at: PtIn | Vec3, opts?: TextOptions): this;
+    /** A dimension between two points, with extension lines, ticks and the measured length. */
+    dim(a: PtIn | Vec3, b: PtIn | Vec3, opts?: DimOptions): this;
+    /** A radius dimension: centre mark, a line from the centre to the arc at `angle` degrees
+     *  (default 45) with an arrow, and "R 1200" along it. */
+    radius(center: PtIn | Vec3, radius: number, opts?: DimOptions & {
+        angle?: number;
+    }): this;
+    /** A leader: an arrow at `points[0]` (what it points at), lines through the rest, and the
+     *  text beside the last point. */
+    leader(points: readonly (PtIn | Vec3)[], text: string, opts?: TextOptions): this;
+    /** A level mark: a triangle standing on the level at `at`, and the level in metres with
+     *  its sign ("+2.450", "±0.000"). */
+    level(at: PtIn | Vec3, opts?: LevelOptions): this;
+    /** Projected segments, e.g. from `DxfExporter.toSegments(view)` (hidden lines removed). */
+    segments(segs: readonly {
+        u0: number;
+        v0: number;
+        u1: number;
+        v1: number;
+        layer?: string;
+    }[], opts?: DrawOptions): this;
+    private local;
+    /** @internal */ get sheetRef(): Sheet;
+}
+/**
+ * A 2D drawing — views on a sheet at a scale — whose outputs (`toSVG`, `toDXF`) all draw
+ * the same exploded primitives.
+ */
+declare class Sheet {
+    readonly scale: number;
+    private layerStyles;
+    private views;
+    constructor(opts?: SheetOptions);
+    /** Define or change a layer's style. */
+    layer(name: string, style: LineStyle & {
+        fill?: string;
+    }): this;
+    get layers(): ReadonlyMap<string, LineStyle & {
+        fill?: string;
+    }>;
+    /** The view named `name` — created with `opts` the first time. */
+    view(name: string, opts?: ViewOptions): SheetView;
+    /** The default view at the origin (`sheet.main.polyline(…)`). */
+    get main(): SheetView;
+    viewNames(): string[];
+    /** Paper millimetres → sheet (model) units. */
+    paper(mm: number): number;
+    /** Everything as plain primitives in sheet coordinates — what every output draws. */
+    explode(): SheetPrim[];
+    /** Bounds of the exploded drawing (text estimated), or null when empty. */
+    bounds(): {
+        min: Pt;
+        max: Pt;
+    } | null;
+    /** The resolved style of an entity: layer style, then its overrides. */
+    style(o: DrawOptions): ResolvedStyle;
+    /** The sheet as an SVG document, sized in millimetres on paper (`margin` in mm). */
+    toSVG(opts?: {
+        margin?: number;
+        background?: string;
+    }): string;
+    /**
+     * The sheet as DXF R12: lines, polylines, arcs, circles, text with its alignment, dashed
+     * line types, layers with their colours; fills as SOLID triangles. `units: "mm"` (default)
+     * writes model metres as millimetres. Pen weights have no place in R12 — they travel with
+     * the layers, as CAD plotting does.
+     */
+    toDXF(opts?: {
+        units?: "mm" | "m";
+    }): string;
+    private explodeEntity;
+}
+/**
+ * The primitive at `p` (sheet coordinates): the topmost line, arc, circle or text within
+ * `tolerance` (sheet units — divide a pixel tolerance by the screen scale), else the topmost
+ * fill containing `p`, else null. Its `key` names the record it shows.
+ */
+declare function pickPrim(prims: readonly SheetPrim[], p: Pt, tolerance: number): SheetPrim | null;
+
+/**
  * Pure DXF text writers — no three.js, no DOM, so they run in Node and in `tekto/core`.
  *
  * `writeDxf3D` writes true-3D geometry in world space. The R12 primitives below are
@@ -500,7 +802,7 @@ interface DxfLayerDef {
     name: string;
     /** AutoCAD Color Index (ACI): 1=red 2=yellow 3=green 4=cyan 5=blue 7=white */
     color?: number;
-    /** Currently ignored: the R12 writer emits every layer as CONTINUOUS (the only linetype it defines). */
+    /** R12 line type for the layer: "CONTINUOUS" (default), "DASHED", "HIDDEN", "DOTTED" or "CENTER". */
     lineType?: string;
 }
 /** A polyline in world space (Z-up); emitted as a DXF 3D POLYLINE. */
@@ -563,23 +865,35 @@ interface Dxf2DPoint {
     y: number;
 }
 /** A polyline in the drawing plane; emitted as an R12 2D POLYLINE (closed = the ring is shut). */
-interface Dxf2DPolyline {
+/** What a 2D entity may set beyond its layer: an ACI colour (1 red … 7 white/black) and an R12
+ *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. */
+interface Dxf2DLook {
+    color?: number;
+    linetype?: "DASHED" | "HIDDEN" | "DOTTED" | "CENTER";
+}
+interface Dxf2DPolyline extends Dxf2DLook {
     layer: string;
     points: Dxf2DPoint[];
     closed?: boolean;
 }
-interface Dxf2DLine {
+interface Dxf2DLine extends Dxf2DLook {
     layer: string;
     start: Dxf2DPoint;
     end: Dxf2DPoint;
 }
-interface Dxf2DCircle {
+interface Dxf2DCircle extends Dxf2DLook {
     layer: string;
     center: Dxf2DPoint;
     radius: number;
 }
+/** A filled triangle (or quad), e.g. one piece of a poché. */
+interface Dxf2DSolid {
+    layer: string;
+    points: Dxf2DPoint[];
+    color?: number;
+}
 /** CCW arc, angles in degrees; a full sweep is written as a CIRCLE (AutoCAD drops a 0→360 ARC). */
-interface Dxf2DArc {
+interface Dxf2DArc extends Dxf2DLook {
     layer: string;
     center: Dxf2DPoint;
     radius: number;
@@ -593,6 +907,10 @@ interface Dxf2DText {
     text: string;
     height: number;
     rotationDeg?: number;
+    color?: number;
+    /** Which point of the text `at` is: horizontally (default left) and vertically (default baseline). */
+    align?: "left" | "center" | "right";
+    valign?: "baseline" | "bottom" | "middle" | "top";
 }
 /** Input to {@link writeDxf2D}. Any layer an entity uses but `layers` doesn't list is declared colour 7. */
 interface Dxf2DContent {
@@ -601,6 +919,7 @@ interface Dxf2DContent {
     circles?: Dxf2DCircle[];
     arcs?: Dxf2DArc[];
     texts?: Dxf2DText[];
+    solids?: Dxf2DSolid[];
     layers?: DxfLayerDef[];
 }
 /**
@@ -619,7 +938,13 @@ interface Dxf2DContent {
  */
 declare function writeDxf2D(content: Dxf2DContent, opts?: {
     scale?: number;
+    linetypeScale?: number;
 }): string;
+/**
+ * The nearest AutoCAD Color Index for a CSS hex colour (`#rgb` / `#rrggbb`). Black and white
+ * both map to 7, which CAD shows as black on white paper and white on a dark screen.
+ */
+declare function aciFromHex(hex: string): number;
 
 /**
  * Save data as a file from the browser — the helper ten apps had each written themselves.
@@ -641,4 +966,4 @@ declare function download(data: string | Blob | ArrayBuffer | Uint8Array, fileNa
     type?: string;
 }): void;
 
-export { Algo as A, writeDxf2D as B, writeDxf3D as C, type DxfLayerDef as D, type FilletResult as F, HMath as H, MathUtils as M, OBB2D as O, type Poly2 as P, type Ring2 as R, type SeededRandom as S, type Dxf2DArc as a, type Dxf2DCircle as b, type Dxf2DContent as c, type Dxf2DLine as d, type Dxf2DPoint as e, type Dxf2DPolyline as f, type Dxf2DText as g, type Dxf3DArc as h, type Dxf3DCircle as i, type Dxf3DContent as j, type Dxf3DLine as k, type Dxf3DPoint as l, type Dxf3DPolyline as m, MeshFactory as n, type MultiPoly2 as o, Polygon2D as p, PolygonBool as q, Segment as r, closestPointOnSegment as s, createRandom as t, download as u, noise as v, polygonIntersection as w, segmentSegmentClosest as x, setClipSnap as y, stampName as z };
+export { writeDxf2D as $, Algo as A, Segment as B, Sheet as C, type DxfLayerDef as D, type SheetOptions as E, type FilletResult as F, type SheetPrim as G, HMath as H, SheetView as I, aciFromHex as J, closestPointOnSegment as K, type LevelOptions as L, MathUtils as M, createRandom as N, OBB2D as O, type Poly2 as P, download as Q, type ResolvedStyle as R, type SeededRandom as S, type TextOptions as T, noise as U, type ViewOptions as V, pickPrim as W, polygonIntersection as X, segmentSegmentClosest as Y, setClipSnap as Z, stampName as _, DASH_PATTERNS as a, writeDxf3D as a0, type Dash as b, type DimOptions as c, type DrawOptions as d, type Dxf2DArc as e, type Dxf2DCircle as f, type Dxf2DContent as g, type Dxf2DLine as h, type Dxf2DLook as i, type Dxf2DPoint as j, type Dxf2DPolyline as k, type Dxf2DSolid as l, type Dxf2DText as m, type Dxf3DArc as n, type Dxf3DCircle as o, type Dxf3DContent as p, type Dxf3DLine as q, type Dxf3DPoint as r, type Dxf3DPolyline as s, type LineStyle as t, MeshFactory as u, type MultiPoly2 as v, Polygon2D as w, PolygonBool as x, type Pt as y, type Ring2 as z };

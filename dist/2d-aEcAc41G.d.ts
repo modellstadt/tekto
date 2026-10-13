@@ -1,5 +1,5 @@
-import { M as Mesh, q as VisualStyle, V as Vec3, F as FlatMeshData, b as Vec2, S as Scene } from './Scene-CVb27q1H.mjs';
-import { A as Algo, n as MeshFactory, M as MathUtils } from './download-CYR9aDOn.mjs';
+import { M as Mesh, q as VisualStyle, V as Vec3, F as FlatMeshData, b as Vec2, S as Scene } from './Scene-CVb27q1H.js';
+import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-BhsA6Zpm.js';
 
 /**
  * LayerPanel — reusable tree-based layer/visibility panel.
@@ -812,4 +812,110 @@ declare class Sketch2DInstance {
     dispose(): void;
 }
 
-export { type AnimateFn as A, type DrawFn as D, type ExportRegistration as E, type ImportRegistration as I, type Lab as L, type MeshHandle as M, type PointHandle as P, type Reactive as R, type SketchConfig as S, type Lab2D as a, type LayerMap as b, type LayerNode as c, LayerPanel as d, type LayerState as e, type LineHandle as f, type Pointer2D as g, type PointerFn as h, type SelectOpts as i, type ShapeHandle as j, type ShapeMode as k, type Sketch2DConfig as l, type Sketch2DFn as m, Sketch2DInstance as n, type SliderOpts as o, computeEffectiveVisibility as p, sketch2d as s };
+/**
+ * A Sheet on screen — the same exploded primitives `toSVG` and `toDXF` write, drawn on a
+ * canvas: pens at their paper weight, dashes at their paper length, text at its paper
+ * height, all at the current zoom.
+ *
+ *   drawSheet(ctx, sheet, fitSheet(sheet.bounds(), w, h))      // in any 2D canvas (sketch2d)
+ *
+ *   const view = new SheetCanvas(container, { sheet });         // a widget: pan, zoom, pick
+ *   view.onPick((prim) => selection.select(prim?.key ? [prim.key] : []));
+ *   selection.onChange((keys) => view.setHighlight(keys));
+ *
+ * No three.js — this is part of `tekto/2d`.
+ */
+
+/** Sheet → screen: `scale` CSS pixels per sheet unit, the sheet origin at (`x`, `y`); y up. */
+interface SheetTransform {
+    scale: number;
+    x: number;
+    y: number;
+}
+interface DrawSheetOptions {
+    /** The exploded sheet, if you have it already (`sheet.explode()`). */
+    prims?: readonly SheetPrim[];
+    /** Keys whose primitives are drawn highlighted. */
+    highlight?: Iterable<string> | null;
+    highlightColor?: string;
+}
+/** The transform that fits `bounds` into a `width` × `height` canvas with a pixel margin. */
+declare function fitSheet(bounds: {
+    min: Pt;
+    max: Pt;
+} | null, width: number, height: number, margin?: number): SheetTransform;
+/** Draw the sheet's primitives with `t`; the canvas transform (e.g. device-pixel ratio) is kept. */
+declare function drawSheet(ctx: CanvasRenderingContext2D, sheet: Sheet, t: SheetTransform, opts?: DrawSheetOptions): void;
+interface SheetCanvasOptions {
+    sheet?: Sheet | null;
+    /** Paper colour (default white; "transparent" shows what is underneath). */
+    background?: string;
+    /** How close a click must be to pick a line, in CSS pixels (default 6). */
+    pickTolerance?: number;
+    /** Margin when fitting, in CSS pixels (default 24). */
+    margin?: number;
+    highlightColor?: string;
+}
+type Mods = {
+    shiftKey: boolean;
+    metaKey: boolean;
+    ctrlKey: boolean;
+};
+/**
+ * A sheet in a container: fills it, fits the drawing, zooms with the wheel (about the
+ * cursor), pans by dragging, fits again on double-click. A click picks the primitive under
+ * it (`onPick` — its `key` names the record); `setHighlight(keys)` shows a selection.
+ * `onDraw` paints on top in screen pixels (handles, markers that keep their size), with
+ * `toScreen` / `toSheet` to convert. The canvas is marked `data-tekto-overlay`, so over
+ * an `appShell()` viewport (`app.overlay()`) it shows in snapshots.
+ */
+declare class SheetCanvas {
+    readonly canvas: HTMLCanvasElement;
+    private ctx;
+    private _sheet;
+    private prims;
+    private t;
+    private fitted;
+    private highlight;
+    private pickFns;
+    private drawFns;
+    private frame;
+    private ro;
+    private off;
+    private opts;
+    constructor(container: HTMLElement, opts?: SheetCanvasOptions);
+    get sheet(): Sheet | null;
+    /** The primitives on screen (the sheet, exploded once per `setSheet`). */
+    get primitives(): readonly SheetPrim[];
+    get transform(): SheetTransform;
+    /** Show a sheet. The first one is fitted; later ones keep the zoom, so a sheet rebuilt on
+     *  every edit stays put (`fit: true` to refit). */
+    setSheet(sheet: Sheet | null, opts?: {
+        fit?: boolean;
+    }): void;
+    setTransform(t: SheetTransform): void;
+    fit(): void;
+    toSheet(x: number, y: number): Pt;
+    toScreen(p: Pt): {
+        x: number;
+        y: number;
+    };
+    /** The primitive at a canvas position (CSS pixels), or null. */
+    pick(x: number, y: number): SheetPrim | null;
+    /** Clicks (not drags): the picked primitive, or null for paper. Returns the unsubscribe. */
+    onPick(fn: (prim: SheetPrim | null, mods: Mods) => void): () => void;
+    /** Draw primitives with these keys highlighted (a selection); null clears. */
+    setHighlight(keys: Iterable<string> | null): void;
+    /** Paint over the sheet in screen pixels after every redraw. Returns the unsubscribe. */
+    onDraw(fn: (ctx: CanvasRenderingContext2D, t: SheetTransform) => void): () => void;
+    /** Redraw on the next frame (calls coalesce). */
+    redraw(): void;
+    /** Draw now — before reading the canvas back. */
+    paint(): void;
+    dispose(): void;
+    private size;
+    private resize;
+    private wire;
+}
+
+export { type AnimateFn as A, type DrawFn as D, type ExportRegistration as E, type ImportRegistration as I, type Lab as L, type MeshHandle as M, type PointHandle as P, type Reactive as R, type SketchConfig as S, type DrawSheetOptions as a, type Lab2D as b, type LayerMap as c, type LayerNode as d, LayerPanel as e, type LayerState as f, type LineHandle as g, type Pointer2D as h, type PointerFn as i, type SelectOpts as j, type ShapeHandle as k, type ShapeMode as l, SheetCanvas as m, type SheetCanvasOptions as n, type SheetTransform as o, type Sketch2DConfig as p, type Sketch2DFn as q, Sketch2DInstance as r, type SliderOpts as s, computeEffectiveVisibility as t, drawSheet as u, fitSheet as v, sketch2d as w };

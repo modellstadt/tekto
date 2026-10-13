@@ -1,7 +1,10 @@
 import {
   ControlPanel,
+  SheetCanvas,
   Sketch2DInstance,
   describeSceneObject,
+  drawSheet,
+  fitSheet,
   getTheme,
   installAgentBridge,
   plainBundle,
@@ -9,7 +12,7 @@ import {
   sceneSummary,
   sketch2d,
   slug
-} from "./chunk-WYU5UG63.mjs";
+} from "./chunk-AQT7Y2CN.mjs";
 import {
   Algo,
   ArcCurve,
@@ -147,26 +150,31 @@ import {
   reverse,
   selectOnClick,
   supabaseAdapter
-} from "./chunk-BEIQQYD6.mjs";
+} from "./chunk-EJK3E2KL.mjs";
 import {
+  DASH_PATTERNS,
   OBB2D,
   ParamStore,
   Polygon2D,
   PolygonBool,
+  Sheet,
+  SheetView,
   _resolveLayers,
   _sanLayer,
   _writeR12Prologue,
+  aciFromHex,
   createLayout,
   createParams,
   createRandom,
   download,
   noise,
+  pickPrim,
   polygonIntersection,
   setClipSnap,
   stampName,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-TZW7QNPY.mjs";
+} from "./chunk-K5F6U4JJ.mjs";
 import {
   Mesh,
   Plane,
@@ -7366,6 +7374,7 @@ function appShell(config) {
   }
   requestAnimationFrame(loop);
   let statusText = "";
+  const overlays = [];
   const instance = {
     params,
     scene,
@@ -7393,6 +7402,13 @@ function appShell(config) {
         statusEl.style.display = "none";
       }
     },
+    overlay() {
+      const el = document.createElement("div");
+      el.style.cssText = "position:absolute;inset:0;";
+      (overlays[overlays.length - 1] ?? viewportEl).after(el);
+      overlays.push(el);
+      return el;
+    },
     dispose() {
       disposed = true;
       markup?.dispose();
@@ -7401,6 +7417,22 @@ function appShell(config) {
       renderer.dispose();
       config.container.removeChild(root);
     }
+  };
+  const snapshotPng = () => {
+    const base = renderer.snapshotPng();
+    const shown = [...vpWrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
+    if (!shown.length) return base;
+    const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
+    const out = document.createElement("canvas");
+    out.width = src.width;
+    out.height = src.height;
+    const g = out.getContext("2d");
+    g.drawImage(src, 0, 0);
+    for (const c of shown) {
+      const r = c.getBoundingClientRect();
+      g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
+    }
+    return out.toDataURL("image/png");
   };
   const context = () => ({
     harness: "appShell",
@@ -7415,7 +7447,7 @@ function appShell(config) {
     title: config.title ?? "app",
     hitAt: (x, y) => renderer.hitAt(x, y),
     groundAt: (x, y) => renderer.groundAt(x, y),
-    snapshotPng: () => renderer.snapshotPng(),
+    snapshotPng: () => snapshotPng(),
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => {
@@ -7429,7 +7461,7 @@ function appShell(config) {
       ...opts,
       title: config.title ?? "app",
       harness: "appShell",
-      png: renderer.snapshotPng(),
+      png: snapshotPng(),
       viewport: { width: viewportEl.clientWidth, height: viewportEl.clientHeight },
       context: context()
     }),
@@ -7664,6 +7696,7 @@ export {
   CubicBezierCurve,
   Curvature,
   CurveUtils,
+  DASH_PATTERNS,
   DEFAULT_BACKGROUND,
   Delaunay2D,
   DistanceTransform,
@@ -7758,6 +7791,9 @@ export {
   Segment,
   Selection,
   SharedStore,
+  Sheet,
+  SheetCanvas,
+  SheetView,
   Sketch2DInstance,
   SketchInstance,
   Slab,
@@ -7787,6 +7823,7 @@ export {
   WallOpening,
   WallSystem,
   WallType,
+  aciFromHex,
   appShell,
   bindScene,
   boundingWalls,
@@ -7804,12 +7841,14 @@ export {
   createRandom,
   devServerAdapter,
   download,
+  drawSheet,
   easeInOut,
   edgeOutwardVisibility,
   edgeStyle,
   extractVisiblePolylines,
   findAdjacent,
   fitRadius,
+  fitSheet,
   getTheme,
   groundAppearance,
   hiddenLineIdBuffer,
@@ -7831,6 +7870,7 @@ export {
   orthoFrustum,
   perpVisibility,
   perpVisibilityOfPolys,
+  pickPrim,
   polygonFromVertices,
   polygonIntersection,
   polylinesToSVG,
