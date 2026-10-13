@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.8.2 — 2026-10-14
+
+The issues 7DHouse filed (#62–#65) and what BuildGraph needed from the old Viewport, on the one renderer: IFC storeys at their height, roofs, slab openings framed and voided, Studio's poché and shadows, callouts that see more and cost less, hidden objects hidden from everything, view-mode icons, a fading grid ground, and appShell drawing on demand.
+
 - `buildCutList` takes slab parts (any part with a material, profile, length and role), so
   a joisted floor's joists go on the same cut list as the walls' studs without a cast.
   From BuildGraph.

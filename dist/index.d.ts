@@ -1,13 +1,13 @@
-import { V as Vec3, M as Mesh, S as Scene, c as StandardView, d as SectionRequest, R as RenderMode, L as LightingMode } from './Scene-CaG0H74_.js';
+import { V as Vec3, M as Mesh, R as RenderMode, S as Scene, c as StandardView, d as SectionRequest, L as LightingMode } from './Scene-CaG0H74_.js';
 export { A as AABB, F as ColoredMeshData, e as FlatMeshData, f as LegacyMeshJSON, g as Mat4, h as MeshEdge, i as MeshFace, j as MeshJSON, k as MeshNode, l as MeshValidation, O as ObjFile, m as ObjMeshData, P as Projection, n as SceneEvent, o as SceneEventListener, p as SceneJSON, a as SceneObject, q as SceneObjectType, T as Triangle, b as Vec2, r as Vec4, s as VisualStyle } from './Scene-CaG0H74_.js';
-import { D as DxfLayerDef } from './download-B-QMiYSd.js';
-export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-B-QMiYSd.js';
+import { D as DxfLayerDef } from './download-D72kLS7p.js';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-D72kLS7p.js';
 import { BspTree, SharedStore, Presence } from './core.js';
 export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BalloonFrame, BalloonFrameOptions, BlobDetect, Box, BspNode, BspPolygon, Capsule2D, CltConstruction, CltOptions, CollabAdapter, CollabEvents, CollabStatus, CollabUser, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, Doc, DocChange, DocChangeSource, DocEditOptions, DocJSON, DocOptions, DocSchema, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, PerpSegment, PickingView, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PresenceView, PropertyMap, Ray, RealizedSlab, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, SceneBinding, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Selection, SharedRecord, SharedStoreOptions, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOptions, SlabPart, SlabPartRole, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOptions, StairShape, StairType, StairTypeOptions, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, SupabaseLike, UpAxis, VecMath, VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallSystem, WallType, WindowPartitioning, bindScene, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, localAdapter, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverseContact, selectOnClick, shareSelection, supabaseAdapter } from './core.js';
 import { P as ParamStore, b as ParamSchema } from './Params-op8yBPbB.js';
 export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-op8yBPbB.js';
-import { C as Commands, E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-CJlmIOZ9.js';
-export { A as AnimateFn, a as Command, b as CommandInfo, D as DrawFn, c as DrawSheetOptions, d as Lab2D, e as LayerMap, f as LayerNode, g as LayerPanel, h as LayerState, i as LineHandle, M as MeshHandle, P as PointHandle, j as Pointer2D, k as PointerFn, l as SelectOpts, m as ShapeHandle, n as ShapeMode, o as SheetCanvas, p as SheetCanvasOptions, q as SheetTransform, r as Sketch2DConfig, s as Sketch2DFn, t as Sketch2DInstance, u as SliderOpts, V as ViewControl, v as computeEffectiveVisibility, w as drawSheet, x as fitSheet, y as formatKeys, z as keyMatches, B as sketch2d, F as viewCommands } from './2d-CJlmIOZ9.js';
+import { C as Commands, E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-DGDB0asN.js';
+export { A as AnimateFn, a as Command, b as CommandInfo, D as DrawFn, c as DrawSheetOptions, d as Lab2D, e as LayerMap, f as LayerNode, g as LayerPanel, h as LayerState, i as LineHandle, M as MeshHandle, P as PointHandle, j as Pointer2D, k as PointerFn, l as SelectOpts, m as ShapeHandle, n as ShapeMode, o as SheetCanvas, p as SheetCanvasOptions, q as SheetTransform, r as Sketch2DConfig, s as Sketch2DFn, t as Sketch2DInstance, u as SliderOpts, V as ViewControl, v as computeEffectiveVisibility, w as drawSheet, x as fitSheet, y as formatKeys, z as keyMatches, B as sketch2d, F as viewCommands } from './2d-DGDB0asN.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
@@ -357,6 +357,62 @@ interface Theme {
 declare function getTheme(mode?: "dark" | "light"): Theme;
 
 /**
+ * Icons for the render modes: one cube drawn the way each mode draws, as Rhino and Blender
+ * show viewport shading. The icon is a small picture of what the mode does, not a metaphor
+ * for it.
+ *
+ * - solid: its three faces in three tones, lit from above left
+ * - ghost: see-through, the three hidden edges showing faintly
+ * - hiddenline: only the edges a viewer can see
+ * - wireframe: every edge, the hidden ones as strong as the rest
+ *
+ * The cube is a general axonometry rather than an isometric on purpose. In a true isometric
+ * the hidden back corner projects onto the front one, so the edges that tell ghost from
+ * hidden line would fall on lines already drawn and the two icons would be the same picture.
+ *
+ * Drawn on a 24 unit grid in `currentColor`, the convention of lucide and most icon sets,
+ * so they size and colour like the icons beside them. The shapes are plain data
+ * (`viewModeIconShapes`); `viewModeIconSvg` renders them as a string for DOM apps and
+ * `tekto/react`'s `ViewModeIcon` as JSX.
+ */
+
+/** One shape of a view-mode icon: a polygon (filled at `fill` opacity, outlined if `stroke`) or a line (at `opacity`). */
+type IconShape = {
+    kind: "polygon";
+    points: string;
+    fill?: number;
+    stroke?: boolean;
+} | {
+    kind: "line";
+    from: [number, number];
+    to: [number, number];
+    opacity?: number;
+};
+type P = [number, number];
+/** The front corner and the hidden back one: distinct, which is the point. */
+declare const VIEW_MODE_ICON_CORNERS: {
+    readonly front: P;
+    readonly back: P;
+};
+/** What to draw for a render mode, back to front. */
+declare function viewModeIconShapes(mode: RenderMode): IconShape[];
+/** The SVG root's attributes, shared by the string and the React form. */
+declare const VIEW_MODE_ICON_SVG: {
+    readonly xmlns: "http://www.w3.org/2000/svg";
+    readonly viewBox: "0 0 24 24";
+    readonly fill: "none";
+    readonly stroke: "currentColor";
+    readonly strokeWidth: 1.5;
+    readonly strokeLinejoin: "round";
+    readonly strokeLinecap: "round";
+};
+/**
+ * A render mode's icon as SVG markup, for a DOM app: `button.innerHTML =
+ * viewModeIconSvg("ghost")`. `size` in pixels, 16 by default.
+ */
+declare function viewModeIconSvg(mode: RenderMode, size?: number): string;
+
+/**
  * ControlPanel — the shared panel/control renderer for all tekto GUIs.
  *
  * One implementation of sliders, toggles, selects, color pickers, text
@@ -586,9 +642,10 @@ declare class Callouts {
      * `unplaced` is how many the margins had no room for, and it is shown. A
      * reader who can see fifteen labels and is not told there were twenty-two
      * has been given a wrong count, quietly, which is the failure this whole
-     * project is arranged against.
+     * project is arranged against. `upTo`: some of them were never looked at
+     * (the margins were full), so it is how many there could be: "up to n".
      */
-    update(placements: Placement[], unplaced?: number): void;
+    update(placements: Placement[], unplaced?: number, upTo?: boolean): void;
     private showOverflow;
     private make;
     setVisible(on: boolean): void;
@@ -630,6 +687,13 @@ interface ThreeRendererConfig {
     antialias: boolean;
     backgroundColor: number;
     showGrid: boolean;
+    /**
+     * How the grid is drawn: `"lines"`, a fixed `gridSize` grid of `gridDivisions` lines;
+     * `"fading"`, the ground ruled in round metres for the size of the content (1 m under a
+     * house, 10 m under a block, every fifth line stronger) that fades out with distance, so
+     * it gives a sense of scale and has no edge. It follows the content. Default `"lines"`.
+     */
+    gridStyle: "lines" | "fading";
     gridSize: number;
     gridDivisions: number;
     showAxes: boolean;
@@ -666,6 +730,8 @@ declare class ThreeRenderer {
     private _needsRender;
     private hideHelpers;
     private gridHelper;
+    private fadingGrid;
+    private gridDirty;
     private axesHelper;
     private externalObjects;
     private container;
@@ -1596,7 +1662,12 @@ interface AppShellInstance<S extends ParamSchema = ParamSchema> {
      *  typing in a field); agents list and run them through `window.__tekto`. The view commands
      *  (`view.top`, `view.fitAll`, …) are there from the start, without keys. */
     commands: Commands;
-    /** Register an animation callback (called every frame with dt in seconds) */
+    /**
+     * Register an animation callback, called every frame with dt in seconds. While one is set
+     * the view draws every frame; without one it draws only when something changed (the
+     * scene, the camera, a param), so an idle app costs nothing. Changed three.js objects
+     * yourself outside it? Call `app.renderer.requestRender()`.
+     */
     onAnimate(fn: (dt: number, time: number) => void): void;
     /**
      * Register the build pass: runs (then the display pass) whenever a param
@@ -1719,4 +1790,4 @@ interface MarkupBundle {
     dir?: string;
 }
 
-export { type AppShellConfig, type AppShellInstance, type Appearance, BspTree, type CalloutItem, Callouts, Commands, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, DEFAULT_BACKGROUND, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IdBufferOptions, ImportRegistration, Lab, type LayoutOptions, LightingMode, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mesh, NavGizmo, type NavGizmoOptions, type PanelButton, ParamSchema, ParamStore, type PickInfo, type Placement, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SectionRequest, SharedStore, SketchConfig, SketchInstance, StandardView, type Theme, ThreeRenderer, type ThreeRendererConfig, Vec3, type ViewMode, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, easeInOut, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, labelWidthFor, layoutLabels, lightBalance, modeBackground, nearestAxis, orbitFor, orthoFrustum, polylinesToSVG, processWorkerRequest, sectionAppearance, sectionPlane, shortestTurn, sketch, standardOrbit, surfaceAppearance };
+export { type AppShellConfig, type AppShellInstance, type Appearance, BspTree, type CalloutItem, Callouts, Commands, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, DEFAULT_BACKGROUND, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IconShape, type IdBufferOptions, ImportRegistration, Lab, type LayoutOptions, LightingMode, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mesh, NavGizmo, type NavGizmoOptions, type PanelButton, ParamSchema, ParamStore, type PickInfo, type Placement, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SectionRequest, SharedStore, SketchConfig, SketchInstance, StandardView, type Theme, ThreeRenderer, type ThreeRendererConfig, VIEW_MODE_ICON_CORNERS, VIEW_MODE_ICON_SVG, Vec3, type ViewMode, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, easeInOut, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, labelWidthFor, layoutLabels, lightBalance, modeBackground, nearestAxis, orbitFor, orthoFrustum, polylinesToSVG, processWorkerRequest, sectionAppearance, sectionPlane, shortestTurn, sketch, standardOrbit, surfaceAppearance, viewModeIconShapes, viewModeIconSvg };

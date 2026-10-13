@@ -2543,13 +2543,13 @@ var Polygon2D = {
   // ================================================================
   /** Signed area of a 2D polygon (positive if CCW, negative if CW). */
   signedArea(polygon) {
-    let area2 = 0;
+    let area = 0;
     const n = polygon.length;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      area2 += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
+      area += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
     }
-    return area2 / 2;
+    return area / 2;
   },
   /** Unsigned area. */
   area(polygon) {
@@ -3067,6 +3067,21 @@ var Polygon2D = {
     }
     return triangles;
   },
+  /**
+   * Triangles covering a polygon with holes, as indices into `[outer, ...holes].flat()`,
+   * counter-clockwise. Rings may be open or closed and wound either way. Each hole is
+   * bridged into the outer ring and the result ear-clipped: for simple rings, holes inside
+   * the outer ring and apart from each other.
+   */
+  triangulateWithHoles(outer, holes = []) {
+    const index = /* @__PURE__ */ new Map();
+    [outer, ...holes].flat().forEach((p, i) => {
+      if (!index.has(p)) index.set(p, i);
+    });
+    let poly = orientRing(outer, true);
+    for (const hole of holes) poly = bridgeHole(poly, orientRing(hole, false));
+    return earClipRing(poly).map(([a, b, c]) => [index.get(a), index.get(b), index.get(c)]);
+  },
   // ================================================================
   // MINIMUM ENCLOSING CIRCLE
   // ================================================================
@@ -3148,9 +3163,9 @@ var Polygon2D = {
       }
       const w = maxU - minU;
       const h = maxV - minV;
-      const area2 = w * h;
-      if (area2 < bestArea) {
-        bestArea = area2;
+      const area = w * h;
+      if (area < bestArea) {
+        bestArea = area;
         bestAngle = angle;
         bestW = w;
         bestH = h;
@@ -3162,6 +3177,79 @@ var Polygon2D = {
     return new OBB2D(bestCenter, bestW, bestH, bestAngle);
   }
 };
+function ringArea(r) {
+  let a = 0;
+  for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
+}
+function orientRing(r, ccw) {
+  const last = r[r.length - 1];
+  const ring = r.length > 1 && r[0].x === last.x && r[0].y === last.y ? r.slice(0, -1) : r.slice();
+  return ringArea(ring) > 0 === ccw ? ring : ring.reverse();
+}
+function bridgeHole(outer, hole) {
+  let hi = 0;
+  for (let i = 1; i < hole.length; i++) if (hole[i].x > hole[hi].x) hi = i;
+  const h = hole[hi];
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < outer.length; i++) {
+    const o = outer[i];
+    if (o.x < h.x) continue;
+    const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2;
+    if (d < bestD && !cutCrosses(h, o, outer, hole)) {
+      bestD = d;
+      best = i;
+    }
+  }
+  if (best < 0) best = 0;
+  const holeLoop = [...hole.slice(hi), ...hole.slice(0, hi), h];
+  return [...outer.slice(0, best + 1), ...holeLoop, ...outer.slice(best)];
+}
+function cutCrosses(a, b, ...rings) {
+  const side = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+  for (const r of rings) for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    if (p === a || q === a || p === b || q === b) continue;
+    if (side(a, b, p) !== side(a, b, q) && side(p, q, a) !== side(p, q, b)) return true;
+  }
+  return false;
+}
+function earClipRing(poly) {
+  const tris = [];
+  const idx = poly.map((_, i) => i);
+  const isEar = (i, j, k) => {
+    const a = poly[i], b = poly[j], c = poly[k];
+    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 1e-18) return false;
+    for (const m of idx) {
+      if (m === i || m === j || m === k) continue;
+      const p = poly[m];
+      const s1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+      const s2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
+      const s3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
+      if (s1 >= 0 && s2 >= 0 && s3 >= 0 && !(p.x === a.x && p.y === a.y) && !(p.x === b.x && p.y === b.y) && !(p.x === c.x && p.y === c.y)) return false;
+    }
+    return true;
+  };
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 1e4) {
+    let clipped = false;
+    for (let n = 0; n < idx.length; n++) {
+      const i = idx[(n + idx.length - 1) % idx.length], j = idx[n], k = idx[(n + 1) % idx.length];
+      if (isEar(i, j, k)) {
+        tris.push([poly[i], poly[j], poly[k]]);
+        idx.splice(n, 1);
+        clipped = true;
+        break;
+      }
+    }
+    if (!clipped) break;
+  }
+  if (idx.length === 3) tris.push([poly[idx[0]], poly[idx[1]], poly[idx[2]]]);
+  return tris;
+}
 function pointInTriangle2D(p, a, b, c) {
   const d1 = Polygon2D.cross2D(a, b, p);
   const d2 = Polygon2D.cross2D(b, c, p);
@@ -4174,85 +4262,8 @@ function sheetToDXF(sheet, opts) {
   return writeDxf2D({ ...c, layers }, { scale: units === "mm" ? 1e3 : 1, linetypeScale: sheet.scale * (units === "mm" ? 1 : 1e-3) });
 }
 function triangulateRings(rings) {
-  let poly = normalize(rings[0], true);
-  for (const hole of rings.slice(1)) poly = bridge(poly, normalize(hole, false));
-  return earClip(poly);
-}
-function area(r) {
-  let a = 0;
-  for (let i = 0; i < r.length; i++) {
-    const p = r[i], q = r[(i + 1) % r.length];
-    a += p.x * q.y - q.x * p.y;
-  }
-  return a / 2;
-}
-function normalize(r, ccw) {
-  let ring = r.length > 1 && r[0].x === r[r.length - 1].x && r[0].y === r[r.length - 1].y ? r.slice(0, -1) : r.slice();
-  if (area(ring) > 0 !== ccw) ring = ring.reverse();
-  return ring;
-}
-function bridge(outer, hole) {
-  let hi = 0;
-  for (let i = 1; i < hole.length; i++) if (hole[i].x > hole[hi].x) hi = i;
-  const h = hole[hi];
-  let best = -1, bestD = Infinity;
-  for (let i = 0; i < outer.length; i++) {
-    const o = outer[i];
-    if (o.x < h.x) continue;
-    const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2;
-    if (d < bestD && !crossesAny(h, o, outer, hole)) {
-      bestD = d;
-      best = i;
-    }
-  }
-  if (best < 0) best = 0;
-  const holeLoop = [...hole.slice(hi), ...hole.slice(0, hi), h];
-  return [...outer.slice(0, best + 1), ...holeLoop, ...outer.slice(best)];
-}
-function crossesAny(a, b, ...rings) {
-  for (const r of rings) for (let i = 0; i < r.length; i++) {
-    const p = r[i], q = r[(i + 1) % r.length];
-    if (p === a || q === a || p === b || q === b) continue;
-    if (segX(a, b, p, q)) return true;
-  }
-  return false;
-}
-function segX(a, b, c, d) {
-  const o = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
-  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
-}
-function earClip(poly) {
-  const tris = [];
-  const idx = poly.map((_, i) => i);
-  const isEar = (i, j, k) => {
-    const a = poly[i], b = poly[j], c = poly[k];
-    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 1e-18) return false;
-    for (const m of idx) {
-      if (m === i || m === j || m === k) continue;
-      const p = poly[m];
-      const s1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-      const s2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
-      const s3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
-      if (s1 >= 0 && s2 >= 0 && s3 >= 0 && !(p.x === a.x && p.y === a.y) && !(p.x === b.x && p.y === b.y) && !(p.x === c.x && p.y === c.y)) return false;
-    }
-    return true;
-  };
-  let guard = 0;
-  while (idx.length > 3 && guard++ < 1e4) {
-    let clipped = false;
-    for (let n = 0; n < idx.length; n++) {
-      const i = idx[(n + idx.length - 1) % idx.length], j = idx[n], k = idx[(n + 1) % idx.length];
-      if (isEar(i, j, k)) {
-        tris.push([poly[i], poly[j], poly[k]]);
-        idx.splice(n, 1);
-        clipped = true;
-        break;
-      }
-    }
-    if (!clipped) break;
-  }
-  if (idx.length === 3) tris.push(idx.map((i) => poly[i]));
-  return tris;
+  const all = rings.flat();
+  return Polygon2D.triangulateWithHoles(rings[0], rings.slice(1)).map((t) => t.map((i) => all[i]));
 }
 
 // src/render/SheetCanvas.ts

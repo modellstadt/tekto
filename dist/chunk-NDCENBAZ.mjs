@@ -1,7 +1,7 @@
 import {
   Polygon2D,
   PolygonBool
-} from "./chunk-K7LUW25N.mjs";
+} from "./chunk-QA7NH7ES.mjs";
 import {
   Mesh,
   Plane
@@ -11015,8 +11015,12 @@ var IfcWriter = class {
     // storey at save time.
     this.storeyPlacementByRef = /* @__PURE__ */ new Map();
     // storeyRef → placementRef
+    this.storeyElevationByRef = /* @__PURE__ */ new Map();
+    // storeyRef → elevation
     this.elementsByStorey = /* @__PURE__ */ new Map();
     // storeyRef → contained element refs
+    this.partRefs = /* @__PURE__ */ new Set();
+    // what addRoof may gather: addSlab / addMember results
     // Tracking.
     this.wallRefs = [];
     this.wallByObject = /* @__PURE__ */ new Map();
@@ -11066,7 +11070,8 @@ var IfcWriter = class {
    * line id. Pass that id as `opts.storey` on subsequent `addWall` /
    * `addSlab` / `addWallSystem` calls to attach elements to the new
    * storey. The bootstrap storey (created from `IfcWriterOptions`)
-   * stays the default for any call that omits `storey`.
+   * stays the default for any call that omits `storey`. Heights stay
+   * absolute: a wall on a storey at 3 m has `baseElevation: 3`.
    *
    * @example
    *   const writer = new IfcWriter({ storeyName: "Ground floor", storeyElevation: 0 });
@@ -11171,11 +11176,12 @@ var IfcWriter = class {
     const opDepth = wall.thickness;
     const opCenter = pointAlongCenterline(wall.centerline, opening.centerlinePosition);
     const tangent = tangentAlongCenterline(wall.centerline, opening.centerlinePosition);
-    const z = wall.baseElevation + opening.sillHeight;
+    const frame = this.storeyFrame(storeyRef ?? this.storeyRef);
+    const z = wall.baseElevation + opening.sillHeight - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(opCenter.x)},${ifcReal(opCenter.y)},${ifcReal(z)}))`);
     const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(tangent.x)},${ifcReal(tangent.y)},0.))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${refDir})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storeyRef ?? this.storeyRef) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const profileOrigin = this.addEntity(`IFCCARTESIANPOINT((0.,0.))`);
     const profileAxis2D = this.addEntity(`IFCAXIS2PLACEMENT2D(#${profileOrigin},${"$"})`);
@@ -11226,11 +11232,18 @@ var IfcWriter = class {
   /**
    * Add a framed member (stud / plate / header / cripple / etc.) as an
    * IfcMember with a tessellated body (IfcTriangulatedFaceSet — efficient,
-   * IFC4-native). Aggregating under a wall is the caller's responsibility
-   * (see addWallSystem).
+   * IFC4-native). The mesh is in world coordinates. Aggregating under a
+   * wall is the caller's responsibility (see addWallSystem).
+   *
+   * An element that stands on its own — a railing, a column — passes
+   * `opts.storey` and is contained in that storey. A part that a wall, slab
+   * or roof gathers leaves it out: it is contained through its whole.
+   *
+   *   ifc.addMember(0, { name: "Railing", role: "railing", mesh, ifcType: "IfcRailing" }, { storey: first });
    */
-  addMember(_parentWallRef, part) {
+  addMember(_parentWallRef, part, opts = {}) {
     void _parentWallRef;
+    const storey = opts.storey === void 0 ? null : this.resolveStorey(opts.storey);
     const mesh = part.mesh;
     const positions = mesh.positions;
     const indices = mesh.indices;
@@ -11248,12 +11261,14 @@ var IfcWriter = class {
       `IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','Tessellation',(#${faceSet}))`
     );
     const productShape = this.addEntity(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shapeRep}))`);
-    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.storeyPlacementRef},#${this.worldPlacementRef})`);
+    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.buildingPlacementRef},#${this.worldPlacementRef})`);
     const ifcType = part.ifcType ?? "IfcMember";
     const typeName = ifcType.toUpperCase();
     const memberRef = this.addEntity(
       `${typeName}(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(part.name)},$,${ifcStr(part.role)},#${placement},#${productShape},$,.NOTDEFINED.)`
     );
+    this.partRefs.add(memberRef);
+    if (storey !== null) this.attachToStorey(memberRef, storey);
     if (part.material) {
       const matRef = this.ensureMaterial(part.material);
       this.addEntity(
@@ -11313,10 +11328,11 @@ var IfcWriter = class {
     const closedPts = [...ptRefs, ptRefs[0]];
     const polyline = this.addEntity(`IFCPOLYLINE((${closedPts.map((r) => `#${r}`).join(",")}))`);
     const profile = this.addEntity(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${polyline})`);
-    const bottomZ = slab.elevation - slab.thickness;
+    const frame = this.storeyFrame(storey);
+    const bottomZ = slab.elevation - slab.thickness - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(bottomZ)}))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${this.dirXRef})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storey) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const extrusion = this.addEntity(
       `IFCEXTRUDEDAREASOLID(#${profile},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(slab.thickness)})`
@@ -11331,7 +11347,27 @@ var IfcWriter = class {
       `IFCSLAB(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(slabName)},$,$,#${localPlacement},#${productShape},$,.${predef}.)`
     );
     this.slabRefs.push(slabRef);
+    this.partRefs.add(slabRef);
     this.attachToStorey(slabRef, storey);
+    const openingRings = slab.openingRings();
+    slab.openings.forEach((opening, i) => {
+      const [p0, p1] = openingRings[i];
+      const u = p1.sub(p0).normalize();
+      const at = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(opening.centerX)},${ifcReal(opening.centerY)},${ifcReal(bottomZ)}))`);
+      const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(u.x)},${ifcReal(u.y)},0.))`);
+      const axis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${at},#${this.dirZRef},#${refDir})`);
+      const placement = this.addEntity(`IFCLOCALPLACEMENT(#${frame.placement},#${axis})`);
+      const centre = this.addEntity(`IFCCARTESIANPOINT((0.,0.))`);
+      const centreAxis = this.addEntity(`IFCAXIS2PLACEMENT2D(#${centre},$)`);
+      const rect = this.addEntity(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${centreAxis},${ifcReal(opening.width)},${ifcReal(opening.depth)})`);
+      const solid = this.addEntity(`IFCEXTRUDEDAREASOLID(#${rect},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(slab.thickness)})`);
+      const rep = this.addEntity(`IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','SweptSolid',(#${solid}))`);
+      const shape = this.addEntity(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}))`);
+      const openingRef = this.addEntity(
+        `IFCOPENINGELEMENT(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(opening.name ?? "Slab opening")},$,$,#${placement},#${shape},$,.OPENING.)`
+      );
+      this.addEntity(`IFCRELVOIDSELEMENT(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${slabRef},#${openingRef})`);
+    });
     const mergedProps = {
       ...slab.type?.properties ?? {},
       ...slab.properties ?? {}
@@ -11375,6 +11411,36 @@ var IfcWriter = class {
     );
     this.slabTypeRefs.set(type, typeRef);
     return typeRef;
+  }
+  // ── Roofs ────────────────────────────────────────────────────────
+  /**
+   * Add a roof: an `IfcRoof` that gathers its parts — slabs, members, plates,
+   * coverings already written with `addSlab` / `addMember` — and is contained
+   * in a storey (default: the bootstrap storey). The parts stop being
+   * contained in a storey themselves: in IFC a part belongs to its whole, and
+   * the whole to the storey.
+   *
+   *   const deck = ifc.addSlab(roofSlab, { predefinedType: "ROOF", storey: top });
+   *   const rafters = rafterParts.map((p) => ifc.addMember(0, p));
+   *   ifc.addRoof([deck, ...rafters], { storey: top, predefinedType: "GABLE_ROOF" });
+   */
+  addRoof(parts, opts = {}) {
+    const storey = this.resolveStorey(opts.storey);
+    if (parts.length === 0) throw new Error("IfcWriter.addRoof: a roof needs at least one part (a ref from addSlab or addMember).");
+    for (const p of parts) {
+      if (!this.partRefs.has(p)) throw new Error(`IfcWriter.addRoof: #${p} is not a slab or member this writer wrote (refs come from addSlab / addMember).`);
+    }
+    const gathered = new Set(parts);
+    for (const [ref, list] of this.elementsByStorey) this.elementsByStorey.set(ref, list.filter((e) => !gathered.has(e)));
+    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.storeyFrame(storey).placement},#${this.worldPlacementRef})`);
+    const roofRef = this.addEntity(
+      `IFCROOF(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(opts.name ?? "Roof")},$,$,#${placement},$,$,.${opts.predefinedType ?? "NOTDEFINED"}.)`
+    );
+    this.attachToStorey(roofRef, storey);
+    this.addEntity(
+      `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${roofRef},(${parts.map((r) => `#${r}`).join(",")}))`
+    );
+    return roofRef;
   }
   // ── Stairs ───────────────────────────────────────────────────────
   /**
@@ -11486,9 +11552,10 @@ var IfcWriter = class {
     const closedPts = [...ptRefs, ptRefs[0]];
     const polyline = this.addEntity(`IFCPOLYLINE((${closedPts.map((r) => `#${r}`).join(",")}))`);
     const profile = this.addEntity(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${polyline})`);
-    const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(space.elevation)}))`);
+    const frame = this.storeyFrame(storey);
+    const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(space.elevation - frame.elevation)}))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${this.dirXRef})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storey) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const extrusion = this.addEntity(
       `IFCEXTRUDEDAREASOLID(#${profile},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(space.height)})`
@@ -11625,7 +11692,20 @@ var IfcWriter = class {
     const storeyRef = this.addEntity(
       `IFCBUILDINGSTOREY(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(name)},$,$,#${placementRef},$,$,.ELEMENT.,${ifcReal(elevation)})`
     );
+    this.storeyElevationByRef.set(storeyRef, elevation);
     return { storeyRef, placementRef };
+  }
+  /**
+   * Where an element on a storey is placed: in the storey's placement, which is already
+   * raised to the storey's elevation. Heights in the API are absolute (`Wall.baseElevation`,
+   * `Slab.elevation`, `Space.elevation`), so the element's local z is its height minus
+   * `elevation`.
+   */
+  storeyFrame(storeyRef) {
+    return {
+      placement: this.storeyPlacementByRef.get(storeyRef) ?? this.storeyPlacementRef,
+      elevation: this.storeyElevationByRef.get(storeyRef) ?? 0
+    };
   }
   // ── Wall geometry ────────────────────────────────────────────────
   /**
@@ -11685,11 +11765,12 @@ var IfcWriter = class {
     }
     const length = Math.hypot(endX - startX, endY - startY);
     if (length < 1e-9) throw new Error("IfcWriter: zero-length trimmed wall segment");
-    const z = wall.baseElevation;
+    const frame = this.storeyFrame(storeyRef ?? this.storeyRef);
+    const z = wall.baseElevation - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(startX)},${ifcReal(startY)},${ifcReal(z)}))`);
     const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(ux)},${ifcReal(uy)},0.))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${refDir})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storeyRef ?? this.storeyRef) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const profileOrigin = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(length / 2)},0.))`);
     const profileAxisDir = this.addEntity(`IFCDIRECTION((1.,0.))`);
@@ -13851,111 +13932,6 @@ var CltConstruction = (wall) => [{
   ifcType: "IfcWall"
 }];
 
-// src/bim/slabs/types.ts
-var SlabOpening = class {
-  constructor(centerX, centerY, width, depth, name) {
-    this.centerX = centerX;
-    this.centerY = centerY;
-    this.width = width;
-    this.depth = depth;
-    this.name = name;
-  }
-};
-var SlabType = class {
-  constructor(opts) {
-    this.name = opts.name;
-    this.description = opts.description;
-    this.construction = opts.construction;
-    this.layers = opts.layers;
-    this.properties = opts.properties ?? {};
-    this.defaultJoistSpacing = opts.defaultJoistSpacing;
-    this.defaultJoistProfile = opts.defaultJoistProfile;
-    this.defaultMaterial = opts.defaultMaterial;
-  }
-  get layeredThickness() {
-    return (this.layers ?? []).reduce((s, l) => s + l.thickness, 0);
-  }
-};
-var Slab = class {
-  constructor(opts) {
-    this.openings = [];
-    this.boundary = opts.boundary;
-    this.thickness = opts.thickness ?? 0.2;
-    this.elevation = opts.elevation ?? 0;
-    this.name = opts.name;
-    this.type = opts.type;
-    this.properties = opts.properties;
-    if (opts.openings) this.openings.push(...opts.openings);
-    this.joistDirection = opts.joistDirection;
-  }
-  /** Total perimeter length (m). */
-  get perimeter() {
-    let total = 0;
-    const b = this.boundary;
-    for (let i = 0; i < b.length - 1; i++) total += b[i].distTo(b[i + 1]);
-    return total;
-  }
-  /** Slab footprint area (m²). Uses signed-area magnitude. */
-  get area() {
-    return Math.abs(Polygon2D.signedArea(this.boundary));
-  }
-  /**
-   * Build the slab envelope mesh: top face + bottom face + side quads.
-   * Uses `Polygon2D.triangulate2D` (ear-clipping) for the caps.
-   */
-  toMesh() {
-    const ring = Polygon2D.openRing(this.boundary);
-    const n = ring.length;
-    if (n < 3) {
-      return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
-    }
-    const zTop = this.elevation;
-    const zBot = this.elevation - this.thickness;
-    const positions = [];
-    const normals = [];
-    const indices = [];
-    const tris = Polygon2D.triangulate2D(ring);
-    const topBase = positions.length / 3;
-    for (const p of ring) {
-      positions.push(p.x, p.y, zTop);
-      normals.push(0, 0, 1);
-    }
-    for (const [a, b2, c] of tris) {
-      indices.push(topBase + a, topBase + b2, topBase + c);
-    }
-    const botBase = positions.length / 3;
-    for (const p of ring) {
-      positions.push(p.x, p.y, zBot);
-      normals.push(0, 0, -1);
-    }
-    for (const [a, b2, c] of tris) {
-      indices.push(botBase + c, botBase + b2, botBase + a);
-    }
-    for (let i = 0; i < n; i++) {
-      const p0 = ring[i];
-      const p1 = ring[(i + 1) % n];
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const len = Math.hypot(dx, dy);
-      if (len < 1e-9) continue;
-      const nx = dy / len, ny = -dx / len;
-      const base = positions.length / 3;
-      positions.push(p0.x, p0.y, zBot, p1.x, p1.y, zBot, p1.x, p1.y, zTop, p0.x, p0.y, zTop);
-      for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
-    return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));
-  }
-};
-function realizeSlab(slab, ctx) {
-  const type = slab.type;
-  const envelopeMesh = slab.toMesh();
-  const parts = type?.construction ? type.construction(slab, ctx) : [];
-  const layers = type?.layers ?? [];
-  const properties = { ...type?.properties ?? {}, ...slab.properties ?? {} };
-  return { slab, parts, layers, envelopeMesh, properties, joistDirection: ctx?.joistDirection };
-}
-
 // src/bim/slabs/orientation.ts
 function chooseJoistDirection(slab, opts = {}) {
   const method = opts.method ?? "auto";
@@ -14083,6 +14059,133 @@ function lineClipPolygon(origin, direction, boundary) {
   return dedup;
 }
 
+// src/bim/slabs/types.ts
+var SlabOpening = class {
+  constructor(centerX, centerY, width, depth, name) {
+    this.centerX = centerX;
+    this.centerY = centerY;
+    this.width = width;
+    this.depth = depth;
+    this.name = name;
+  }
+};
+var SlabType = class {
+  constructor(opts) {
+    this.name = opts.name;
+    this.description = opts.description;
+    this.construction = opts.construction;
+    this.layers = opts.layers;
+    this.properties = opts.properties ?? {};
+    this.defaultJoistSpacing = opts.defaultJoistSpacing;
+    this.defaultJoistProfile = opts.defaultJoistProfile;
+    this.defaultMaterial = opts.defaultMaterial;
+  }
+  get layeredThickness() {
+    return (this.layers ?? []).reduce((s, l) => s + l.thickness, 0);
+  }
+};
+var Slab = class {
+  constructor(opts) {
+    this.openings = [];
+    this.boundary = opts.boundary;
+    this.thickness = opts.thickness ?? 0.2;
+    this.elevation = opts.elevation ?? 0;
+    this.name = opts.name;
+    this.type = opts.type;
+    this.properties = opts.properties;
+    if (opts.openings) this.openings.push(...opts.openings);
+    this.joistDirection = opts.joistDirection;
+  }
+  /** Total perimeter length (m). */
+  get perimeter() {
+    let total = 0;
+    const b = this.boundary;
+    for (let i = 0; i < b.length - 1; i++) total += b[i].distTo(b[i + 1]);
+    return total;
+  }
+  /** Slab footprint area (m²). Uses signed-area magnitude. */
+  get area() {
+    return Math.abs(Polygon2D.signedArea(this.boundary));
+  }
+  /**
+   * The openings as rings in the XY plane (counter-clockwise, open): each a rectangle
+   * `width` along `direction` and `depth` across it, about its centre. `direction` defaults
+   * to the way `JoistedSlab` runs its joists without a context: `joistDirection`, else the
+   * one the bounds suggest. Throws for an opening that is empty or not inside the boundary.
+   */
+  openingRings(direction = this.joistDirection ?? joistDirectionFromBounds(this.boundary)) {
+    const u = direction.normalize();
+    const v = u.perp();
+    const outer = Polygon2D.openRing(this.boundary);
+    return this.openings.map((o, i) => {
+      const label = `Slab "${this.name ?? "slab"}": opening ${o.name ?? i}`;
+      if (!(o.width > 0 && o.depth > 0)) throw new Error(`${label} needs a width and depth above 0, got ${o.width} \xD7 ${o.depth}.`);
+      const c = new Vec2(o.centerX, o.centerY), a = u.mul(o.width / 2), b = v.mul(o.depth / 2);
+      const ring = [c.sub(a).sub(b), c.add(a).sub(b), c.add(a).add(b), c.sub(a).add(b)];
+      if (!ring.every((p) => Polygon2D.pointInPolygon(p, outer))) {
+        throw new Error(`${label} at (${o.centerX}, ${o.centerY}) is not inside the slab's boundary.`);
+      }
+      return ring;
+    });
+  }
+  /**
+   * Build the slab envelope mesh: top and bottom faces with the openings cut out, the
+   * outside edge and the openings' sides.
+   */
+  toMesh() {
+    const outer = Polygon2D.openRing(this.boundary);
+    if (outer.length < 3) {
+      return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
+    }
+    const zTop = this.elevation;
+    const zBot = this.elevation - this.thickness;
+    const wound = (r, ccw) => Polygon2D.signedArea(r) > 0 === ccw ? r : r.slice().reverse();
+    const rings = [wound(outer, true), ...this.openingRings().map((r) => wound(r, false))];
+    const all = rings.flat();
+    const tris = Polygon2D.triangulateWithHoles(rings[0], rings.slice(1));
+    const positions = [];
+    const normals = [];
+    const indices = [];
+    const topBase = positions.length / 3;
+    for (const p of all) {
+      positions.push(p.x, p.y, zTop);
+      normals.push(0, 0, 1);
+    }
+    for (const [a, b2, c] of tris) indices.push(topBase + a, topBase + b2, topBase + c);
+    const botBase = positions.length / 3;
+    for (const p of all) {
+      positions.push(p.x, p.y, zBot);
+      normals.push(0, 0, -1);
+    }
+    for (const [a, b2, c] of tris) indices.push(botBase + c, botBase + b2, botBase + a);
+    for (const ring of rings) {
+      const n = ring.length;
+      for (let i = 0; i < n; i++) {
+        const p0 = ring[i];
+        const p1 = ring[(i + 1) % n];
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-9) continue;
+        const nx = dy / len, ny = -dx / len;
+        const base = positions.length / 3;
+        positions.push(p0.x, p0.y, zBot, p1.x, p1.y, zBot, p1.x, p1.y, zTop, p0.x, p0.y, zTop);
+        for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
+        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+    }
+    return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));
+  }
+};
+function realizeSlab(slab, ctx) {
+  const type = slab.type;
+  const envelopeMesh = slab.toMesh();
+  const parts = type?.construction ? type.construction(slab, ctx) : [];
+  const layers = type?.layers ?? [];
+  const properties = { ...type?.properties ?? {}, ...slab.properties ?? {} };
+  return { slab, parts, layers, envelopeMesh, properties, joistDirection: ctx?.joistDirection };
+}
+
 // src/bim/slabs/solid.ts
 var SolidSlabConstruction = (slab) => [{
   name: "shell",
@@ -14150,41 +14253,50 @@ function JoistedSlab(options = {}) {
       if (proj < minP) minP = proj;
       if (proj > maxP) maxP = proj;
     }
+    const at = (t, p) => new Vec2(direction.x * t + perp.x * p, direction.y * t + perp.y * p);
+    const member = (name, role, a, b) => {
+      const length = a.distTo(b);
+      if (length < 0.01) return;
+      const ribbon = new ExtrudedRibbon({ centerline: [a, b], width: opts.profile.w, height: opts.profile.h, baseZ: joistBottomZ });
+      parts.push({ name, role, mesh: ribbon.toMesh(), material: opts.material, profile: opts.profile, length, ifcType: "IfcMember" });
+    };
+    const span = (p) => {
+      const hits = lineClipPolygon(at(0, p), direction, regularJoistClipBoundary);
+      return hits.length < 2 ? null : [hits[0], hits[hits.length - 1]];
+    };
+    const w = opts.profile.w;
+    const wells = slab.openingRings(direction).map((ring) => {
+      const ts = ring.map((q) => q.dot(direction)), ps = ring.map((q) => q.dot(perp));
+      return { t0: Math.min(...ts), t1: Math.max(...ts), p0: Math.min(...ps), p1: Math.max(...ps) };
+    });
+    const trimmerPs = wells.flatMap((o) => [o.p0 - w / 2, o.p1 + w / 2]);
     const startP = minP + edgeOffset;
     const endP = maxP - edgeOffset;
     let joistIdx = 0;
     for (let p = startP; p <= endP + 1e-6; p += opts.spacing) {
-      const origin = new Vec2(perp.x * p, perp.y * p);
-      const hits = lineClipPolygon(origin, direction, regularJoistClipBoundary);
-      if (hits.length < 2) continue;
-      const tMin = hits[0];
-      const tMax = hits[hits.length - 1];
-      const startPt = new Vec2(origin.x + direction.x * tMin, origin.y + direction.y * tMin);
-      const endPt = new Vec2(origin.x + direction.x * tMax, origin.y + direction.y * tMax);
-      const length = startPt.distTo(endPt);
-      if (length < 0.01) continue;
-      const ribbon = new ExtrudedRibbon({
-        centerline: [startPt, endPt],
-        width: opts.profile.w,
-        height: opts.profile.h,
-        baseZ: joistBottomZ
-      });
-      parts.push({
-        name: `Joist ${++joistIdx}`,
-        role: "joist",
-        mesh: ribbon.toMesh(),
-        material: opts.material,
-        profile: opts.profile,
-        length,
-        ifcType: "IfcMember"
-      });
+      if (trimmerPs.some((tp) => Math.abs(p - tp) < w)) continue;
+      const range = span(p);
+      if (!range) continue;
+      let pieces = [range];
+      for (const o of wells) {
+        if (p <= o.p0 - w / 2 || p >= o.p1 + w / 2) continue;
+        const cut0 = o.t0 - w - bearingGap, cut1 = o.t1 + w + bearingGap;
+        pieces = pieces.flatMap(([a, b]) => cut1 <= a || cut0 >= b ? [[a, b]] : [[a, Math.min(b, cut0)], [Math.max(a, cut1), b]]);
+      }
+      for (const [a, b] of pieces) member(`Joist ${++joistIdx}`, "joist", at(a, p), at(b, p));
     }
+    wells.forEach((o, i) => {
+      const n = wells.length > 1 ? ` ${i + 1}` : "";
+      for (const [k, p] of [o.p0 - w / 2, o.p1 + w / 2].entries()) {
+        const range = span(p);
+        if (range) member(`Trimmer${n}${k ? "b" : "a"}`, "trimmer", at(range[0], p), at(range[1], p));
+      }
+      for (const [k, t] of [o.t0 - w / 2, o.t1 + w / 2].entries()) {
+        member(`Header${n}${k ? "b" : "a"}`, "header", at(t, o.p0 + bearingGap), at(t, o.p1 - bearingGap));
+      }
+    });
     if (opts.sheathingThickness > 1e-6) {
-      const sheathingSlab = makeFlatPlate(
-        slab.boundary,
-        slab.elevation - opts.sheathingThickness,
-        opts.sheathingThickness
-      );
+      const sheathingSlab = makeFlatPlate(slab, direction, slab.elevation - opts.sheathingThickness, opts.sheathingThickness);
       parts.push({
         name: "Sheathing",
         role: "sheathing",
@@ -14195,7 +14307,7 @@ function JoistedSlab(options = {}) {
     }
     if (opts.ceilingThickness > 1e-6) {
       const ceilingZ = joistBottomZ - opts.ceilingThickness;
-      const ceilingMesh = makeFlatPlate(slab.boundary, ceilingZ, opts.ceilingThickness);
+      const ceilingMesh = makeFlatPlate(slab, direction, ceilingZ, opts.ceilingThickness);
       parts.push({
         name: "Ceiling",
         role: "ceiling",
@@ -14216,40 +14328,14 @@ function ensureClosedRing(polygon) {
 function ringPerimeter(closedRing) {
   return Polygon2D.polylineLength(closedRing);
 }
-function makeFlatPlate(boundary, baseZ, thickness) {
-  const ring = Polygon2D.openRing(boundary);
-  const n = ring.length;
-  if (n < 3) return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
-  const positions = [];
-  const normals = [];
-  const indices = [];
-  const tris = Polygon2D.triangulate2D(ring);
-  const topBase = positions.length / 3;
-  for (const p of ring) {
-    positions.push(p.x, p.y, baseZ + thickness);
-    normals.push(0, 0, 1);
-  }
-  for (const [a, b, c] of tris) indices.push(topBase + a, topBase + b, topBase + c);
-  const botBase = positions.length / 3;
-  for (const p of ring) {
-    positions.push(p.x, p.y, baseZ);
-    normals.push(0, 0, -1);
-  }
-  for (const [a, b, c] of tris) indices.push(botBase + c, botBase + b, botBase + a);
-  for (let i = 0; i < n; i++) {
-    const p0 = ring[i];
-    const p1 = ring[(i + 1) % n];
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-9) continue;
-    const nx = dy / len, ny = -dx / len;
-    const base = positions.length / 3;
-    positions.push(p0.x, p0.y, baseZ, p1.x, p1.y, baseZ, p1.x, p1.y, baseZ + thickness, p0.x, p0.y, baseZ + thickness);
-    for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-  return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));
+function makeFlatPlate(slab, direction, baseZ, thickness) {
+  return new Slab({
+    boundary: slab.boundary,
+    thickness,
+    elevation: baseZ + thickness,
+    openings: slab.openings,
+    joistDirection: direction
+  }).toMesh();
 }
 
 // src/bim/openings.ts
@@ -15501,15 +15587,15 @@ export {
   holzrahmenbauLayers,
   cltLayers,
   CltConstruction,
-  SlabOpening,
-  SlabType,
-  Slab,
-  realizeSlab,
   chooseJoistDirection,
   joistDirectionFromBounds,
   joistDirectionFromPCA,
   joistDirectionFromSupports,
   lineClipPolygon,
+  SlabOpening,
+  SlabType,
+  Slab,
+  realizeSlab,
   SolidSlabConstruction,
   JoistedSlab,
   OpeningType,
