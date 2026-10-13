@@ -14,6 +14,14 @@ before 1.0, breaking changes bump the minor version. See
   "history")`; `toJSON` / `load` for Save and Open. Built on `SharedStore`, so the adapters give
   persistence and shared editing: new `localAdapter()` (this browser), `devServerAdapter()`,
   `supabaseAdapter()`, `memoryAdapter()`. Records are plain JSON; geometry is derived from them.
+- **New `bindScene(doc, collection, scene, render)`** — keeps a scene in step with one
+  collection: `render(record, id)` adds the objects that show a record; a changed record
+  rebuilds only its objects (once per transaction), a removed one's go; undo shows up like any
+  edit; a record whose render throws is reported and skipped. `binding.recordOf(sceneId)` maps a
+  pick to its record, `objectsOf(id)` a record to what to highlight.
+- **`SceneObject.key`** — the record an object shows (`"blocks/k3f9x2"`), set by
+  `scene.withKey(key, fn)` from the moment it is added; `scene.byKey(key)`. Snapshots and ✎
+  Markup report it, so a mark on the viewport names a document record.
 
 ## 0.7.0 — 2026-10-13
 

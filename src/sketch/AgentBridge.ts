@@ -141,6 +141,7 @@ export function describeSceneObject(scene: Scene, id: string, src?: string): Mar
     ...(o.style.label ? { label: o.style.label } : {}),
     ...(o.pickTag ? { tag: o.pickTag } : {}),
     ...(typeof o.style.color === "string" ? { color: o.style.color } : {}),
+    ...(o.key ? { key: o.key } : {}),
     ...(src ? { src } : {}),
   };
 }

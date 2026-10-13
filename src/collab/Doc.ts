@@ -19,6 +19,7 @@
  * so the undo itself syncs. Two people editing the same record: the last write wins.
  */
 import { SharedStore, memoryAdapter, type CollabAdapter, type SharedRecord, type CollabUser, type CollabEvents, type Presence } from "./SharedStore";
+import type { Scene } from "../scene/Scene";
 
 /** What a collection's records look like: collection name → record type. */
 export type DocSchema = Record<string, object>;
@@ -379,3 +380,87 @@ export function localAdapter(opts: { prefix?: string; storage?: Pick<Storage, "g
     async user() { return user; },
   };
 }
+
+// ── bindScene: document → scene, by record ─────────────────────────────────────
+
+/** What `bindScene` returns: the record ↔ scene-object map, and a way out. */
+export interface SceneBinding {
+  readonly collection: string;
+  /** Scene ids of the objects showing a record (what to highlight when it is selected). */
+  objectsOf(id: string): string[];
+  /** The record a scene object shows (what a click picked), or undefined if not this collection's. */
+  recordOf(sceneId: string): string | undefined;
+  /** Render a record again (or every record), e.g. after a style setting changed. */
+  refresh(id?: string): void;
+  /** Stop following the document and remove this binding's objects from the scene. */
+  dispose(): void;
+}
+
+/**
+ * Keep a scene in step with one collection of a document. `render(record, id)` adds the
+ * objects that show a record (any `scene.add…` calls); each gets `key` = `"collection/id"`.
+ * When a record changes only its objects are rebuilt, when it is removed they go. A record
+ * whose render throws is reported (`console.error`, which snapshots pick up) and skipped.
+ *
+ *   const blocks = bindScene(doc, "blocks", app.scene, (b) => {
+ *     const m = MeshFactory.box(b.w, b.d, b.h); m.translate(b.x, b.y, b.h / 2);   // in place
+ *     app.scene.addMesh(m, { color: "#ccc" });
+ *   });
+ *   blocks.recordOf(pickedSceneId);   // → the block id
+ */
+export function bindScene<S extends DocSchema, C extends keyof S & string>(
+  doc: Doc<S>,
+  collection: C,
+  scene: Scene,
+  render: (record: S[C], id: string) => void,
+): SceneBinding {
+  const objects = new Map<string, string[]>();     // record id → scene ids
+  const keyOf = (id: string) => `${collection}${SEP}${id}`;
+  let capturing: string[] | null = null;
+  const unsubScene = scene.on((e) => {
+    if (e.type === "object:add" && capturing) capturing.push(e.id);
+    else if (e.type === "scene:clear") objects.clear();   // someone cleared the scene: nothing left to track
+  });
+
+  const drop = (id: string) => {
+    for (const sid of objects.get(id) ?? []) scene.remove(sid);
+    objects.delete(id);
+  };
+  const draw = (id: string, record: S[C] | undefined) => {
+    drop(id);
+    if (record === undefined) return;
+    const added: string[] = [];
+    capturing = added;
+    try {
+      scene.withKey(keyOf(id), () => render(record, id));
+    } catch (e) {
+      console.error(`bindScene("${collection}"): rendering ${keyOf(id)} failed:`, e);
+    } finally {
+      capturing = null;
+    }
+    objects.set(id, added);
+  };
+
+  for (const [id, rec] of doc.all(collection)) draw(id, rec);
+  const unsubDoc = doc.onChange((changes) => {
+    for (const c of changes) if (c.collection === collection) draw(c.id, c.value as S[C] | undefined);
+  });
+
+  return {
+    collection,
+    objectsOf: (id) => [...(objects.get(id) ?? [])],
+    recordOf: (sceneId) => {
+      const key = scene.get(sceneId)?.key;
+      return key && key.startsWith(collection + SEP) ? key.slice(collection.length + 1) : undefined;
+    },
+    refresh: (id) => {
+      if (id !== undefined) draw(id, doc.get(collection, id));
+      else for (const [rid, rec] of doc.all(collection)) draw(rid, rec);
+    },
+    dispose: () => {
+      unsubDoc(); unsubScene();
+      for (const id of [...objects.keys()]) drop(id);
+    },
+  };
+}
+
