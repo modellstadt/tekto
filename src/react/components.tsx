@@ -522,8 +522,6 @@ const buttonStyle: CSSProperties = {
  * `meta` is the part that earns a closed section its place on screen: a count,
  * a total, a setting. A header that says only "Cut list" is worth nothing shut;
  * one that says "Cut list, 94 pieces" answers the question most readers had.
- *
- * @experimental No app uses this yet; it may still change.
  */
 export interface AccordionSection {
   id: string;
@@ -551,8 +549,6 @@ export interface AccordionSection {
 
 /**
  * Props of `AccordionColumn`: its sections, the `localStorage` key for open state and heights, and class names for the host's styling.
- *
- * @experimental No app uses this yet; it may still change.
  */
 export interface AccordionColumnProps {
   sections: AccordionSection[];
@@ -597,8 +593,6 @@ const FLEXING = 1;
  * The flexible section takes the leftover until a sash gives it a height of its
  * own; from then on it is a section like the others, which is what makes a
  * boundary stay where it was put.
- *
- * @experimental No app uses this yet; it may still change.
  */
 export function AccordionColumn({
   sections, storageKey, className, style, classes = {},
@@ -768,8 +762,6 @@ export function AccordionColumn({
  * click, so it works with a mouse, a keyboard and a finger. Positioned to the
  * right-bottom of the mark by default; a host that needs it elsewhere styles
  * the box.
- *
- * @experimental No app uses this yet; it may still change.
  */
 export function InfoHint({ text, className, boxClassName, label = "What this is" }: {
   text: ReactNode; className?: string; boxClassName?: string; label?: string;

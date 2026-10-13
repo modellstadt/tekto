@@ -15,6 +15,8 @@ before 1.0, breaking changes bump the minor version. See
   - A section clips shadows too: the part it removes no longer shades what is left.
   - Flat lighting in a Z-up scene takes its sky from +Z, not from the side. Facades facing
     −Y had the ground colour.
+- `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
+  experimental: BuildGraph uses them. 47 exports keep the tag.
 
 ## 0.8.1 — 2026-10-13
 

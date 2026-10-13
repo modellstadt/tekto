@@ -56,7 +56,7 @@ Mixing them is the classic mistake: a Y-up primitive in a Z-up app lies on its s
 - **Hot loops read arrays, not views.** `mesh.faceVerts(id)`, `mesh.positions`, `mesh.indices` cost nothing; `mesh.node(id).position` allocates a view and a `Vec3`. Fine for a pass over a few thousand nodes, not for an inner loop over a million.
 - **Use `sketch(...)`** to build a runnable demo. Don't reach for the React app shell unless you specifically need persistent state, multiple panels, or routing.
 - **`three` is allowed only in `src/render/`** (`ThreeRenderer` and its parts, `viewRules`, `Callouts`, `NavGizmo`) **and the two GPU-assisted exporters in `src/io/`** (`IdBufferHiddenLine`, `PolylineVisibility`). Never in `core/`, `scene/`, `sketch/`, `gui/` or `bim/` — those must run without WebGL (tests, workers, the 2D sketch). It's an externalised peer dep; a sketch reaches the renderer through the `Lab` / `SketchInstance` API, not by importing three itself.
-- **`@experimental` exports** (51 of them: much of the SDF family, the React components, `SVGRenderer`, a few helpers) have no known app using them yet — prefer the others when both would do. They are kept, not deprecated; when an app starts using one, drop its tag. `llms-full.txt` shows the tag.
+- **`@experimental` exports** (47 of them: much of the SDF family, most of the React components, `SVGRenderer`, a few helpers) have no known app using them yet — prefer the others when both would do. They are kept, not deprecated; when an app starts using one, drop its tag. `llms-full.txt` shows the tag.
 - **Avoid** adding new files when an existing file is a good home. The library prefers a handful of larger, well-organised modules over many tiny ones.
 
 ## Editing checklist
