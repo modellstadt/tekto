@@ -473,6 +473,18 @@ store.setPresence({ selected: "p1" });                 // others see it in store
 new PresenceBar(store, lab.viewport);                  // badges + Sign in, left of ✎ Markup
 ```
 
+**Shared selection.** In a retained app the selection travels through presence, so everyone
+sees who is on what before two edits collide:
+
+```ts
+shareSelection(selection, doc.store, app.renderer, app.scene);
+```
+
+This client's selected record keys go into its presence, and the renderer outlines what the
+others have selected, each in their presence colour. The outlines follow the records through
+rebuilds and are clipped by a section. The Site Editor does it with `?shared=1`: open it in
+two windows.
+
 The backend is an adapter:
 
 | adapter | for | records live in |
