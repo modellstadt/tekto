@@ -11,6 +11,12 @@ before 1.0, breaking changes bump the minor version. See
   and disagreed with `NurbsSurface`, which did use them. Curves built with weights change
   shape — to the shape they were meant to have; check anything that compensated (e.g. a
   workaround for "getPoint ignores weights"). A weights array of the wrong length now throws.
+- **Fix — generators face outward.** `MeshFactory.extrude` wound its caps against its sides
+  (a unit square extruded by 1 had volume 1/3); it now reorients the outline so every face
+  points outward whichever way the polygon winds. `MeshFactory.cylinder` (and `lab.cylinder`)
+  was built inside-out; flipped. Double-sided rendering hid both; volumes, back-face culling,
+  hidden-line views, offsets and IFC/DXF solids did not. `MeshFactory.pipe` with a radius array
+  that doesn't match the path now throws instead of producing NaN positions.
 
 ## 0.6.0 — 2026-10-05
 
