@@ -373,6 +373,11 @@ export function orthoFrustum(distance: number, fovDeg: number, aspect: number): 
 
 // ---------------------------------------------------------------------------
 
+/**
+ * A three.js viewport for meshes the app built itself (an IFC model, a cut list), as
+ * opposed to a `Scene`: shaded / ghost / hidden-line modes, named views, sections, sun,
+ * nav gizmo. Takes `THREE.Mesh[]` via `setContent`. For tekto `Scene`s use `ThreeRenderer`.
+ */
 export class Viewport {
   readonly scene = new THREE.Scene();
   private renderer: THREE.WebGLRenderer;

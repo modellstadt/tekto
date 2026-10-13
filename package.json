@@ -9,7 +9,9 @@
   "files": [
     "dist",
     "src",
-    "tools"
+    "tools",
+    "llms.txt",
+    "llms-full.txt"
   ],
   "exports": {
     ".": {

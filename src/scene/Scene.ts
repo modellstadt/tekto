@@ -157,6 +157,13 @@ export type SceneEventListener = (event: SceneEvent) => void;
 // ─── Scene Manager ───────────────────────────
 
 
+/**
+ * The objects an app shows: points, segments, polylines, polygons, meshes, each with a
+ * {@link VisualStyle} (colour, opacity, layer, label …). Renderers listen to its events.
+ * `sketch()` rebuilds it every run; `appShell()` apps keep and edit it. Ids are per scene.
+ *
+ *   const obj = scene.addMesh(mesh, { color: "#ccc", layer: "slab" }); scene.setStyle(obj.id, { opacity: 0.5 });
+ */
 export class Scene {
   private objects = new Map<string, SceneObject>();
   /** Per-scene, reset by clear(): see genId. */

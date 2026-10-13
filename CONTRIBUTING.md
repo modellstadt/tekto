@@ -53,6 +53,10 @@ what apps rely on. Deep imports are not allowed.
 Every PR that users would notice adds a line under **Unreleased** in
 `CHANGELOG.md`.
 
+Changed an export, its JSDoc, or the README's *Start here* block? Run
+`node tools/gen-llms.mjs` and commit `llms.txt` / `llms-full.txt` — CI checks they
+match the code and that every name *Start here* cites still exists.
+
 ## Releases and versions
 
 tekto follows [semantic versioning](https://semver.org). Before 1.0, a breaking
@@ -62,7 +66,8 @@ To release (maintainer):
 
 1. Branch `release/vX.Y.Z` from `main`.
 2. Bump `version` in `package.json`, move the **Unreleased** notes in
-   `CHANGELOG.md` under the new version, run `npm run build` and commit `dist/`.
+   `CHANGELOG.md` under the new version, run `npm run build` and
+   `node tools/gen-llms.mjs` (the files carry the version), and commit `dist/` with them.
 3. PR, green CI, squash-merge.
 4. Tag the merge commit and push the tag:
    `git tag -a vX.Y.Z -m "tekto vX.Y.Z" && git push origin vX.Y.Z`

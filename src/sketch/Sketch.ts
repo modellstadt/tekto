@@ -130,6 +130,15 @@ interface LogEntry {
   value: string;
 }
 
+/**
+ * One function = one interactive 3D app. `fn` runs again on every control change and
+ * re-declares the whole scene ("rebuilt" model: no object outlives a run). Y-up by default;
+ * pass `up: "z"` for CAD content. Installs `window.__tekto` for `npm run snap`.
+ *
+ *   sketch((lab) => { const r = lab.slider("Radius", 0.1, 3, 1); lab.sphere(r.value); });
+ *
+ * For an app whose users create, select and save objects, use {@link appShell} (retained).
+ */
 export function sketch(fn: SketchFn, config?: SketchConfig): SketchInstance {
   return new SketchInstance(fn, config ?? {});
 }

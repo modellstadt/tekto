@@ -167,6 +167,13 @@ interface LogEntry {
 // Implementation
 // ═══════════════════════════════════════════════
 
+/**
+ * One function = one interactive 2D canvas app, p5-style: controls in the panel, a `draw`
+ * callback with the canvas context, pointer events. No three.js — also in `tekto/2d`.
+ *
+ *   sketch2d((lab) => { const n = lab.slider("Count", 3, 12, 6, { step: 1 });
+ *     lab.draw((ctx, w, h) => { … }); });
+ */
 export function sketch2d(fn: Sketch2DFn, config?: Sketch2DConfig): Sketch2DInstance {
   return new Sketch2DInstance(fn, config ?? {});
 }
