@@ -20,6 +20,7 @@
 import { Vec2 } from "../../core/math/vectors";
 import { Polygon2D } from "../../core/geometry/Polygon2D";
 import { Mesh } from "../../core/geometry/mesh/Mesh";
+import { joistDirectionFromBounds } from "./orientation";
 import type {
   PropertyMap, MaterialLayer, PartProfile,
 } from "../walls/types";
@@ -71,7 +72,8 @@ export interface SlabPart {
  * A rectangular opening in a slab (stair well, mechanical penetration,
  * skylight). Positioned in world coordinates within the slab boundary.
  * Aligned with the slab's local frame (X = joist direction by default,
- * but can be overridden by the construction).
+ * but can be overridden by the construction). `Slab.openingRings()` gives
+ * its outline; the slab's mesh and its IFC export cut it out.
  */
 export class SlabOpening {
   centerX: number;
@@ -247,61 +249,84 @@ export class Slab {
   }
 
   /**
-   * Build the slab envelope mesh: top face + bottom face + side quads.
-   * Uses `Polygon2D.triangulate2D` (ear-clipping) for the caps.
+   * The openings as rings in the XY plane (counter-clockwise, open): each a rectangle
+   * `width` along `direction` and `depth` across it, about its centre. `direction` defaults
+   * to the way `JoistedSlab` runs its joists without a context: `joistDirection`, else the
+   * one the bounds suggest. Throws for an opening that is empty or not inside the boundary.
+   */
+  openingRings(direction: Vec2 = this.joistDirection ?? joistDirectionFromBounds(this.boundary)): Vec2[][] {
+    const u = direction.normalize();
+    const v = u.perp();
+    const outer = Polygon2D.openRing(this.boundary);
+    return this.openings.map((o, i) => {
+      const label = `Slab "${this.name ?? "slab"}": opening ${o.name ?? i}`;
+      if (!(o.width > 0 && o.depth > 0)) throw new Error(`${label} needs a width and depth above 0, got ${o.width} × ${o.depth}.`);
+      const c = new Vec2(o.centerX, o.centerY), a = u.mul(o.width / 2), b = v.mul(o.depth / 2);
+      const ring = [c.sub(a).sub(b), c.add(a).sub(b), c.add(a).add(b), c.sub(a).add(b)];
+      if (!ring.every((p) => Polygon2D.pointInPolygon(p, outer))) {
+        throw new Error(`${label} at (${o.centerX}, ${o.centerY}) is not inside the slab's boundary.`);
+      }
+      return ring;
+    });
+  }
+
+  /**
+   * Build the slab envelope mesh: top and bottom faces with the openings cut out, the
+   * outside edge and the openings' sides.
    */
   toMesh(): Mesh {
     // Drop the duplicate closing vertex if the polygon is closed.
-    const ring = Polygon2D.openRing(this.boundary);
-    const n = ring.length;
-    if (n < 3) {
+    const outer = Polygon2D.openRing(this.boundary);
+    if (outer.length < 3) {
       return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
     }
 
     const zTop = this.elevation;
     const zBot = this.elevation - this.thickness;
 
+    // The outside counter-clockwise and the openings clockwise: an edge's right-hand normal
+    // then points out of the slab on every ring.
+    const wound = (r: Vec2[], ccw: boolean) => (Polygon2D.signedArea(r) > 0) === ccw ? r : r.slice().reverse();
+    const rings = [wound(outer, true), ...this.openingRings().map((r) => wound(r, false))];
+    const all = rings.flat();
+    const tris = Polygon2D.triangulateWithHoles(rings[0], rings.slice(1));
+
     const positions: number[] = [];
     const normals:   number[] = [];
     const indices:   number[] = [];
 
     // ── Top + bottom caps (each gets its own vertex set to keep normals clean) ──
-    const tris = Polygon2D.triangulate2D(ring);
-
-    // Top: outward normal = +Z
     const topBase = positions.length / 3;
-    for (const p of ring) {
+    for (const p of all) {
       positions.push(p.x, p.y, zTop);
       normals.push(0, 0, 1);
     }
-    for (const [a, b2, c] of tris) {
-      indices.push(topBase + a, topBase + b2, topBase + c);
-    }
+    for (const [a, b2, c] of tris) indices.push(topBase + a, topBase + b2, topBase + c);
 
     // Bottom: outward normal = −Z, reverse winding
     const botBase = positions.length / 3;
-    for (const p of ring) {
+    for (const p of all) {
       positions.push(p.x, p.y, zBot);
       normals.push(0, 0, -1);
     }
-    for (const [a, b2, c] of tris) {
-      indices.push(botBase + c, botBase + b2, botBase + a);
-    }
+    for (const [a, b2, c] of tris) indices.push(botBase + c, botBase + b2, botBase + a);
 
-    // ── Side quads (outward normals computed from each edge) ──
-    for (let i = 0; i < n; i++) {
-      const p0 = ring[i];
-      const p1 = ring[(i + 1) % n];
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const len = Math.hypot(dx, dy);
-      if (len < 1e-9) continue;
-      // Outward normal for a CCW polygon = right-perpendicular (dy, −dx)/len.
-      const nx = dy / len, ny = -dx / len;
-      const base = positions.length / 3;
-      positions.push(p0.x, p0.y, zBot, p1.x, p1.y, zBot, p1.x, p1.y, zTop, p0.x, p0.y, zTop);
-      for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    // ── Side quads: the outside edge and each opening's sides ──
+    for (const ring of rings) {
+      const n = ring.length;
+      for (let i = 0; i < n; i++) {
+        const p0 = ring[i];
+        const p1 = ring[(i + 1) % n];
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-9) continue;
+        const nx = dy / len, ny = -dx / len;
+        const base = positions.length / 3;
+        positions.push(p0.x, p0.y, zBot, p1.x, p1.y, zBot, p1.x, p1.y, zTop, p0.x, p0.y, zTop);
+        for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
+        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
     }
 
     return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));

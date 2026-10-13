@@ -139,7 +139,7 @@ still change — prefer the others when both would do.
 - `Plane` (class): Infinite plane `normal·p + d = 0` with a unit `normal`; `distToPoint` is signed (positive on the normal's side).
   members: static fromPointNormal(), static fromThreePoints(), static XY(), static XZ(), static YZ(), distToPoint(), projectPoint(), side(), reflectVector(), reflectPoint(), flipped(), toJSON()
 - `Polygon2D` (namespace): 2D polygon operations on open rings of `Vec2` (no repeated closing point): `area`, `signedArea`, `centroid2D`, `pointInPolygon`, `offset`, `simplify`, `convexHull2D`, `triangulate2D`, `filletRays`,…
-  members: cross2D(), signedArea(), area(), perimeter(), polylineLength(), openRing(), closeRing(), isCCW(), averageCenter(), centroid2D(), pointInPolygon(), containsWinding(), closestVertexIndex(), closestPointOnEdge(), closestPointOnPolyline(), segmentIntersect2D(), offset(), simplify(), simplifyByAngle(), removeShortEdges(), subdivideEdges(), splitLongEdges(), normal3D(), createCircle(), createRect(), reverse(), filletRays(), convexHull2D(), triangulate2D(), minEnclosingCircle(), minAreaRect()
+  members: cross2D(), signedArea(), area(), perimeter(), polylineLength(), openRing(), closeRing(), isCCW(), averageCenter(), centroid2D(), pointInPolygon(), containsWinding(), closestVertexIndex(), closestPointOnEdge(), closestPointOnPolyline(), segmentIntersect2D(), offset(), simplify(), simplifyByAngle(), removeShortEdges(), subdivideEdges(), splitLongEdges(), normal3D(), createCircle(), createRect(), reverse(), filletRays(), convexHull2D(), triangulate2D(), triangulateWithHoles(), minEnclosingCircle(), minAreaRect()
 - `PolygonBool` (namespace): Robust 2D booleans on polygons with holes: `union`, `intersection`, `difference` over multipolygons (`Ring2` → `Poly2` = [outer, …holes] → `MultiPoly2`), plus `fromRing`, `rings`, `area`.
   members: fromRing(), rings(), isEmpty(), area(), union(), difference(), intersection()
 - `polygonFromVertices` (function): Create a BspPolygon from vertices, computing the plane automatically.
@@ -243,7 +243,7 @@ still change — prefer the others when both would do.
 - `SheetView` (class): One view on the sheet: a plan, an elevation, an unrolled strip, a detail.
   members: name, entities, options, polyline(), line(), rect(), circle(), arc(), fill(), text(), dim(), radius(), leader(), level(), segments(), sheetRef
 - `Slab` (class): A floor, ceiling or roof slab: a closed XY footprint extruded down by `thickness` from its top at `elevation` (Z-up, metres).
-  members: boundary, thickness, elevation, name, type, properties, openings, joistDirection, perimeter, area, toMesh()
+  members: boundary, thickness, elevation, name, type, properties, openings, joistDirection, perimeter, area, openingRings(), toMesh()
 - `SlabOpening` (class): A rectangular opening in a slab (stair well, mechanical penetration, skylight).
   members: centerX, centerY, width, depth, name
 - `SlabType` (class): Reusable slab *type* — the IFC `IfcSlabType` analogue.
@@ -367,7 +367,7 @@ Types: `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `Callout
 - `noise` (function): Perlin noise — 1D, 2D, or 3D.
 - `pickPrim` (function): The primitive at `p` (sheet coordinates): the topmost line, arc, circle or text within `tolerance` (sheet units — divide a pixel tolerance by the screen scale), else the topmost fill containing `p`…
 - `Polygon2D` (namespace): 2D polygon operations on open rings of `Vec2` (no repeated closing point): `area`, `signedArea`, `centroid2D`, `pointInPolygon`, `offset`, `simplify`, `convexHull2D`, `triangulate2D`, `filletRays`,…
-  members: cross2D(), signedArea(), area(), perimeter(), polylineLength(), openRing(), closeRing(), isCCW(), averageCenter(), centroid2D(), pointInPolygon(), containsWinding(), closestVertexIndex(), closestPointOnEdge(), closestPointOnPolyline(), segmentIntersect2D(), offset(), simplify(), simplifyByAngle(), removeShortEdges(), subdivideEdges(), splitLongEdges(), normal3D(), createCircle(), createRect(), reverse(), filletRays(), convexHull2D(), triangulate2D(), minEnclosingCircle(), minAreaRect()
+  members: cross2D(), signedArea(), area(), perimeter(), polylineLength(), openRing(), closeRing(), isCCW(), averageCenter(), centroid2D(), pointInPolygon(), containsWinding(), closestVertexIndex(), closestPointOnEdge(), closestPointOnPolyline(), segmentIntersect2D(), offset(), simplify(), simplifyByAngle(), removeShortEdges(), subdivideEdges(), splitLongEdges(), normal3D(), createCircle(), createRect(), reverse(), filletRays(), convexHull2D(), triangulate2D(), triangulateWithHoles(), minEnclosingCircle(), minAreaRect()
 - `PolygonBool` (namespace): Robust 2D booleans on polygons with holes: `union`, `intersection`, `difference` over multipolygons (`Ring2` → `Poly2` = [outer, …holes] → `MultiPoly2`), plus `fromRing`, `rings`, `area`.
   members: fromRing(), rings(), isEmpty(), area(), union(), difference(), intersection()
 - `Segment` (class): Immutable 3D line segment from `a` to `b`: parameter t (0 = a, 1 = b), closest points, distances to points and to other segments.

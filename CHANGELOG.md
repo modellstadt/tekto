@@ -24,6 +24,11 @@ before 1.0, breaking changes bump the minor version. See
   gathers slabs and members already written and is contained in the storey in their place.
   **`addMember(…, { storey })`** contains a free-standing element (a railing, a column) in
   its storey. (#63)
+- **Slab openings cut the slab** (#63). `Slab.toMesh()` leaves each `SlabOpening` out and
+  walls it, and `IfcWriter.addSlab` voids the slab with an `IfcOpeningElement` per opening.
+  `Slab.openingRings(direction?)` gives their outlines, and fails loudly for one outside the
+  slab. `Polygon2D.triangulateWithHoles(outer, holes)` (the drawing sheet's, now shared)
+  triangulates a polygon with holes. A clockwise slab boundary no longer gives inward faces.
 - `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
   experimental: BuildGraph uses them. 47 exports keep the tag.
 

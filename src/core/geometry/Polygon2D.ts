@@ -643,6 +643,20 @@ export const Polygon2D = {
     return triangles;
   },
 
+  /**
+   * Triangles covering a polygon with holes, as indices into `[outer, ...holes].flat()`,
+   * counter-clockwise. Rings may be open or closed and wound either way. Each hole is
+   * bridged into the outer ring and the result ear-clipped: for simple rings, holes inside
+   * the outer ring and apart from each other.
+   */
+  triangulateWithHoles<P extends XY>(outer: readonly P[], holes: readonly (readonly P[])[] = []): [number, number, number][] {
+    const index = new Map<P, number>();
+    [outer, ...holes].flat().forEach((p, i) => { if (!index.has(p)) index.set(p, i); });
+    let poly = orientRing(outer, true);
+    for (const hole of holes) poly = bridgeHole(poly, orientRing(hole, false));
+    return earClipRing(poly).map(([a, b, c]) => [index.get(a)!, index.get(b)!, index.get(c)!]);
+  },
+
   // ================================================================
   // MINIMUM ENCLOSING CIRCLE
   // ================================================================
@@ -764,6 +778,81 @@ export const Polygon2D = {
 };
 
 // ── helpers ──
+
+// ── Triangulation with holes: bridge each hole into the outer ring, then ear-clip ──
+
+type XY = { readonly x: number; readonly y: number };
+
+function ringArea(r: readonly XY[]): number {
+  let a = 0;
+  for (let i = 0; i < r.length; i++) { const p = r[i], q = r[(i + 1) % r.length]; a += p.x * q.y - q.x * p.y; }
+  return a / 2;
+}
+
+/** The ring open (no repeated closing point) and wound as asked. */
+function orientRing<P extends XY>(r: readonly P[], ccw: boolean): P[] {
+  const last = r[r.length - 1];
+  const ring = r.length > 1 && r[0].x === last.x && r[0].y === last.y ? r.slice(0, -1) : r.slice();
+  return (ringArea(ring) > 0) === ccw ? ring : ring.reverse();
+}
+
+/** Join a hole into the outer ring through a cut from the hole's rightmost point. */
+function bridgeHole<P extends XY>(outer: P[], hole: P[]): P[] {
+  let hi = 0;
+  for (let i = 1; i < hole.length; i++) if (hole[i].x > hole[hi].x) hi = i;
+  const h = hole[hi];
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < outer.length; i++) {
+    const o = outer[i];
+    if (o.x < h.x) continue;
+    const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2;
+    if (d < bestD && !cutCrosses(h, o, outer, hole)) { bestD = d; best = i; }
+  }
+  if (best < 0) best = 0;
+  const holeLoop = [...hole.slice(hi), ...hole.slice(0, hi), h];
+  return [...outer.slice(0, best + 1), ...holeLoop, ...outer.slice(best)];
+}
+
+function cutCrosses(a: XY, b: XY, ...rings: (readonly XY[])[]): boolean {
+  const side = (p: XY, q: XY, r: XY) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+  for (const r of rings) for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    if (p === a || q === a || p === b || q === b) continue;
+    if (side(a, b, p) !== side(a, b, q) && side(p, q, a) !== side(p, q, b)) return true;
+  }
+  return false;
+}
+
+/** Ear clipping of a counter-clockwise ring that may visit a point twice (a bridge). */
+function earClipRing<P extends XY>(poly: P[]): [P, P, P][] {
+  const tris: [P, P, P][] = [];
+  const idx = poly.map((_, i) => i);
+  const isEar = (i: number, j: number, k: number) => {
+    const a = poly[i], b = poly[j], c = poly[k];
+    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 1e-18) return false;
+    for (const m of idx) {
+      if (m === i || m === j || m === k) continue;
+      const p = poly[m];
+      const s1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+      const s2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
+      const s3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
+      if (s1 >= 0 && s2 >= 0 && s3 >= 0 && !(p.x === a.x && p.y === a.y) && !(p.x === b.x && p.y === b.y) && !(p.x === c.x && p.y === c.y)) return false;
+    }
+    return true;
+  };
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 10000) {
+    let clipped = false;
+    for (let n = 0; n < idx.length; n++) {
+      const i = idx[(n + idx.length - 1) % idx.length], j = idx[n], k = idx[(n + 1) % idx.length];
+      if (isEar(i, j, k)) { tris.push([poly[i], poly[j], poly[k]]); idx.splice(n, 1); clipped = true; break; }
+    }
+    if (!clipped) break;   // degenerate input: stop rather than loop
+  }
+  if (idx.length === 3) tris.push([poly[idx[0]], poly[idx[1]], poly[idx[2]]]);
+  return tris;
+}
+
 
 function pointInTriangle2D(p: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
   const d1 = Polygon2D.cross2D(a, b, p);

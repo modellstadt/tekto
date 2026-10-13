@@ -521,6 +521,27 @@ export class IfcWriter {
     this.partRefs.add(slabRef);
     this.attachToStorey(slabRef, storey);
 
+    // ── Openings (stair wells, ducts): an IfcOpeningElement each, voiding the slab ──
+    const openingRings = slab.openingRings();
+    slab.openings.forEach((opening, i) => {
+      const [p0, p1] = openingRings[i];
+      const u = p1.sub(p0).normalize();                      // the opening's width runs along u
+      const at = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(opening.centerX)},${ifcReal(opening.centerY)},${ifcReal(bottomZ)}))`);
+      const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(u.x)},${ifcReal(u.y)},0.))`);
+      const axis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${at},#${this.dirZRef},#${refDir})`);
+      const placement = this.addEntity(`IFCLOCALPLACEMENT(#${frame.placement},#${axis})`);
+      const centre = this.addEntity(`IFCCARTESIANPOINT((0.,0.))`);
+      const centreAxis = this.addEntity(`IFCAXIS2PLACEMENT2D(#${centre},$)`);
+      const rect = this.addEntity(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${centreAxis},${ifcReal(opening.width)},${ifcReal(opening.depth)})`);
+      const solid = this.addEntity(`IFCEXTRUDEDAREASOLID(#${rect},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(slab.thickness)})`);
+      const rep = this.addEntity(`IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','SweptSolid',(#${solid}))`);
+      const shape = this.addEntity(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}))`);
+      const openingRef = this.addEntity(
+        `IFCOPENINGELEMENT(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(opening.name ?? "Slab opening")},$,$,#${placement},#${shape},$,.OPENING.)`,
+      );
+      this.addEntity(`IFCRELVOIDSELEMENT(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${slabRef},#${openingRef})`);
+    });
+
     // ── Pset_SlabCommon ──
     const mergedProps: PropertyMap = {
       ...(slab.type?.properties ?? {}),
