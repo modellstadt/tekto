@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.7.0 — 2026-10-13
+
 - **Export pipeline.** New `writeDxf2D` (in `tekto/core` and `tekto/2d`): plans, sections and
   cut sheets as AutoCAD-safe R12 — closed/open polylines, lines, circles, arcs, single-line
   text — with `scale: 1000` writing metres as millimetres (and saying so in the header). New

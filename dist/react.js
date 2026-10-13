@@ -705,6 +705,9 @@ var Mesh = class _Mesh {
     return new Vec3(this._pos[o], this._pos[o + 1], this._pos[o + 2]);
   }
   setPosition(id, p) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+      throw new Error(`Mesh.setPosition: node ${id} would get a non-finite position (${p.x}, ${p.y}, ${p.z})`);
+    }
     const o = id * 3;
     this._pos[o] = p.x;
     this._pos[o + 1] = p.y;
@@ -756,6 +759,9 @@ var Mesh = class _Mesh {
     return out;
   }
   addNode(position, data) {
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(position.z)) {
+      throw new Error(`Mesh.addNode: non-finite position (${position.x}, ${position.y}, ${position.z}) \u2014 check the inputs that computed it`);
+    }
     const id = this._addNodeXYZ(position.x, position.y, position.z);
     if (data) (this._nodeData ?? (this._nodeData = /* @__PURE__ */ new Map())).set(id, data);
     return id;
@@ -981,6 +987,12 @@ var Mesh = class _Mesh {
   }
   addFace(nodeIds, data) {
     const n = nodeIds.length;
+    if (n < 3) throw new Error(`Mesh.addFace: a face needs at least 3 nodes, got ${n}`);
+    for (let i = 0; i < n; i++) {
+      if (!this.isNodeAlive(nodeIds[i])) {
+        throw new Error(`Mesh.addFace: node ${nodeIds[i]} does not exist (the mesh has ${this._nodeLive} nodes, ids 0\u2026${this._nodeN - 1})`);
+      }
+    }
     const id = this._faceN;
     this._needFaces(id + 1);
     const start = this._cornerN;
@@ -1295,6 +1307,123 @@ var Mesh = class _Mesh {
   eulerCharacteristic() {
     return this._nodeLive - this._edgeLive + this._faceLive;
   }
+  /**
+   * Check the mesh for what silently breaks rendering, volumes and exports, in one pass:
+   * non-finite positions, faces that reference missing nodes or repeat one, degenerate
+   * (zero-area) faces, non-manifold edges, faces wound against their neighbours, and a
+   * closed mesh that is inside-out. `issues` is empty when the mesh is sound; open
+   * (boundary) edges are counted but are not an issue — plenty of good meshes are open.
+   */
+  validate() {
+    const issues = [];
+    const first = {};
+    const note = (k, s) => {
+      if (!(k in first)) first[k] = s;
+    };
+    let nonFinite = 0, badRefs = 0, repeated = 0, degenerate = 0;
+    const pos = this._pos, cv = this._cVert;
+    for (let i = 0; i < this._nodeN; i++) {
+      if (!this._nodeAlive[i]) continue;
+      if (!Number.isFinite(pos[i * 3]) || !Number.isFinite(pos[i * 3 + 1]) || !Number.isFinite(pos[i * 3 + 2])) {
+        nonFinite++;
+        note("nonFinite", `node ${i}`);
+      }
+    }
+    for (let f = 0; f < this._faceN; f++) {
+      if (!this._faceAlive[f]) continue;
+      const s0 = this._faceStart[f], s1 = this._faceStart[f + 1], n = s1 - s0;
+      let bad = false;
+      for (let c = s0; c < s1; c++) {
+        if (!this.isNodeAlive(cv[c])) {
+          bad = true;
+          note("badRefs", `face ${f} \u2192 node ${cv[c]}`);
+        }
+        if (cv[c] === cv[s0 + (c - s0 + 1) % n]) {
+          repeated++;
+          note("repeated", `face ${f}`);
+          break;
+        }
+      }
+      if (bad) {
+        badRefs++;
+        continue;
+      }
+      let finiteFace = true;
+      for (let c = s0; c < s1 && finiteFace; c++) {
+        const o = cv[c] * 3;
+        finiteFace = Number.isFinite(pos[o]) && Number.isFinite(pos[o + 1]) && Number.isFinite(pos[o + 2]);
+      }
+      if (!finiteFace) continue;
+      let nx = 0, ny = 0, nz = 0;
+      for (let i = 0; i < n; i++) {
+        const a = cv[s0 + i] * 3, b = cv[s0 + (i + 1) % n] * 3;
+        nx += (pos[a + 1] - pos[b + 1]) * (pos[a + 2] + pos[b + 2]);
+        ny += (pos[a + 2] - pos[b + 2]) * (pos[a] + pos[b]);
+        nz += (pos[a] - pos[b]) * (pos[a + 1] + pos[b + 1]);
+      }
+      if (!(Math.hypot(nx, ny, nz) > 1e-14)) {
+        degenerate++;
+        note("degenerate", `face ${f}`);
+      }
+    }
+    let boundary = 0, nonManifold = 0, inconsistent = 0;
+    for (let e = 0; e < this._edgeN; e++) {
+      if (!this._edgeAlive[e]) continue;
+      const k = this._edgeCornerCount(e);
+      if (k === 1) boundary++;
+      else if (k > 2) {
+        nonManifold++;
+        note("nonManifold", `edge ${e} (${this._edgeA[e]}\u2013${this._edgeB[e]}, ${k} faces)`);
+      } else if (k === 2) {
+        const c1 = this._edgeFirstCorner[e], c2 = this._cNextInEdge[c1];
+        if (cv[c1] === cv[c2]) {
+          inconsistent++;
+          note("inconsistent", `edge ${e} (${this._edgeA[e]}\u2013${this._edgeB[e]})`);
+        }
+      }
+    }
+    const closed = this._faceLive > 0 && boundary === 0 && nonManifold === 0 && badRefs === 0;
+    let signedVolume;
+    if (closed && nonFinite === 0) {
+      const idx = this.indices;
+      let v = 0;
+      for (let t = 0; t < idx.length; t += 3) {
+        const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+        v += (pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1]) + pos[a + 1] * (pos[b + 2] * pos[c] - pos[b] * pos[c + 2]) + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c])) / 6;
+      }
+      signedVolume = v;
+    }
+    const say = (count, what, key) => {
+      if (count) issues.push(`${count} ${what} (first: ${first[key]})`);
+    };
+    say(nonFinite, "nodes with a non-finite position", "nonFinite");
+    say(badRefs, "faces referencing missing nodes", "badRefs");
+    say(repeated, "faces repeating a node", "repeated");
+    say(degenerate, "degenerate (zero-area) faces", "degenerate");
+    say(nonManifold, "non-manifold edges", "nonManifold");
+    say(inconsistent, "edges between faces wound against each other", "inconsistent");
+    if (signedVolume !== void 0 && signedVolume < 0 && inconsistent === 0) {
+      issues.push(`closed but inside-out: signed volume ${signedVolume.toPrecision(4)} \u2014 faces point inward (MeshTransform.flipFaces)`);
+    }
+    return {
+      valid: issues.length === 0,
+      issues,
+      closed,
+      ...signedVolume !== void 0 ? { signedVolume } : {},
+      counts: {
+        nodes: this._nodeLive,
+        edges: this._edgeLive,
+        faces: this._faceLive,
+        boundaryEdges: boundary,
+        nonManifoldEdges: nonManifold,
+        inconsistentEdges: inconsistent,
+        nonFiniteNodes: nonFinite,
+        badFaces: badRefs,
+        repeatedFaces: repeated,
+        degenerateFaces: degenerate
+      }
+    };
+  }
   // ── In-place geometry ──
   translate(dx, dy, dz) {
     const pos = this._pos;
@@ -1537,7 +1666,10 @@ var Mesh = class _Mesh {
       const mesh2 = new _Mesh();
       const idMap = /* @__PURE__ */ new Map();
       for (const nj of json.nodes) idMap.set(nj.id, mesh2.addNode(Vec3.fromJSON(nj.position), nj.data && Object.keys(nj.data).length ? nj.data : void 0));
-      for (const fj of json.faces) mesh2.addFace(fj.nodes.map((n) => idMap.get(n)), fj.data && Object.keys(fj.data).length ? fj.data : void 0);
+      for (const fj of json.faces) {
+        if (fj.nodes.length < 3) continue;
+        mesh2.addFace(fj.nodes.map((n) => idMap.get(n)), fj.data && Object.keys(fj.data).length ? fj.data : void 0);
+      }
       mesh2.computeVertexNormals();
       return mesh2;
     }

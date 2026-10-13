@@ -1,11 +1,6 @@
+import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Params-C5uOYti3.js';
 import React, { ReactNode, CSSProperties } from 'react';
-import { P as ParamStore, p as ParamLayout, S as Scene, e as ParamSchema, t as SceneObject } from './Params-CnlZMZH0.js';
-
-/**
- * Tekto React Integration
- *
- * Components and hooks that wire the Scene, Renderer, and Params together.
- */
+import { S as Scene, a as SceneObject } from './Scene-Cuo_bfPW.js';
 
 declare function useScene(): Scene;
 declare function TektoApp({ scene: extScene, children, }: {
@@ -25,7 +20,7 @@ declare function useSelection(): {
 };
 /** Use a ParamStore reactively */
 declare function useParams<S extends ParamSchema>(store: ParamStore<S>): {
-    values: Record<string, any>;
+    values: ParamValues<S>;
     set: (key: string, value: any) => void;
     store: ParamStore<S>;
 };
