@@ -642,6 +642,12 @@ interface SceneObject {
     pickable?: boolean;
     /** Semantic pick tag surfaced in lab.onPick — select by meaning, not raw scene id. */
     pickTag?: string;
+    /**
+     * The document record this object shows, e.g. `"blocks/k3f9x2"` (set by `scene.withKey`
+     * and `bindScene`). Unlike the scene id it outlives re-renders, so selection, Markup and
+     * agents can name the thing a person sees.
+     */
+    key?: string;
 }
 /** A renderer-applied transform on top of baked geometry. All fields optional. */
 interface SceneTransform {
@@ -714,6 +720,7 @@ declare class Scene {
     private selectedIds;
     private hoveredId;
     private suspendDepth;
+    private currentKey;
     renderMode: RenderMode;
     lightingMode: LightingMode;
     environmentEnabled: boolean;
@@ -730,6 +737,14 @@ declare class Scene {
      */
     withSuspendedEvents<T>(fn: () => T): T;
     private add;
+    /**
+     * Run `fn`; every object it adds carries `key` (the record it shows) from creation, so
+     * listeners — renderer, Markup, snapshots — see it with the add. Nested calls use the
+     * innermost key. `bindScene` does this for each record.
+     */
+    withKey<T>(key: string, fn: () => T): T;
+    /** The objects showing one record (see `withKey`). */
+    byKey(key: string): SceneObject[];
     get(id: string): SceneObject | undefined;
     has(id: string): boolean;
     all(): SceneObject[];

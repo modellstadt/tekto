@@ -1,7 +1,7 @@
-import { V as Vec3, b as Vec2, e as Mat4, T as Triangle, A as AABB, M as Mesh, c as MeshData } from './Scene-Cuo_bfPW.js';
-export { F as ColoredMeshData, d as LegacyMeshJSON, L as LightingMode, f as MeshEdge, g as MeshFace, h as MeshJSON, i as MeshNode, j as MeshValidation, O as ObjFile, k as ObjMeshData, R as RenderMode, S as Scene, l as SceneEvent, m as SceneEventListener, n as SceneJSON, a as SceneObject, o as SceneObjectType, p as Vec4, q as VisualStyle } from './Scene-Cuo_bfPW.js';
-import { R as Ring2, o as MultiPoly2 } from './download-HL7KVcPG.js';
-export { A as Algo, a as Dxf2DArc, b as Dxf2DCircle, c as Dxf2DContent, d as Dxf2DLine, e as Dxf2DPoint, f as Dxf2DPolyline, g as Dxf2DText, h as Dxf3DArc, i as Dxf3DCircle, j as Dxf3DContent, k as Dxf3DLine, l as Dxf3DPoint, m as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, M as MathUtils, n as MeshFactory, O as OBB2D, P as Poly2, p as Polygon2D, q as PolygonBool, S as SeededRandom, r as Segment, s as closestPointOnSegment, t as createRandom, v as noise, w as polygonIntersection, x as segmentSegmentClosest, y as setClipSnap, z as stampName, B as writeDxf2D, C as writeDxf3D } from './download-HL7KVcPG.js';
+import { V as Vec3, b as Vec2, e as Mat4, T as Triangle, A as AABB, M as Mesh, c as MeshData, S as Scene } from './Scene-CVb27q1H.js';
+export { F as ColoredMeshData, d as LegacyMeshJSON, L as LightingMode, f as MeshEdge, g as MeshFace, h as MeshJSON, i as MeshNode, j as MeshValidation, O as ObjFile, k as ObjMeshData, R as RenderMode, l as SceneEvent, m as SceneEventListener, n as SceneJSON, a as SceneObject, o as SceneObjectType, p as Vec4, q as VisualStyle } from './Scene-CVb27q1H.js';
+import { R as Ring2, o as MultiPoly2 } from './download-Cqz8J3Ud.js';
+export { A as Algo, a as Dxf2DArc, b as Dxf2DCircle, c as Dxf2DContent, d as Dxf2DLine, e as Dxf2DPoint, f as Dxf2DPolyline, g as Dxf2DText, h as Dxf3DArc, i as Dxf3DCircle, j as Dxf3DContent, k as Dxf3DLine, l as Dxf3DPoint, m as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, M as MathUtils, n as MeshFactory, O as OBB2D, P as Poly2, p as Polygon2D, q as PolygonBool, S as SeededRandom, r as Segment, s as closestPointOnSegment, t as createRandom, v as noise, w as polygonIntersection, x as segmentSegmentClosest, y as setClipSnap, z as stampName, B as writeDxf2D, C as writeDxf3D } from './download-Cqz8J3Ud.js';
 export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, b as ParamSchema, P as ParamStore, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-C5uOYti3.js';
 
 /**
@@ -3607,4 +3607,220 @@ declare function neighboursOf(id: number, all: Adjacency[]): {
     tolerance: number;
 }[];
 
-export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, type CollabAdapter, type CollabEvents, type CollabStatus, type CollabUser, type ConnectionType, type Contact, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, ExtrudedRibbon, type ExtrudedRibbonOptions, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type LatticeType, type LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, type MicroPatternType, MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, PolylineCurve, type Presence, type PropertyMap, Ray, type RealizedSlab, type RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, Ring2, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, type SharedRecord, SharedStore, type SharedStoreOptions, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type SupabaseLike, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverse as reverseContact, supabaseAdapter };
+/**
+ * Doc — the document of a retained CAD app: typed records with stable ids, undo/redo,
+ * save/open, and (through SharedStore) persistence and shared editing.
+ *
+ * The rule it is built on: **the document stores decisions, geometry is derived.** A record
+ * is plain JSON — a wall's two points and its type, a block's footprint and height — and the
+ * app turns records into geometry (see `bindScene`). That keeps everything else simple:
+ * saving is JSON, syncing is per record, undo is "write the old value back", and a diff of
+ * two versions reads like a list of design decisions.
+ *
+ * Records live in named collections (`doc.add("walls", {...})`); the id `add` returns is the
+ * object's handle for its whole life — through edits, undo, saving and reopening, and in the
+ * selection, the scene and Markup. Underneath, each record is one key of a `SharedStore`
+ * (`walls/k3f9x2`), so the adapters give persistence for free: `localAdapter` (this browser),
+ * `devServerAdapter` (a JSON file an agent can read and edit), `supabaseAdapter` (online,
+ * several people), `memoryAdapter` (tests).
+ *
+ * Undo is per document and per client: it writes the values from before your change back,
+ * so the undo itself syncs. Two people editing the same record: the last write wins.
+ */
+
+/** What a collection's records look like: collection name → record type. */
+type DocSchema = Record<string, object>;
+/** One record that changed. `value` is the new value, `undefined` once removed. */
+interface DocChange<S extends DocSchema = DocSchema> {
+    collection: keyof S & string;
+    id: string;
+    value: S[keyof S] | undefined;
+}
+/** Where a batch of changes came from: this client, another client, or undo/redo. */
+type DocChangeSource = "local" | "remote" | "history";
+interface DocEditOptions {
+    /** Shown as "Undo <label>"; default from the operation ("Add blocks", "Edit blocks"…). */
+    label?: string;
+    /** Edits with the same key within `coalesceMs` merge into one undo step (a slider drag). */
+    coalesce?: string;
+    /** Leave this change out of the undo history (view state, imports). */
+    undoable?: boolean;
+}
+interface DocOptions {
+    /** Document name: with a shared adapter, every client using it edits the same records. */
+    name: string;
+    /** Where records are stored; default `memoryAdapter()` (nothing persists). */
+    adapter?: CollabAdapter;
+    /** Undo steps kept (default 200). */
+    historyLimit?: number;
+    /** Window in which edits with the same `coalesce` key merge (default 800 ms). */
+    coalesceMs?: number;
+}
+/** What `toJSON()` writes and `load()` reads: collections of id → record. */
+interface DocJSON {
+    format: "tekto-doc/1";
+    name: string;
+    collections: Record<string, Record<string, unknown>>;
+}
+/**
+ * The document of a retained CAD app: typed records in named collections, each with a stable
+ * id; `transact` groups writes into one undo step; `undo`/`redo`; `toJSON`/`load` for Save
+ * and Open; persistence and shared editing through the adapter.
+ *
+ *   const doc = new Doc<{ blocks: Block }>({ name: "site", adapter: localAdapter() });
+ *   await doc.ready;
+ *   const id = doc.add("blocks", { x: 0, y: 0, w: 4, d: 3, h: 9 });
+ *   doc.update("blocks", id, { h: 12 }, { coalesce: "height" });
+ *   doc.undo();
+ */
+declare class Doc<S extends DocSchema = DocSchema> {
+    readonly name: string;
+    /** The record store underneath: presence, broadcasts, sign-in, status. */
+    readonly store: SharedStore<unknown>;
+    /** Resolves once the stored records are loaded; edit after it. */
+    readonly ready: Promise<void>;
+    private past;
+    private future;
+    private open;
+    private depth;
+    private applying;
+    private pendingKeys;
+    private pendingSource;
+    private listeners;
+    private historyL;
+    private historyLimit;
+    private coalesceMs;
+    private unsubStore;
+    constructor(opts: DocOptions);
+    get<C extends keyof S & string>(collection: C, id: string): S[C] | undefined;
+    has<C extends keyof S & string>(collection: C, id: string): boolean;
+    /** `[id, record]` for every record of a collection, in insertion order. */
+    all<C extends keyof S & string>(collection: C): [string, S[C]][];
+    ids<C extends keyof S & string>(collection: C): string[];
+    count<C extends keyof S & string>(collection: C): number;
+    /** Add a record; returns its id (or uses `id` if given). */
+    add<C extends keyof S & string>(collection: C, value: S[C], opts?: DocEditOptions & {
+        id?: string;
+    }): string;
+    /**
+     * Change a record: an object merges into it (`{ h: 12 }`), a function maps it
+     * (`b => ({ ...b, h: b.h * 2 })`). Throws if the record doesn't exist.
+     */
+    update<C extends keyof S & string>(collection: C, id: string, change: Partial<S[C]> | ((value: S[C]) => S[C]), opts?: DocEditOptions): void;
+    /** Remove a record (a no-op if it is already gone). */
+    remove<C extends keyof S & string>(collection: C, id: string, opts?: DocEditOptions): void;
+    /**
+     * Run several edits as one undo step and one change notification. Nested transactions
+     * join the outer one.
+     *
+     *   doc.transact("Duplicate", () => { for (const id of sel) doc.add("blocks", { ...doc.get("blocks", id)!, x: … }); });
+     */
+    transact<T>(label: string, fn: () => T, opts?: Omit<DocEditOptions, "label">): T;
+    undo(): boolean;
+    redo(): boolean;
+    canUndo(): boolean;
+    canRedo(): boolean;
+    /** "Undo <this>": the label of the step `undo()` would revert. */
+    undoLabel(): string | undefined;
+    redoLabel(): string | undefined;
+    /** Forget the history (after Open, or to make a state the new baseline). */
+    clearHistory(): void;
+    /** Records that changed, once per transaction, and where the change came from. */
+    onChange(cb: (changes: DocChange<S>[], source: DocChangeSource) => void): () => void;
+    /** The undo/redo history changed (enable or relabel Undo / Redo). */
+    onHistory(cb: () => void): () => void;
+    toJSON(): DocJSON;
+    /**
+     * Replace the document's records with `json` (from `toJSON()`): records not in it are
+     * removed. Not undoable by default — Open starts a new history — pass `undoable: true`
+     * to make it one undo step ("Load").
+     */
+    load(json: DocJSON, opts?: {
+        undoable?: boolean;
+    }): void;
+    dispose(): void;
+    private write;
+    private track;
+    private record;
+    private travel;
+    private emit;
+    private notifyHistory;
+}
+/**
+ * Keep a document in this browser (`localStorage`): for single-user apps on a static site.
+ * Survives reloads; nothing is shared. `storage` can be any Storage (tests pass their own).
+ */
+declare function localAdapter(opts?: {
+    prefix?: string;
+    storage?: Pick<Storage, "getItem" | "setItem">;
+}): CollabAdapter;
+/** What `bindScene` returns: the record ↔ scene-object map, and a way out. */
+interface SceneBinding {
+    readonly collection: string;
+    /** Scene ids of the objects showing a record (what to highlight when it is selected). */
+    objectsOf(id: string): string[];
+    /** The record a scene object shows (what a click picked), or undefined if not this collection's. */
+    recordOf(sceneId: string): string | undefined;
+    /** Render a record again (or every record), e.g. after a style setting changed. */
+    refresh(id?: string): void;
+    /** Stop following the document and remove this binding's objects from the scene. */
+    dispose(): void;
+}
+/**
+ * Keep a scene in step with one collection of a document. `render(record, id)` adds the
+ * objects that show a record (any `scene.add…` calls); each gets `key` = `"collection/id"`.
+ * When a record changes only its objects are rebuilt, when it is removed they go. A record
+ * whose render throws is reported (`console.error`, which snapshots pick up) and skipped.
+ *
+ *   const blocks = bindScene(doc, "blocks", app.scene, (b) => {
+ *     const m = MeshFactory.box(b.w, b.d, b.h); m.translate(b.x, b.y, b.h / 2);   // in place
+ *     app.scene.addMesh(m, { color: "#ccc" });
+ *   });
+ *   blocks.recordOf(pickedSceneId);   // → the block id
+ */
+declare function bindScene<S extends DocSchema, C extends keyof S & string>(doc: Doc<S>, collection: C, scene: Scene, render: (record: S[C], id: string) => void): SceneBinding;
+/**
+ * The selected records, by key (`"blocks/k3f9x2"` — the `key` every object of a record
+ * carries). Records, not scene objects: a selection survives re-renders, undo and reload.
+ * View state — keep it out of the document (or share it as presence).
+ *
+ *   const sel = new Selection();
+ *   selectOnClick(app.renderer, app.scene, sel);
+ *   sel.onChange(() => panel.show(sel.ids("blocks")));
+ */
+declare class Selection {
+    private set;
+    private listeners;
+    keys(): string[];
+    has(key: string): boolean;
+    get size(): number;
+    /** The ids of the selected records of one collection. */
+    ids(collection: string): string[];
+    /** Replace the selection. */
+    select(keys: Iterable<string>): void;
+    add(key: string): void;
+    remove(key: string): void;
+    toggle(key: string): void;
+    clear(): void;
+    onChange(cb: (keys: string[]) => void): () => void;
+    private emit;
+}
+/** What `selectOnClick` needs from a renderer: structurally a ThreeRenderer. */
+interface PickingView {
+    setPickEnabled(enabled: boolean): void;
+    onPick(listener: (sceneId: string | null, info: {
+        shiftKey: boolean;
+        metaKey: boolean;
+        ctrlKey: boolean;
+    }) => void): () => void;
+    setSelectionHighlight(sceneIds: readonly string[] | null): void;
+}
+/**
+ * Click to select records in a viewport: a click selects the record an object shows,
+ * Shift/⌘/Ctrl-click adds or removes it, a click on the background clears. Every object of
+ * a selected record is highlighted — again after `bindScene` rebuilds it. Returns the
+ * unsubscribe.
+ */
+declare function selectOnClick(view: PickingView, scene: Scene, selection: Selection): () => void;
+
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, type CollabAdapter, type CollabEvents, type CollabStatus, type CollabUser, type ConnectionType, type Contact, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, Doc, type DocChange, type DocChangeSource, type DocEditOptions, type DocJSON, type DocOptions, type DocSchema, type DoorOperation, ExtrudedRibbon, type ExtrudedRibbonOptions, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type LatticeType, type LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, type MicroPatternType, MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, type PerpSegment, type PickingView, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, PolylineCurve, type Presence, type PropertyMap, Ray, type RealizedSlab, type RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, Ring2, Scene, type SceneBinding, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Selection, type SharedRecord, SharedStore, type SharedStoreOptions, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, type SupabaseLike, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, bindScene, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, localAdapter, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverse as reverseContact, selectOnClick, supabaseAdapter };

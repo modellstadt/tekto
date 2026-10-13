@@ -1,15 +1,15 @@
-import { V as Vec3, M as Mesh, S as Scene, R as RenderMode, L as LightingMode } from './Scene-Cuo_bfPW.mjs';
-export { A as AABB, F as ColoredMeshData, c as FlatMeshData, d as LegacyMeshJSON, e as Mat4, f as MeshEdge, g as MeshFace, h as MeshJSON, i as MeshNode, j as MeshValidation, O as ObjFile, k as ObjMeshData, l as SceneEvent, m as SceneEventListener, n as SceneJSON, a as SceneObject, o as SceneObjectType, T as Triangle, b as Vec2, p as Vec4, q as VisualStyle } from './Scene-Cuo_bfPW.mjs';
-import { D as DxfLayerDef } from './download-BntSP2Qu.mjs';
-export { A as Algo, a as Dxf2DArc, b as Dxf2DCircle, c as Dxf2DContent, d as Dxf2DLine, e as Dxf2DPoint, f as Dxf2DPolyline, g as Dxf2DText, h as Dxf3DArc, i as Dxf3DCircle, j as Dxf3DContent, k as Dxf3DLine, l as Dxf3DPoint, m as Dxf3DPolyline, F as FilletResult, H as HMath, M as MathUtils, n as MeshFactory, o as MultiPoly2, O as OBB2D, P as Poly2, p as Polygon2D, q as PolygonBool, R as Ring2, S as SeededRandom, r as Segment, s as closestPointOnSegment, t as createRandom, u as download, v as noise, w as polygonIntersection, x as segmentSegmentClosest, y as setClipSnap, z as stampName, B as writeDxf2D, C as writeDxf3D } from './download-BntSP2Qu.mjs';
+import { V as Vec3, M as Mesh, S as Scene, R as RenderMode, L as LightingMode } from './Scene-CVb27q1H.mjs';
+export { A as AABB, F as ColoredMeshData, c as FlatMeshData, d as LegacyMeshJSON, e as Mat4, f as MeshEdge, g as MeshFace, h as MeshJSON, i as MeshNode, j as MeshValidation, O as ObjFile, k as ObjMeshData, l as SceneEvent, m as SceneEventListener, n as SceneJSON, a as SceneObject, o as SceneObjectType, T as Triangle, b as Vec2, p as Vec4, q as VisualStyle } from './Scene-CVb27q1H.mjs';
+import { D as DxfLayerDef } from './download-CYR9aDOn.mjs';
+export { A as Algo, a as Dxf2DArc, b as Dxf2DCircle, c as Dxf2DContent, d as Dxf2DLine, e as Dxf2DPoint, f as Dxf2DPolyline, g as Dxf2DText, h as Dxf3DArc, i as Dxf3DCircle, j as Dxf3DContent, k as Dxf3DLine, l as Dxf3DPoint, m as Dxf3DPolyline, F as FilletResult, H as HMath, M as MathUtils, n as MeshFactory, o as MultiPoly2, O as OBB2D, P as Poly2, p as Polygon2D, q as PolygonBool, R as Ring2, S as SeededRandom, r as Segment, s as closestPointOnSegment, t as createRandom, u as download, v as noise, w as polygonIntersection, x as segmentSegmentClosest, y as setClipSnap, z as stampName, B as writeDxf2D, C as writeDxf3D } from './download-CYR9aDOn.mjs';
 import { BspTree, SharedStore, Presence } from './core.mjs';
-export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BalloonFrame, BalloonFrameOptions, BlobDetect, Box, BspNode, BspPolygon, Capsule2D, CltConstruction, CltOptions, CollabAdapter, CollabEvents, CollabStatus, CollabUser, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PropertyMap, Ray, RealizedSlab, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, SharedRecord, SharedStoreOptions, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOptions, SlabPart, SlabPartRole, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOptions, StairShape, StairType, StairTypeOptions, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, SupabaseLike, UpAxis, VecMath, VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallSystem, WallType, WindowPartitioning, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverseContact, supabaseAdapter } from './core.mjs';
+export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BalloonFrame, BalloonFrameOptions, BlobDetect, Box, BspNode, BspPolygon, Capsule2D, CltConstruction, CltOptions, CollabAdapter, CollabEvents, CollabStatus, CollabUser, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, Doc, DocChange, DocChangeSource, DocEditOptions, DocJSON, DocOptions, DocSchema, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, PerpSegment, PickingView, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PropertyMap, Ray, RealizedSlab, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, SceneBinding, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Selection, SharedRecord, SharedStoreOptions, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOptions, SlabPart, SlabPartRole, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOptions, StairShape, StairType, StairTypeOptions, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, SupabaseLike, UpAxis, VecMath, VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallSystem, WallType, WindowPartitioning, bindScene, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, localAdapter, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverseContact, selectOnClick, supabaseAdapter } from './core.mjs';
 import { P as ParamStore, b as ParamSchema } from './Params-C5uOYti3.mjs';
 export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-C5uOYti3.mjs';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-zWtk8fiK.mjs';
-export { A as AnimateFn, D as DrawFn, a as Lab2D, b as LayerMap, c as LayerNode, d as LayerPanel, e as LayerState, f as LineHandle, M as MeshHandle, P as PointHandle, g as Pointer2D, h as PointerFn, i as SelectOpts, j as ShapeHandle, k as ShapeMode, l as Sketch2DConfig, m as Sketch2DFn, n as Sketch2DInstance, o as SliderOpts, p as computeEffectiveVisibility, s as sketch2d } from './2d-zWtk8fiK.mjs';
+import { E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-Cu72lZlh.mjs';
+export { A as AnimateFn, D as DrawFn, a as Lab2D, b as LayerMap, c as LayerNode, d as LayerPanel, e as LayerState, f as LineHandle, M as MeshHandle, P as PointHandle, g as Pointer2D, h as PointerFn, i as SelectOpts, j as ShapeHandle, k as ShapeMode, l as Sketch2DConfig, m as Sketch2DFn, n as Sketch2DInstance, o as SliderOpts, p as computeEffectiveVisibility, s as sketch2d } from './2d-Cu72lZlh.mjs';
 
 /**
  * GPU-accelerated hidden-line removal using ID buffer rendering.
@@ -454,6 +454,13 @@ declare class ControlPanel {
  */
 
 type GizmoMode = "translate" | "rotate" | "scale" | "none";
+/** Modifier keys held during a pick (a click on the viewport). */
+interface PickInfo {
+    shiftKey: boolean;
+    metaKey: boolean;
+    ctrlKey: boolean;
+    altKey: boolean;
+}
 interface ThreeRendererConfig {
     antialias: boolean;
     backgroundColor: number;
@@ -659,8 +666,9 @@ declare class ThreeRenderer {
     setOrbitRotateEnabled(enabled: boolean): void;
     /** Enable/disable click-to-pick on the canvas. */
     setPickEnabled(enabled: boolean): void;
-    /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background. */
-    onPick(listener: (id: string | null) => void): () => void;
+    /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
+     *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
+    onPick(listener: (id: string | null, info: PickInfo) => void): () => void;
     private onPointerDown;
     private onPointerUp;
     private onPointerMoveDragging;
@@ -722,7 +730,8 @@ declare class ThreeRenderer {
     private ensureGizmo;
     /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */
     private writeBackTransform;
-    setSelectionHighlight(id: string | null): void;
+    /** Highlight one object, several (a record's objects, a multi-selection), or none. */
+    setSelectionHighlight(ids: string | readonly string[] | null): void;
     /** Draw now, unconditionally. */
     render(): void;
     /**
@@ -1884,6 +1893,8 @@ interface AppShellConfig<S extends ParamSchema = ParamSchema> {
     renderer?: Partial<ThreeRendererConfig>;
     /** Top bar with Lighting / Render-mode / Camera / Sun controls. Default: true. */
     topBar?: boolean;
+    /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
+    markup?: boolean;
 }
 interface AppShellInstance<S extends ParamSchema = ParamSchema> {
     params: ParamStore<S>;
@@ -1979,6 +1990,8 @@ interface MarkupObjectRef {
     color?: string;
     /** Where the object was created, e.g. "pages/primitives.ts:12" (resolved by the dev server). */
     src?: string;
+    /** The document record it shows, e.g. "blocks/k3f9x2" (`bindScene` / `scene.withKey`). */
+    key?: string;
 }
 type MarkKind = "point" | "loop" | "line" | "cross" | "stroke";
 interface MarkupCaptureOptions {
@@ -1997,4 +2010,4 @@ interface MarkupBundle {
     dir?: string;
 }
 
-export { type AppShellConfig, type AppShellInstance, type Appearance, BspTree, type CalloutItem, Callouts, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, DEFAULT_BACKGROUND, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IdBufferOptions, ImportRegistration, Lab, type LayoutOptions, LightingMode, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mesh, NavGizmo, type NavGizmoOptions, type PanelButton, ParamSchema, ParamStore, type Placement, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, type Projection, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, type SectionRequest, SharedStore, SketchConfig, SketchInstance, type StandardView, type Theme, ThreeRenderer, type ThreeRendererConfig, Vec3, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, easeInOut, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, labelWidthFor, layoutLabels, lightBalance, modeBackground, nearestAxis, orbitFor, orthoFrustum, polylinesToSVG, processWorkerRequest, sectionAppearance, shortestTurn, sketch, standardOrbit, surfaceAppearance };
+export { type AppShellConfig, type AppShellInstance, type Appearance, BspTree, type CalloutItem, Callouts, type ContentOptions, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, DEFAULT_BACKGROUND, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IdBufferOptions, ImportRegistration, Lab, type LayoutOptions, LightingMode, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mesh, NavGizmo, type NavGizmoOptions, type PanelButton, ParamSchema, ParamStore, type PickInfo, type Placement, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, type Projection, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, type SectionRequest, SharedStore, SketchConfig, SketchInstance, type StandardView, type Theme, ThreeRenderer, type ThreeRendererConfig, Vec3, type ViewMode, Viewport, type ViewportOptions, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, easeInOut, edgeStyle, extractVisiblePolylines, fitRadius, getTheme, groundAppearance, hiddenLineIdBuffer, labelWidthFor, layoutLabels, lightBalance, modeBackground, nearestAxis, orbitFor, orthoFrustum, polylinesToSVG, processWorkerRequest, sectionAppearance, shortestTurn, sketch, standardOrbit, surfaceAppearance };
