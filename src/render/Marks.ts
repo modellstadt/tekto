@@ -245,7 +245,14 @@ export class Marks {
     const m = this.pocheMat;
     if (m && m.color.getHex() === colour && m.clippingPlanes?.[0] === plane) return m;
     m?.dispose();
-    this.pocheMat = new THREE.MeshBasicMaterial({ color: colour, side: THREE.BackSide, clippingPlanes: [plane], toneMapped: false });
+    // The same slope term as the surfaces' polygon offset (factor 1), without their unit (0):
+    // the poché still beats a surface's own back faces by that unit, while a thin part's top
+    // face is no longer pushed behind its own underside's poché at a glancing view (a 27 mm
+    // board under a plan cut turned the poché colour).
+    this.pocheMat = new THREE.MeshBasicMaterial({
+      color: colour, side: THREE.BackSide, clippingPlanes: [plane], toneMapped: false,
+      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 0,
+    });
     return this.pocheMat;
   }
 

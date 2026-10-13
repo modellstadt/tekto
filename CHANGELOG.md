@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fix: a thin part the section doesn't reach no longer turns the poché colour** at a
+  glancing view (7DHouse's 27 mm deck boards under a plan cut). The poché takes the
+  surfaces' slope offset now; a real cut still fills. In Flat since 0.8.0, in Studio since
+  0.8.2 (when Studio got its polygon offset back).
 - **`viewerToolbar(scene, renderer, options)`**: the shell's top bar as one element any app
   mounts (`{ el, dispose }`), and `tekto/react`'s `ViewerToolbar` mounts the same, so React
   apps stop copying it. It gains an **AO** toggle beside the lighting and, in the Sun
