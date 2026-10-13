@@ -62,3 +62,31 @@ test("a sketch() has no axis widget unless it asks for one", async ({ page }) =>
   await page.evaluate(() => (window as any).__tekto.owner.renderer.setView("top", { animate: false }));
   expect(await viewDir(page)).toEqual([0, 1, 0]);        // Y-up: the plan looks down -Y
 });
+
+test("walkTo stands inside with a wide lens; a view gives the lens back and stands clear", async ({ page }) => {
+  await page.goto("/testbench.html?page=site-editor");
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  const cam = () => page.evaluate(() => {
+    const r = (window as any).__tekto.owner.renderer;
+    const c = r.activeCamera, t = r.controls.target;
+    return { fov: c.fov, dist: c.position.distanceTo(t), inside: r.inside, z: c.position.z };
+  });
+  const outside = await cam();
+  await page.evaluate(() => {
+    const { doc } = (window as any).siteEditor;
+    const b = doc.get("blocks", doc.ids("blocks")[0]);
+    (window as any).__tekto.owner.renderer.walkTo({ x: b.x - 1, y: b.y, z: 1.6 }, { x: b.x + 1, y: b.y, z: 1.6 }, { animate: false });
+  });
+  expect(await cam()).toMatchObject({ fov: 75, inside: true });
+  expect((await cam()).dist).toBeCloseTo(2, 5);
+  expect((await cam()).z).toBeCloseTo(1.6, 5);
+
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setView("iso", { animate: false }));
+  const back = await cam();
+  expect(back).toMatchObject({ fov: outside.fov, inside: false });
+  expect(back.dist).toBeGreaterThan(5);                     // the block in view, not a walker's 2 m
+
+  // Animated, the lens widens on the way in.
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.walkTo({ x: 0, y: -1, z: 1.6 }, { x: 0, y: 1, z: 1.6 }, { fov: 90 }));
+  await expect.poll(async () => (await cam()).fov).toBe(90);
+});

@@ -6,6 +6,11 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`renderer.walkTo(eye, target, { fov })`** stands inside with a wider lens (default 75°);
+  the next `setView`, `orbitTo`, `fitTo` or `fitAll` gives the lens back, and a view stands
+  back to see the content instead of keeping the walker's distance. `renderer.inside` says
+  which. (#66)
+
 ## 0.8.2 — 2026-10-14
 
 The issues 7DHouse filed (#62–#65) and what BuildGraph needed from the old Viewport, on the one renderer: IFC storeys at their height, roofs, slab openings framed and voided, Studio's poché and shadows, callouts that see more and cost less, hidden objects hidden from everything, view-mode icons, a fading grid ground, and appShell drawing on demand.

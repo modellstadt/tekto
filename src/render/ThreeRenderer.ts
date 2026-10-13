@@ -710,6 +710,17 @@ export class ThreeRenderer {
   fitTo(objects: readonly string[], opts: { margin?: number; animate?: boolean } = {}): void { this.rig.fitTo(objects, opts); }
 
   /**
+   * Stand inside: the camera at `eye` (say, 1.6 m above a floor) looking at `target`, with a
+   * wider lens (`fov`, default 75°), in perspective. Animated unless `{ animate: false }`.
+   * The next `setView`, `orbitTo`, `fitTo` or `fitAll` gives the lens back and, for a view,
+   * stands back to see the content again.
+   */
+  walkTo(eye: Vec3, target: Vec3, opts: { fov?: number; animate?: boolean } = {}): void { this.rig.walkTo(eye, target, opts); }
+
+  /** Is the camera standing inside (after `walkTo`, until a view or a fit takes it out)? */
+  get inside(): boolean { return this.rig.inside; }
+
+  /**
    * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
    * and restore (0,0,1) for side/elevation views.
    */

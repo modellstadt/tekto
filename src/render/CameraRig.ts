@@ -23,7 +23,10 @@ export class CameraRig {
   private cameraMove: {
     from: THREE.Vector3; turn: THREE.Quaternion; fromTarget: THREE.Vector3; toTarget: THREE.Vector3;
     toDist: number; fromZoom: number; toZoom: number; start: number; ms: number;
+    fromFov: number; toFov: number;
   } | null = null;
+  // Standing inside (walkTo): the lens the camera had outside, given back on the way out.
+  private outsideFov: number | null = null;
   private projectionListeners = new Set<(projection: "perspective" | "orthographic") => void>();
 
   constructor(
@@ -171,10 +174,13 @@ export class CameraRig {
   }
 
   orbitTo(direction: { x: number; y: number; z: number }, opts: { animate?: boolean } = {}): void {
-    const target = this.core.controls?.target ?? new THREE.Vector3();
+    // Coming out from inside: stand back to see the content, not at a walker's distance.
+    const out = this._leaveInside();
+    let target = this.core.controls?.target ?? new THREE.Vector3();
     const cam = this.activeCamera;
     const offset = cam.position.clone().sub(target);
-    const dist = offset.length() || 10;
+    let dist = offset.length() || 10;
+    if (out) { target = out.target; dist = out.dist; }
     const dir = new THREE.Vector3(direction.x, direction.y, direction.z).normalize();
     // Looking exactly along the up axis leaves the roll undefined: hold a hair off the pole,
     // towards the viewer's south, so a plan keeps its north up.
@@ -183,16 +189,61 @@ export class CameraRig {
     }
     if (opts.animate === false || offset.lengthSq() === 0) {
       this.cameraMove = null;
+      if (out) this._setFov(out.fov);
+      if (this.core.controls) this.core.controls.target.copy(target);
       this._placeCamera(target, dir.multiplyScalar(dist));
       return;
     }
-    this._moveCamera(dir, target.clone(), dist, this._orthoCam.zoom);
+    this._moveCamera(dir, target.clone(), dist, this._orthoCam.zoom, out?.fov);
+  }
+
+  /**
+   * Stand inside: the camera at `eye`, looking at `target`, with a wider lens (`fov`, default
+   * 75°), in perspective. The way out gives the lens back: the next `setView`, `orbitTo`,
+   * `fitTo` or `fitAll` restores the fov the camera had outside, and `setView` / `orbitTo`
+   * stand back to see the content rather than keeping the walker's distance.
+   */
+  walkTo(eye: Vec3, target: Vec3, opts: { fov?: number; animate?: boolean } = {}): void {
+    if (this._isOrtho) this.setProjection("perspective");
+    this.outsideFov ??= this.camera.fov;
+    const fov = opts.fov ?? 75;
+    const t = new THREE.Vector3(target.x, target.y, target.z);
+    const offset = new THREE.Vector3(eye.x, eye.y, eye.z).sub(t);
+    if (offset.lengthSq() === 0) throw new Error("walkTo: the eye and the target are the same point");
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      this._setFov(fov);
+      if (this.core.controls) this.core.controls.target.copy(t);
+      this._placeCamera(t, offset);
+      return;
+    }
+    this._moveCamera(offset.clone().normalize(), t, offset.length(), this._orthoCam.zoom, fov);
+  }
+
+  /** Is the camera standing inside (after `walkTo`, before a view or a fit takes it out)? */
+  get inside(): boolean { return this.outsideFov !== null; }
+
+  /** Leave the inside, if there: the lens to go back to, and a framing of the content. */
+  private _leaveInside(): { fov: number; target: THREE.Vector3; dist: number } | null {
+    if (this.outsideFov === null) return null;
+    const fov = this.outsideFov;
+    this.outsideFov = null;
+    const box = this.core.contentBox();
+    const sphere = box.isEmpty() ? new THREE.Sphere(new THREE.Vector3(), 5) : box.getBoundingSphere(new THREE.Sphere());
+    return { fov, target: sphere.center, dist: fitRadius(Math.max(sphere.radius, 0.5), fov, this.camera.aspect, 1.3) };
+  }
+
+  private _setFov(fov: number): void {
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
   }
 
   fitTo(objects: readonly string[], opts: { margin?: number; animate?: boolean } = {}): void {
     const box = new THREE.Box3();
     for (const t of this.core.resolve(objects)) box.expandByObject(t);
     if (box.isEmpty()) return;
+    const out = this._leaveInside();
+    if (out) this._setFov(out.fov);                // framed with the outside lens
     const target = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
@@ -215,12 +266,13 @@ export class CameraRig {
 
 
   /** Start a move to `dir` from `target` at `dist` (and, in orthographic, `zoom`). */
-  private _moveCamera(dir: THREE.Vector3, target: THREE.Vector3, dist: number, zoom: number): void {
+  private _moveCamera(dir: THREE.Vector3, target: THREE.Vector3, dist: number, zoom: number, fov = this.camera.fov): void {
     const from = this.core.controls?.target.clone() ?? new THREE.Vector3();
     const offset = this.activeCamera.position.clone().sub(from);
     this.cameraMove = {
       from: offset, turn: new THREE.Quaternion().setFromUnitVectors(offset.clone().normalize(), dir.clone().normalize()),
       fromTarget: from, toTarget: target, toDist: dist, fromZoom: this._orthoCam.zoom, toZoom: zoom,
+      fromFov: this.camera.fov, toFov: fov,
       start: performance.now(), ms: 340,
     };
     this.core.requestRender();
@@ -267,6 +319,7 @@ export class CameraRig {
       this._orthoCam.zoom = THREE.MathUtils.lerp(m.fromZoom, m.toZoom, t);
       this._orthoCam.updateProjectionMatrix();
     }
+    if (m.toFov !== m.fromFov) this._setFov(THREE.MathUtils.lerp(m.fromFov, m.toFov, t));
     if (t >= 1) this.cameraMove = null;
     return true;
   }
@@ -299,6 +352,8 @@ export class CameraRig {
   }
 
   fitAll() {
+    const out = this._leaveInside();
+    if (out) this._setFov(out.fov);
     const box = new THREE.Box3();
     for (const obj of this.core.objectMap.values()) {
       if (obj.visible) {
