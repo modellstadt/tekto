@@ -372,7 +372,20 @@ elevations, `"iso"` the diagonal; the camera turns there at the same distance (p
 The **axis widget** (`navGizmo`) sits in a corner: click an axis for that view, drag it to
 orbit, double-click to square up to the nearest axis, and toggle persp/ortho under it.
 Ask for it with `navGizmo: true` in `appShell()` or `sketch()` (or a corner, `"top-left"`);
-it is off by default because an app may have its own panels in that corner. The top bar's Cam control follows the projection
+it is off by default because an app may have its own panels in that corner.
+
+A few more things the renderer does for a model, none of which an app has to ask for:
+- **Creases are drawn in, a frame at a time.** Hidden line and ghost build their edges
+  within a time budget per frame, so switching a model of thousands of meshes doesn't
+  stall the tab. `renderer.pendingEdges` says how many are left; a snapshot waits for all.
+- **The sun frames the content.** In Studio, the shadow camera is fitted to what the scene
+  shows, so a 1 m part and a 100 m site both get complete, sharp shadows.
+
+And two it offers:
+- `renderer.setSelectionStyle("outline")`: a selection is outlined on top of everything
+  instead of tinted, for apps whose colours carry meaning, and so it shows through what
+  stands in front.
+- `renderer.onHover((id) => …)`: what the pointer is over, reported when it changes. The top bar's Cam control follows the projection
 wherever it is changed (`renderer.onProjection`).
 
 ## Markup — instructions for an AI, drawn on the view

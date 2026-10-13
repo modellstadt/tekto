@@ -6,6 +6,19 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **One renderer, part 3: render quality on `ThreeRenderer`** (from `Viewport`).
+  - Hidden-line and ghost creases are built a frame at a time (8 ms budget), so a mode
+    switch on a large model no longer stalls. `pendingEdges` counts what is left;
+    `snapshotPng` (and so `snap` and Markup) waits for all of them.
+  - In Studio the sun is aimed at the content and its shadow camera is fitted around it,
+    instead of a fixed 30 m box at the origin. A normal bias scaled to the content keeps lit
+    faces clean. `setSunDirection`'s `distance` is now a minimum.
+  - `setSelectionStyle("outline")`: the selection is drawn as outlines on top of everything,
+    leaving the fill colour alone. Outlines are clipped by a section and go away with their
+    object.
+  - `onHover(listener)`: the object under the pointer, when it changes (throttled, not while
+    orbiting).
+
 - **One renderer, part 2: named views and the axis widget on `ThreeRenderer`** (from
   `Viewport`).
   - `setView("top" | "front" | "back" | "left" | "right" | "bottom" | "iso")`: a plan (north

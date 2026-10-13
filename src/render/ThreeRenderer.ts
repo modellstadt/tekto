@@ -62,6 +62,9 @@ const DEFAULTS: ThreeRendererConfig = {
   navGizmo: false,
 };
 
+/** How long a frame may spend building crease lines before it draws. */
+const EDGE_BUDGET_MS = 8;
+
 /** ThreeRenderer keeps the content's axes (it turns the camera's up, not the model). */
 const NO_TURN = new THREE.Quaternion();
 
@@ -167,6 +170,20 @@ export class ThreeRenderer {
   private cameraMove: { from: THREE.Vector3; turn: THREE.Quaternion; start: number; ms: number } | null = null;
   private projectionListeners = new Set<(projection: "perspective" | "orthographic") => void>();
 
+  // ── Edges built a frame at a time (hidden line, ghost) ──
+  private edgeQueue: { line: THREE.LineSegments; source: THREE.BufferGeometry; angle: number }[] = [];
+  // ── The sun framed to the content (Studio) ──
+  private sunDir = new THREE.Vector3(8, 10, 15).normalize();
+  private sunMinDistance = 50;
+  private sunDirty = true;
+  // ── Selection as outlines, hover ──
+  private selectionStyle: "tint" | "outline" = "tint";
+  private outlineGroup = new THREE.Group();
+  private outlined: { line: THREE.LineSegments; source: THREE.Object3D }[] = [];
+  private hoverListeners = new Set<(id: string | null) => void>();
+  private hovered: string | null = null;
+  private hoverAt = 0;
+
   constructor(gScene: GScene, container: HTMLElement, config?: Partial<ThreeRendererConfig>) {
     this.gScene = gScene;
     this.container = container;
@@ -212,6 +229,9 @@ export class ThreeRenderer {
 
     this.hemiLight = new THREE.HemisphereLight(0x4466aa, 0x332211, 0.4);
     this.threeScene.add(this.hemiLight);
+    this.sunDir.copy(this.dirLight.position).normalize();
+    this.outlineGroup.renderOrder = 999;
+    this.threeScene.add(this.outlineGroup);
 
     // Apply whatever lighting mode the scene was last set to.
     this._applyLighting(this.gScene.lightingMode);
@@ -268,6 +288,7 @@ export class ThreeRenderer {
 
   private handleEvent(event: SceneEvent) {
     this._needsRender = true;
+    this.sunDirty = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -403,12 +424,14 @@ export class ThreeRenderer {
   private removeFromThree(id: string) {
     const t = this.objectMap.get(id);
     if (!t) return;
+    this._dropOutlines(t);
     this.threeScene.remove(t);
     this.disposeObject(t);
     this.objectMap.delete(id);
   }
 
   private clearThree() {
+    this._dropOutlines(null);
     for (const [, t] of this.objectMap) {
       this.threeScene.remove(t);
       this.disposeObject(t);
@@ -533,11 +556,6 @@ export class ThreeRenderer {
   }
 
   /**
-   * Show/hide line + point "helper" objects (axes, construction lines, markers,
-   * labels). Solid meshes are unaffected. Applies immediately to existing
-   * objects and to all future ones until changed.
-   */
-  /**
    * Show/hide the studio shadow-catcher plane at the world origin. Hide it when
    * the app supplies its own ground mesh to receive shadows (avoids a duplicate
    * shadow at z=0).
@@ -571,6 +589,11 @@ export class ThreeRenderer {
     this.requestRender();
   }
 
+  /**
+   * Show/hide line + point "helper" objects (axes, construction lines, markers,
+   * labels). Solid meshes are unaffected. Applies immediately to existing
+   * objects and to all future ones until changed.
+   */
   setHelpersVisible(visible: boolean): void {
     this.hideHelpers = !visible;
     if (this.gridHelper) this.gridHelper.visible = visible;
@@ -583,15 +606,6 @@ export class ThreeRenderer {
     this.requestRender();
   }
 
-  /**
-   * Aim the main directional light at the origin from the given unit
-   * direction (FROM origin TO light). Input is in Z-up scene coords
-   * (+X east, +Y north, +Z up) — typical sun-vector convention; the
-   * renderer remaps internally if the scene is Y-up.
-   *
-   * @param direction Unit vector pointing toward the light source.
-   * @param distance  How far back to place the light (m). Default 50.
-   */
   /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
    *  useful range at building scale. */
   setFog(color: string, density = 0): void {
@@ -605,16 +619,43 @@ export class ThreeRenderer {
     this.requestRender();
   }
 
+  /**
+   * Light the model from `direction` (FROM the model TO the sun), in Z-up scene coords
+   * (+X east, +Y north, +Z up) — the `SunPosition` convention; a Y-up scene is remapped.
+   * In Studio the shadow camera is framed to whatever the scene shows, so a 1 m object
+   * and a 100 m site both get sharp, complete shadows. `distance` is how far back the
+   * light sits at least (m).
+   */
   setSunDirection(direction: Vec3, distance = 50): void {
-    // Re-map Z-up sun direction → renderer up-axis.
     const x = direction.x;
     const y = this.isZUp ? direction.y :  direction.z;
     const z = this.isZUp ? direction.z : -direction.y;
-    this.dirLight.position.set(x * distance, y * distance, z * distance);
-    this.dirLight.target.position.set(0, 0, 0);
-    this.dirLight.target.updateMatrixWorld();
-    this.dirLight.shadow.camera.updateProjectionMatrix();
+    this.sunDir.set(x, y, z).normalize();
+    this.sunMinDistance = distance;
+    this.sunDirty = true;
+    this._fitSun();
     this.requestRender();
+  }
+
+  /** Aim the sun at the content's centre and fit its shadow camera around it. */
+  private _fitSun(): void {
+    this.sunDirty = false;
+    const box = this._contentBox();
+    for (const o of this.externalObjects.values()) if (o.visible) box.expandByObject(o);
+    const sphere = box.isEmpty() ? new THREE.Sphere(new THREE.Vector3(), 10) : box.getBoundingSphere(new THREE.Sphere());
+    const r = Math.max(sphere.radius, 0.5);
+    const d = Math.max(this.sunMinDistance, r * 3);
+    this.dirLight.position.copy(sphere.center).addScaledVector(this.sunDir, d);
+    this.dirLight.target.position.copy(sphere.center);
+    this.dirLight.target.updateMatrixWorld();
+    // A framed shadow map has small texels: push the lookup out along the normal, scaled to
+    // the content, or lit faces shadow themselves (acne).
+    this.dirLight.shadow.normalBias = r * 0.002;
+    const sc = this.dirLight.shadow.camera;
+    sc.left = -r * 1.2; sc.right = r * 1.2; sc.top = r * 1.2; sc.bottom = -r * 1.2;
+    sc.near = Math.max(0.01, d - r * 1.5);
+    sc.far = d + r * 1.5;
+    sc.updateProjectionMatrix();
   }
 
   /**
@@ -640,14 +681,8 @@ export class ThreeRenderer {
       this.dirLight.castShadow    = true;
       this.dirLight.shadow.mapSize.set(2048, 2048);
       this.dirLight.shadow.bias   = -0.0005;
-      // Shadow camera frustum. 30 m half-extent covers a 4-storey house
-      // comfortably without making the resolution too coarse.
-      const sc = this.dirLight.shadow.camera;
-      const d = 30;
-      sc.near = 0.5;
-      sc.far  = 200;
-      sc.left = -d; sc.right = d; sc.top = d; sc.bottom = -d;
-      sc.updateProjectionMatrix();
+      // The shadow camera is framed to the content on the next draw (_fitSun).
+      this.sunDirty = true;
     } else {
       this.ambientLight.intensity = 0.50;
       this.hemiLight.intensity    = 0.40;
@@ -1072,9 +1107,8 @@ export class ThreeRenderer {
       // edges whose dihedral angle exceeds `edgeAngle`, so coplanar tessellation
       // seams (quad diagonals, flat-wall tiling) drop out — a clean line drawing.
       const edgeAngle = s.edgeAngle ?? 30; // degrees
-      const wireGeo = new THREE.EdgesGeometry(geo, edgeAngle);
       const wireMat = new THREE.LineBasicMaterial({ color: s.edgeColor ?? 0x2f2f2f, toneMapped: false });
-      group.add(new THREE.LineSegments(wireGeo, wireMat));
+      group.add(this._edgeLines(geo, edgeAngle, wireMat));
 
       // Pass 3: view-dependent SILHOUETTES for smooth geometry (pipes, posts,
       // subdivision surfaces) — those have no dihedral above the threshold, so
@@ -1103,7 +1137,7 @@ export class ThreeRenderer {
       surface.userData.surface = true;
       group.add(surface);
       const edge = edgeStyle("ghost", this.config.backgroundColor);
-      group.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, s.edgeAngle ?? 30), new THREE.LineBasicMaterial({
+      group.add(this._edgeLines(geo, s.edgeAngle ?? 30, new THREE.LineBasicMaterial({
         color: edge.colour, opacity: edge.opacity, transparent: true, depthWrite: false,
       })));
 
@@ -1564,6 +1598,7 @@ export class ThreeRenderer {
   /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
    *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
   snapshotPng(): string {
+    this._buildEdges(Infinity);                // a snapshot shows the finished drawing
     this.render();
     return this.renderer.domElement.toDataURL("image/png");
   }
@@ -1641,9 +1676,24 @@ export class ThreeRenderer {
 
   // ── Selection visual feedback ──
 
+  /**
+   * How `setSelectionHighlight` marks a selection: `"tint"` (default) lights it up in the
+   * accent colour; `"outline"` draws its edges on top of everything instead and leaves its
+   * fill alone — for apps whose colours mean something (a product, a state, a grade), and
+   * so a selection behind other parts still shows.
+   */
+  setSelectionStyle(style: "tint" | "outline"): void {
+    this.selectionStyle = style;
+    this.setSelectionHighlight(this.highlightIds);
+  }
+  private highlightIds: readonly string[] | null = null;
+
   /** Highlight one object, several (a record's objects, a multi-selection), or none. */
   setSelectionHighlight(ids: string | readonly string[] | null): void {
     this.requestRender();
+    this.highlightIds = ids === null ? null : typeof ids === "string" ? [ids] : [...ids];
+    for (const o of this.outlined) { o.line.geometry.dispose(); o.line.removeFromParent(); }
+    this.outlined = [];
     // Restore prior highlight.
     for (const [, info] of this.selectionMaterials) {
       const m = info.mat as (THREE.MeshPhongMaterial | THREE.MeshStandardMaterial);
@@ -1655,7 +1705,23 @@ export class ThreeRenderer {
     this.selectionMaterials.clear();
     const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
     const ghost = this.gScene.renderMode === "ghost";
-    for (const id of list) {
+    if (this.selectionStyle === "outline") {
+      for (const id of list) {
+        const t = this.objectMap.get(id);
+        if (!t) continue;
+        t.updateMatrixWorld(true);
+        t.traverse((c) => {
+          if (!c.userData.surface) return;
+          const line = new THREE.LineSegments(new THREE.EdgesGeometry((c as THREE.Mesh).geometry, 30), this._outlineMaterial());
+          line.matrixAutoUpdate = false;
+          line.matrix.copy(c.matrixWorld);
+          line.renderOrder = 999;
+          this.outlineGroup.add(line);
+          this.outlined.push({ line, source: c });
+        });
+      }
+    }
+    for (const id of this.selectionStyle === "outline" ? [] : list) {
       const t = this.objectMap.get(id);
       if (!t) continue;
       t.traverse((child: THREE.Object3D) => {
@@ -1675,6 +1741,83 @@ export class ThreeRenderer {
         }
       });
     }
+  }
+
+  /** Remove the outlines traced from `root`'s meshes (all of them for null). */
+  private _dropOutlines(root: THREE.Object3D | null): void {
+    this.outlined = this.outlined.filter((o) => {
+      let inside = root === null;
+      for (let c: THREE.Object3D | null = o.source; c && !inside; c = c.parent) inside = c === root;
+      if (inside) { o.line.geometry.dispose(); o.line.removeFromParent(); }
+      return !inside;
+    });
+  }
+
+  private outlineMat: THREE.LineBasicMaterial | null = null;
+  private _outlineMaterial(): THREE.LineBasicMaterial {
+    if (!this.outlineMat) this.outlineMat = new THREE.LineBasicMaterial({ color: 0x1f7ae0, depthTest: false, transparent: true, opacity: 0.95 });
+    this.outlineMat.clippingPlanes = this.sectionClip ? [this.sectionClip] : null;
+    return this.outlineMat;
+  }
+
+  // ── Edges, a frame at a time ──
+
+  /** Crease lines for `geo`, built on a later frame (see `_buildEdges`): a mode switch on a
+   *  model of thousands of meshes no longer stalls the tab, it draws the creases in. */
+  private _edgeLines(geo: THREE.BufferGeometry, angle: number, mat: THREE.LineBasicMaterial): THREE.LineSegments {
+    const line = new THREE.LineSegments(new THREE.BufferGeometry(), mat);
+    this.edgeQueue.push({ line, source: geo, angle });
+    return line;
+  }
+
+  /** Build queued crease lines for up to `budgetMs`. Lines whose object is gone are skipped. */
+  private _buildEdges(budgetMs: number): void {
+    if (!this.edgeQueue.length) return;
+    const t0 = performance.now();
+    let built = 0;
+    while (this.edgeQueue.length && (built === 0 || performance.now() - t0 < budgetMs)) {
+      const { line, source, angle } = this.edgeQueue.shift()!;
+      let top: THREE.Object3D = line;
+      while (top.parent) top = top.parent;
+      if (top !== this.threeScene) continue;
+      line.geometry.dispose();
+      line.geometry = new THREE.EdgesGeometry(source, angle);
+      built++;
+    }
+    this.requestRender();
+  }
+
+  /** Crease lines still to be drawn (hidden line and ghost build them a frame at a time). */
+  get pendingEdges(): number { return this.edgeQueue.length; }
+
+  // ── Hover ──
+
+  /**
+   * Hear which object the pointer is over (null over nothing): reported only when it
+   * changes, never while a button is held (an orbit), at most every 40 ms — so an app can
+   * light what a click would select without a raycast per frame. Returns the unsubscribe.
+   */
+  onHover(listener: (id: string | null) => void): () => void {
+    const dom = this.renderer.domElement;
+    if (this.hoverListeners.size === 0) { dom.addEventListener("pointermove", this.onHoverMove); dom.addEventListener("pointerleave", this.onHoverLeave); }
+    this.hoverListeners.add(listener);
+    return () => {
+      this.hoverListeners.delete(listener);
+      if (this.hoverListeners.size === 0) { dom.removeEventListener("pointermove", this.onHoverMove); dom.removeEventListener("pointerleave", this.onHoverLeave); }
+    };
+  }
+  private onHoverMove = (e: PointerEvent) => {
+    if (e.buttons !== 0) return;
+    const now = performance.now();
+    if (now - this.hoverAt < 40) return;
+    this.hoverAt = now;
+    this._hover(this.pickAt(e.clientX, e.clientY));
+  };
+  private onHoverLeave = () => this._hover(null);
+  private _hover(id: string | null): void {
+    if (id === this.hovered) return;
+    this.hovered = id;
+    for (const l of this.hoverListeners) l(id);
   }
 
   // ── Section ──
@@ -1697,6 +1840,7 @@ export class ThreeRenderer {
     this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === undefined ? this._contentBox() : null) : null;
     this.renderer.localClippingEnabled = !!this.sectionClip;
     for (const t of this.objectMap.values()) this._dressSection(t);
+    if (this.outlineMat) this._outlineMaterial();
     this.requestRender();
   }
 
@@ -1768,11 +1912,14 @@ export class ThreeRenderer {
   /** Draw now, unconditionally. */
   render() {
     this._stepCameraMove();
+    this._buildEdges(EDGE_BUDGET_MS);
     this.controls?.update();
     this._draw();
   }
 
   private _draw(): void {
+    if (this.sunDirty && this.currentLighting === "studio") this._fitSun();
+    for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
     this.navGizmo?.update(this.activeCamera, NO_TURN);
@@ -1795,6 +1942,7 @@ export class ThreeRenderer {
    */
   renderIfNeeded(): boolean {
     const turning = this._stepCameraMove();
+    this._buildEdges(EDGE_BUDGET_MS);
     // update() advances damping and reports whether the camera moved.
     const moved = this.controls?.update() ?? false;
     const settling = this._settleDamping();
@@ -2143,6 +2291,10 @@ export class ThreeRenderer {
     this.unsub?.();
     this.clearThree();
     this.pocheMat?.dispose();
+    this.outlineMat?.dispose();
+    for (const o of this.outlined) o.line.geometry.dispose();
+    this.renderer.domElement.removeEventListener("pointermove", this.onHoverMove);
+    this.renderer.domElement.removeEventListener("pointerleave", this.onHoverLeave);
     this.threeScene.environment = null;
     this.envMap?.dispose();
     this.envMap = null;
