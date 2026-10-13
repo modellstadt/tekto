@@ -33,6 +33,12 @@ before 1.0, breaking changes bump the minor version. See
   the joists there; a header across each end, between the trimmers; the joists in between
   stop at the headers with the bearing gap. The sheathing and ceiling leave the opening
   out. New part role `"trimmer"`. Playground: **Framed Floor** (a stair well, Export IFC).
+- **Callouts, from BuildGraph's fixes to the old Viewport**: an element counts as
+  in sight if its centre or one of eight points toward its corners is, and only surfaces
+  that write depth hide it, so ghost and see-through parts hide no label. A label whose
+  text, detail or colour changed is redrawn. Visibility is worked out only once the camera
+  has been still for 120 ms, a 6 ms slice per frame, and stops once both margins are full
+  ("up to N more not labelled").
 - `AccordionColumn` and `InfoHint` (and their props types) are no longer marked
   experimental: BuildGraph uses them. 47 exports keep the tag.
 

@@ -84,6 +84,16 @@ export interface Layout {
   dropped: string[];
 }
 
+/** How many labels one margin holds at a given height, as `layoutLabels` counts. */
+export function marginCapacity(height: number, opts: { rowHeight?: number; inset?: number } = {}): number {
+  return Math.max(0, Math.floor((height - 2 * (opts.inset ?? 8)) / (opts.rowHeight ?? 30)));
+}
+
+/** Whether a label built for `was` no longer says what `now` says (or `now` is gone). */
+export function calloutChanged(was: CalloutItem | undefined, now: CalloutItem | undefined): boolean {
+  return !was || !now || was.text !== now.text || was.detail !== now.detail || was.colour !== now.colour;
+}
+
 /**
  * Stack labels into the left and right margins without overlapping.
  *
@@ -109,7 +119,7 @@ export function layoutLabels(
   const rowHeight = opts.rowHeight ?? 30;
   const labelWidth = opts.labelWidth ?? labelWidthFor(opts.width);
   const inset = opts.inset ?? 8;
-  const capacity = Math.max(0, Math.floor((opts.height - 2 * inset) / rowHeight));
+  const capacity = marginCapacity(opts.height, { rowHeight, inset });
   const placed: Placement[] = [];
   const dropped: string[] = [];
 
@@ -182,12 +192,16 @@ export class Callouts {
 
   /** What there is to say. Placements arrive separately, each frame. */
   setItems(items: CalloutItem[]) {
-    this.items = new Map(items.map((i) => [i.id, i]));
+    const next = new Map(items.map((i) => [i.id, i]));
     for (const [id, el] of this.labels) {
-      if (!this.items.has(id)) {
+      // Gone, or now saying something else: a label is built once, so one whose item
+      // changed would go on showing the old words. Dropped here, it is rebuilt when next
+      // placed.
+      if (calloutChanged(this.items.get(id), next.get(id))) {
         el.box.remove(); el.leader.remove(); this.labels.delete(id);
       }
     }
+    this.items = next;
   }
 
   /** Track the host's width, so labels stay a share of it rather than a
@@ -211,9 +225,10 @@ export class Callouts {
    * `unplaced` is how many the margins had no room for, and it is shown. A
    * reader who can see fifteen labels and is not told there were twenty-two
    * has been given a wrong count, quietly, which is the failure this whole
-   * project is arranged against.
+   * project is arranged against. `upTo`: some of them were never looked at
+   * (the margins were full), so it is how many there could be: "up to n".
    */
-  update(placements: Placement[], unplaced = 0) {
+  update(placements: Placement[], unplaced = 0, upTo = false) {
     const placed = new Set(placements.map((p) => p.id));
     for (const [id, el] of this.labels) {
       if (!placed.has(id)) { el.box.hidden = true; el.leader.setAttribute("points", ""); }
@@ -234,10 +249,10 @@ export class Callouts {
       el.leader.setAttribute("points",
         `${from},${mid} ${knee},${mid} ${p.anchorX},${p.anchorY}`);
     }
-    this.showOverflow(unplaced);
+    this.showOverflow(unplaced, upTo);
   }
 
-  private showOverflow(n: number) {
+  private showOverflow(n: number, upTo = false) {
     if (!n) { this.overflow?.remove(); this.overflow = null; return; }
     if (!this.overflow) {
       this.overflow = document.createElement("div");
@@ -247,7 +262,7 @@ export class Callouts {
         font:500 10px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#79838d`;
       this.root.append(this.overflow);
     }
-    this.overflow.textContent = `${n} more not labelled: no room in the margins`;
+    this.overflow.textContent = `${upTo ? "up to " : ""}${n} more not labelled: no room in the margins`;
   }
 
   private make(id: string, item: CalloutItem) {
