@@ -5,7 +5,7 @@ import {
   createRandom,
   noise,
   pickPrim
-} from "./chunk-K5F6U4JJ.mjs";
+} from "./chunk-K7LUW25N.mjs";
 import {
   MathUtils,
   Vec2
@@ -618,7 +618,10 @@ function installAgentBridge(host) {
       }
       return r;
     },
-    ...host.camera ? { camera: host.camera } : {}
+    ...host.camera ? { camera: host.camera } : {},
+    // What the app can do — undo, delete, the views … — by id, as a person would by key.
+    commands: () => host.commands?.list() ?? [],
+    run: (id) => host.commands ? host.commands.run(id) : Promise.resolve(false)
   };
   return {
     errors: () => [...errors],
@@ -710,6 +713,29 @@ function sceneSummary(scene, renderer, describe) {
       ...shown <= 150 ? { objects } : {}
     }
   };
+}
+function addOverlay(viewportEl, existing) {
+  const el = document.createElement("div");
+  el.style.cssText = "position:absolute;inset:0;";
+  (existing[existing.length - 1] ?? viewportEl).after(el);
+  existing.push(el);
+  return el;
+}
+function snapshotWithOverlays(renderer, wrap) {
+  const base = renderer.snapshotPng();
+  const shown = [...wrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
+  if (!shown.length) return base;
+  const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
+  const out = document.createElement("canvas");
+  out.width = src.width;
+  out.height = src.height;
+  const g = out.getContext("2d");
+  g.drawImage(src, 0, 0);
+  for (const c of shown) {
+    const r = c.getBoundingClientRect();
+    g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
+  }
+  return out.toDataURL("image/png");
 }
 async function plainBundle(opts) {
   const markup = {
@@ -1169,7 +1195,6 @@ var Sketch2DInstance = class {
     };
     requestAnimationFrame(loop);
   }
-  /** Tear down the sketch */
   /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
   getParams() {
     return { ...this.store.getAll() };
@@ -1178,6 +1203,7 @@ var Sketch2DInstance = class {
   setParams(values) {
     return this.store.setByName(values);
   }
+  /** Tear down the sketch */
   dispose() {
     this.disposed = true;
     this.bridge?.dispose();
@@ -1451,6 +1477,8 @@ export {
   installAgentBridge,
   describeSceneObject,
   sceneSummary,
+  addOverlay,
+  snapshotWithOverlays,
   plainBundle,
   slug,
   saveBundle,

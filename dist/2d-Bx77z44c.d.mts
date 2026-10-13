@@ -1,5 +1,5 @@
-import { M as Mesh, s as VisualStyle, V as Vec3, F as FlatMeshData, b as Vec2, d as StandardView, c as SectionRequest, S as Scene } from './Scene-BsMmRZP7.mjs';
-import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-BZSbEmHN.mjs';
+import { c as StandardView, M as Mesh, s as VisualStyle, V as Vec3, F as FlatMeshData, b as Vec2, d as SectionRequest, S as Scene } from './Scene-CaG0H74_.mjs';
+import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-DxT2M8eM.mjs';
 
 /**
  * LayerPanel — reusable tree-based layer/visibility panel.
@@ -13,6 +13,7 @@ import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet
  *   - Use computeEffectiveVisibility() to get the resolved visibility for
  *     each node (own state AND all ancestor states combined).
  */
+/** One layer in a `LayerPanel` tree: id, label, initial visibility and colour (a colour shows a picker), and child layers. */
 interface LayerNode {
     /** Unique identifier — used as key in LayerMap */
     id: string;
@@ -25,6 +26,7 @@ interface LayerNode {
     /** Child nodes */
     children?: LayerNode[];
 }
+/** A layer's own stored state: its visibility toggle and colour (not ancestor-aware — see `computeEffectiveVisibility`). */
 interface LayerState {
     visible: boolean;
     color: string;
@@ -40,6 +42,10 @@ type LayerMap = Record<string, LayerState>;
  * directly — it gives the correct CAD-style masked result.
  */
 declare function computeEffectiveVisibility(nodes: LayerNode[], value: LayerMap): Record<string, boolean>;
+/**
+ * A tree of layers with a visibility checkbox (and optional colour picker) per node; hiding a parent dims its children without changing their stored state.
+ * Used by `lab.layerTree()`, or standalone by appending `.el`; `onChange` receives only the changed node, and `update(nodes, value)` re-renders.
+ */
 declare class LayerPanel {
     /** Mount this element anywhere in your UI */
     readonly el: HTMLElement;
@@ -69,6 +75,90 @@ declare class LayerPanel {
 }
 
 /**
+ * Commands — what a user (or an agent) can do in an app, with the keys that do it.
+ *
+ * Every app grew its own `keydown` handler: a chain of `if (mod && key === "z")` that no one
+ * else could see. A command names the action once — an id, a label, the keys, how to run it,
+ * and whether it can run now — and the registry does the rest: runs it from its keys (not
+ * while typing in a field), lists it for a palette or a tooltip, and lets an agent run it
+ * by id (`window.__tekto.run("edit.undo")`).
+ *
+ *   app.commands.add([
+ *     { id: "edit.undo", label: "Undo", keys: "Mod+Z", run: () => doc.undo(), enabled: () => doc.canUndo() },
+ *     { id: "edit.delete", label: "Delete", keys: ["Delete", "Backspace"], run: removeSelected },
+ *   ]);
+ *
+ * Keys: modifiers then the key, joined by "+": `Mod` is ⌘ on a Mac and Ctrl elsewhere (or
+ * name `Meta` / `Ctrl` outright), then `Shift`, `Alt`; the key is a `KeyboardEvent.key` —
+ * a letter, `Delete`, `Escape`, `ArrowUp`, `F`, `?`.
+ */
+
+/** Something the app can do. */
+interface Command {
+    /** Stable name, dotted by area: `"edit.undo"`, `"view.top"`. */
+    id: string;
+    /** What a person reads: `"Undo"`. */
+    label: string;
+    /** Key bindings: `"Mod+Z"`, or several (`["Delete", "Backspace"]`). */
+    keys?: string | readonly string[];
+    /** Where it belongs in a list: `"Edit"`, `"View"`. */
+    group?: string;
+    run(): void | Promise<void>;
+    /** Whether it can run now; keys and `run(id)` skip it when false. */
+    enabled?(): boolean;
+}
+/** A command as listed: everything but the functions. */
+interface CommandInfo {
+    id: string;
+    label: string;
+    group?: string;
+    keys: string[];
+    enabled: boolean;
+}
+/** Does this key event press this binding? Exactly its modifiers; letters ignore case. */
+declare function keyMatches(binding: string, e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">, mac?: boolean): boolean;
+/** A binding the way the platform writes it: "⇧⌘Z" on a Mac, "Ctrl+Shift+Z" elsewhere. */
+declare function formatKeys(binding: string, mac?: boolean): string;
+/** What `viewCommands` drives: structurally a ThreeRenderer. */
+interface ViewControl {
+    fitAll(): void;
+    setView(view: StandardView): void;
+    setProjection(projection: "perspective" | "orthographic"): void;
+    readonly projection: "perspective" | "orthographic";
+}
+/**
+ * The commands every 3D view has — frame everything, the plan, the elevations, iso, the
+ * projection — so a palette lists them and an agent can run them (`__tekto.run("view.top")`).
+ * No keys: which keys mean what is the app's to decide.
+ */
+declare function viewCommands(view: ViewControl): Command[];
+/** The commands of one app: run by key or by id, listed for people and agents. */
+declare class Commands {
+    private byId;
+    private listeners;
+    /** Add commands (an id already there is replaced). Returns a function that removes them. */
+    add(commands: Command | readonly Command[]): () => void;
+    remove(id: string): void;
+    get(id: string): Command | undefined;
+    has(id: string): boolean;
+    /** Every command, in the order added, with its keys and whether it can run now. */
+    list(): CommandInfo[];
+    /** Run a command by id. False if there is none or it can't run now. */
+    run(id: string): Promise<boolean>;
+    /** The command a key event presses, if any (and enabled). */
+    match(e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">, mac?: boolean): Command | undefined;
+    /**
+     * Run commands from their keys on `target` (default: the window). Keys typed into a
+     * field stay with the field; a matched key's default is prevented. Returns the unbind.
+     */
+    bindKeys(target?: Pick<Window, "addEventListener" | "removeEventListener">): () => void;
+    /** Hear when commands are added or removed. Returns the unsubscribe. */
+    onChange(cb: () => void): () => void;
+    private canRun;
+    private emit;
+}
+
+/**
  * Sketch public type definitions.
  *
  * Extracted from `Sketch.ts` to keep the implementation file focused on
@@ -79,6 +169,7 @@ declare class LayerPanel {
  * `Sketch.ts` since they're implementation details of `SketchInstance`.
  */
 
+/** Options for `sketch()`: where to mount, title, background, grid and axes, the initial camera, up axis (default Y), theme, and which header, Markup and axis widget to show. */
 interface SketchConfig {
     /** DOM element or CSS selector to mount into */
     container?: HTMLElement | string;
@@ -271,6 +362,10 @@ interface HandleSetOpts<T> {
     color?: string;
     size?: number;
 }
+/**
+ * The API a `sketch()` function receives on every run: controls that create UI and return their value, geometry builders that add to the scene and return a handle,
+ * drag handles and picking, logging, view and export hooks, animation, and Processing-style math, noise and input.
+ */
 interface Lab {
     slider(label: string, min: number, max: number, defaultValue: number, opts?: SliderOpts): Reactive<number>;
     /**
@@ -346,6 +441,29 @@ interface Lab {
         mimeType?: string;
         handler: () => Blob | string | Promise<Blob | string>;
     }): void;
+    /**
+     * Something the sketch can do, with its keys — run from the keys while the sketch is
+     * mounted (not while typing in a field) and by agents (`window.__tekto.run(id)`):
+     *
+     *   lab.command({ id: "shape.reset", label: "Reset shape", keys: "R", run: () => reset() });
+     *
+     * Declared per run like `lab.button`; `Mod` is ⌘ on a Mac and Ctrl elsewhere.
+     */
+    command(cmd: Command | readonly Command[]): void;
+    /**
+     * A layer over the 3D view, kept across re-runs: mount a 2D view there once, update it
+     * every run, hide it to show the model again —
+     *
+     *   let sheetView: SheetCanvas | null = null;              // outside the sketch function
+     *   sketch((lab) => {
+     *     sheetView ??= new SheetCanvas(lab.overlay());
+     *     sheetView.setSheet(drawingOf(model));                // keeps its zoom across runs
+     *     lab.overlay().style.display = showDrawing.value ? "" : "none";
+     *   });
+     *
+     * The same `name` gives the same layer. Visible overlay canvases are in snapshots.
+     */
+    overlay(name?: string): HTMLElement;
     /**
      * Register an "Import ▾" item for the host shell. The handler receives
      * the user-selected `File`.
@@ -661,6 +779,7 @@ interface Lab {
  *   appShell use.
  */
 
+/** Options for `sketch2d()`: where to mount it, title, canvas background, panel width and theme. */
 interface Sketch2DConfig {
     /** DOM element or CSS selector to mount into */
     container?: HTMLElement | string;
@@ -673,7 +792,9 @@ interface Sketch2DConfig {
     /** Dark or light theme */
     theme?: "dark" | "light";
 }
+/** The `lab.draw` callback: paint the canvas, given its 2D context and size in CSS pixels; runs on every re-run and animation frame. */
 type DrawFn = (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+/** The `lab.animate` callback, run every frame with the time since start and the frame step, both in seconds (the step capped at 1/15 s). */
 type AnimateFn = (time: number, dt: number) => void;
 /** A single pointer (mouse / touch / pen) sample in CSS pixels relative to the canvas. */
 interface Pointer2D {
@@ -684,6 +805,7 @@ interface Pointer2D {
     /** Stable id for this pointer — match it across down/move/up to track one finger. */
     id: number;
 }
+/** A handler for `lab.onPointerDown` / `onPointerMove` / `onPointerUp`. */
 type PointerFn = (p: Pointer2D) => void;
 /** The lab context passed to the sketch function */
 interface Lab2D {
@@ -757,6 +879,7 @@ interface Lab2D {
     /** Fires on pointer-up / pointer-cancel. See {@link onPointerDown}. */
     onPointerUp(fn: PointerFn): void;
 }
+/** The function `sketch2d()` runs with the `Lab2D` API, and re-runs whenever a control changes. */
 type Sketch2DFn = (lab: Lab2D) => void;
 /**
  * One function = one interactive 2D canvas app, p5-style: controls in the panel, a `draw`
@@ -766,6 +889,7 @@ type Sketch2DFn = (lab: Lab2D) => void;
  *     lab.draw((ctx, w, h) => { … }); });
  */
 declare function sketch2d(fn: Sketch2DFn, config?: Sketch2DConfig): Sketch2DInstance;
+/** What `sketch2d()` returns: the running 2D sketch, with `getParams` / `setParams` to save and restore its controls and `dispose()` to tear it down. */
 declare class Sketch2DInstance {
     private fn;
     private config;
@@ -809,7 +933,6 @@ declare class Sketch2DInstance {
     private buildLab;
     private updateLog;
     private startLoop;
-    /** Tear down the sketch */
     /** The current value of every control, keyed for `setParams` — save it to reopen a design. */
     getParams(): Record<string, unknown>;
     /** Set controls by label, "Group:Label" or key, and re-run once; reports what it couldn't apply. */
@@ -821,6 +944,7 @@ declare class Sketch2DInstance {
             keys: string[];
         }[];
     };
+    /** Tear down the sketch */
     dispose(): void;
 }
 
@@ -844,6 +968,7 @@ interface SheetTransform {
     x: number;
     y: number;
 }
+/** Options for `drawSheet`: pre-exploded primitives to reuse, and the keys to draw highlighted. */
 interface DrawSheetOptions {
     /** The exploded sheet, if you have it already (`sheet.explode()`). */
     prims?: readonly SheetPrim[];
@@ -858,6 +983,7 @@ declare function fitSheet(bounds: {
 } | null, width: number, height: number, margin?: number): SheetTransform;
 /** Draw the sheet's primitives with `t`; the canvas transform (e.g. device-pixel ratio) is kept. */
 declare function drawSheet(ctx: CanvasRenderingContext2D, sheet: Sheet, t: SheetTransform, opts?: DrawSheetOptions): void;
+/** Options for `new SheetCanvas(...)`: the sheet to show, paper colour, pick tolerance, fit margin and highlight colour. */
 interface SheetCanvasOptions {
     sheet?: Sheet | null;
     /** Paper colour (default white; "transparent" shows what is underneath). */
@@ -930,4 +1056,4 @@ declare class SheetCanvas {
     private wire;
 }
 
-export { type AnimateFn as A, type DrawFn as D, type ExportRegistration as E, type ImportRegistration as I, type Lab as L, type MeshHandle as M, type PointHandle as P, type Reactive as R, type SketchConfig as S, type DrawSheetOptions as a, type Lab2D as b, type LayerMap as c, type LayerNode as d, LayerPanel as e, type LayerState as f, type LineHandle as g, type Pointer2D as h, type PointerFn as i, type SelectOpts as j, type ShapeHandle as k, type ShapeMode as l, SheetCanvas as m, type SheetCanvasOptions as n, type SheetTransform as o, type Sketch2DConfig as p, type Sketch2DFn as q, Sketch2DInstance as r, type SliderOpts as s, computeEffectiveVisibility as t, drawSheet as u, fitSheet as v, sketch2d as w };
+export { type AnimateFn as A, sketch2d as B, Commands as C, type DrawFn as D, type ExportRegistration as E, viewCommands as F, type ImportRegistration as I, type Lab as L, type MeshHandle as M, type PointHandle as P, type Reactive as R, type SketchConfig as S, type ViewControl as V, type Command as a, type CommandInfo as b, type DrawSheetOptions as c, type Lab2D as d, type LayerMap as e, type LayerNode as f, LayerPanel as g, type LayerState as h, type LineHandle as i, type Pointer2D as j, type PointerFn as k, type SelectOpts as l, type ShapeHandle as m, type ShapeMode as n, SheetCanvas as o, type SheetCanvasOptions as p, type SheetTransform as q, type Sketch2DConfig as r, type Sketch2DFn as s, Sketch2DInstance as t, type SliderOpts as u, computeEffectiveVisibility as v, drawSheet as w, fitSheet as x, formatKeys as y, keyMatches as z };

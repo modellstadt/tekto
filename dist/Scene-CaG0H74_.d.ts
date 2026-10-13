@@ -4,6 +4,10 @@
  * Immutable vector/matrix types with fluent API.
  * All operations return new instances (no mutation).
  */
+/**
+ * Immutable 2D vector or point (metres; plan coordinates are x, y): fields are readonly and
+ * every op returns a new Vec2, so write `p = p.add(d)`. `normalize()` of a zero vector gives zero.
+ */
 declare class Vec2 {
     readonly x: number;
     readonly y: number;
@@ -45,6 +49,10 @@ declare class Vec2 {
         y: number;
     }): Vec2;
 }
+/**
+ * Immutable 3D vector or point (metres): fields are readonly and every op returns a new Vec3,
+ * so write `p = p.add(d)`, never `p.x = …`. `normalize()` of a zero vector gives zero.
+ */
 declare class Vec3 {
     readonly x: number;
     readonly y: number;
@@ -88,6 +96,7 @@ declare class Vec3 {
         z: number;
     }): Vec3;
 }
+/** Minimal immutable 4-component vector (x, y, z, w): only `dot`, `toVec3` and `toArray`. */
 declare class Vec4 {
     readonly x: number;
     readonly y: number;
@@ -98,6 +107,11 @@ declare class Vec4 {
     toVec3(): Vec3;
     toArray(): [number, number, number, number];
 }
+/**
+ * Immutable 4×4 transform, column-major like OpenGL/three.js (translation in `m[12..14]`); ops return a new Mat4,
+ * and `a.multiply(b)` applies `b` first. `new Mat4()` is all zeros — start from `Mat4.identity()`.
+ * `invert()` of a singular matrix returns identity.
+ */
 declare class Mat4 {
     readonly m: Float64Array;
     /** 16 elements in column-major order */
@@ -122,6 +136,10 @@ declare class Mat4 {
  * Mirrors HDGEO.Core.AABB.
  */
 
+/**
+ * Axis-aligned 3D bounding box between `min` and `max`; immutable (`expand`/`union` return a new box).
+ *   const b = AABB.fromPoints(pts);  // or accumulate: box = AABB.empty().expand(p)
+ */
 declare class AABB {
     readonly min: Vec3;
     readonly max: Vec3;
@@ -155,6 +173,7 @@ declare class AABB {
  * Mirrors HDGEO.Core.Triangle.
  */
 
+/** Immutable 3D triangle a, b, c: unit `normal` (right-hand rule a→b→c), area, centroid, barycentrics and closest point. */
 declare class Triangle {
     readonly a: Vec3;
     readonly b: Vec3;
@@ -289,6 +308,7 @@ interface MeshNode {
     normal?: Vec3;
     readonly data: Record<string, any>;
 }
+/** An edge seen through `mesh.edge(id)`: its two node ids and incident faces, read from the mesh. */
 interface MeshEdge {
     readonly id: number;
     readonly nodes: [number, number];
@@ -296,6 +316,7 @@ interface MeshEdge {
     readonly faces: number[];
     readonly data: Record<string, any>;
 }
+/** A face (any polygon) seen through `mesh.face(id)`: reads and writes go to the mesh. */
 interface MeshFace {
     readonly id: number;
     /** Node ids in winding order (snapshot — see `Mesh.reverseFace`). */
@@ -306,6 +327,11 @@ interface MeshFace {
     normal?: Vec3;
     readonly data: Record<string, any>;
 }
+/**
+ * The one mesh class: edited by id (`addNode`/`addFace`/`node(id)`/`splitEdge` …) and read as typed arrays
+ * (`positions`/`indices`/`normals`, `toMeshData()`) on the same object, with connectivity kept up to date by every edit.
+ * Ids are indices; removal leaves a tombstone until `compact()`. `new Mesh(positions, indices)` loads flat triangle arrays.
+ */
 declare class Mesh {
     private _pos;
     private _nrm;
@@ -520,6 +546,7 @@ declare class Mesh {
  * Mirrors HDGEO.Core.IO.ObjFile.
  */
 
+/** A polygon mesh as OBJ holds it (exported as `ObjMeshData`; not `Mesh`'s typed-array `MeshData`): parallel per-vertex positions, uvs and normals (the last two may be empty), 0-based `faces` into them, and optional `g` group ranges. */
 interface MeshData {
     positions: Vec3[];
     normals: Vec3[];
@@ -538,6 +565,7 @@ interface MeshData {
         faceCount: number;
     }[];
 }
+/** Wavefront OBJ text to and from `ObjMeshData`: `parse` reads v/vt/vn/f lines and `g` groups, `serialize` writes them back; coordinates pass through unchanged (no axis swap, no unit scaling). */
 declare const ObjFile: {
     /** Parses an OBJ string into MeshData. Handles v/vt/vn/f lines. */
     parse(source: string): MeshData;
@@ -555,6 +583,7 @@ declare const ObjFile: {
  *   - Serialization
  */
 
+/** The kinds of object a `Scene` holds; `type` decides which geometry fields of a `SceneObject` are set. */
 type SceneObjectType = "point" | "segment" | "polyline" | "polygon" | "mesh" | "circle" | "plane" | "group";
 /** How meshes are drawn: lit surfaces, wireframe, a hidden-line drawing, or ghost —
  *  every surface translucent in its own colour with its creases, so what is inside reads
@@ -591,6 +620,7 @@ type StandardView = "iso" | "top" | "bottom" | "front" | "back" | "left" | "righ
  *              floor; significantly slower (~2-3× per frame).
  */
 type LightingMode = "flat" | "studio";
+/** How a scene object is drawn: colour, opacity, line and point size, visibility, label and layer, plus optional shading, edge, PBR and dash settings. */
 interface VisualStyle {
     color: string;
     opacity: number;
@@ -642,6 +672,7 @@ interface VisualStyle {
         gap: number;
     };
 }
+/** One object in a `Scene`: id, type, style, and the geometry fields its type uses (a point's `position`, a mesh's `mesh` …); `key` names the document record it shows. */
 interface SceneObject {
     id: string;
     type: SceneObjectType;
@@ -693,6 +724,7 @@ interface FlatMeshData extends MeshData$1 {
         indexCount: number;
     }[];
 }
+/** What changed in a `Scene` (objects, selection, hover, clear, render or lighting mode); renderers stay in step by listening to these. */
 type SceneEvent = {
     type: "object:add";
     id: string;
@@ -727,6 +759,7 @@ type SceneEvent = {
 } | {
     type: "camera:change";
 };
+/** A callback passed to `scene.on(...)`. */
 type SceneEventListener = (event: SceneEvent) => void;
 /**
  * The objects an app shows: points, segments, polylines, polygons, meshes, each with a
@@ -819,8 +852,9 @@ declare class Scene {
     toJSON(): SceneJSON;
     static fromJSON(json: SceneJSON): Scene;
 }
+/** What `scene.toJSON()` writes and `Scene.fromJSON` reads: the objects, with vectors and meshes as plain JSON. */
 interface SceneJSON {
     objects: any[];
 }
 
-export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type Projection as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, Vec2 as b, type SectionRequest as c, type StandardView as d, type MeshData$1 as e, type LegacyMeshJSON as f, Mat4 as g, type MeshEdge as h, type MeshFace as i, type MeshJSON as j, type MeshNode as k, type MeshValidation as l, type MeshData as m, type SceneEvent as n, type SceneEventListener as o, type SceneJSON as p, type SceneObjectType as q, Vec4 as r, type VisualStyle as s };
+export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type Projection as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, Vec2 as b, type StandardView as c, type SectionRequest as d, type MeshData$1 as e, type LegacyMeshJSON as f, Mat4 as g, type MeshEdge as h, type MeshFace as i, type MeshJSON as j, type MeshNode as k, type MeshValidation as l, type MeshData as m, type SceneEvent as n, type SceneEventListener as o, type SceneJSON as p, type SceneObjectType as q, Vec4 as r, type VisualStyle as s };
