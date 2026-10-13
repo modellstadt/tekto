@@ -17,7 +17,7 @@ About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sket
 | measure or smooth a mesh | `mesh.volume()`, `mesh.smooth()` | the older `MeshAnalysis` / `Algo` wrappers |
 | check a mesh | `mesh.validate()` | judging a double-sided render |
 | 2D booleans, with holes | `PolygonBool` | `polygonIntersection` (two simple rings only) |
-| draw plans, elevations, details — dimensioned, to scale — and export them | `Sheet` (`sheet.toDXF()`, `sheet.toSVG()`) + `download` | a second export path that repeats the screen's transforms; a hand-written DXF or Blob |
+| draw plans, elevations, details — dimensioned, to scale — and export them | `Sheet` (`sheet.toDXF()`, `sheet.toSVG()`) + `download`; on screen `SheetCanvas` (see the Drawing Sheet page) | a second export path that repeats the screen's transforms; a hand-written DXF or Blob |
 | export 3D lines / views of meshes / BIM | `writeDxf3D` / `DxfExporter` / `IfcWriter` | — |
 | set a control from code | `handle.set(value)` on any control | clicking the panel's DOM |
 | save and reopen a design | parametric: `getParams()` / `setParams()`; edited: `doc.toJSON()` / `doc.load()` | `localStorage` + reload |
@@ -33,9 +33,9 @@ Five rules that catch agents out:
 
 ## Entry points
 
-- `import … from "tekto/core"` — geometry and data — no three.js, no DOM; runs in Node, workers and tests (168 values, 145 types)
-- `import … from "tekto"` — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (205 values, 206 types)
-- `import … from "tekto/2d"` — sketch2d and the 2D geometry a first sketch needs — no three.js (14 values, 23 types)
+- `import … from "tekto/core"` — geometry and data — no three.js, no DOM; runs in Node, workers and tests (169 values, 146 types)
+- `import … from "tekto"` — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (209 values, 210 types)
+- `import … from "tekto/2d"` — sketch2d and the 2D geometry a first sketch needs — no three.js (20 values, 33 types)
 - `import … from "tekto/react"` — React components (needs react, react-dom)
 
 ## Read more

@@ -6,6 +6,25 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **New `SheetCanvas` — a `Sheet` on screen** (`tekto/2d`, `tekto`). It fills a container,
+  fits the drawing, zooms with the wheel about the cursor, pans by dragging and fits on
+  double-click. Pens, dashes and text are drawn at their paper size for the current zoom.
+  A click picks the primitive under it (`onPick`, with a pixel tolerance), and its `key`
+  names the record. `setHighlight(keys)` shows a selection. `onDraw` paints in screen
+  pixels on top. `toScreen` / `toSheet` convert. A sheet rebuilt on every edit keeps the
+  zoom. Also new: `drawSheet(ctx, sheet, transform)` draws into any canvas (a `sketch2d`),
+  `fitSheet(bounds, w, h)` fits it, and `pickPrim(prims, p, tolerance)` is the hit test
+  (`tekto/core`).
+- **`appShell()`: `app.overlay()`** — a layer over the 3D view, under the status line and ✎
+  Markup, for a 2D view such as a `SheetCanvas`. Snapshots (`npm run snap`, Markup) now
+  include visible overlay canvases, so an agent sees the drawing a person sees.
+- **`Selection.click(key, mods)`** — the click rule every view shares (select; Shift/⌘/Ctrl
+  toggles; a plain click on nothing clears). `selectOnClick` uses it.
+- **Playground: Drawing Sheet.** A parametric pavilion in 3D and as a drawing: plan 1:100
+  with grid and dimensions, two elevations projected from the model, a 1:20 detail, and
+  Export SVG / DXF. A column clicked in any view is selected in all of them.
+- `LevelOptions` is now exported.
+
 - **New `Sheet` — drawings that look the same on screen, in SVG and in DXF** (`tekto/core`).
   Views placed on a sheet at a scale (`new Sheet({ scale: 50 })` = 1:50; `sheet.view("east",
   { at, rotation, scale, project })`), where `project` projects 3D points into an elevation or

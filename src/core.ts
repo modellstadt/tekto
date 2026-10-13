@@ -109,8 +109,8 @@ export { writeDxf3D, writeDxf2D, aciFromHex } from "./io/DxfWriter";
 export type { DxfLayerDef, Dxf3DContent, Dxf3DPolyline, Dxf3DLine, Dxf3DPoint, Dxf3DArc, Dxf3DCircle } from "./io/DxfWriter";
 export type { Dxf2DContent, Dxf2DPolyline, Dxf2DLine, Dxf2DCircle, Dxf2DArc, Dxf2DText, Dxf2DPoint, Dxf2DSolid, Dxf2DLook } from "./io/DxfWriter";
 // Drawings: views, entities and dimensions on a sheet — one source for screen, SVG and DXF.
-export { Sheet, SheetView, DASH_PATTERNS } from "./core/drawing/Sheet";
-export type { Pt, Dash, LineStyle, DrawOptions, TextOptions, DimOptions, ViewOptions, SheetOptions, SheetPrim, ResolvedStyle } from "./core/drawing/Sheet";
+export { Sheet, SheetView, DASH_PATTERNS, pickPrim } from "./core/drawing/Sheet";
+export type { Pt, Dash, LineStyle, DrawOptions, TextOptions, DimOptions, LevelOptions, ViewOptions, SheetOptions, SheetPrim, ResolvedStyle } from "./core/drawing/Sheet";
 export { stampName } from "./io/download";
 export { IfcFile } from "./io/IfcFile";
 export type { IfcParseOptions } from "./io/IfcFile";

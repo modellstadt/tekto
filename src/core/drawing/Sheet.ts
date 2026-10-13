@@ -482,6 +482,60 @@ export function boundsOf(prims: readonly SheetPrim[]): { min: Pt; max: Pt } | nu
   return x0 === Infinity ? null : { min: { x: x0, y: y0 }, max: { x: x1, y: y1 } };
 }
 
+/**
+ * The primitive at `p` (sheet coordinates): the topmost line, arc, circle or text within
+ * `tolerance` (sheet units — divide a pixel tolerance by the screen scale), else the topmost
+ * fill containing `p`, else null. Its `key` names the record it shows.
+ */
+export function pickPrim(prims: readonly SheetPrim[], p: Pt, tolerance: number): SheetPrim | null {
+  for (let i = prims.length - 1; i >= 0; i--) {
+    const q = prims[i];
+    if (q.kind !== "fill" && primDistance(q, p) <= tolerance) return q;
+  }
+  for (let i = prims.length - 1; i >= 0; i--) {
+    const q = prims[i];
+    if (q.kind === "fill" && q.rings.reduce((inside, r) => inside !== inRing(r, p), false)) return q;
+  }
+  return null;
+}
+
+function primDistance(q: Exclude<SheetPrim, { kind: "fill" }>, p: Pt): number {
+  if (q.kind === "polyline") {
+    let d = Infinity;
+    const n = q.points.length, m = q.closed ? n : n - 1;
+    for (let i = 0; i < m; i++) d = Math.min(d, segDistance(p, q.points[i], q.points[(i + 1) % n]));
+    return d;
+  }
+  if (q.kind === "circle") return Math.abs(Math.hypot(p.x - q.center.x, p.y - q.center.y) - q.radius);
+  if (q.kind === "arc") {
+    let a = (Math.atan2(p.y - q.center.y, p.x - q.center.x) * 180) / Math.PI - q.startDeg;
+    a = ((a % 360) + 360) % 360;
+    let sweep = (q.endDeg - q.startDeg) % 360; if (sweep <= 0) sweep += 360;
+    if (a <= sweep) return Math.abs(Math.hypot(p.x - q.center.x, p.y - q.center.y) - q.radius);
+    const end = (deg: number) => ({ x: q.center.x + q.radius * Math.cos((deg * Math.PI) / 180), y: q.center.y + q.radius * Math.sin((deg * Math.PI) / 180) });
+    const e0 = end(q.startDeg), e1 = end(q.startDeg + sweep);
+    return Math.min(Math.hypot(p.x - e0.x, p.y - e0.y), Math.hypot(p.x - e1.x, p.y - e1.y));
+  }
+  const c = textCorners(q);
+  if (inRing(c, p)) return 0;
+  return Math.min(...c.map((a, i) => segDistance(p, a, c[(i + 1) % 4])));
+}
+
+function segDistance(p: Pt, a: Pt, b: Pt): number {
+  const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+  const t = L2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2)) : 0;
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+}
+
+function inRing(r: readonly Pt[], p: Pt): boolean {
+  let inside = false;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const a = r[i], b = r[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
 // ── SVG ──────────────────────────────────────────────────────────────────────────
 
 function esc(s: string): string {
