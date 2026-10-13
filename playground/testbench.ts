@@ -97,6 +97,7 @@ const GROUPS: PageGroup[] = [
   ]},
   { name: "App Shell", pages: [
     { slug: "app-shell", label: "App Shell (retained)", load: () => import("./pages/app-shell") },
+    { slug: "site-editor", label: "Site Editor (Doc + undo)", load: () => import("./pages/site-editor") },
   ]},
   { name: "Sketch2D", pages: [
     { slug: "pointer-2d", label: "Pointer Input", load: () => import("./pages/pointer-2d") },

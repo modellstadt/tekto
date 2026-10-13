@@ -12,7 +12,7 @@ const PAGES = [
   "mesh-factory", "curves", "nurbs-surfaces", "mesh-ops", "curvature", "streamlines", "bsp-csg",
   "sdf", "graph", "planar-graph", "voxel-2d",
   "particles", "camera", "gizmo",
-  "app-shell",
+  "app-shell", "site-editor",
   "pointer-2d",
   "timber", "viewport", "dxf-test", "dxf-3d",
 ] as const;
