@@ -6,6 +6,16 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Renderer fixes from 7DHouse** (#64, #65):
+  - Studio lighting no longer logs five three.js warnings per object: materials get only
+    the parameters that are set.
+  - In Studio a section shows its poché on double-sided meshes (the default style). The
+    Studio material had dropped the surface's polygon offset, so a surface's own back faces
+    painted over the poché.
+  - A section clips shadows too: the part it removes no longer shades what is left.
+  - Flat lighting in a Z-up scene takes its sky from +Z, not from the side. Facades facing
+    −Y had the ground colour.
+
 ## 0.8.1 — 2026-10-13
 
 The review's last items: the renderer and the sketch split into parts, commands and shortcuts, drawings over a sketch, every export documented (51 marked experimental), a shared selection, and seven bugs fixed that the documentation pass found.
