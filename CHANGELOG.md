@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`SketchInstance` sheds its frame and its handles** (internal; nothing changes for a
+  sketch). The chainable handles `lab.mesh(…)` / `lab.point(…)` / `lab.line(…)` return move to
+  `sketch/handles.ts` as functions of the scene. The sketch's frame moves to
+  `sketch/sketchLayout.ts`: title bar, resizable and collapsible panel, viewport, log
+  overlay, and the Export / Import menus. `Sketch.ts`: 1851 → 1431 lines.
+
 - **`ThreeRenderer` is split into parts** (internal; the public API is unchanged). The class
   keeps the scene sync, the draw loop and its public methods, which delegate to:
   `ObjectBuilder` (scene objects → three.js objects), `Lighting`, `CameraRig` (projection,
