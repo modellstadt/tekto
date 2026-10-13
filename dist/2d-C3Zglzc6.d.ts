@@ -1,5 +1,5 @@
-import { M as Mesh, q as VisualStyle, V as Vec3, F as FlatMeshData, b as Vec2, S as Scene } from './Scene-CVb27q1H.js';
-import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-BhsA6Zpm.js';
+import { M as Mesh, s as VisualStyle, V as Vec3, F as FlatMeshData, b as Vec2, d as StandardView, c as SectionRequest, S as Scene } from './Scene-BsMmRZP7.js';
+import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-CwBYbhgR.js';
 
 /**
  * LayerPanel — reusable tree-based layer/visibility panel.
@@ -110,6 +110,9 @@ interface SketchConfig {
     showHeader?: boolean;
     /** Show the ✎ Markup button (draw instructions on the view; see Markup.ts). Default `true`. */
     markup?: boolean;
+    /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
+     *  toggle persp/ortho under it. Default `false`. */
+    navGizmo?: boolean;
 }
 /** Item registered via `lab.registerExport(...)`. */
 interface ExportRegistration {
@@ -389,6 +392,15 @@ interface Lab {
     fitAll(): void;
     /** Switch between perspective and parallel (orthographic) projection. */
     setProjection(type: "perspective" | "orthographic"): void;
+    /** Look from a named side, keeping the distance: "top" (a plan), "front" / "back" /
+     *  "left" / "right" (elevations), "iso". Pair with `setProjection("orthographic")` for
+     *  a drawing. */
+    setView(view: StandardView, opts?: {
+        animate?: boolean;
+    }): void;
+    /** Cut the model: `{ axis: "z", coordinate: 1.2 }` is a plan cut at 1.2 m, `{ axis: "x",
+     *  at: 0.5 }` a section through the middle; null clears. Stays across re-runs. */
+    setSection(section: SectionRequest | null): void;
     /**
      * Set the camera up vector.
      * Use (0,1,0) for top-down plan views (avoids gimbal lock in Z-up scenes).

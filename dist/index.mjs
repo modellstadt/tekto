@@ -1706,1819 +1706,145 @@ function polylinesToSVG(segments, bounds2, options) {
 }
 
 // src/render/ThreeRenderer.ts
-import * as THREE3 from "three";
+import * as THREE5 from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
-var DEFAULTS = {
-  antialias: true,
-  backgroundColor: 658196,
-  showGrid: true,
-  gridSize: 20,
-  gridDivisions: 20,
-  showAxes: true,
-  axesSize: 3,
-  enableOrbitControls: true,
-  enableDamping: true,
-  cameraPosition: [6, 8, 10],
-  cameraTarget: [0, 0, 0],
-  fov: 55,
-  up: "y"
-};
-var ThreeRenderer = class {
-  constructor(gScene, container, config) {
-    this._isOrtho = false;
-    this.objectMap = /* @__PURE__ */ new Map();
-    this.unsub = null;
-    this.rafId = 0;
-    // Render on demand: set by anything that can change the picture (scene events,
-    // camera, lights, handles, resize); cleared by a draw. See renderIfNeeded().
-    this._needsRender = true;
-    // Camera position at the previous renderIfNeeded(), to follow orbit damping
-    // below OrbitControls' change threshold (see _settleDamping).
-    this._lastCamPos = new THREE3.Vector3(NaN, NaN, NaN);
-    this.currentLighting = "flat";
-    // Studio-mode default PBR material, used when a mesh sets no explicit
-    // metalness/roughness in its VisualStyle. Configurable via setStudioMaterial.
-    this.studioMetalness = 0;
-    this.studioRoughness = 0.65;
-    // When set, forces this color on studio meshes (overriding their own); null = keep per-mesh color.
-    this.studioColor = null;
-    this.studioFlatShading = false;
-    // When true, line/point "helper" objects are hidden (e.g. a clean render view
-    // that shows only solid meshes). Solid geometry is unaffected.
-    this.hideHelpers = false;
-    this.gridHelper = null;
-    this.axesHelper = null;
-    // Invisible shadow-catcher plane added only in Studio mode so the
-    // PCF-soft shadows have a surface to land on.
-    this.shadowGround = null;
-    // When true, the studio shadow-catcher plane (at the world origin) is hidden —
-    // e.g. when the app provides its own ground to receive shadows.
-    this.shadowGroundHidden = false;
-    // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
-    // sketch re-runs (clearThree only touches objectMap-managed objects).
-    this.externalObjects = /* @__PURE__ */ new Map();
-    // Prefiltered (PMREM) environment map for image-based reflections.
-    // Built lazily once on first enable, then reused. Only visibly affects
-    // studio PBR materials.
-    this.envMap = null;
-    // Optional equirectangular source (e.g. a loaded HDR) for the environment.
-    // null → the built-in procedural gradient. The app owns/disposes this texture.
-    this.envSourceTex = null;
-    this.envEnabled = false;
-    this.envBackground = false;
-    this.resizeObserver = null;
-    // ── Picking + Gizmo ──
-    this.raycaster = new THREE3.Raycaster();
-    this.pickEnabled = false;
-    this.pickListeners = /* @__PURE__ */ new Set();
-    this.transformControls = null;
-    this.gizmoMode = "translate";
-    this.gizmoAttachedId = null;
-    this.pointerDown = null;
-    this.selectionMaterials = /* @__PURE__ */ new Map();
-    // ── Drag handles ──
-    this.dragHandles = /* @__PURE__ */ new Map();
-    this.dragHandleConstraints = /* @__PURE__ */ new Map();
-    this.dragHandlePlanes = /* @__PURE__ */ new Map();
-    this.dragHandleMoveCb = null;
-    this.dragHandleEndCb = null;
-    this.dragHandlePickCb = null;
-    this.activeDragHandle = null;
-    this.selectedDragHandle = null;
-    this.dragPlane = new THREE3.Plane();
-    this.dragSeenThisRun = /* @__PURE__ */ new Set();
-    /** Cached horizontal-stripe textures for print-layer shading, keyed by layer height (m). One texture
-     *  period = one printed bead: bright rounded crown, dark groove at the layer boundary. The pipe UVs
-     *  carry V in metres, so repeat.y = 1/layerH gives physically-true layer spacing. */
-    this._stripeTexCache = /* @__PURE__ */ new Map();
-    this.onPointerDown = (e) => {
-      const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
-      if (handleName) {
-        e.preventDefault();
-        this.activeDragHandle = handleName;
-        this.setHandleSelected(handleName);
-        if (this.controls) this.controls.enabled = false;
-        const handle = this.dragHandles.get(handleName);
-        let normal;
-        if (this.dragHandlePlanes.get(handleName) === "screen") {
-          normal = new THREE3.Vector3();
-          this.activeCamera.getWorldDirection(normal);
-        } else {
-          normal = this.isZUp ? new THREE3.Vector3(0, 0, 1) : new THREE3.Vector3(0, 1, 0);
-        }
-        this.dragPlane.setFromNormalAndCoplanarPoint(normal, handle.position);
-        const dom = this.renderer.domElement;
-        dom.addEventListener("pointermove", this.onPointerMoveDragging);
-        dom.addEventListener("pointerup", this.onPointerUpDragging, { once: true });
-        dom.setPointerCapture(e.pointerId);
-        return;
-      }
-      this.pointerDown = { x: e.clientX, y: e.clientY };
-    };
-    this.onPointerUp = (e) => {
-      if (!this.pointerDown) return;
-      const dx = e.clientX - this.pointerDown.x;
-      const dy = e.clientY - this.pointerDown.y;
-      this.pointerDown = null;
-      if (dx * dx + dy * dy > 25) return;
-      if (this.transformControls?.dragging) return;
-      if (this.selectedDragHandle !== null) this.setHandleSelected(null);
-      const id = this.pickAt(e.clientX, e.clientY);
-      const info = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey };
-      for (const l of this.pickListeners) l(id, info);
-    };
-    this.onPointerMoveDragging = (e) => {
-      if (!this.activeDragHandle) return;
-      const hit = this.raycastPlane(e.clientX, e.clientY, this.dragPlane);
-      if (!hit) return;
-      const handle = this.dragHandles.get(this.activeDragHandle);
-      if (!handle) return;
-      let x = hit.x, y = hit.y, z = hit.z;
-      const constrain = this.dragHandleConstraints.get(this.activeDragHandle);
-      if (constrain) {
-        const c = constrain(x, y, z);
-        x = c[0];
-        y = c[1];
-        z = c[2];
-      }
-      handle.position.set(x, y, z);
-      this.requestRender();
-      if (this.dragHandleMoveCb) {
-        this.dragHandleMoveCb(this.activeDragHandle, x, y, z);
-      }
-    };
-    this.onPointerUpDragging = (_e) => {
-      const name = this.activeDragHandle;
-      this.activeDragHandle = null;
-      if (this.controls) this.controls.enabled = true;
-      const dom = this.renderer.domElement;
-      dom.removeEventListener("pointermove", this.onPointerMoveDragging);
-      if (name && this.dragHandlePickCb) this.dragHandlePickCb(name);
-      if (name && this.dragHandleEndCb) this.dragHandleEndCb(name);
-    };
-    this.gScene = gScene;
-    this.container = container;
-    this.config = { ...DEFAULTS, ...config };
-    this.isZUp = this.config.up === "z";
-    const cfg = this.config;
-    this.threeScene = new THREE3.Scene();
-    this.threeScene.background = new THREE3.Color(cfg.backgroundColor);
-    const aspect = container.clientWidth / container.clientHeight || 1;
-    this.camera = new THREE3.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
-    if (this.isZUp) this.camera.up.set(0, 0, 1);
-    this.camera.position.set(...cfg.cameraPosition);
-    this.camera.lookAt(...cfg.cameraTarget);
-    this._orthoCam = new THREE3.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
-    if (this.isZUp) this._orthoCam.up.set(0, 0, 1);
-    this._orthoCam.position.set(...cfg.cameraPosition);
-    this._orthoCam.lookAt(...cfg.cameraTarget);
-    this.renderer = new THREE3.WebGLRenderer({ antialias: cfg.antialias });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.setSize(container.clientWidth, container.clientHeight);
-    container.appendChild(this.renderer.domElement);
-    this.ambientLight = new THREE3.AmbientLight(16777215, 0.5);
-    this.threeScene.add(this.ambientLight);
-    this.dirLight = new THREE3.DirectionalLight(16777215, 0.7);
-    this.dirLight.position.set(8, this.isZUp ? 10 : 15, this.isZUp ? 15 : 10);
-    this.dirLight.target.position.set(0, 0, 0);
-    this.threeScene.add(this.dirLight);
-    this.threeScene.add(this.dirLight.target);
-    this.hemiLight = new THREE3.HemisphereLight(4482730, 3351057, 0.4);
-    this.threeScene.add(this.hemiLight);
-    this._applyLighting(this.gScene.lightingMode);
-    if (cfg.showGrid) {
-      const grid = new THREE3.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
-      if (this.isZUp) grid.rotation.x = Math.PI / 2;
-      this.gridHelper = grid;
-      this.threeScene.add(grid);
-    }
-    if (cfg.showAxes) {
-      this.axesHelper = new THREE3.AxesHelper(cfg.axesSize);
-      this.threeScene.add(this.axesHelper);
-    }
-    if (cfg.enableOrbitControls) {
-      this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-      this.controls.enableDamping = cfg.enableDamping;
-      this.controls.dampingFactor = 0.05;
-      this.controls.target.set(...cfg.cameraTarget);
-      this.controls.addEventListener("change", () => this.requestRender());
-    }
-    this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
-    this.resizeObserver = new ResizeObserver(() => this.resize());
-    this.resizeObserver.observe(container);
-    this.unsub = gScene.on((e) => this.handleEvent(e));
-    for (const obj of gScene.all()) this.addToThree(obj);
-  }
-  /** The currently active camera — perspective or orthographic. */
-  get activeCamera() {
-    return this._isOrtho ? this._orthoCam : this.camera;
-  }
-  // ── Event Handling ──
-  handleEvent(event) {
-    this._needsRender = true;
-    switch (event.type) {
-      case "object:add": {
-        const obj = this.gScene.get(event.id);
-        if (obj) this.addToThree(obj);
-        break;
-      }
-      case "object:remove":
-        this.removeFromThree(event.id);
-        break;
-      case "object:style": {
-        const t = this.objectMap.get(event.id);
-        const srcObj = this.gScene.get(event.id);
-        if (t && srcObj && this._restyleInPlace(t, srcObj, event.style)) break;
-        this.removeFromThree(event.id);
-        if (srcObj) this.addToThree(srcObj);
-        break;
-      }
-      case "object:update": {
-        const t = this.objectMap.get(event.id);
-        const obj = this.gScene.get(event.id);
-        if (t && obj && Object.keys(event.changes).every((k) => k === "pickTag" || k === "pickable")) {
-          t.userData.pickable = obj.pickable !== false;
-          break;
-        }
-        this.removeFromThree(event.id);
-        if (obj) this.addToThree(obj);
-        break;
-      }
-      case "scene:clear":
-        this.clearThree();
-        break;
-      case "scene:renderMode":
-        this.rebuildAllMeshes();
-        break;
-      case "scene:lightingMode":
-        this._applyLighting(event.mode);
-        this.rebuildAllMeshes();
-        break;
-      case "scene:environment":
-        this._applyEnvironment(event.enabled);
-        break;
-    }
-  }
-  // ── Object Conversion ──
-  addToThree(obj) {
-    const t = this.convert(obj);
-    if (!t) return;
-    t.userData.geomId = obj.id;
-    t.userData.pickable = obj.pickable !== false;
-    t.userData.objType = obj.type;
-    t.userData.styleVisible = obj.style.visible;
-    t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
-    this.applyTransform(t, obj);
-    if (this.currentLighting === "studio") {
-      t.traverse((child) => {
-        if (child instanceof THREE3.Mesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-        }
-      });
-    }
-    this.threeScene.add(t);
-    this.objectMap.set(obj.id, t);
-    if (this.gizmoAttachedId === obj.id) this.attachGizmo(obj.id);
-  }
-  /** Apply a style patch to the existing three object if it only touches colour,
-   *  opacity, visibility or inert keys. False → the caller rebuilds the object. */
-  _restyleInPlace(t, obj, patch) {
-    let paint = false;
-    for (const k of Object.keys(patch)) {
-      if (k === "color" || k === "opacity") paint = true;
-      else if (k !== "visible" && !INERT_STYLE_KEYS.has(k)) return false;
-    }
-    if (paint && !this._repaint(t, obj)) return false;
-    if ("visible" in patch) {
-      t.userData.styleVisible = obj.style.visible;
-      t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
-    }
-    return true;
-  }
-  /** Set colour + opacity on a single-material object exactly as convert() would build
-   *  it: lines (segment, polyline, circle), tube segments and unlabelled points. Meshes,
-   *  polygons, planes and labelled points have mode- or label-dependent materials → false. */
-  _repaint(t, obj) {
-    const s = obj.style;
-    const tube = obj.type === "segment" && !!s.tubeRadius && s.tubeRadius > 0;
-    const line = !tube && (obj.type === "segment" || obj.type === "polyline" || obj.type === "circle");
-    const solid = tube || obj.type === "point" && !s.label;
-    const m = t.material;
-    if (!line && !solid || !m || Array.isArray(m)) return false;
-    const mat = m;
-    mat.color.set(solid && this.currentLighting === "studio" ? this.studioColor ?? s.color : s.color);
-    if (obj.type === "point") {
-      const sel = this.selectionMaterials.get(t.uuid);
-      (sel ? sel.oldEmissive : mat.emissive).set(s.color);
-    }
-    const transparent = s.opacity < 1;
-    if (mat.transparent !== transparent) {
-      mat.transparent = transparent;
-      mat.needsUpdate = true;
-    }
-    mat.opacity = s.opacity;
-    return true;
-  }
-  /** Apply `obj.transform` (position/rotation/scale) to a Three.Object3D. */
-  applyTransform(t, obj) {
-    const tr = obj.transform;
-    if (!tr) return;
-    if (tr.position) t.position.set(tr.position.x, tr.position.y, tr.position.z);
-    if (tr.rotation) t.rotation.set(tr.rotation.x, tr.rotation.y, tr.rotation.z);
-    if (tr.scale) t.scale.set(tr.scale.x, tr.scale.y, tr.scale.z);
-  }
-  removeFromThree(id) {
-    const t = this.objectMap.get(id);
-    if (!t) return;
-    this.threeScene.remove(t);
-    this.disposeObject(t);
-    this.objectMap.delete(id);
-  }
-  clearThree() {
-    for (const [, t] of this.objectMap) {
-      this.threeScene.remove(t);
-      this.disposeObject(t);
-    }
-    this.objectMap.clear();
-  }
-  /** Rebuild all mesh objects (called when render mode changes). */
-  rebuildAllMeshes() {
-    for (const obj of this.gScene.all()) {
-      if (obj.type !== "mesh") continue;
-      this.removeFromThree(obj.id);
-      this.addToThree(obj);
-    }
-  }
-  /**
-   * Build a material that respects the current lighting mode. Studio mode
-   * returns an `MeshStandardMaterial` (PBR; reacts correctly to shadows
-   * and tonemapping); Flat mode returns the original `MeshPhongMaterial`.
-   * Same option surface — caller doesn't have to care which one comes back.
-   */
-  _makeMaterial(opts) {
-    if (this.currentLighting === "studio") {
-      return new THREE3.MeshStandardMaterial({
-        color: this.studioColor ?? opts.color,
-        emissive: opts.emissive,
-        emissiveIntensity: opts.emissiveIntensity,
-        opacity: opts.opacity,
-        transparent: opts.transparent,
-        side: opts.side,
-        wireframe: opts.wireframe,
-        flatShading: opts.flatShading ?? this.studioFlatShading,
-        depthTest: opts.depthTest,
-        depthWrite: opts.depthWrite,
-        vertexColors: opts.vertexColors,
-        roughness: opts.roughness ?? this.studioRoughness,
-        metalness: opts.metalness ?? this.studioMetalness
-      });
-    }
-    const { metalness: _m, roughness: _r, ...rest } = opts;
-    return new THREE3.MeshPhongMaterial(rest);
-  }
-  _stripeTexture(layerH) {
-    let tex = this._stripeTexCache.get(layerH);
-    if (tex) return tex;
-    const H = 64;
-    const cv = document.createElement("canvas");
-    cv.width = 2;
-    cv.height = H;
-    const ctx = cv.getContext("2d");
-    for (let y = 0; y < H; y++) {
-      const t = y / H;
-      const crown = Math.sin(Math.PI * t);
-      const v = Math.round(150 + 105 * Math.pow(crown, 0.7));
-      ctx.fillStyle = `rgb(${v},${v},${v})`;
-      ctx.fillRect(0, y, 2, 1);
-    }
-    tex = new THREE3.CanvasTexture(cv);
-    tex.wrapS = THREE3.RepeatWrapping;
-    tex.wrapT = THREE3.RepeatWrapping;
-    tex.repeat.set(1, 1 / layerH);
-    tex.anisotropy = 4;
-    this._stripeTexCache.set(layerH, tex);
-    return tex;
-  }
-  /**
-   * Set the Studio-mode default PBR material applied to meshes that don't
-   * carry their own metalness/roughness. Takes effect on the next material
-   * build (e.g. the next sketch re-run). metalness/roughness in 0..1.
-   */
-  setStudioMaterial(metalness, roughness, color = null, flatShading = false) {
-    const metalChanged = this.studioMetalness !== metalness || this.studioRoughness !== roughness;
-    this.studioMetalness = metalness;
-    this.studioRoughness = roughness;
-    this.studioColor = color;
-    this.studioFlatShading = flatShading;
-    if (metalChanged && this.currentLighting === "studio") {
-      for (const obj of this.gScene.all()) {
-        if (obj.type !== "mesh") continue;
-        const s = obj.style;
-        if (s.metalness !== void 0 && s.roughness !== void 0) continue;
-        const t = this.objectMap.get(obj.id);
-        if (!t) continue;
-        t.traverse((c) => {
-          if (!(c instanceof THREE3.Mesh)) return;
-          const mats = Array.isArray(c.material) ? c.material : [c.material];
-          for (const m of mats) {
-            if (m instanceof THREE3.MeshStandardMaterial) {
-              if (s.metalness === void 0) m.metalness = metalness;
-              if (s.roughness === void 0) m.roughness = roughness;
-            }
-          }
-        });
-      }
-    }
-    this.requestRender();
-  }
-  // Line/point "helper" object types (vs solid meshes/polygons/planes).
-  _isHelper(type) {
-    return type === "segment" || type === "polyline" || type === "point" || type === "circle";
-  }
-  /**
-   * Show/hide line + point "helper" objects (axes, construction lines, markers,
-   * labels). Solid meshes are unaffected. Applies immediately to existing
-   * objects and to all future ones until changed.
-   */
-  /**
-   * Show/hide the studio shadow-catcher plane at the world origin. Hide it when
-   * the app supplies its own ground mesh to receive shadows (avoids a duplicate
-   * shadow at z=0).
-   */
-  setShadowGroundVisible(visible) {
-    this.shadowGroundHidden = !visible;
-    if (this.shadowGround) this.shadowGround.visible = visible;
-    this.requestRender();
-  }
-  /**
-   * Add a raw THREE.Object3D (e.g. a loaded glTF/GLB scene) to the renderer,
-   * persisting across sketch re-runs. Re-adding the same id replaces it.
-   * Meshes are flagged to cast + receive shadows (visible in Studio lighting).
-   */
-  addExternalObject(obj, id) {
-    const prev = this.externalObjects.get(id);
-    if (prev) this.threeScene.remove(prev);
-    obj.traverse((o) => {
-      const m = o;
-      if (m.isMesh) {
-        m.castShadow = true;
-        m.receiveShadow = true;
-      }
-    });
-    this.externalObjects.set(id, obj);
-    this.threeScene.add(obj);
-    this.requestRender();
-  }
-  removeExternalObject(id) {
-    const prev = this.externalObjects.get(id);
-    if (prev) {
-      this.threeScene.remove(prev);
-      this.externalObjects.delete(id);
-    }
-    this.requestRender();
-  }
-  setHelpersVisible(visible) {
-    this.hideHelpers = !visible;
-    if (this.gridHelper) this.gridHelper.visible = visible;
-    if (this.axesHelper) this.axesHelper.visible = visible;
-    this.threeScene.traverse((o) => {
-      if (this._isHelper(o.userData?.objType)) {
-        o.visible = visible ? o.userData.styleVisible ?? true : false;
-      }
-    });
-    this.requestRender();
-  }
-  /**
-   * Aim the main directional light at the origin from the given unit
-   * direction (FROM origin TO light). Input is in Z-up scene coords
-   * (+X east, +Y north, +Z up) — typical sun-vector convention; the
-   * renderer remaps internally if the scene is Y-up.
-   *
-   * @param direction Unit vector pointing toward the light source.
-   * @param distance  How far back to place the light (m). Default 50.
-   */
-  /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
-   *  useful range at building scale. */
-  setFog(color, density = 0) {
-    this.threeScene.fog = density > 1e-6 ? new THREE3.FogExp2(new THREE3.Color(color), density) : null;
-    this.requestRender();
-  }
-  /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
-  setExposure(v) {
-    this.renderer.toneMappingExposure = v;
-    this.requestRender();
-  }
-  setSunDirection(direction, distance = 50) {
-    const x = direction.x;
-    const y = this.isZUp ? direction.y : direction.z;
-    const z = this.isZUp ? direction.z : -direction.y;
-    this.dirLight.position.set(x * distance, y * distance, z * distance);
-    this.dirLight.target.position.set(0, 0, 0);
-    this.dirLight.target.updateMatrixWorld();
-    this.dirLight.shadow.camera.updateProjectionMatrix();
-    this.requestRender();
-  }
-  /**
-   * Reconfigure renderer + lights + scene shadow flags for the given mode.
-   * Material swapping happens after this returns, via `rebuildAllMeshes`.
-   */
-  _applyLighting(mode) {
-    this.currentLighting = mode;
-    const studio = mode === "studio";
-    this.renderer.shadowMap.enabled = studio;
-    this.renderer.shadowMap.type = THREE3.PCFSoftShadowMap;
-    this.renderer.toneMapping = studio ? THREE3.ACESFilmicToneMapping : THREE3.NoToneMapping;
-    this.renderer.toneMappingExposure = 1;
-    this.renderer.outputColorSpace = THREE3.SRGBColorSpace;
-    if (studio) {
-      this.ambientLight.intensity = 0.35;
-      this.hemiLight.intensity = 0.3;
-      this.dirLight.intensity = 2.8;
-      this.dirLight.castShadow = true;
-      this.dirLight.shadow.mapSize.set(2048, 2048);
-      this.dirLight.shadow.bias = -5e-4;
-      const sc = this.dirLight.shadow.camera;
-      const d = 30;
-      sc.near = 0.5;
-      sc.far = 200;
-      sc.left = -d;
-      sc.right = d;
-      sc.top = d;
-      sc.bottom = -d;
-      sc.updateProjectionMatrix();
-    } else {
-      this.ambientLight.intensity = 0.5;
-      this.hemiLight.intensity = 0.4;
-      this.dirLight.intensity = 0.7;
-      this.dirLight.castShadow = false;
-    }
-    this.threeScene.traverse((obj) => {
-      if (obj instanceof THREE3.Mesh) {
-        obj.castShadow = studio;
-        obj.receiveShadow = studio;
-      }
-    });
-    if (studio && !this.shadowGround) {
-      const geo = new THREE3.PlaneGeometry(400, 400);
-      const mat = new THREE3.ShadowMaterial({ opacity: 0.35 });
-      this.shadowGround = new THREE3.Mesh(geo, mat);
-      this.shadowGround.receiveShadow = true;
-      if (!this.isZUp) this.shadowGround.rotation.x = -Math.PI / 2;
-      this.shadowGround.position.set(0, this.isZUp ? 0 : -1e-3, this.isZUp ? -1e-3 : 0);
-      this.shadowGround.visible = !this.shadowGroundHidden;
-      this.threeScene.add(this.shadowGround);
-    } else if (!studio && this.shadowGround) {
-      this.threeScene.remove(this.shadowGround);
-      this.shadowGround.geometry.dispose();
-      this.shadowGround.material.dispose();
-      this.shadowGround = null;
-    }
-  }
-  /**
-   * Toggle a prefiltered environment map on `threeScene.environment`. Only
-   * studio PBR (`MeshStandardMaterial`) materials sample it, so this is a
-   * no-op visually in flat mode — but it's safe to enable in either mode.
-   * The map is built once on first enable and reused thereafter.
-   */
-  _applyEnvironment(enabled) {
-    this.envEnabled = enabled;
-    if (enabled) {
-      if (!this.envMap) this.envMap = this._buildEnvironment();
-      this.threeScene.environment = this.envMap;
-    } else {
-      this.threeScene.environment = null;
-    }
-  }
-  /**
-   * Set an equirectangular source texture for the environment (e.g. a loaded
-   * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
-   * The texture is PMREM-prefiltered here; the caller keeps ownership of it.
-   */
-  setEnvironmentSource(equirect) {
-    if (this.envSourceTex === equirect) return;
-    this.envSourceTex = equirect;
-    if (this.envMap) {
-      this.envMap.dispose();
-      this.envMap = null;
-    }
-    if (this.envEnabled) {
-      this.envMap = this._buildEnvironment();
-      this.threeScene.environment = this.envMap;
-    }
-    this._applyBackground();
-    this.requestRender();
-  }
-  /**
-   * Show the equirectangular environment source as the scene backdrop (sky).
-   * No-op until a source is set via setEnvironmentSource. When off, the
-   * background is left to setBackground().
-   */
-  setEnvironmentBackground(visible) {
-    this.envBackground = visible;
-    this._applyBackground();
-    this.requestRender();
-  }
-  /**
-   * Rotate the environment + background (Euler radians) — e.g. to align a Y-up
-   * HDRI/equirect source with a Z-up scene (tilt ~90° about X).
-   */
-  setEnvironmentRotation(x, y, z) {
-    const s = this.threeScene;
-    s.environmentRotation?.set(x, y, z);
-    s.backgroundRotation?.set(x, y, z);
-    this.requestRender();
-  }
-  _applyBackground() {
-    if (this.envBackground && this.envSourceTex) {
-      this.envSourceTex.mapping = THREE3.EquirectangularReflectionMapping;
-      this.threeScene.background = this.envSourceTex;
-    }
-  }
-  /**
-   * Build a prefiltered (PMREM) environment from a procedural vertical
-   * gradient — bright neutral sky at the top, mid horizon, darker ground —
-   * using core Three only (no `three/examples` RoomEnvironment). Returns the
-   * PMREM-filtered cube texture; the source `DataTexture` and the generator
-   * are disposed before returning.
-   */
-  _buildEnvironment() {
-    if (this.envSourceTex) {
-      this.envSourceTex.mapping = THREE3.EquirectangularReflectionMapping;
-      const pmremSrc = new THREE3.PMREMGenerator(this.renderer);
-      const envSrc = pmremSrc.fromEquirectangular(this.envSourceTex).texture;
-      pmremSrc.dispose();
-      return envSrc;
-    }
-    const W = 16, H = 256;
-    const data = new Uint8Array(W * H * 4);
-    const sky = [0.85, 0.88, 0.95];
-    const horizon = [0.55, 0.55, 0.55];
-    const ground = [0.12, 0.12, 0.13];
-    for (let y = 0; y < H; y++) {
-      const t = y / (H - 1);
-      let r, g, b;
-      if (t < 0.5) {
-        const k = t / 0.5;
-        r = ground[0] + (horizon[0] - ground[0]) * k;
-        g = ground[1] + (horizon[1] - ground[1]) * k;
-        b = ground[2] + (horizon[2] - ground[2]) * k;
-      } else {
-        const k = (t - 0.5) / 0.5;
-        r = horizon[0] + (sky[0] - horizon[0]) * k;
-        g = horizon[1] + (sky[1] - horizon[1]) * k;
-        b = horizon[2] + (sky[2] - horizon[2]) * k;
-      }
-      for (let x = 0; x < W; x++) {
-        const i = (y * W + x) * 4;
-        data[i] = Math.round(r * 255);
-        data[i + 1] = Math.round(g * 255);
-        data[i + 2] = Math.round(b * 255);
-        data[i + 3] = 255;
-      }
-    }
-    const tex = new THREE3.DataTexture(data, W, H, THREE3.RGBAFormat);
-    tex.mapping = THREE3.EquirectangularReflectionMapping;
-    tex.colorSpace = THREE3.SRGBColorSpace;
-    tex.needsUpdate = true;
-    const pmrem = new THREE3.PMREMGenerator(this.renderer);
-    const env = pmrem.fromEquirectangular(tex).texture;
-    pmrem.dispose();
-    tex.dispose();
-    return env;
-  }
-  /** Build a THREE.Line for a line-type object — dashed material (+ line distances)
-   *  when the style requests it, else a basic line material. */
-  _makeLine(geo, s) {
-    const mat = s.dash ? new THREE3.LineDashedMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1, dashSize: s.dash.size, gapSize: s.dash.gap }) : new THREE3.LineBasicMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1 });
-    const line = new THREE3.Line(geo, mat);
-    if (s.dash) line.computeLineDistances();
-    return line;
-  }
-  convert(obj) {
-    const s = obj.style;
-    switch (obj.type) {
-      case "point": {
-        const geo = new THREE3.SphereGeometry(s.pointSize, 12, 12);
-        const mat = this._makeMaterial({
-          color: s.color,
-          emissive: s.color,
-          emissiveIntensity: 0.3,
-          opacity: s.opacity,
-          transparent: s.opacity < 1,
-          metalness: s.metalness,
-          roughness: s.roughness
-        });
-        const mesh = new THREE3.Mesh(geo, mat);
-        if (obj.position) mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
-        if (s.label) {
-          const group = new THREE3.Group();
-          group.add(mesh);
-          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color, s.labelScale ?? 1);
-          if (obj.position) sprite.position.set(obj.position.x, obj.position.y, obj.position.z);
-          if (this.isZUp) sprite.position.z += s.pointSize + 0.15;
-          else sprite.position.y += s.pointSize + 0.15;
-          group.add(sprite);
-          return group;
-        }
-        return mesh;
-      }
-      case "segment": {
-        if (!obj.start || !obj.end) return null;
-        const a = new THREE3.Vector3(obj.start.x, obj.start.y, obj.start.z);
-        const b = new THREE3.Vector3(obj.end.x, obj.end.y, obj.end.z);
-        if (s.tubeRadius && s.tubeRadius > 0) {
-          const dir = new THREE3.Vector3().subVectors(b, a);
-          const len = dir.length();
-          if (len < 1e-8) return null;
-          const geo2 = new THREE3.CylinderGeometry(s.tubeRadius, s.tubeRadius, len, 6, 1);
-          geo2.rotateX(Math.PI / 2);
-          geo2.translate(0, 0, len / 2);
-          const mesh = new THREE3.Mesh(geo2, this._makeMaterial({
-            color: s.color,
-            opacity: s.opacity,
-            transparent: s.opacity < 1,
-            metalness: s.metalness,
-            roughness: s.roughness
-          }));
-          mesh.position.copy(a);
-          mesh.lookAt(b);
-          return mesh;
-        }
-        const geo = new THREE3.BufferGeometry().setFromPoints([a, b]);
-        return this._makeLine(geo, s);
-      }
-      case "polyline": {
-        if (!obj.vertices || obj.vertices.length < 2) return null;
-        const n = obj.vertices.length;
-        const arr = new Float32Array(n * 3);
-        for (let i = 0; i < n; i++) {
-          const v = obj.vertices[i];
-          arr[i * 3] = v.x;
-          arr[i * 3 + 1] = v.y;
-          arr[i * 3 + 2] = v.z;
-        }
-        const geo = new THREE3.BufferGeometry();
-        geo.setAttribute("position", new THREE3.BufferAttribute(arr, 3));
-        return this._makeLine(geo, s);
-      }
-      case "polygon": {
-        if (!obj.vertices || obj.vertices.length < 2) return null;
-        const group = new THREE3.Group();
-        const pts = obj.vertices.map((v) => new THREE3.Vector3(v.x, v.y, v.z));
-        if (pts.length > 2) pts.push(pts[0].clone());
-        const lineGeo = new THREE3.BufferGeometry().setFromPoints(pts);
-        group.add(new THREE3.Line(lineGeo, new THREE3.LineBasicMaterial({ color: s.color })));
-        if (obj.vertices.length >= 3) {
-          if (this.isZUp) {
-            const shape = new THREE3.Shape(obj.vertices.map((v) => new THREE3.Vector2(v.x, v.y)));
-            const shapeGeo = new THREE3.ShapeGeometry(shape);
-            group.add(new THREE3.Mesh(shapeGeo, this._makeMaterial({
-              color: s.color,
-              opacity: s.opacity,
-              transparent: true,
-              side: THREE3.DoubleSide,
-              metalness: s.metalness,
-              roughness: s.roughness
-            })));
-          } else {
-            const shape = new THREE3.Shape(obj.vertices.map((v) => new THREE3.Vector2(v.x, v.z)));
-            const shapeGeo = new THREE3.ShapeGeometry(shape);
-            shapeGeo.rotateX(-Math.PI / 2);
-            group.add(new THREE3.Mesh(shapeGeo, this._makeMaterial({
-              color: s.color,
-              opacity: s.opacity,
-              transparent: true,
-              side: THREE3.DoubleSide,
-              metalness: s.metalness,
-              roughness: s.roughness
-            })));
-          }
-        }
-        return group;
-      }
-      case "mesh": {
-        if (obj.flatMeshData) return this.convertFlatMesh(obj.flatMeshData, s);
-        if (!obj.mesh) return null;
-        return this.convertMesh(obj.mesh, s);
-      }
-      case "circle": {
-        if (!obj.center || obj.radius == null) return null;
-        const pts = [];
-        const seg = 64;
-        for (let i = 0; i <= seg; i++) {
-          const a = i / seg * Math.PI * 2;
-          const ca = Math.cos(a) * obj.radius, sa = Math.sin(a) * obj.radius;
-          if (this.isZUp) {
-            pts.push(new THREE3.Vector3(obj.center.x + ca, obj.center.y + sa, obj.center.z));
-          } else {
-            pts.push(new THREE3.Vector3(obj.center.x + ca, obj.center.y, obj.center.z + sa));
-          }
-        }
-        const geo = new THREE3.BufferGeometry().setFromPoints(pts);
-        return this._makeLine(geo, s);
-      }
-      case "plane": {
-        if (!obj.normal) return null;
-        const geo = new THREE3.PlaneGeometry(10, 10);
-        const mat = this._makeMaterial({
-          color: s.color,
-          opacity: s.opacity,
-          transparent: true,
-          side: THREE3.DoubleSide,
-          metalness: s.metalness,
-          roughness: s.roughness
-        });
-        const mesh = new THREE3.Mesh(geo, mat);
-        const n = new THREE3.Vector3(obj.normal.x, obj.normal.y, obj.normal.z).normalize();
-        mesh.lookAt(n);
-        mesh.position.copy(n.multiplyScalar(obj.distance ?? 0));
-        return mesh;
-      }
-      default:
-        return null;
-    }
-  }
-  /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
-  convertMesh(gmesh, s) {
-    const data = gmesh.toMeshData();
-    const geo = new THREE3.BufferGeometry();
-    geo.setAttribute("position", new THREE3.BufferAttribute(data.positions, 3));
-    geo.setAttribute("normal", new THREE3.BufferAttribute(data.normals, 3));
-    geo.setIndex(new THREE3.BufferAttribute(data.indices, 1));
-    const pipeUV = gmesh.__pipeUV;
-    if (pipeUV && pipeUV.sides > 0) {
-      const n = data.positions.length / 3;
-      const uv = new Float32Array(n * 2);
-      for (let k = 0; k < n; k++) {
-        const ring = Math.min(Math.floor(k / pipeUV.sides), pipeUV.vAtRing.length - 1);
-        uv[k * 2] = k % pipeUV.sides / pipeUV.sides;
-        uv[k * 2 + 1] = pipeUV.vAtRing[ring] ?? 0;
-      }
-      geo.setAttribute("uv", new THREE3.BufferAttribute(uv, 2));
-    }
-    return this.buildMeshGroup(geo, s);
-  }
-  /** Convert flat mesh data (with optional per-vertex colors) → Three.js group */
-  convertFlatMesh(data, s) {
-    const geo = new THREE3.BufferGeometry();
-    geo.setAttribute("position", new THREE3.BufferAttribute(data.positions, 3));
-    geo.setAttribute("normal", new THREE3.BufferAttribute(data.normals, 3));
-    geo.setIndex(new THREE3.BufferAttribute(data.indices, 1));
-    const hasColors = !!data.colors?.length;
-    if (hasColors) geo.setAttribute("color", new THREE3.BufferAttribute(data.colors, 4));
-    if (data.groups?.length && this.gScene.renderMode === "solid" && !hasColors) {
-      const groupColors = s.groupColors ?? {};
-      const side = s.backfaceColor ? THREE3.DoubleSide : s.doubleSided ? THREE3.DoubleSide : THREE3.FrontSide;
-      for (let i = 0; i < data.groups.length; i++) {
-        const g = data.groups[i];
-        geo.addGroup(g.indexStart, g.indexCount, i);
-      }
-      const materials = data.groups.map((g) => this._makeMaterial({
-        color: groupColors[g.name] ?? s.color,
-        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
-        transparent: s.opacity < 1 || s.wireframe,
-        side,
-        flatShading: s.flatShading ?? false,
-        metalness: s.metalness,
-        roughness: s.roughness,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      }));
-      const group = new THREE3.Group();
-      group.add(new THREE3.Mesh(geo, materials));
-      if (!s.wireframe) {
-        group.add(new THREE3.Mesh(geo.clone(), new THREE3.MeshBasicMaterial({
-          color: 16777215,
-          wireframe: true,
-          opacity: 0.04,
-          transparent: true
-        })));
-      }
-      return group;
-    }
-    return this.buildMeshGroup(geo, s, hasColors);
-  }
-  /** Shared mesh group builder — handles solid / wireframe / hiddenline render modes */
-  buildMeshGroup(geo, s, hasVertexColors = false) {
-    const group = new THREE3.Group();
-    const mode = this.gScene.renderMode;
-    const side = s.doubleSided ? THREE3.DoubleSide : THREE3.FrontSide;
-    if (mode === "wireframe") {
-      const wireMat = new THREE3.MeshBasicMaterial({
-        color: s.color,
-        wireframe: true,
-        opacity: s.opacity,
-        transparent: s.opacity < 1
-      });
-      group.add(new THREE3.Mesh(geo, wireMat));
-    } else if (mode === "hiddenline") {
-      const occlusionMat = new THREE3.MeshBasicMaterial({
-        color: this.config.backgroundColor,
-        side,
-        toneMapped: false,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      });
-      group.add(new THREE3.Mesh(geo, occlusionMat));
-      const edgeAngle = s.edgeAngle ?? 30;
-      const wireGeo = new THREE3.EdgesGeometry(geo, edgeAngle);
-      const wireMat = new THREE3.LineBasicMaterial({ color: s.edgeColor ?? 3092271, toneMapped: false });
-      group.add(new THREE3.LineSegments(wireGeo, wireMat));
-      const rimMat = new THREE3.MeshBasicMaterial({
-        color: s.edgeColor ?? 3092271,
-        side: THREE3.BackSide,
-        toneMapped: false
-      });
-      group.add(new THREE3.Mesh(geo, rimMat));
-    } else {
-      const solidMat = this._makeMaterial({
-        color: hasVertexColors ? 16777215 : s.color,
-        vertexColors: hasVertexColors,
-        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
-        transparent: s.opacity < 1 || s.wireframe,
-        side: s.backfaceColor ? THREE3.DoubleSide : side,
-        flatShading: s.flatShading ?? false,
-        metalness: s.metalness,
-        roughness: s.roughness,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1
-      });
-      if (s.printLayerH && s.printLayerH > 1e-5 && geo.getAttribute("uv")) {
-        const tex = this._stripeTexture(s.printLayerH);
-        solidMat.map = tex;
-        solidMat.bumpMap = tex;
-        solidMat.bumpScale = s.printLayerH * 0.35;
-        solidMat.needsUpdate = true;
-      }
-      if (s.backfaceColor) {
-        const bc = new THREE3.Color(s.backfaceColor);
-        solidMat.onBeforeCompile = (shader) => {
-          shader.uniforms.backfaceColor = { value: bc };
-          shader.fragmentShader = "uniform vec3 backfaceColor;\n" + shader.fragmentShader;
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "#include <color_fragment>",
-            `#include <color_fragment>
-            if (!gl_FrontFacing) { diffuseColor.rgb = backfaceColor; }`
-          );
-        };
-      }
-      group.add(new THREE3.Mesh(geo, solidMat));
-      if (s.wireframe) {
-        const wireMat = new THREE3.MeshBasicMaterial({
-          color: s.color,
-          wireframe: true,
-          opacity: s.opacity * 0.8,
-          transparent: true
-        });
-        group.add(new THREE3.Mesh(geo.clone(), wireMat));
-      } else if (!hasVertexColors) {
-        const subtleWire = new THREE3.MeshBasicMaterial({
-          color: 16777215,
-          wireframe: true,
-          opacity: 0.04,
-          transparent: true
-        });
-        group.add(new THREE3.Mesh(geo.clone(), subtleWire));
-      }
-    }
-    return group;
-  }
-  // ── Text Sprites ──
-  createTextSprite(text, color, labelScale = 1) {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const fontSize = 48;
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    const metrics = ctx.measureText(text);
-    const w = Math.ceil(metrics.width) + 16;
-    const h = fontSize + 16;
-    canvas.width = w;
-    canvas.height = h;
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    ctx.fillStyle = color;
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    ctx.fillText(text, w / 2, h / 2);
-    const tex = new THREE3.CanvasTexture(canvas);
-    tex.minFilter = THREE3.LinearFilter;
-    const mat = new THREE3.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-    const sprite = new THREE3.Sprite(mat);
-    const scale = 5e-3 * labelScale;
-    sprite.scale.set(w * scale, h * scale, 1);
-    return sprite;
-  }
-  // ── Get Three.js object for a scene ID ──
-  getThreeObject(id) {
-    return this.objectMap.get(id);
-  }
-  /**
-   * Project a world-space point into the viewport. Returned `x`, `y` are
-   * relative to the canvas's bounding rect (top-left = 0, 0).
-   * `visible` is false when the point is behind the camera or outside
-   * the normalised device cube — caller should hide the overlay.
-   */
-  worldToScreen(world) {
-    const v = new THREE3.Vector3(world.x, world.y, world.z).project(this.activeCamera);
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const x = (v.x * 0.5 + 0.5) * rect.width;
-    const y = (-v.y * 0.5 + 0.5) * rect.height;
-    const visible = v.z > -1 && v.z < 1;
-    return { x, y, visible };
-  }
-  // ── Picking ──
-  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
-  setOrbitRotateEnabled(enabled) {
-    if (this.controls) this.controls.enableRotate = enabled;
-  }
-  /** Enable/disable click-to-pick on the canvas. */
-  setPickEnabled(enabled) {
-    if (enabled === this.pickEnabled) return;
-    this.pickEnabled = enabled;
-    const dom = this.renderer.domElement;
-    if (enabled) {
-      dom.addEventListener("pointerdown", this.onPointerDown);
-      dom.addEventListener("pointerup", this.onPointerUp);
-    } else {
-      dom.removeEventListener("pointerdown", this.onPointerDown);
-      dom.removeEventListener("pointerup", this.onPointerUp);
-      this.pointerDown = null;
-    }
-  }
-  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
-   *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
-  onPick(listener) {
-    this.pickListeners.add(listener);
-    return () => this.pickListeners.delete(listener);
-  }
-  /** Returns the handle name under (clientX, clientY) or null. */
-  dragHandleHitTest(clientX, clientY) {
-    if (this.dragHandles.size === 0) return null;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE3.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const meshes = [...this.dragHandles.values()];
-    const hits = this.raycaster.intersectObjects(meshes, false);
-    return hits.length > 0 ? hits[0].object.userData.handleName : null;
-  }
-  /** Raycast at (clientX, clientY) against a Three.Plane; returns the intersection point. */
-  raycastPlane(clientX, clientY, plane) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE3.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const hit = new THREE3.Vector3();
-    return this.raycaster.ray.intersectPlane(plane, hit) ? hit : null;
-  }
-  // ── Drag handles API ──
-  /** Register the per-drag, per-drag-end, and per-pick callbacks. */
-  setDragHandleCallbacks(onMove, onEnd, onPick) {
-    this.dragHandleMoveCb = onMove;
-    this.dragHandleEndCb = onEnd ?? null;
-    this.dragHandlePickCb = onPick ?? null;
-  }
-  /** Mark the start of a sketch run: clear the "seen this run" set. */
-  beginDragHandleSweep() {
-    this.dragSeenThisRun.clear();
-  }
-  /**
-   * Create or update a drag handle by stable name. Position is world-space.
-   * `constrain` (optional) snaps the dragged position — e.g. to a polyline.
-   */
-  upsertDragHandle(name, x, y, z, color = "#38d9a9", size = 0.12, constrain, plane) {
-    this.dragSeenThisRun.add(name);
-    let mesh = this.dragHandles.get(name);
-    if (!mesh) {
-      const geo = new THREE3.SphereGeometry(size, 16, 12);
-      const mat = this._makeMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 0.55
-      });
-      mesh = new THREE3.Mesh(geo, mat);
-      mesh.userData.handleName = name;
-      mesh.userData.baseSize = size;
-      mesh.userData.baseColor = color;
-      mesh.renderOrder = 999;
-      mesh.material.depthTest = false;
-      this.threeScene.add(mesh);
-      this.dragHandles.set(name, mesh);
-    } else {
-      const mat = mesh.material;
-      if (mat.color.getHexString() !== color.replace(/^#/, "").toLowerCase()) {
-        mat.color.set(color);
-        mat.emissive.set(color);
-        mesh.userData.baseColor = color;
-      }
-      const cur = mesh.geometry.parameters?.radius;
-      if (cur !== size) {
-        mesh.geometry.dispose();
-        mesh.geometry = new THREE3.SphereGeometry(size, 16, 12);
-        mesh.userData.baseSize = size;
-      }
-    }
-    if (constrain) this.dragHandleConstraints.set(name, constrain);
-    else this.dragHandleConstraints.delete(name);
-    if (plane) this.dragHandlePlanes.set(name, plane);
-    else this.dragHandlePlanes.delete(name);
-    if (this.activeDragHandle !== name) mesh.position.set(x, y, z);
-    if (this.selectedDragHandle === name) this.applyHandleStyle(name, true);
-    this.requestRender();
-  }
-  /** Remove any drag handles that weren't visited in this run. */
-  endDragHandleSweep() {
-    for (const [name, mesh] of this.dragHandles) {
-      if (!this.dragSeenThisRun.has(name)) {
-        this.threeScene.remove(mesh);
-        mesh.geometry.dispose();
-        mesh.material.dispose();
-        this.dragHandles.delete(name);
-        this.dragHandleConstraints.delete(name);
-        this.dragHandlePlanes.delete(name);
-        if (this.selectedDragHandle === name) this.selectedDragHandle = null;
-        this.requestRender();
-      }
-    }
-  }
-  /** Currently selected drag handle, or null. */
-  getSelectedHandle() {
-    return this.selectedDragHandle;
-  }
-  /** The handle currently being DRAGGED (set on pointer-down, cleared on pointer-up); null when idle. */
-  getActiveDragHandle() {
-    return this.activeDragHandle;
-  }
-  /** Programmatically select / deselect a drag handle (visual + callback). */
-  setHandleSelected(name) {
-    if (this.selectedDragHandle === name) return;
-    if (this.selectedDragHandle) this.applyHandleStyle(this.selectedDragHandle, false);
-    this.selectedDragHandle = name;
-    if (name) this.applyHandleStyle(name, true);
-  }
-  applyHandleStyle(name, selected) {
-    const mesh = this.dragHandles.get(name);
-    if (!mesh) return;
-    const mat = mesh.material;
-    if (selected) {
-      mat.emissiveIntensity = 1;
-      mesh.scale.setScalar(1.6);
-    } else {
-      mat.emissiveIntensity = 0.55;
-      mesh.scale.setScalar(1);
-    }
-    this.requestRender();
-  }
-  /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
-  pickAt(clientX, clientY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE3.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const cam = this.activeCamera;
-    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
-    const pickable = [];
-    for (const t of this.objectMap.values()) {
-      if (t.userData.pickable !== false) pickable.push(t);
-    }
-    const hits = this.raycaster.intersectObjects(pickable, true);
-    for (const h of hits) {
-      let cur = h.object;
-      while (cur && !cur.userData.geomId) cur = cur.parent;
-      if (cur?.userData.geomId) return cur.userData.geomId;
-    }
-    return null;
-  }
-  /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
-   *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
-  hitAt(clientX, clientY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE3.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const cam = this.activeCamera;
-    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
-    const targets = [];
-    for (const t of this.objectMap.values()) if (t.visible) targets.push(t);
-    const hits = this.raycaster.intersectObjects(targets, true);
-    for (const h of hits) {
-      let cur = h.object;
-      let shown = true;
-      while (cur && !cur.userData.geomId) {
-        if (!cur.visible) shown = false;
-        cur = cur.parent;
-      }
-      if (shown && cur?.userData.geomId) {
-        return { id: cur.userData.geomId, point: new Vec3(h.point.x, h.point.y, h.point.z) };
-      }
-    }
-    return null;
-  }
-  /** Where a viewport ray meets the ground plane (z=0 for Z-up, y=0 otherwise), via the active camera. */
-  groundAt(clientX, clientY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE3.Vector2(
-      (clientX - rect.left) / rect.width * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    this.raycaster.setFromCamera(ndc, this.activeCamera);
-    const n = this.isZUp ? new THREE3.Vector3(0, 0, 1) : new THREE3.Vector3(0, 1, 0);
-    const hit = new THREE3.Vector3();
-    return this.raycaster.ray.intersectPlane(new THREE3.Plane(n, 0), hit) ? new Vec3(hit.x, hit.y, hit.z) : null;
-  }
-  /** World-space bounds of a scene object as currently rendered, or null if empty/unknown. */
-  objectBounds(id) {
-    const t = this.objectMap.get(id);
-    if (!t) return null;
-    const b = new THREE3.Box3().setFromObject(t);
-    if (b.isEmpty()) return null;
-    return { min: new Vec3(b.min.x, b.min.y, b.min.z), max: new Vec3(b.max.x, b.max.y, b.max.z) };
-  }
-  /** Is the scene object currently shown (its own style and every parent)? */
-  isObjectShown(id) {
-    let cur = this.objectMap.get(id) ?? null;
-    if (!cur) return false;
-    for (; cur; cur = cur.parent) if (!cur.visible) return false;
-    return true;
-  }
-  /** The camera as plain numbers, enough to reproduce the view. */
-  cameraState() {
-    const c = this.activeCamera;
-    const t = this.controls?.target ?? new THREE3.Vector3();
-    return {
-      projection: this._isOrtho ? "orthographic" : "perspective",
-      position: [c.position.x, c.position.y, c.position.z],
-      target: [t.x, t.y, t.z],
-      up: [c.up.x, c.up.y, c.up.z],
-      fov: this.camera.fov
-    };
-  }
-  /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
-   *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
-  snapshotPng() {
-    this.render();
-    return this.renderer.domElement.toDataURL("image/png");
-  }
-  // ── Gizmo (transform controls) ──
-  setGizmoMode(mode) {
-    this.gizmoMode = mode;
-    if (mode === "none") {
-      this.detachGizmo();
-    } else {
-      this.ensureGizmo();
-      this.transformControls?.setMode(mode);
-      if (this.gizmoAttachedId) this.attachGizmo(this.gizmoAttachedId);
-    }
-    this.requestRender();
-  }
-  getGizmoMode() {
-    return this.gizmoMode;
-  }
-  attachGizmo(id) {
-    const t = this.objectMap.get(id);
-    if (!t) {
-      this.detachGizmo();
-      return;
-    }
-    if (this.gizmoMode === "none") {
-      this.gizmoAttachedId = id;
-      return;
-    }
-    this.ensureGizmo();
-    this.transformControls.attach(t);
-    this.gizmoAttachedId = id;
-    this.requestRender();
-  }
-  detachGizmo() {
-    this.transformControls?.detach();
-    this.gizmoAttachedId = null;
-    this.requestRender();
-  }
-  ensureGizmo() {
-    if (this.transformControls) return;
-    const tc = new TransformControls(this.activeCamera, this.renderer.domElement);
-    tc.setMode(this.gizmoMode === "none" ? "translate" : this.gizmoMode);
-    tc.addEventListener("dragging-changed", (e) => {
-      const dragging = e.value === true;
-      if (this.controls) this.controls.enabled = !dragging;
-      if (!dragging && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
-    });
-    tc.addEventListener("objectChange", () => {
-      if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
-    });
-    tc.addEventListener("change", () => this.requestRender());
-    this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
-    this.transformControls = tc;
-  }
-  /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */
-  writeBackTransform(id) {
-    const t = this.objectMap.get(id);
-    if (!t) return;
-    const obj = this.gScene.get(id);
-    if (!obj) return;
-    const transform = {
-      position: new Vec3(t.position.x, t.position.y, t.position.z),
-      rotation: new Vec3(t.rotation.x, t.rotation.y, t.rotation.z),
-      scale: new Vec3(t.scale.x, t.scale.y, t.scale.z)
-    };
-    this.gScene.withSuspendedEvents(() => {
-      this.gScene.update(id, { transform });
-    });
-  }
-  // ── Selection visual feedback ──
-  /** Highlight one object, several (a record's objects, a multi-selection), or none. */
-  setSelectionHighlight(ids) {
-    this.requestRender();
-    for (const [, info] of this.selectionMaterials) {
-      const m = info.mat;
-      m.emissive.copy(info.oldEmissive);
-      m.emissiveIntensity = info.oldIntensity;
-    }
-    this.selectionMaterials.clear();
-    const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
-    for (const id of list) {
-      const t = this.objectMap.get(id);
-      if (!t) continue;
-      t.traverse((child) => {
-        const m = child.material;
-        if (m && m.emissive instanceof THREE3.Color) {
-          this.selectionMaterials.set(child.uuid, {
-            mat: m,
-            oldEmissive: m.emissive.clone(),
-            oldIntensity: m.emissiveIntensity ?? 0
-          });
-          m.emissive = new THREE3.Color(3725737);
-          m.emissiveIntensity = 0.35;
-        }
-      });
-    }
-  }
-  // ── Render ──
-  /** Draw now, unconditionally. */
-  render() {
-    this.controls?.update();
-    this.renderer.render(this.threeScene, this.activeCamera);
-    this._needsRender = false;
-  }
-  /**
-   * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
-   * lights, drag handles, the gizmo, orbit controls and resizes already ask; call
-   * it after changing three.js objects directly (e.g. one added with
-   * `addExternalObject`).
-   */
-  requestRender() {
-    this._needsRender = true;
-  }
-  /**
-   * Draw only if something changed since the last draw, or while orbit damping
-   * is still moving the camera. Returns whether it drew. An idle scene of 10k
-   * objects otherwise costs a full draw on every animation frame.
-   */
-  renderIfNeeded() {
-    const moved = this.controls?.update() ?? false;
-    const settling = this._settleDamping();
-    if (!moved && !settling && !this._needsRender) return false;
-    this.renderer.render(this.threeScene, this.activeCamera);
-    this._needsRender = false;
-    return true;
-  }
-  /**
-   * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
-   * creeping the camera after that, so the last drawn frame would lag the camera
-   * slightly. Follow the creep frame by frame instead, and once the remaining
-   * glide is under ~0.1 px apply it at once: the camera then rests exactly where
-   * it was last drawn. Returns whether the camera moved this frame.
-   */
-  _settleDamping() {
-    const c = this.controls;
-    if (!c) return false;
-    const pos = c.object.position;
-    const step = pos.distanceTo(this._lastCamPos);
-    this._lastCamPos.copy(pos);
-    if (!(step > 1e-9 * Math.max(pos.distanceTo(c.target), 1))) return false;
-    if (c.enableDamping && c.dampingFactor > 0) {
-      const f = c.dampingFactor;
-      const rest = step * (1 - f) / f / Math.max(pos.distanceTo(c.target), 1e-9);
-      if (rest < 1e-4) {
-        c.enableDamping = false;
-        c.update();
-        c.enableDamping = true;
-        this._lastCamPos.copy(pos);
-      }
-    }
-    return true;
-  }
-  startLoop() {
-    let running = true;
-    const loop = () => {
-      if (!running) return;
-      this.render();
-      this.rafId = requestAnimationFrame(loop);
-    };
-    loop();
-    return () => {
-      running = false;
-      cancelAnimationFrame(this.rafId);
-    };
-  }
-  // ── Resize ──
-  resize() {
-    const w = this.container.clientWidth;
-    const h = this.container.clientHeight;
-    if (w === 0 || h === 0) return;
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-    this._syncOrthoCamFrustum();
-    this.renderer.setSize(w, h);
-    this.render();
-  }
-  // ── Projection & View ──
-  /** Compute the orthographic frustum to match the current perspective camera view distance. */
-  _syncOrthoCamFrustum() {
-    const target = this.controls?.target ?? new THREE3.Vector3();
-    const dist2 = Math.max(this.camera.position.distanceTo(target), 0.1);
-    const fovRad = this.camera.fov * Math.PI / 180;
-    const halfH = Math.tan(fovRad / 2) * dist2;
-    const halfW = halfH * this.camera.aspect;
-    this._orthoCam.left = -halfW;
-    this._orthoCam.right = halfW;
-    this._orthoCam.top = halfH;
-    this._orthoCam.bottom = -halfH;
-    this._orthoCam.near = -dist2 * 10;
-    this._orthoCam.far = dist2 * 10;
-    this._orthoCam.updateProjectionMatrix();
-  }
-  /**
-   * Switch between perspective and orthographic projection.
-   * Transfers the current camera position/orientation so the view is continuous.
-   */
-  setProjection(type) {
-    const wasOrtho = this._isOrtho;
-    this._isOrtho = type === "orthographic";
-    if (this._isOrtho && !wasOrtho) {
-      this._orthoCam.position.copy(this.camera.position);
-      this._orthoCam.quaternion.copy(this.camera.quaternion);
-      this._orthoCam.zoom = 1;
-      this._syncOrthoCamFrustum();
-    } else if (!this._isOrtho && wasOrtho) {
-      this.camera.position.copy(this._orthoCam.position);
-      this.camera.quaternion.copy(this._orthoCam.quaternion);
-      const zoom = this._orthoCam.zoom;
-      if (zoom !== 1 && this.controls) {
-        const t = this.controls.target;
-        this.camera.position.sub(t).divideScalar(zoom).add(t);
-        this._orthoCam.zoom = 1;
-      }
-    }
-    if (this.controls) {
-      this.controls.object = this.activeCamera;
-      this.controls.update();
-    }
-    this.requestRender();
-  }
-  /**
-   * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
-   * and restore (0,0,1) for side/elevation views.
-   */
-  setCameraUp(x, y, z) {
-    this.camera.up.set(x, y, z);
-    this._orthoCam.up.set(x, y, z);
-    if (this.controls) this.controls.update();
-    this.requestRender();
-  }
-  /** The WebGL canvas element (for attaching input listeners / overlays). */
-  get canvasEl() {
-    return this.renderer.domElement;
-  }
-  /** Set the viewport background color. */
-  setBackground(color) {
-    this.threeScene.background = new THREE3.Color(color);
-    this.config.backgroundColor = color;
-    this.requestRender();
-  }
-  /** Move the camera without changing its target. */
-  setCameraPosition(x, y, z) {
-    this.camera.position.set(x, y, z);
-    this.requestRender();
-  }
-  /** Aim the camera (and orbit-controls target) at a point. */
-  lookAt(x, y, z) {
-    this.camera.lookAt(x, y, z);
-    if (this.controls) {
-      this.controls.target.set(x, y, z);
-      this.controls.update();
-    }
-    this.requestRender();
-  }
-  /**
-   * Fit all visible scene objects inside the current view.
-   * Preserves the camera direction; only adjusts distance and target.
-   */
-  fitAll() {
-    const box = new THREE3.Box3();
-    for (const obj of this.objectMap.values()) {
-      if (obj.visible) {
-        const b = new THREE3.Box3().setFromObject(obj);
-        if (!b.isEmpty()) box.union(b);
-      }
-    }
-    if (box.isEmpty()) return;
-    const center = box.getCenter(new THREE3.Vector3());
-    const sphere = box.getBoundingSphere(new THREE3.Sphere());
-    const target = this.controls?.target.clone() ?? center;
-    let dir = new THREE3.Vector3().subVectors(this.camera.position, target);
-    if (dir.length() < 1e-6) dir.set(1, 1, 1);
-    dir.normalize();
-    const fovRad = this.camera.fov * Math.PI / 180;
-    const dist2 = sphere.radius / Math.tan(fovRad / 2) * 1.3;
-    this.camera.position.copy(center).addScaledVector(dir, dist2);
-    if (this.controls) {
-      this.controls.target.copy(center);
-      this.controls.update();
-    }
-    if (this._isOrtho) {
-      this._orthoCam.position.copy(this.camera.position);
-      this._orthoCam.quaternion.copy(this.camera.quaternion);
-      this._syncOrthoCamFrustum();
-    }
-    this.requestRender();
-  }
-  // ── Raycasting ──
-  /** Pick scene objects under a screen coordinate */
-  pick(screenX, screenY) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE3.Vector2(
-      (screenX - rect.left) / rect.width * 2 - 1,
-      -((screenY - rect.top) / rect.height) * 2 + 1
-    );
-    const raycaster = new THREE3.Raycaster();
-    raycaster.setFromCamera(mouse, this.camera);
-    const targets = [...this.objectMap.values()];
-    const hits = raycaster.intersectObjects(targets, true);
-    for (const hit of hits) {
-      let obj = hit.object;
-      while (obj && !obj.userData.geomId) obj = obj.parent;
-      if (obj?.userData.geomId) {
-        return { id: obj.userData.geomId, point: hit.point };
-      }
-    }
-    return null;
-  }
-  /** Project a screen position onto a plane */
-  screenToPlane(screenX, screenY, plane) {
-    const defaultNormal = this.isZUp ? new THREE3.Vector3(0, 0, 1) : new THREE3.Vector3(0, 1, 0);
-    const p = plane ?? new THREE3.Plane(defaultNormal, 0);
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE3.Vector2(
-      (screenX - rect.left) / rect.width * 2 - 1,
-      -((screenY - rect.top) / rect.height) * 2 + 1
-    );
-    const raycaster = new THREE3.Raycaster();
-    raycaster.setFromCamera(mouse, this.camera);
-    const target = new THREE3.Vector3();
-    return raycaster.ray.intersectPlane(p, target) ? target : null;
-  }
-  // ── Cleanup ──
-  disposeObject(obj) {
-    obj.traverse((child) => {
-      const m = child;
-      if (m.geometry) m.geometry.dispose();
-      if (m.material) {
-        if (Array.isArray(m.material)) m.material.forEach((mat) => mat.dispose());
-        else m.material.dispose();
-      }
-    });
-  }
-  dispose() {
-    this.unsub?.();
-    this.clearThree();
-    this.threeScene.environment = null;
-    this.envMap?.dispose();
-    this.envMap = null;
-    cancelAnimationFrame(this.rafId);
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.controls?.dispose();
-    try {
-      this.renderer.forceContextLoss();
-    } catch {
-    }
-    this.renderer.dispose();
-    this.renderer.domElement.remove();
-  }
-};
 
-// src/render/SVGRenderer.ts
-var DEFAULTS2 = {
-  width: 800,
-  height: 600,
-  viewBox: { minX: -5, minY: -5, width: 10, height: 10 },
-  backgroundColor: "#0a0b14",
-  showGrid: true,
-  gridSpacing: 1,
-  gridColor: "#1a1c3a",
-  showLabels: true,
-  projection: "xz",
-  padding: 20,
-  pointRadius: 5
-};
-var SVGRenderer = class {
-  constructor(gScene, container, config) {
-    this.unsub = null;
-    this.gScene = gScene;
-    this.config = { ...DEFAULTS2, ...config };
-    const c = this.config;
-    this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    this.svg.setAttribute("width", String(c.width));
-    this.svg.setAttribute("height", String(c.height));
-    this.svg.setAttribute("viewBox", `${c.viewBox.minX} ${c.viewBox.minY} ${c.viewBox.width} ${c.viewBox.height}`);
-    this.svg.style.background = c.backgroundColor;
-    this.svg.style.display = "block";
-    container.appendChild(this.svg);
-    this.gridGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    this.svg.appendChild(this.gridGroup);
-    if (c.showGrid) this.drawGrid();
-    this.contentGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    this.contentGroup.setAttribute("transform", "scale(1, -1)");
-    this.svg.appendChild(this.contentGroup);
-    this.unsub = gScene.on(() => this.render());
-    this.render();
+// src/render/viewRules.ts
+import * as THREE3 from "three";
+var DEFAULT_BACKGROUND = 16119802;
+function edgeStyle(mode, background = modeBackground(mode, DEFAULT_BACKGROUND)) {
+  if (mode === "hidden-line") return { colour: 1779507, opacity: 1 };
+  if (mode === "ghost" && luminance(background) > 0.5) return { colour: 1779507, opacity: 0.6 };
+  if (mode === "ghost") return { colour: 15265526, opacity: 0.75 };
+  return { colour: 5923950, opacity: 0.55 };
+}
+function modeBackground(mode, base) {
+  return mode === "ghost" ? 1777961 : base;
+}
+function sectionAppearance(mode) {
+  if (mode === "ghost") return { colour: 15265526 };
+  return { colour: 1779507 };
+}
+function groundAppearance(mode) {
+  if (mode === "hidden-line") return { visible: false, colour: 16777215, opacity: 0 };
+  if (mode === "ghost") return { visible: true, colour: 2436408, opacity: 1 };
+  return { visible: true, colour: 15199217, opacity: 1 };
+}
+function surfaceAppearance(mode, base) {
+  if (mode === "ghost") {
+    return { colour: base, opacity: 0.11, depthWrite: false, polygonOffset: false };
   }
-  project(v) {
-    switch (this.config.projection) {
-      case "xz":
-        return { x: v.x, y: v.z };
-      case "xy":
-        return { x: v.x, y: v.y };
-      case "yz":
-        return { x: v.y, y: v.z };
-    }
+  if (mode === "hidden-line") {
+    return { colour: 16777215, opacity: 1, depthWrite: true, polygonOffset: true };
   }
-  drawGrid() {
-    const { viewBox: vb, gridSpacing: gs, gridColor } = this.config;
-    const startX = Math.floor(vb.minX / gs) * gs;
-    const startY = Math.floor(vb.minY / gs) * gs;
-    const endX = vb.minX + vb.width;
-    const endY = vb.minY + vb.height;
-    for (let x = startX; x <= endX; x += gs) {
-      const line = this.createSVGLine(x, vb.minY, x, vb.minY + vb.height, gridColor, 0.02);
-      this.gridGroup.appendChild(line);
-    }
-    for (let y = startY; y <= endY; y += gs) {
-      const line = this.createSVGLine(vb.minX, y, vb.minX + vb.width, y, gridColor, 0.02);
-      this.gridGroup.appendChild(line);
-    }
-    this.gridGroup.appendChild(this.createSVGLine(vb.minX, 0, endX, 0, "#2a3055", 0.04));
-    this.gridGroup.appendChild(this.createSVGLine(0, vb.minY, 0, endY, "#2a3055", 0.04));
+  return { colour: base, opacity: 1, depthWrite: true, polygonOffset: false };
+}
+function lightBalance(mode, shadows) {
+  const shadowed = shadows && mode !== "ghost";
+  return {
+    shadowed,
+    sun: shadowed ? 2.6 : 1.4,
+    sky: shadowed ? 1.1 : 2.2,
+    // ShadowMaterial darkens whatever is behind it, so on a white hidden-line
+    // page the shadow has to be lighter than it is over a shaded model
+    groundOpacity: mode === "hidden-line" ? 0.16 : 0.24
+  };
+}
+var POLE = 1e-3;
+function standardOrbit(view) {
+  const H = Math.PI / 2;
+  switch (view) {
+    case "top":
+      return { phi: POLE, theta: 0 };
+    case "bottom":
+      return { phi: Math.PI - POLE, theta: 0 };
+    case "front":
+      return { phi: H, theta: 0 };
+    case "back":
+      return { phi: H, theta: Math.PI };
+    case "right":
+      return { phi: H, theta: H };
+    case "left":
+      return { phi: H, theta: -H };
+    default:
+      return { phi: Math.PI / 3, theta: Math.PI / 4 };
   }
-  render() {
-    while (this.contentGroup.firstChild) this.contentGroup.removeChild(this.contentGroup.firstChild);
-    for (const obj of this.gScene.all()) {
-      if (!obj.style.visible) continue;
-      this.renderObject(obj);
-    }
+}
+function viewDirection(view, up) {
+  const c = Math.cos(POLE), s = Math.sin(POLE), k = 1 / Math.sqrt(3);
+  const z = up === "z";
+  switch (view) {
+    case "top":
+      return z ? new THREE3.Vector3(0, -s, c) : new THREE3.Vector3(0, c, s);
+    case "bottom":
+      return z ? new THREE3.Vector3(0, -s, -c) : new THREE3.Vector3(0, -c, s);
+    case "front":
+      return z ? new THREE3.Vector3(0, -1, 0) : new THREE3.Vector3(0, 0, 1);
+    case "back":
+      return z ? new THREE3.Vector3(0, 1, 0) : new THREE3.Vector3(0, 0, -1);
+    case "right":
+      return new THREE3.Vector3(1, 0, 0);
+    case "left":
+      return new THREE3.Vector3(-1, 0, 0);
+    default:
+      return z ? new THREE3.Vector3(k, -k, k) : new THREE3.Vector3(k, k, k);
   }
-  renderObject(obj) {
-    const s = obj.style;
-    const pr = this.config.pointRadius * this.config.viewBox.width / this.config.width;
-    switch (obj.type) {
-      case "point": {
-        if (!obj.position) break;
-        const p = this.project(obj.position);
-        const circle = this.createSVGCircle(p.x, p.y, pr, s.color, s.opacity);
-        circle.dataset.geomId = obj.id;
-        this.contentGroup.appendChild(circle);
-        if (s.label && this.config.showLabels) {
-          const text = this.createSVGText(p.x + pr * 2, p.y + pr * 2, s.label, s.labelColor ?? s.color);
-          text.setAttribute("transform", `scale(1,-1)`);
-          text.setAttribute("y", String(-p.y - pr * 2));
-          this.contentGroup.appendChild(text);
-        }
-        break;
-      }
-      case "segment": {
-        if (!obj.start || !obj.end) break;
-        const a = this.project(obj.start);
-        const b = this.project(obj.end);
-        const line = this.createSVGLine(a.x, a.y, b.x, b.y, s.color, 0.03, s.opacity);
-        line.dataset.geomId = obj.id;
-        this.contentGroup.appendChild(line);
-        break;
-      }
-      case "polygon": {
-        if (!obj.vertices || obj.vertices.length < 2) break;
-        const pts = obj.vertices.map((v) => this.project(v));
-        const poly = this.createSVGPolygon(pts, s.color, s.opacity);
-        poly.dataset.geomId = obj.id;
-        this.contentGroup.appendChild(poly);
-        break;
-      }
-      case "circle": {
-        if (!obj.center || obj.radius == null) break;
-        const c = this.project(obj.center);
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("cx", String(c.x));
-        circle.setAttribute("cy", String(c.y));
-        circle.setAttribute("r", String(obj.radius));
-        circle.setAttribute("fill", "none");
-        circle.setAttribute("stroke", s.color);
-        circle.setAttribute("stroke-width", "0.03");
-        circle.setAttribute("opacity", String(s.opacity));
-        circle.dataset.geomId = obj.id;
-        this.contentGroup.appendChild(circle);
-        break;
-      }
-      case "mesh": {
-        if (!obj.mesh) break;
-        for (const face of obj.mesh.faces()) {
-          const pts = face.nodes.map((nid) => {
-            const node = obj.mesh.node(nid);
-            return node ? this.project(node.position) : { x: 0, y: 0 };
-          });
-          const poly = this.createSVGPolygon(pts, s.color, s.opacity * 0.3);
-          this.contentGroup.appendChild(poly);
-        }
-        for (const edge of obj.mesh.edges()) {
-          const a = obj.mesh.node(edge.nodes[0]);
-          const b = obj.mesh.node(edge.nodes[1]);
-          if (!a || !b) continue;
-          const pa = this.project(a.position);
-          const pb = this.project(b.position);
-          this.contentGroup.appendChild(
-            this.createSVGLine(pa.x, pa.y, pb.x, pb.y, s.color, 0.02, s.opacity * 0.5)
-          );
-        }
-        break;
-      }
-    }
+}
+function orbitFor(direction) {
+  const s = new THREE3.Spherical().setFromVector3(
+    new THREE3.Vector3(direction.x, direction.y, direction.z).normalize()
+  );
+  return { phi: Math.min(Math.PI - POLE, Math.max(POLE, s.phi)), theta: s.theta };
+}
+function shortestTurn(from, to) {
+  const TAU = Math.PI * 2;
+  let delta = (to - from) % TAU;
+  if (delta > Math.PI) delta -= TAU;
+  if (delta < -Math.PI) delta += TAU;
+  return from + delta;
+}
+function nearestAxis(direction) {
+  const v = new THREE3.Vector3(direction.x, direction.y, direction.z).normalize();
+  const axis = new THREE3.Vector3();
+  const [ax, ay, az] = [Math.abs(v.x), Math.abs(v.y), Math.abs(v.z)];
+  if (ax >= ay && ax >= az) axis.set(Math.sign(v.x) || 1, 0, 0);
+  else if (ay >= az) axis.set(0, Math.sign(v.y) || 1, 0);
+  else axis.set(0, 0, Math.sign(v.z) || 1);
+  return axis;
+}
+function sectionPlane(req, axisWorld, box) {
+  const a = axisWorld.clone().normalize();
+  let level;
+  if (req.coordinate !== void 0) level = req.coordinate;
+  else {
+    if (!box || box.isEmpty()) return null;
+    const centre = box.getCenter(new THREE3.Vector3());
+    const half = box.getSize(new THREE3.Vector3()).multiplyScalar(0.5);
+    const reach = Math.abs(a.x) * half.x + Math.abs(a.y) * half.y + Math.abs(a.z) * half.z;
+    level = centre.dot(a) + (Math.min(1, Math.max(0, req.at ?? 0.5)) - 0.5) * 2 * reach;
   }
-  // ── SVG Helpers ──
-  createSVGCircle(cx, cy, r, color, opacity = 1) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    el.setAttribute("cx", String(cx));
-    el.setAttribute("cy", String(cy));
-    el.setAttribute("r", String(r));
-    el.setAttribute("fill", color);
-    el.setAttribute("opacity", String(opacity));
-    return el;
-  }
-  createSVGLine(x1, y1, x2, y2, color, width = 0.02, opacity = 1) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    el.setAttribute("x1", String(x1));
-    el.setAttribute("y1", String(y1));
-    el.setAttribute("x2", String(x2));
-    el.setAttribute("y2", String(y2));
-    el.setAttribute("stroke", color);
-    el.setAttribute("stroke-width", String(width));
-    el.setAttribute("opacity", String(opacity));
-    return el;
-  }
-  createSVGPolygon(pts, color, opacity = 0.5) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    el.setAttribute("points", pts.map((p) => `${p.x},${p.y}`).join(" "));
-    el.setAttribute("fill", color);
-    el.setAttribute("fill-opacity", String(opacity));
-    el.setAttribute("stroke", color);
-    el.setAttribute("stroke-width", "0.03");
-    return el;
-  }
-  createSVGText(x, y, text, color) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    el.setAttribute("x", String(x));
-    el.setAttribute("y", String(y));
-    el.setAttribute("fill", color);
-    el.setAttribute("font-size", "0.2");
-    el.setAttribute("font-family", "monospace");
-    el.textContent = text;
-    return el;
-  }
-  /** Update the viewBox (pan/zoom) */
-  setViewBox(minX, minY, width, height) {
-    this.config.viewBox = { minX, minY, width, height };
-    this.svg.setAttribute("viewBox", `${minX} ${minY} ${width} ${height}`);
-    this.render();
-  }
-  dispose() {
-    this.unsub?.();
-    this.svg.remove();
-  }
-};
-
-// src/render/Viewport.ts
-import * as THREE5 from "three";
+  return req.flip ? new THREE3.Plane(a, -level) : new THREE3.Plane(a.negate(), level);
+}
+function luminance(colour) {
+  const c = new THREE3.Color(colour);
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+function easeInOut(t) {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+}
+function fitRadius(boundingRadius, fovDeg, aspect, margin = 1.25) {
+  const vFov = fovDeg * Math.PI / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(aspect, 0.01));
+  const dist2 = Math.max(boundingRadius, 1e-6) / Math.sin(Math.min(vFov, hFov) / 2);
+  return Math.max(1, dist2 * margin);
+}
+function orthoFrustum(distance, fovDeg, aspect) {
+  const h = 2 * distance * Math.tan(fovDeg * Math.PI / 180 / 2);
+  const w = h * aspect;
+  return { left: -w / 2, right: w / 2, top: h / 2, bottom: -h / 2 };
+}
 
 // src/render/NavGizmo.ts
 import * as THREE4 from "three";
@@ -3906,559 +2232,2023 @@ var Callouts = class {
   }
 };
 
-// src/render/Viewport.ts
-var OUTLINE_LIMIT = 1500;
-var OUTLINE_CHUNK = 250;
-var FALLBACK_SURFACE = 14278115;
-var DEFAULT_BACKGROUND = 16119802;
-function edgeStyle(mode) {
-  if (mode === "hidden-line") return { colour: 1779507, opacity: 1 };
-  if (mode === "ghost") return { colour: 15265526, opacity: 0.75 };
-  return { colour: 5923950, opacity: 0.55 };
+// src/render/ThreeRenderer.ts
+var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
+var DEFAULTS = {
+  antialias: true,
+  backgroundColor: 658196,
+  showGrid: true,
+  gridSize: 20,
+  gridDivisions: 20,
+  showAxes: true,
+  axesSize: 3,
+  enableOrbitControls: true,
+  enableDamping: true,
+  cameraPosition: [6, 8, 10],
+  cameraTarget: [0, 0, 0],
+  fov: 55,
+  up: "y",
+  navGizmo: false
+};
+var EDGE_BUDGET_MS = 8;
+var NO_TURN = new THREE5.Quaternion();
+function seeThrough(m) {
+  return (Array.isArray(m) ? m : [m]).some((x) => x.transparent && x.opacity < 1);
 }
-function modeBackground(mode, base) {
-  return mode === "ghost" ? 1777961 : base;
-}
-function sectionAppearance(mode) {
-  if (mode === "ghost") return { colour: 15265526 };
-  return { colour: 1779507 };
-}
-function groundAppearance(mode) {
-  if (mode === "hidden-line") return { visible: false, colour: 16777215, opacity: 0 };
-  if (mode === "ghost") return { visible: true, colour: 2436408, opacity: 1 };
-  return { visible: true, colour: 15199217, opacity: 1 };
-}
-function surfaceAppearance(mode, base) {
-  if (mode === "ghost") {
-    return { colour: base, opacity: 0.11, depthWrite: false, polygonOffset: false };
-  }
-  if (mode === "hidden-line") {
-    return { colour: 16777215, opacity: 1, depthWrite: true, polygonOffset: true };
-  }
-  return { colour: base, opacity: 1, depthWrite: true, polygonOffset: false };
-}
-function lightBalance(mode, shadows) {
-  const shadowed = shadows && mode !== "ghost";
-  return {
-    shadowed,
-    sun: shadowed ? 2.6 : 1.4,
-    sky: shadowed ? 1.1 : 2.2,
-    // ShadowMaterial darkens whatever is behind it, so on a white hidden-line
-    // page the shadow has to be lighter than it is over a shaded model
-    groundOpacity: mode === "hidden-line" ? 0.16 : 0.24
-  };
-}
-var POLE = 1e-3;
-function standardOrbit(view) {
-  const H = Math.PI / 2;
-  switch (view) {
-    case "top":
-      return { phi: POLE, theta: 0 };
-    case "bottom":
-      return { phi: Math.PI - POLE, theta: 0 };
-    case "front":
-      return { phi: H, theta: 0 };
-    case "back":
-      return { phi: H, theta: Math.PI };
-    case "right":
-      return { phi: H, theta: H };
-    case "left":
-      return { phi: H, theta: -H };
-    default:
-      return { phi: Math.PI / 3, theta: Math.PI / 4 };
-  }
-}
-function orbitFor(direction) {
-  const s = new THREE5.Spherical().setFromVector3(
-    new THREE5.Vector3(direction.x, direction.y, direction.z).normalize()
-  );
-  return { phi: Math.min(Math.PI - POLE, Math.max(POLE, s.phi)), theta: s.theta };
-}
-function shortestTurn(from, to) {
-  const TAU = Math.PI * 2;
-  let delta = (to - from) % TAU;
-  if (delta > Math.PI) delta -= TAU;
-  if (delta < -Math.PI) delta += TAU;
-  return from + delta;
-}
-function nearestAxis(direction) {
-  const v = new THREE5.Vector3(direction.x, direction.y, direction.z).normalize();
-  const axis = new THREE5.Vector3();
-  const [ax, ay, az] = [Math.abs(v.x), Math.abs(v.y), Math.abs(v.z)];
-  if (ax >= ay && ax >= az) axis.set(Math.sign(v.x) || 1, 0, 0);
-  else if (ay >= az) axis.set(0, Math.sign(v.y) || 1, 0);
-  else axis.set(0, 0, Math.sign(v.z) || 1);
-  return axis;
-}
-function easeInOut(t) {
-  const x = Math.min(1, Math.max(0, t));
-  return x * x * (3 - 2 * x);
-}
-function fitRadius(boundingRadius, fovDeg, aspect, margin = 1.25) {
-  const vFov = fovDeg * Math.PI / 180;
-  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Math.max(aspect, 0.01));
-  const dist2 = Math.max(boundingRadius, 1e-6) / Math.sin(Math.min(vFov, hFov) / 2);
-  return Math.max(1, dist2 * margin);
-}
-function orthoFrustum(distance, fovDeg, aspect) {
-  const h = 2 * distance * Math.tan(fovDeg * Math.PI / 180 / 2);
-  const w = h * aspect;
-  return { left: -w / 2, right: w / 2, top: h / 2, bottom: -h / 2 };
-}
-var Viewport = class {
-  constructor(host, opts = {}) {
-    this.host = host;
-    this.opts = opts;
-    this.scene = new THREE5.Scene();
-    this.projectionMode = "perspective";
-    this.root = new THREE5.Group();
-    this.meshGroup = new THREE5.Group();
-    this.outlines = new THREE5.Group();
-    /** Bright edges around a chosen set, drawn over everything. See setOutlined. */
-    this.highlight = new THREE5.Group();
-    /**
-     * The poché: one back-faced copy of each mesh while a section is live.
-     *
-     * Under `root`, sharing geometry and local matrices with the meshes, so it
-     * inherits the up-axis rotation exactly as they do.
-     */
-    this.sectionGroup = new THREE5.Group();
-    /** kept so a colour change can rebuild the same cut */
-    this.sectionRequest = null;
-    this.section = null;
-    /** null means "whatever the view mode says", which is the usual case. */
+var ThreeRenderer = class {
+  constructor(gScene, container, config) {
+    this._isOrtho = false;
+    this.objectMap = /* @__PURE__ */ new Map();
+    this.unsub = null;
+    this.rafId = 0;
+    // Render on demand: set by anything that can change the picture (scene events,
+    // camera, lights, handles, resize); cleared by a draw. See renderIfNeeded().
+    this._needsRender = true;
+    // Camera position at the previous renderIfNeeded(), to follow orbit damping
+    // below OrbitControls' change threshold (see _settleDamping).
+    this._lastCamPos = new THREE5.Vector3(NaN, NaN, NaN);
+    this.currentLighting = "flat";
+    // Studio-mode default PBR material, used when a mesh sets no explicit
+    // metalness/roughness in its VisualStyle. Configurable via setStudioMaterial.
+    this.studioMetalness = 0;
+    this.studioRoughness = 0.65;
+    // When set, forces this color on studio meshes (overriding their own); null = keep per-mesh color.
+    this.studioColor = null;
+    this.studioFlatShading = false;
+    // When true, line/point "helper" objects are hidden (e.g. a clean render view
+    // that shows only solid meshes). Solid geometry is unaffected.
+    this.hideHelpers = false;
+    this.gridHelper = null;
+    this.axesHelper = null;
+    // Invisible shadow-catcher plane added only in Studio mode so the
+    // PCF-soft shadows have a surface to land on.
+    this.shadowGround = null;
+    // When true, the studio shadow-catcher plane (at the world origin) is hidden —
+    // e.g. when the app provides its own ground to receive shadows.
+    this.shadowGroundHidden = false;
+    // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
+    // sketch re-runs (clearThree only touches objectMap-managed objects).
+    this.externalObjects = /* @__PURE__ */ new Map();
+    // Prefiltered (PMREM) environment map for image-based reflections.
+    // Built lazily once on first enable, then reused. Only visibly affects
+    // studio PBR materials.
+    this.envMap = null;
+    // Optional equirectangular source (e.g. a loaded HDR) for the environment.
+    // null → the built-in procedural gradient. The app owns/disposes this texture.
+    this.envSourceTex = null;
+    this.envEnabled = false;
+    this.envBackground = false;
+    this.resizeObserver = null;
+    // ── Picking + Gizmo ──
+    this.raycaster = new THREE5.Raycaster();
+    this.pickEnabled = false;
+    this.pickListeners = /* @__PURE__ */ new Set();
+    this.transformControls = null;
+    this.gizmoMode = "translate";
+    this.gizmoAttachedId = null;
+    this.pointerDown = null;
+    this.selectionMaterials = /* @__PURE__ */ new Map();
+    // ── Drag handles ──
+    this.dragHandles = /* @__PURE__ */ new Map();
+    this.dragHandleConstraints = /* @__PURE__ */ new Map();
+    this.dragHandlePlanes = /* @__PURE__ */ new Map();
+    this.dragHandleMoveCb = null;
+    this.dragHandleEndCb = null;
+    this.dragHandlePickCb = null;
+    this.activeDragHandle = null;
+    this.selectedDragHandle = null;
+    this.dragPlane = new THREE5.Plane();
+    this.dragSeenThisRun = /* @__PURE__ */ new Set();
+    // ── Section (setSection) ──
+    this.sectionReq = null;
+    this.sectionClip = null;
     this.sectionColour = null;
-    this.frame = 0;
-    this.mode = "shaded";
-    this.outlinesBuilt = false;
-    this.buildingOutlines = false;
-    this.content = {};
-    this.shadows = false;
-    this.hovered = null;
-    this.lastHover = 0;
-    /** Where the light comes from, in three.js Y-up. Replaced by a real solar
-     *  position through setSun; this is the fallback for a sun below the horizon,
-     *  and for a viewport nobody has told a date. */
-    this.sunDir = new THREE5.Vector3(1, 1.6, 1.1).normalize();
-    this.sunNote = "generic light, no date";
-    // simple orbit: enough for looking at a building, and no extra dependency
-    this.target = new THREE5.Vector3();
-    this.gizmo = null;
+    // One poché material for every cut mesh; its colour follows the render mode.
+    this.pocheMat = null;
+    // ── Named views (setView / orbitTo) and the axis widget ──
+    this.navGizmo = null;
+    // A camera turn in progress: the offset from the target it started at, the full turn.
+    // A camera move in progress: a turn about the target, and a glide of the target and the distance.
+    this.cameraMove = null;
+    // ── Callouts (setCallouts) ──
     this.callouts = null;
-    /** World-space anchor per callout, remeasured only when the content changes:
-     *  a bounding box costs a walk of the geometry and nothing in the scene
-     *  moves except the camera. */
     this.calloutAnchors = /* @__PURE__ */ new Map();
-    /** Which callouts the reader can actually see, recomputed on a timer rather
-     *  than per frame, because it costs a raycast each. */
     this.calloutVisible = /* @__PURE__ */ new Set();
     this.calloutCheckedAt = 0;
-    /** Last orbit the gizmo was drawn for, so it is redrawn on a move and not on
-     *  every one of the frames a still camera also renders. */
-    this.gizmoAt = { phi: NaN, theta: NaN };
-    /**
-     * A camera move in progress. Any input from the reader drops it: a view
-     * animation that fights an orbit is worse than no animation at all.
-     */
-    this.move = null;
-    this.tick = () => {
-      this.frame = requestAnimationFrame(this.tick);
-      this.step();
-      const camera = this.camera;
-      camera.position.setFromSpherical(this.spherical).add(this.target);
-      camera.lookAt(this.target);
-      if (this.gizmo && (this.spherical.phi !== this.gizmoAt.phi || this.spherical.theta !== this.gizmoAt.theta)) {
-        this.gizmo.update(camera, this.root.quaternion);
-        this.gizmoAt = { phi: this.spherical.phi, theta: this.spherical.theta };
-      }
-      camera.updateMatrixWorld();
-      this.drawCallouts();
-      if (this.projectionMode === "orthographic") {
-        const aspect = (this.host.clientWidth || 1) / (this.host.clientHeight || 1);
-        const f = orthoFrustum(this.spherical.radius, this.perspective.fov, aspect);
-        if (f.top !== this.orthographic.top) {
-          this.orthographic.left = f.left;
-          this.orthographic.right = f.right;
-          this.orthographic.top = f.top;
-          this.orthographic.bottom = f.bottom;
-          this.orthographic.updateProjectionMatrix();
+    this.calloutRecheck = 0;
+    this.calloutsDirty = false;
+    this.calloutHandlers = {};
+    this.projectionListeners = /* @__PURE__ */ new Set();
+    // ── Edges built a frame at a time (hidden line, ghost) ──
+    this.edgeQueue = [];
+    // ── The sun framed to the content (Studio) ──
+    this.sunDir = new THREE5.Vector3(8, 10, 15).normalize();
+    this.sunMinDistance = 50;
+    this.sunDirty = true;
+    // ── Selection as outlines, hover ──
+    this.selectionStyle = "tint";
+    this.outlineGroup = new THREE5.Group();
+    this.outlined = [];
+    this.hoverListeners = /* @__PURE__ */ new Set();
+    this.hovered = null;
+    this.hoverAt = 0;
+    /** Cached horizontal-stripe textures for print-layer shading, keyed by layer height (m). One texture
+     *  period = one printed bead: bright rounded crown, dark groove at the layer boundary. The pipe UVs
+     *  carry V in metres, so repeat.y = 1/layerH gives physically-true layer spacing. */
+    this._stripeTexCache = /* @__PURE__ */ new Map();
+    this.onPointerDown = (e) => {
+      const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
+      if (handleName) {
+        e.preventDefault();
+        this.activeDragHandle = handleName;
+        this.setHandleSelected(handleName);
+        if (this.controls) this.controls.enabled = false;
+        const handle = this.dragHandles.get(handleName);
+        let normal;
+        if (this.dragHandlePlanes.get(handleName) === "screen") {
+          normal = new THREE5.Vector3();
+          this.activeCamera.getWorldDirection(normal);
+        } else {
+          normal = this.isZUp ? new THREE5.Vector3(0, 0, 1) : new THREE5.Vector3(0, 1, 0);
         }
-      }
-      this.renderer.render(this.scene, camera);
-    };
-    const home = standardOrbit(opts.view ?? "iso");
-    this.spherical = new THREE5.Spherical(30, home.phi, home.theta);
-    this.scene.background = new THREE5.Color(opts.background ?? DEFAULT_BACKGROUND);
-    this.perspective = new THREE5.PerspectiveCamera(45, 1, 0.05, 5e3);
-    this.orthographic = new THREE5.OrthographicCamera(-1, 1, 1, -1, 0.01, 5e3);
-    this.renderer = new THREE5.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio ?? 1, 2));
-    const dom = this.renderer.domElement;
-    dom.style.display = "block";
-    dom.style.width = "100%";
-    dom.style.height = "100%";
-    host.appendChild(dom);
-    this.sky = new THREE5.HemisphereLight(16777215, 8952234, 2.2);
-    this.sun = new THREE5.DirectionalLight(16777215, 1.4);
-    this.sun.position.set(1, 2, 1.5);
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.bias = -5e-4;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
-    this.renderer.shadowMap.autoUpdate = false;
-    this.ground = new THREE5.Mesh(
-      new THREE5.PlaneGeometry(1, 1),
-      new THREE5.ShadowMaterial({ opacity: 0.22 })
-    );
-    this.ground.rotation.x = -Math.PI / 2;
-    this.ground.receiveShadow = true;
-    this.ground.visible = false;
-    this.groundPlane = new THREE5.Mesh(
-      new THREE5.PlaneGeometry(1, 1),
-      // unlit, so the plane stays an even tone whatever the sun is doing and
-      // never competes with the building for attention
-      new THREE5.MeshBasicMaterial({ transparent: true })
-    );
-    this.groundPlane.rotation.x = -Math.PI / 2;
-    this.groundPlane.visible = false;
-    this.groundPlane.renderOrder = -1;
-    this.setUp(opts.up ?? "y");
-    this.root.add(this.meshGroup, this.outlines, this.highlight, this.sectionGroup);
-    this.scene.add(
-      this.sky,
-      this.sun,
-      this.sun.target,
-      this.ground,
-      this.groundPlane,
-      this.root
-    );
-    if (opts.gizmo !== false) {
-      this.gizmo = new NavGizmo(host, {
-        corner: opts.gizmoCorner,
-        onAxis: (direction) => this.orbitTo(direction),
-        onDrag: (dx, dy) => {
-          this.move = null;
-          this.orbitBy(dx, dy);
-        },
-        onSnap: () => this.orbitTo(nearestAxis(this.viewDirection())),
-        onProjection: () => this.setProjection(
-          this.projectionMode === "perspective" ? "orthographic" : "perspective"
-        )
-      });
-      this.gizmo.setProjection(this.projectionMode);
-    }
-    this.bind();
-    this.resize();
-    this.tick();
-  }
-  /** The camera currently in use. Follows setProjection. */
-  get camera() {
-    return this.projectionMode === "orthographic" ? this.orthographic : this.perspective;
-  }
-  setUp(up) {
-    this.root.rotation.set(up === "z" ? -Math.PI / 2 : 0, 0, 0);
-    this.gizmoAt.phi = NaN;
-  }
-  bind() {
-    const el = this.renderer.domElement;
-    let dragging = false, moved = false, lx = 0, ly = 0;
-    el.addEventListener("pointerdown", (e) => {
-      dragging = true;
-      moved = false;
-      lx = e.clientX;
-      ly = e.clientY;
-      this.move = null;
-    });
-    el.addEventListener("pointerleave", () => {
-      if (this.hovered !== null) {
-        this.hovered = null;
-        this.opts.onHover?.(null);
-      }
-    });
-    el.addEventListener("pointermove", (e) => {
-      if (!dragging) {
-        this.hover(e);
+        this.dragPlane.setFromNormalAndCoplanarPoint(normal, handle.position);
+        const dom = this.renderer.domElement;
+        dom.addEventListener("pointermove", this.onPointerMoveDragging);
+        dom.addEventListener("pointerup", this.onPointerUpDragging, { once: true });
+        dom.setPointerCapture(e.pointerId);
         return;
       }
-      const dx = e.clientX - lx, dy = e.clientY - ly;
-      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      this.orbitBy(dx, dy);
-      lx = e.clientX;
-      ly = e.clientY;
+      this.pointerDown = { x: e.clientX, y: e.clientY };
+    };
+    this.onPointerUp = (e) => {
+      if (!this.pointerDown) return;
+      const dx = e.clientX - this.pointerDown.x;
+      const dy = e.clientY - this.pointerDown.y;
+      this.pointerDown = null;
+      if (dx * dx + dy * dy > 25) return;
+      if (this.transformControls?.dragging) return;
+      if (this.selectedDragHandle !== null) this.setHandleSelected(null);
+      const id = this.pickAt(e.clientX, e.clientY);
+      const info = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey };
+      for (const l of this.pickListeners) l(id, info);
+    };
+    this.onPointerMoveDragging = (e) => {
+      if (!this.activeDragHandle) return;
+      const hit = this.raycastPlane(e.clientX, e.clientY, this.dragPlane);
+      if (!hit) return;
+      const handle = this.dragHandles.get(this.activeDragHandle);
+      if (!handle) return;
+      let x = hit.x, y = hit.y, z = hit.z;
+      const constrain = this.dragHandleConstraints.get(this.activeDragHandle);
+      if (constrain) {
+        const c = constrain(x, y, z);
+        x = c[0];
+        y = c[1];
+        z = c[2];
+      }
+      handle.position.set(x, y, z);
+      this.requestRender();
+      if (this.dragHandleMoveCb) {
+        this.dragHandleMoveCb(this.activeDragHandle, x, y, z);
+      }
+    };
+    this.onPointerUpDragging = (_e) => {
+      const name = this.activeDragHandle;
+      this.activeDragHandle = null;
+      if (this.controls) this.controls.enabled = true;
+      const dom = this.renderer.domElement;
+      dom.removeEventListener("pointermove", this.onPointerMoveDragging);
+      if (name && this.dragHandlePickCb) this.dragHandlePickCb(name);
+      if (name && this.dragHandleEndCb) this.dragHandleEndCb(name);
+    };
+    this.highlightIds = null;
+    this.outlineMat = null;
+    this.onHoverMove = (e) => {
+      if (e.buttons !== 0) return;
+      const now = performance.now();
+      if (now - this.hoverAt < 40) return;
+      this.hoverAt = now;
+      this._hover(this.pickAt(e.clientX, e.clientY));
+    };
+    this.onHoverLeave = () => this._hover(null);
+    this.gScene = gScene;
+    this.container = container;
+    this.config = { ...DEFAULTS, ...config };
+    this.isZUp = this.config.up === "z";
+    const cfg = this.config;
+    this.threeScene = new THREE5.Scene();
+    this.threeScene.background = new THREE5.Color(cfg.backgroundColor);
+    const aspect = container.clientWidth / container.clientHeight || 1;
+    this.camera = new THREE5.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
+    if (this.isZUp) this.camera.up.set(0, 0, 1);
+    this.camera.position.set(...cfg.cameraPosition);
+    this.camera.lookAt(...cfg.cameraTarget);
+    this._orthoCam = new THREE5.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
+    if (this.isZUp) this._orthoCam.up.set(0, 0, 1);
+    this._orthoCam.position.set(...cfg.cameraPosition);
+    this._orthoCam.lookAt(...cfg.cameraTarget);
+    this.renderer = new THREE5.WebGLRenderer({ antialias: cfg.antialias });
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(this.renderer.domElement);
+    this.ambientLight = new THREE5.AmbientLight(16777215, 0.5);
+    this.threeScene.add(this.ambientLight);
+    this.dirLight = new THREE5.DirectionalLight(16777215, 0.7);
+    this.dirLight.position.set(8, this.isZUp ? 10 : 15, this.isZUp ? 15 : 10);
+    this.dirLight.target.position.set(0, 0, 0);
+    this.threeScene.add(this.dirLight);
+    this.threeScene.add(this.dirLight.target);
+    this.hemiLight = new THREE5.HemisphereLight(4482730, 3351057, 0.4);
+    this.threeScene.add(this.hemiLight);
+    this.sunDir.copy(this.dirLight.position).normalize();
+    this.outlineGroup.renderOrder = 999;
+    this.threeScene.add(this.outlineGroup);
+    this._applyLighting(this.gScene.lightingMode);
+    if (cfg.showGrid) {
+      const grid = new THREE5.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
+      if (this.isZUp) grid.rotation.x = Math.PI / 2;
+      this.gridHelper = grid;
+      this.threeScene.add(grid);
+    }
+    if (cfg.showAxes) {
+      this.axesHelper = new THREE5.AxesHelper(cfg.axesSize);
+      this.threeScene.add(this.axesHelper);
+    }
+    if (cfg.enableOrbitControls) {
+      this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+      this.controls.enableDamping = cfg.enableDamping;
+      this.controls.dampingFactor = 0.05;
+      this.controls.target.set(...cfg.cameraTarget);
+      this.controls.addEventListener("change", () => this.requestRender());
+      this.controls.addEventListener("start", () => {
+        this.cameraMove = null;
+      });
+    }
+    if (cfg.navGizmo) {
+      this.navGizmo = new NavGizmo(container, {
+        corner: typeof cfg.navGizmo === "string" ? cfg.navGizmo : "bottom-right",
+        onAxis: (direction) => this.orbitTo(direction),
+        onDrag: (dx, dy) => this.orbitBy(dx, dy),
+        onSnap: () => this.orbitTo(nearestAxis(this._viewOffset())),
+        onProjection: () => this.setProjection(this._isOrtho ? "perspective" : "orthographic")
+      });
+    }
+    this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(container);
+    this.unsub = gScene.on((e) => this.handleEvent(e));
+    for (const obj of gScene.all()) this.addToThree(obj);
+  }
+  /** The currently active camera — perspective or orthographic. */
+  get activeCamera() {
+    return this._isOrtho ? this._orthoCam : this.camera;
+  }
+  // ── Event Handling ──
+  handleEvent(event) {
+    this._needsRender = true;
+    this.sunDirty = true;
+    this.calloutsDirty = true;
+    switch (event.type) {
+      case "object:add": {
+        const obj = this.gScene.get(event.id);
+        if (obj) this.addToThree(obj);
+        break;
+      }
+      case "object:remove":
+        this.removeFromThree(event.id);
+        break;
+      case "object:style": {
+        const t = this.objectMap.get(event.id);
+        const srcObj = this.gScene.get(event.id);
+        if (t && srcObj && this._restyleInPlace(t, srcObj, event.style)) break;
+        this.removeFromThree(event.id);
+        if (srcObj) this.addToThree(srcObj);
+        break;
+      }
+      case "object:update": {
+        const t = this.objectMap.get(event.id);
+        const obj = this.gScene.get(event.id);
+        if (t && obj && Object.keys(event.changes).every((k) => k === "pickTag" || k === "pickable")) {
+          t.userData.pickable = obj.pickable !== false;
+          break;
+        }
+        this.removeFromThree(event.id);
+        if (obj) this.addToThree(obj);
+        break;
+      }
+      case "scene:clear":
+        this.clearThree();
+        break;
+      case "scene:renderMode":
+        this.rebuildAllMeshes();
+        break;
+      case "scene:lightingMode":
+        this._applyLighting(event.mode);
+        this.rebuildAllMeshes();
+        break;
+      case "scene:environment":
+        this._applyEnvironment(event.enabled);
+        break;
+    }
+  }
+  // ── Object Conversion ──
+  addToThree(obj) {
+    const t = this.convert(obj);
+    if (!t) return;
+    t.userData.geomId = obj.id;
+    t.userData.pickable = obj.pickable !== false;
+    t.userData.objType = obj.type;
+    t.userData.styleVisible = obj.style.visible;
+    t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
+    this.applyTransform(t, obj);
+    if (this.currentLighting === "studio") {
+      const cast = this.gScene.renderMode !== "ghost";
+      t.traverse((child) => {
+        if (child instanceof THREE5.Mesh) {
+          child.castShadow = cast;
+          child.receiveShadow = true;
+        }
+      });
+    }
+    if (this.sectionClip) this._dressSection(t);
+    this.threeScene.add(t);
+    this.objectMap.set(obj.id, t);
+    if (this.gizmoAttachedId === obj.id) this.attachGizmo(obj.id);
+  }
+  /** Apply a style patch to the existing three object if it only touches colour,
+   *  opacity, visibility or inert keys. False → the caller rebuilds the object. */
+  _restyleInPlace(t, obj, patch) {
+    let paint = false;
+    for (const k of Object.keys(patch)) {
+      if (k === "color" || k === "opacity") paint = true;
+      else if (k !== "visible" && !INERT_STYLE_KEYS.has(k)) return false;
+    }
+    if (paint && !this._repaint(t, obj)) return false;
+    if ("visible" in patch) {
+      t.userData.styleVisible = obj.style.visible;
+      t.visible = obj.style.visible && !(this.hideHelpers && this._isHelper(obj.type));
+    }
+    return true;
+  }
+  /** Set colour + opacity on a single-material object exactly as convert() would build
+   *  it: lines (segment, polyline, circle), tube segments and unlabelled points. Meshes,
+   *  polygons, planes and labelled points have mode- or label-dependent materials → false. */
+  _repaint(t, obj) {
+    const s = obj.style;
+    const tube = obj.type === "segment" && !!s.tubeRadius && s.tubeRadius > 0;
+    const line = !tube && (obj.type === "segment" || obj.type === "polyline" || obj.type === "circle");
+    const solid = tube || obj.type === "point" && !s.label;
+    const m = t.material;
+    if (!line && !solid || !m || Array.isArray(m)) return false;
+    const mat = m;
+    mat.color.set(solid && this.currentLighting === "studio" ? this.studioColor ?? s.color : s.color);
+    if (obj.type === "point") {
+      const sel = this.selectionMaterials.get(t.uuid);
+      (sel ? sel.oldEmissive : mat.emissive).set(s.color);
+    }
+    const transparent = s.opacity < 1;
+    if (mat.transparent !== transparent) {
+      mat.transparent = transparent;
+      mat.needsUpdate = true;
+    }
+    mat.opacity = s.opacity;
+    return true;
+  }
+  /** Apply `obj.transform` (position/rotation/scale) to a Three.Object3D. */
+  applyTransform(t, obj) {
+    const tr = obj.transform;
+    if (!tr) return;
+    if (tr.position) t.position.set(tr.position.x, tr.position.y, tr.position.z);
+    if (tr.rotation) t.rotation.set(tr.rotation.x, tr.rotation.y, tr.rotation.z);
+    if (tr.scale) t.scale.set(tr.scale.x, tr.scale.y, tr.scale.z);
+  }
+  removeFromThree(id) {
+    const t = this.objectMap.get(id);
+    if (!t) return;
+    this._dropOutlines(t);
+    this.threeScene.remove(t);
+    this.disposeObject(t);
+    this.objectMap.delete(id);
+  }
+  clearThree() {
+    this._dropOutlines(null);
+    for (const [, t] of this.objectMap) {
+      this.threeScene.remove(t);
+      this.disposeObject(t);
+    }
+    this.objectMap.clear();
+  }
+  /** Rebuild all mesh objects (called when render mode changes). */
+  rebuildAllMeshes() {
+    for (const obj of this.gScene.all()) {
+      if (obj.type !== "mesh") continue;
+      this.removeFromThree(obj.id);
+      this.addToThree(obj);
+    }
+  }
+  /**
+   * Build a material that respects the current lighting mode. Studio mode
+   * returns an `MeshStandardMaterial` (PBR; reacts correctly to shadows
+   * and tonemapping); Flat mode returns the original `MeshPhongMaterial`.
+   * Same option surface — caller doesn't have to care which one comes back.
+   */
+  _makeMaterial(opts) {
+    if (this.currentLighting === "studio") {
+      return new THREE5.MeshStandardMaterial({
+        color: this.studioColor ?? opts.color,
+        emissive: opts.emissive,
+        emissiveIntensity: opts.emissiveIntensity,
+        opacity: opts.opacity,
+        transparent: opts.transparent,
+        side: opts.side,
+        wireframe: opts.wireframe,
+        flatShading: opts.flatShading ?? this.studioFlatShading,
+        depthTest: opts.depthTest,
+        depthWrite: opts.depthWrite,
+        vertexColors: opts.vertexColors,
+        roughness: opts.roughness ?? this.studioRoughness,
+        metalness: opts.metalness ?? this.studioMetalness
+      });
+    }
+    const { metalness: _m, roughness: _r, ...rest } = opts;
+    return new THREE5.MeshPhongMaterial(rest);
+  }
+  _stripeTexture(layerH) {
+    let tex = this._stripeTexCache.get(layerH);
+    if (tex) return tex;
+    const H = 64;
+    const cv = document.createElement("canvas");
+    cv.width = 2;
+    cv.height = H;
+    const ctx = cv.getContext("2d");
+    for (let y = 0; y < H; y++) {
+      const t = y / H;
+      const crown = Math.sin(Math.PI * t);
+      const v = Math.round(150 + 105 * Math.pow(crown, 0.7));
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(0, y, 2, 1);
+    }
+    tex = new THREE5.CanvasTexture(cv);
+    tex.wrapS = THREE5.RepeatWrapping;
+    tex.wrapT = THREE5.RepeatWrapping;
+    tex.repeat.set(1, 1 / layerH);
+    tex.anisotropy = 4;
+    this._stripeTexCache.set(layerH, tex);
+    return tex;
+  }
+  /**
+   * Set the Studio-mode default PBR material applied to meshes that don't
+   * carry their own metalness/roughness. Takes effect on the next material
+   * build (e.g. the next sketch re-run). metalness/roughness in 0..1.
+   */
+  setStudioMaterial(metalness, roughness, color = null, flatShading = false) {
+    const metalChanged = this.studioMetalness !== metalness || this.studioRoughness !== roughness;
+    this.studioMetalness = metalness;
+    this.studioRoughness = roughness;
+    this.studioColor = color;
+    this.studioFlatShading = flatShading;
+    if (metalChanged && this.currentLighting === "studio") {
+      for (const obj of this.gScene.all()) {
+        if (obj.type !== "mesh") continue;
+        const s = obj.style;
+        if (s.metalness !== void 0 && s.roughness !== void 0) continue;
+        const t = this.objectMap.get(obj.id);
+        if (!t) continue;
+        t.traverse((c) => {
+          if (!(c instanceof THREE5.Mesh)) return;
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          for (const m of mats) {
+            if (m instanceof THREE5.MeshStandardMaterial) {
+              if (s.metalness === void 0) m.metalness = metalness;
+              if (s.roughness === void 0) m.roughness = roughness;
+            }
+          }
+        });
+      }
+    }
+    this.requestRender();
+  }
+  // Line/point "helper" object types (vs solid meshes/polygons/planes).
+  _isHelper(type) {
+    return type === "segment" || type === "polyline" || type === "point" || type === "circle";
+  }
+  /**
+   * Show/hide the studio shadow-catcher plane at the world origin. Hide it when
+   * the app supplies its own ground mesh to receive shadows (avoids a duplicate
+   * shadow at z=0).
+   */
+  setShadowGroundVisible(visible) {
+    this.shadowGroundHidden = !visible;
+    if (this.shadowGround) this.shadowGround.visible = visible;
+    this.requestRender();
+  }
+  /**
+   * Add a raw THREE.Object3D (e.g. a loaded glTF/GLB scene) to the renderer,
+   * persisting across sketch re-runs. Re-adding the same id replaces it.
+   * Meshes are flagged to cast + receive shadows (visible in Studio lighting).
+   */
+  addExternalObject(obj, id) {
+    const prev = this.externalObjects.get(id);
+    if (prev) this.threeScene.remove(prev);
+    obj.traverse((o) => {
+      const m = o;
+      if (m.isMesh) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+      }
     });
-    el.addEventListener("pointerup", (e) => {
-      dragging = false;
-      if (!moved) this.pick(e);
+    this.externalObjects.set(id, obj);
+    this.threeScene.add(obj);
+    this.requestRender();
+  }
+  removeExternalObject(id) {
+    const prev = this.externalObjects.get(id);
+    if (prev) {
+      this.threeScene.remove(prev);
+      this.externalObjects.delete(id);
+    }
+    this.requestRender();
+  }
+  /**
+   * Show/hide line + point "helper" objects (axes, construction lines, markers,
+   * labels). Solid meshes are unaffected. Applies immediately to existing
+   * objects and to all future ones until changed.
+   */
+  setHelpersVisible(visible) {
+    this.hideHelpers = !visible;
+    if (this.gridHelper) this.gridHelper.visible = visible;
+    if (this.axesHelper) this.axesHelper.visible = visible;
+    this.threeScene.traverse((o) => {
+      if (this._isHelper(o.userData?.objType)) {
+        o.visible = visible ? o.userData.styleVisible ?? true : false;
+      }
     });
-    el.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      this.move = null;
-      this.spherical.radius = Math.max(
-        0.05,
-        Math.min(4e3, this.spherical.radius * (1 + Math.sign(e.deltaY) * 0.12))
-      );
-    }, { passive: false });
-    new ResizeObserver(() => this.resize()).observe(this.host);
+    this.requestRender();
   }
-  /** Orbit by a pointer travel in pixels. Shared by the canvas and the gizmo,
-   *  so dragging the widget turns the model exactly as dragging the model does. */
-  orbitBy(dx, dy) {
-    this.spherical.theta -= dx * 5e-3;
-    this.spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this.spherical.phi - dy * 5e-3));
+  /** Exponential distance fog tinted `color`; density 0 (or omitted) clears it. ~0.005–0.03 is a
+   *  useful range at building scale. */
+  setFog(color, density = 0) {
+    this.threeScene.fog = density > 1e-6 ? new THREE5.FogExp2(new THREE5.Color(color), density) : null;
+    this.requestRender();
   }
-  /** The mesh under the pointer, at most every other animation frame.
-   *  Reported only on a change, so the host repaints on a crossing and not on
-   *  every pixel of travel. */
-  hover(e) {
-    if (!this.opts.onHover) return;
-    const now = performance.now();
-    if (now - this.lastHover < 40) return;
-    this.lastHover = now;
-    const hit = this.meshAt(e.clientX, e.clientY);
-    if (hit === this.hovered) return;
-    this.hovered = hit;
-    this.opts.onHover(hit);
+  /** Tone-mapping exposure (1 = neutral; <1 darker, >1 brighter). */
+  setExposure(v) {
+    this.renderer.toneMappingExposure = v;
+    this.requestRender();
   }
-  meshAt(clientX, clientY) {
+  /**
+   * Light the model from `direction` (FROM the model TO the sun), in Z-up scene coords
+   * (+X east, +Y north, +Z up) — the `SunPosition` convention; a Y-up scene is remapped.
+   * In Studio the shadow camera is framed to whatever the scene shows, so a 1 m object
+   * and a 100 m site both get sharp, complete shadows. `distance` is how far back the
+   * light sits at least (m).
+   */
+  setSunDirection(direction, distance = 50) {
+    const x = direction.x;
+    const y = this.isZUp ? direction.y : direction.z;
+    const z = this.isZUp ? direction.z : -direction.y;
+    this.sunDir.set(x, y, z).normalize();
+    this.sunMinDistance = distance;
+    this.sunDirty = true;
+    this._fitSun();
+    this.requestRender();
+  }
+  /** Aim the sun at the content's centre and fit its shadow camera around it. */
+  _fitSun() {
+    this.sunDirty = false;
+    const box = this._contentBox();
+    for (const o of this.externalObjects.values()) if (o.visible) box.expandByObject(o);
+    const sphere = box.isEmpty() ? new THREE5.Sphere(new THREE5.Vector3(), 10) : box.getBoundingSphere(new THREE5.Sphere());
+    const r = Math.max(sphere.radius, 0.5);
+    const d = Math.max(this.sunMinDistance, r * 3);
+    this.dirLight.position.copy(sphere.center).addScaledVector(this.sunDir, d);
+    this.dirLight.target.position.copy(sphere.center);
+    this.dirLight.target.updateMatrixWorld();
+    this.dirLight.shadow.normalBias = r * 2e-3;
+    const sc = this.dirLight.shadow.camera;
+    sc.left = -r * 1.2;
+    sc.right = r * 1.2;
+    sc.top = r * 1.2;
+    sc.bottom = -r * 1.2;
+    sc.near = Math.max(0.01, d - r * 1.5);
+    sc.far = d + r * 1.5;
+    sc.updateProjectionMatrix();
+  }
+  /**
+   * Reconfigure renderer + lights + scene shadow flags for the given mode.
+   * Material swapping happens after this returns, via `rebuildAllMeshes`.
+   */
+  _applyLighting(mode) {
+    this.currentLighting = mode;
+    const studio = mode === "studio";
+    this.renderer.shadowMap.enabled = studio;
+    this.renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
+    this.renderer.toneMapping = studio ? THREE5.ACESFilmicToneMapping : THREE5.NoToneMapping;
+    this.renderer.toneMappingExposure = 1;
+    this.renderer.outputColorSpace = THREE5.SRGBColorSpace;
+    if (studio) {
+      this.ambientLight.intensity = 0.35;
+      this.hemiLight.intensity = 0.3;
+      this.dirLight.intensity = 2.8;
+      this.dirLight.castShadow = true;
+      this.dirLight.shadow.mapSize.set(2048, 2048);
+      this.dirLight.shadow.bias = -5e-4;
+      this.sunDirty = true;
+    } else {
+      this.ambientLight.intensity = 0.5;
+      this.hemiLight.intensity = 0.4;
+      this.dirLight.intensity = 0.7;
+      this.dirLight.castShadow = false;
+    }
+    const cast = studio && this.gScene.renderMode !== "ghost";
+    this.threeScene.traverse((obj) => {
+      if (obj instanceof THREE5.Mesh) {
+        obj.castShadow = cast;
+        obj.receiveShadow = studio;
+      }
+    });
+    if (studio && !this.shadowGround) {
+      const geo = new THREE5.PlaneGeometry(400, 400);
+      const mat = new THREE5.ShadowMaterial({ opacity: 0.35 });
+      this.shadowGround = new THREE5.Mesh(geo, mat);
+      this.shadowGround.receiveShadow = true;
+      if (!this.isZUp) this.shadowGround.rotation.x = -Math.PI / 2;
+      this.shadowGround.position.set(0, this.isZUp ? 0 : -1e-3, this.isZUp ? -1e-3 : 0);
+      this.shadowGround.visible = !this.shadowGroundHidden;
+      this.threeScene.add(this.shadowGround);
+    } else if (!studio && this.shadowGround) {
+      this.threeScene.remove(this.shadowGround);
+      this.shadowGround.geometry.dispose();
+      this.shadowGround.material.dispose();
+      this.shadowGround = null;
+    }
+  }
+  /**
+   * Toggle a prefiltered environment map on `threeScene.environment`. Only
+   * studio PBR (`MeshStandardMaterial`) materials sample it, so this is a
+   * no-op visually in flat mode — but it's safe to enable in either mode.
+   * The map is built once on first enable and reused thereafter.
+   */
+  _applyEnvironment(enabled) {
+    this.envEnabled = enabled;
+    if (enabled) {
+      if (!this.envMap) this.envMap = this._buildEnvironment();
+      this.threeScene.environment = this.envMap;
+    } else {
+      this.threeScene.environment = null;
+    }
+  }
+  /**
+   * Set an equirectangular source texture for the environment (e.g. a loaded
+   * HDR via RGBELoader). Pass null to use the built-in procedural gradient.
+   * The texture is PMREM-prefiltered here; the caller keeps ownership of it.
+   */
+  setEnvironmentSource(equirect) {
+    if (this.envSourceTex === equirect) return;
+    this.envSourceTex = equirect;
+    if (this.envMap) {
+      this.envMap.dispose();
+      this.envMap = null;
+    }
+    if (this.envEnabled) {
+      this.envMap = this._buildEnvironment();
+      this.threeScene.environment = this.envMap;
+    }
+    this._applyBackground();
+    this.requestRender();
+  }
+  /**
+   * Show the equirectangular environment source as the scene backdrop (sky).
+   * No-op until a source is set via setEnvironmentSource. When off, the
+   * background is left to setBackground().
+   */
+  setEnvironmentBackground(visible) {
+    this.envBackground = visible;
+    this._applyBackground();
+    this.requestRender();
+  }
+  /**
+   * Rotate the environment + background (Euler radians) — e.g. to align a Y-up
+   * HDRI/equirect source with a Z-up scene (tilt ~90° about X).
+   */
+  setEnvironmentRotation(x, y, z) {
+    const s = this.threeScene;
+    s.environmentRotation?.set(x, y, z);
+    s.backgroundRotation?.set(x, y, z);
+    this.requestRender();
+  }
+  _applyBackground() {
+    if (this.envBackground && this.envSourceTex) {
+      this.envSourceTex.mapping = THREE5.EquirectangularReflectionMapping;
+      this.threeScene.background = this.envSourceTex;
+    }
+  }
+  /**
+   * Build a prefiltered (PMREM) environment from a procedural vertical
+   * gradient — bright neutral sky at the top, mid horizon, darker ground —
+   * using core Three only (no `three/examples` RoomEnvironment). Returns the
+   * PMREM-filtered cube texture; the source `DataTexture` and the generator
+   * are disposed before returning.
+   */
+  _buildEnvironment() {
+    if (this.envSourceTex) {
+      this.envSourceTex.mapping = THREE5.EquirectangularReflectionMapping;
+      const pmremSrc = new THREE5.PMREMGenerator(this.renderer);
+      const envSrc = pmremSrc.fromEquirectangular(this.envSourceTex).texture;
+      pmremSrc.dispose();
+      return envSrc;
+    }
+    const W = 16, H = 256;
+    const data = new Uint8Array(W * H * 4);
+    const sky = [0.85, 0.88, 0.95];
+    const horizon = [0.55, 0.55, 0.55];
+    const ground = [0.12, 0.12, 0.13];
+    for (let y = 0; y < H; y++) {
+      const t = y / (H - 1);
+      let r, g, b;
+      if (t < 0.5) {
+        const k = t / 0.5;
+        r = ground[0] + (horizon[0] - ground[0]) * k;
+        g = ground[1] + (horizon[1] - ground[1]) * k;
+        b = ground[2] + (horizon[2] - ground[2]) * k;
+      } else {
+        const k = (t - 0.5) / 0.5;
+        r = horizon[0] + (sky[0] - horizon[0]) * k;
+        g = horizon[1] + (sky[1] - horizon[1]) * k;
+        b = horizon[2] + (sky[2] - horizon[2]) * k;
+      }
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        data[i] = Math.round(r * 255);
+        data[i + 1] = Math.round(g * 255);
+        data[i + 2] = Math.round(b * 255);
+        data[i + 3] = 255;
+      }
+    }
+    const tex = new THREE5.DataTexture(data, W, H, THREE5.RGBAFormat);
+    tex.mapping = THREE5.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE5.SRGBColorSpace;
+    tex.needsUpdate = true;
+    const pmrem = new THREE5.PMREMGenerator(this.renderer);
+    const env = pmrem.fromEquirectangular(tex).texture;
+    pmrem.dispose();
+    tex.dispose();
+    return env;
+  }
+  /** Build a THREE.Line for a line-type object — dashed material (+ line distances)
+   *  when the style requests it, else a basic line material. */
+  _makeLine(geo, s) {
+    const mat = s.dash ? new THREE5.LineDashedMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1, dashSize: s.dash.size, gapSize: s.dash.gap }) : new THREE5.LineBasicMaterial({ color: s.color, opacity: s.opacity, transparent: s.opacity < 1 });
+    const line = new THREE5.Line(geo, mat);
+    if (s.dash) line.computeLineDistances();
+    return line;
+  }
+  convert(obj) {
+    const s = obj.style;
+    switch (obj.type) {
+      case "point": {
+        const geo = new THREE5.SphereGeometry(s.pointSize, 12, 12);
+        const mat = this._makeMaterial({
+          color: s.color,
+          emissive: s.color,
+          emissiveIntensity: 0.3,
+          opacity: s.opacity,
+          transparent: s.opacity < 1,
+          metalness: s.metalness,
+          roughness: s.roughness
+        });
+        const mesh = new THREE5.Mesh(geo, mat);
+        if (obj.position) mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
+        if (s.label) {
+          const group = new THREE5.Group();
+          group.add(mesh);
+          const sprite = this.createTextSprite(s.label, s.labelColor ?? s.color, s.labelScale ?? 1);
+          if (obj.position) sprite.position.set(obj.position.x, obj.position.y, obj.position.z);
+          if (this.isZUp) sprite.position.z += s.pointSize + 0.15;
+          else sprite.position.y += s.pointSize + 0.15;
+          group.add(sprite);
+          return group;
+        }
+        return mesh;
+      }
+      case "segment": {
+        if (!obj.start || !obj.end) return null;
+        const a = new THREE5.Vector3(obj.start.x, obj.start.y, obj.start.z);
+        const b = new THREE5.Vector3(obj.end.x, obj.end.y, obj.end.z);
+        if (s.tubeRadius && s.tubeRadius > 0) {
+          const dir = new THREE5.Vector3().subVectors(b, a);
+          const len = dir.length();
+          if (len < 1e-8) return null;
+          const geo2 = new THREE5.CylinderGeometry(s.tubeRadius, s.tubeRadius, len, 6, 1);
+          geo2.rotateX(Math.PI / 2);
+          geo2.translate(0, 0, len / 2);
+          const mesh = new THREE5.Mesh(geo2, this._makeMaterial({
+            color: s.color,
+            opacity: s.opacity,
+            transparent: s.opacity < 1,
+            metalness: s.metalness,
+            roughness: s.roughness
+          }));
+          mesh.position.copy(a);
+          mesh.lookAt(b);
+          return mesh;
+        }
+        const geo = new THREE5.BufferGeometry().setFromPoints([a, b]);
+        return this._makeLine(geo, s);
+      }
+      case "polyline": {
+        if (!obj.vertices || obj.vertices.length < 2) return null;
+        const n = obj.vertices.length;
+        const arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) {
+          const v = obj.vertices[i];
+          arr[i * 3] = v.x;
+          arr[i * 3 + 1] = v.y;
+          arr[i * 3 + 2] = v.z;
+        }
+        const geo = new THREE5.BufferGeometry();
+        geo.setAttribute("position", new THREE5.BufferAttribute(arr, 3));
+        return this._makeLine(geo, s);
+      }
+      case "polygon": {
+        if (!obj.vertices || obj.vertices.length < 2) return null;
+        const group = new THREE5.Group();
+        const pts = obj.vertices.map((v) => new THREE5.Vector3(v.x, v.y, v.z));
+        if (pts.length > 2) pts.push(pts[0].clone());
+        const lineGeo = new THREE5.BufferGeometry().setFromPoints(pts);
+        group.add(new THREE5.Line(lineGeo, new THREE5.LineBasicMaterial({ color: s.color })));
+        if (obj.vertices.length >= 3) {
+          if (this.isZUp) {
+            const shape = new THREE5.Shape(obj.vertices.map((v) => new THREE5.Vector2(v.x, v.y)));
+            const shapeGeo = new THREE5.ShapeGeometry(shape);
+            group.add(new THREE5.Mesh(shapeGeo, this._makeMaterial({
+              color: s.color,
+              opacity: s.opacity,
+              transparent: true,
+              side: THREE5.DoubleSide,
+              metalness: s.metalness,
+              roughness: s.roughness
+            })));
+          } else {
+            const shape = new THREE5.Shape(obj.vertices.map((v) => new THREE5.Vector2(v.x, v.z)));
+            const shapeGeo = new THREE5.ShapeGeometry(shape);
+            shapeGeo.rotateX(-Math.PI / 2);
+            group.add(new THREE5.Mesh(shapeGeo, this._makeMaterial({
+              color: s.color,
+              opacity: s.opacity,
+              transparent: true,
+              side: THREE5.DoubleSide,
+              metalness: s.metalness,
+              roughness: s.roughness
+            })));
+          }
+        }
+        return group;
+      }
+      case "mesh": {
+        if (obj.flatMeshData) return this.convertFlatMesh(obj.flatMeshData, s);
+        if (!obj.mesh) return null;
+        return this.convertMesh(obj.mesh, s);
+      }
+      case "circle": {
+        if (!obj.center || obj.radius == null) return null;
+        const pts = [];
+        const seg = 64;
+        for (let i = 0; i <= seg; i++) {
+          const a = i / seg * Math.PI * 2;
+          const ca = Math.cos(a) * obj.radius, sa = Math.sin(a) * obj.radius;
+          if (this.isZUp) {
+            pts.push(new THREE5.Vector3(obj.center.x + ca, obj.center.y + sa, obj.center.z));
+          } else {
+            pts.push(new THREE5.Vector3(obj.center.x + ca, obj.center.y, obj.center.z + sa));
+          }
+        }
+        const geo = new THREE5.BufferGeometry().setFromPoints(pts);
+        return this._makeLine(geo, s);
+      }
+      case "plane": {
+        if (!obj.normal) return null;
+        const geo = new THREE5.PlaneGeometry(10, 10);
+        const mat = this._makeMaterial({
+          color: s.color,
+          opacity: s.opacity,
+          transparent: true,
+          side: THREE5.DoubleSide,
+          metalness: s.metalness,
+          roughness: s.roughness
+        });
+        const mesh = new THREE5.Mesh(geo, mat);
+        const n = new THREE5.Vector3(obj.normal.x, obj.normal.y, obj.normal.z).normalize();
+        mesh.lookAt(n);
+        mesh.position.copy(n.multiplyScalar(obj.distance ?? 0));
+        return mesh;
+      }
+      default:
+        return null;
+    }
+  }
+  /** Convert a Tekto Mesh → Three.js group with solid + wireframe */
+  convertMesh(gmesh, s) {
+    const data = gmesh.toMeshData();
+    const geo = new THREE5.BufferGeometry();
+    geo.setAttribute("position", new THREE5.BufferAttribute(data.positions, 3));
+    geo.setAttribute("normal", new THREE5.BufferAttribute(data.normals, 3));
+    geo.setIndex(new THREE5.BufferAttribute(data.indices, 1));
+    const pipeUV = gmesh.__pipeUV;
+    if (pipeUV && pipeUV.sides > 0) {
+      const n = data.positions.length / 3;
+      const uv = new Float32Array(n * 2);
+      for (let k = 0; k < n; k++) {
+        const ring = Math.min(Math.floor(k / pipeUV.sides), pipeUV.vAtRing.length - 1);
+        uv[k * 2] = k % pipeUV.sides / pipeUV.sides;
+        uv[k * 2 + 1] = pipeUV.vAtRing[ring] ?? 0;
+      }
+      geo.setAttribute("uv", new THREE5.BufferAttribute(uv, 2));
+    }
+    return this.buildMeshGroup(geo, s);
+  }
+  /** Convert flat mesh data (with optional per-vertex colors) → Three.js group */
+  convertFlatMesh(data, s) {
+    const geo = new THREE5.BufferGeometry();
+    geo.setAttribute("position", new THREE5.BufferAttribute(data.positions, 3));
+    geo.setAttribute("normal", new THREE5.BufferAttribute(data.normals, 3));
+    geo.setIndex(new THREE5.BufferAttribute(data.indices, 1));
+    const hasColors = !!data.colors?.length;
+    if (hasColors) geo.setAttribute("color", new THREE5.BufferAttribute(data.colors, 4));
+    if (data.groups?.length && this.gScene.renderMode === "solid" && !hasColors) {
+      const groupColors = s.groupColors ?? {};
+      const side = s.backfaceColor ? THREE5.DoubleSide : s.doubleSided ? THREE5.DoubleSide : THREE5.FrontSide;
+      for (let i = 0; i < data.groups.length; i++) {
+        const g = data.groups[i];
+        geo.addGroup(g.indexStart, g.indexCount, i);
+      }
+      const materials = data.groups.map((g) => this._makeMaterial({
+        color: groupColors[g.name] ?? s.color,
+        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
+        transparent: s.opacity < 1 || s.wireframe,
+        side,
+        flatShading: s.flatShading ?? false,
+        metalness: s.metalness,
+        roughness: s.roughness,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      }));
+      const group = new THREE5.Group();
+      const surface = new THREE5.Mesh(geo, materials);
+      surface.userData.surface = true;
+      group.add(surface);
+      if (!s.wireframe) {
+        group.add(new THREE5.Mesh(geo.clone(), new THREE5.MeshBasicMaterial({
+          color: 16777215,
+          wireframe: true,
+          opacity: 0.04,
+          transparent: true
+        })));
+      }
+      return group;
+    }
+    return this.buildMeshGroup(geo, s, hasColors);
+  }
+  /** Shared mesh group builder — handles solid / wireframe / hiddenline render modes */
+  buildMeshGroup(geo, s, hasVertexColors = false) {
+    const group = new THREE5.Group();
+    const mode = this.gScene.renderMode;
+    const side = s.doubleSided ? THREE5.DoubleSide : THREE5.FrontSide;
+    if (mode === "wireframe") {
+      const wireMat = new THREE5.MeshBasicMaterial({
+        color: s.color,
+        wireframe: true,
+        opacity: s.opacity,
+        transparent: s.opacity < 1
+      });
+      group.add(new THREE5.Mesh(geo, wireMat));
+    } else if (mode === "hiddenline") {
+      const occlusionMat = new THREE5.MeshBasicMaterial({
+        color: this.config.backgroundColor,
+        side,
+        toneMapped: false,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      });
+      group.add(new THREE5.Mesh(geo, occlusionMat));
+      const edgeAngle = s.edgeAngle ?? 30;
+      const wireMat = new THREE5.LineBasicMaterial({ color: s.edgeColor ?? 3092271, toneMapped: false });
+      group.add(this._edgeLines(geo, edgeAngle, wireMat));
+      const rimMat = new THREE5.MeshBasicMaterial({
+        color: s.edgeColor ?? 3092271,
+        side: THREE5.BackSide,
+        toneMapped: false
+      });
+      group.add(new THREE5.Mesh(geo, rimMat));
+    } else if (mode === "ghost") {
+      const look = surfaceAppearance("ghost", 0);
+      const surface = new THREE5.Mesh(geo, this._makeMaterial({
+        color: hasVertexColors ? 16777215 : s.color,
+        vertexColors: hasVertexColors,
+        emissive: hasVertexColors ? 0 : s.color,
+        emissiveIntensity: 0.8,
+        opacity: look.opacity,
+        transparent: true,
+        depthWrite: look.depthWrite,
+        side: THREE5.DoubleSide
+      }));
+      surface.userData.surface = true;
+      group.add(surface);
+      const edge = edgeStyle("ghost", this.config.backgroundColor);
+      group.add(this._edgeLines(geo, s.edgeAngle ?? 30, new THREE5.LineBasicMaterial({
+        color: edge.colour,
+        opacity: edge.opacity,
+        transparent: true,
+        depthWrite: false
+      })));
+    } else {
+      const solidMat = this._makeMaterial({
+        color: hasVertexColors ? 16777215 : s.color,
+        vertexColors: hasVertexColors,
+        opacity: s.wireframe ? s.opacity * 0.3 : s.opacity,
+        transparent: s.opacity < 1 || s.wireframe,
+        side: s.backfaceColor ? THREE5.DoubleSide : side,
+        flatShading: s.flatShading ?? false,
+        metalness: s.metalness,
+        roughness: s.roughness,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      });
+      if (s.printLayerH && s.printLayerH > 1e-5 && geo.getAttribute("uv")) {
+        const tex = this._stripeTexture(s.printLayerH);
+        solidMat.map = tex;
+        solidMat.bumpMap = tex;
+        solidMat.bumpScale = s.printLayerH * 0.35;
+        solidMat.needsUpdate = true;
+      }
+      if (s.backfaceColor) {
+        const bc = new THREE5.Color(s.backfaceColor);
+        solidMat.onBeforeCompile = (shader) => {
+          shader.uniforms.backfaceColor = { value: bc };
+          shader.fragmentShader = "uniform vec3 backfaceColor;\n" + shader.fragmentShader;
+          shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <color_fragment>",
+            `#include <color_fragment>
+            if (!gl_FrontFacing) { diffuseColor.rgb = backfaceColor; }`
+          );
+        };
+      }
+      const surface = new THREE5.Mesh(geo, solidMat);
+      surface.userData.surface = true;
+      group.add(surface);
+      if (s.wireframe) {
+        const wireMat = new THREE5.MeshBasicMaterial({
+          color: s.color,
+          wireframe: true,
+          opacity: s.opacity * 0.8,
+          transparent: true
+        });
+        group.add(new THREE5.Mesh(geo.clone(), wireMat));
+      } else if (!hasVertexColors) {
+        const subtleWire = new THREE5.MeshBasicMaterial({
+          color: 16777215,
+          wireframe: true,
+          opacity: 0.04,
+          transparent: true
+        });
+        group.add(new THREE5.Mesh(geo.clone(), subtleWire));
+      }
+    }
+    return group;
+  }
+  // ── Text Sprites ──
+  createTextSprite(text, color, labelScale = 1) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const fontSize = 48;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const metrics = ctx.measureText(text);
+    const w = Math.ceil(metrics.width) + 16;
+    const h = fontSize + 16;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.fillStyle = color;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    ctx.fillText(text, w / 2, h / 2);
+    const tex = new THREE5.CanvasTexture(canvas);
+    tex.minFilter = THREE5.LinearFilter;
+    const mat = new THREE5.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE5.Sprite(mat);
+    const scale = 5e-3 * labelScale;
+    sprite.scale.set(w * scale, h * scale, 1);
+    return sprite;
+  }
+  // ── Get Three.js object for a scene ID ──
+  getThreeObject(id) {
+    return this.objectMap.get(id);
+  }
+  /**
+   * Project a world-space point into the viewport. Returned `x`, `y` are
+   * relative to the canvas's bounding rect (top-left = 0, 0).
+   * `visible` is false when the point is behind the camera or outside
+   * the normalised device cube — caller should hide the overlay.
+   */
+  worldToScreen(world) {
+    const v = new THREE5.Vector3(world.x, world.y, world.z).project(this.activeCamera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const x = (v.x * 0.5 + 0.5) * rect.width;
+    const y = (-v.y * 0.5 + 0.5) * rect.height;
+    const visible = v.z > -1 && v.z < 1;
+    return { x, y, visible };
+  }
+  // ── Picking ──
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
+  setOrbitRotateEnabled(enabled) {
+    if (this.controls) this.controls.enableRotate = enabled;
+  }
+  /** Enable/disable click-to-pick on the canvas. */
+  setPickEnabled(enabled) {
+    if (enabled === this.pickEnabled) return;
+    this.pickEnabled = enabled;
+    const dom = this.renderer.domElement;
+    if (enabled) {
+      dom.addEventListener("pointerdown", this.onPointerDown);
+      dom.addEventListener("pointerup", this.onPointerUp);
+    } else {
+      dom.removeEventListener("pointerdown", this.onPointerDown);
+      dom.removeEventListener("pointerup", this.onPointerUp);
+      this.pointerDown = null;
+    }
+  }
+  /** Subscribe to pick events. Returns unsubscribe. `id` is null when the user clicked background;
+   *  `info` carries the modifier keys (Shift/⌘-click to add to a selection). */
+  onPick(listener) {
+    this.pickListeners.add(listener);
+    return () => this.pickListeners.delete(listener);
+  }
+  /** Returns the handle name under (clientX, clientY) or null. */
+  dragHandleHitTest(clientX, clientY) {
+    if (this.dragHandles.size === 0) return null;
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE5.Vector2(
       (clientX - rect.left) / rect.width * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1
     );
-    const ray = new THREE5.Raycaster();
-    ray.setFromCamera(ndc, this.camera);
-    return ray.intersectObjects(this.meshGroup.children, false)[0]?.object ?? null;
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const meshes = [...this.dragHandles.values()];
+    const hits = this.raycaster.intersectObjects(meshes, false);
+    return hits.length > 0 ? hits[0].object.userData.handleName : null;
   }
-  pick(e) {
-    if (!this.opts.onPick) return;
-    this.opts.onPick(this.meshAt(e.clientX, e.clientY), e);
+  /** Raycast at (clientX, clientY) against a Three.Plane; returns the intersection point. */
+  raycastPlane(clientX, clientY, plane) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE5.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const hit = new THREE5.Vector3();
+    return this.raycaster.ray.intersectPlane(plane, hit) ? hit : null;
   }
-  // -- content --------------------------------------------------------------
-  /**
-   * Show these meshes, replacing whatever was there.
-   *
-   * The meshes are the app's: build them however the app colours things, and
-   * put the unpainted colour on `mesh.userData.baseColour` so shaded mode can
-   * return to it.
-   */
-  setContent(meshes, opts = {}) {
-    this.clear();
-    this.content = opts;
-    if (opts.up) this.setUp(opts.up);
-    for (const mesh of meshes) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.meshGroup.add(mesh);
-    }
-    this.applyMode(this.mode);
-    if (this.wantsOutlines().length <= OUTLINE_LIMIT) this.buildOutlines();
-    this.root.updateMatrixWorld(true);
-    this.fit();
-    this.frameSun();
+  // ── Drag handles API ──
+  /** Register the per-drag, per-drag-end, and per-pick callbacks. */
+  setDragHandleCallbacks(onMove, onEnd, onPick) {
+    this.dragHandleMoveCb = onMove;
+    this.dragHandleEndCb = onEnd ?? null;
+    this.dragHandlePickCb = onPick ?? null;
   }
-  /** Which meshes the content options ask for an outline around. */
-  wantsOutlines() {
-    const rule = this.content.outline ?? true;
-    if (rule === false) return [];
-    const all = this.meshGroup.children;
-    return rule === true ? all : all.filter(rule);
-  }
-  clear() {
-    for (const child of this.meshGroup.children) {
-      child.geometry.dispose();
-      const m = child.material;
-      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
-    }
-    for (const line of this.outlines.children) {
-      line.geometry.dispose();
-      line.material.dispose();
-    }
-    this.clearSection();
-    this.meshGroup.clear();
-    this.outlines.clear();
-    this.setOutlined([]);
-    this.calloutAnchors.clear();
-    this.calloutVisible.clear();
-    this.callouts?.setItems([]);
-    this.outlinesBuilt = false;
-    this.buildingOutlines = false;
-  }
-  /** Convenience for the common case: a mesh from raw buffers, which is what
-   *  every Tekto generator and every IFC reader hands over. */
-  static meshFrom(buffers, material) {
-    const g = new THREE5.BufferGeometry();
-    g.setAttribute("position", new THREE5.BufferAttribute(buffers.positions, 3));
-    if (buffers.normals?.length) {
-      g.setAttribute("normal", new THREE5.BufferAttribute(buffers.normals, 3));
-    }
-    g.setIndex(new THREE5.BufferAttribute(buffers.indices, 1));
-    if (!buffers.normals?.length) g.computeVertexNormals();
-    return new THREE5.Mesh(g, material);
-  }
-  // -- how it is drawn ------------------------------------------------------
-  get viewMode() {
-    return this.mode;
+  /** Mark the start of a sketch run: clear the "seen this run" set. */
+  beginDragHandleSweep() {
+    this.dragSeenThisRun.clear();
   }
   /**
-   * The mode a reader chose. Unlike the internal apply, this will go and build
-   * the outlines the mode needs if large content was loaded without them.
+   * Create or update a drag handle by stable name. Position is world-space.
+   * `constrain` (optional) snaps the dragged position — e.g. to a polyline.
    */
-  setViewMode(mode, onProgress) {
-    this.applyMode(mode);
-    if (!this.outlinesBuilt && this.meshGroup.children.length) this.buildOutlines(onProgress);
-  }
-  get projection() {
-    return this.projectionMode;
-  }
-  /** Perspective or orthographic. Orthographic with hidden line and a face view
-   *  is a plan or an elevation; that pairing is the point of having both. */
-  setProjection(projection) {
-    const changed = projection !== this.projectionMode;
-    this.projectionMode = projection;
-    this.gizmo?.setProjection(projection);
-    this.resize();
-    if (changed) this.opts.onProjection?.(projection);
-  }
-  /**
-   * Point the camera at a named face, keeping the distance.
-   *
-   * Animated by default. A view change that jumps is read as the model having
-   * been replaced rather than turned, and the reader loses which face they are
-   * now looking at, which is the one thing the change was for. Pass
-   * `{ animate: false }` where a jump is wanted (restoring a stored view, or a
-   * test that wants the end state now).
-   */
-  setView(view, opts = {}) {
-    const { phi, theta } = standardOrbit(view);
-    this.orbit(phi, theta, opts.animate !== false);
-  }
-  /**
-   * Look down a direction given in the content's own axes, so a caller with a
-   * Z-up model asks for `(0, 0, 1)` and gets a plan whichever way the viewport
-   * has turned the content to face three.js.
-   */
-  orbitTo(direction, opts = {}) {
-    const world = direction.clone().applyQuaternion(this.root.quaternion);
-    const { phi, theta } = orbitFor(world);
-    this.orbit(phi, theta, opts.animate !== false);
-  }
-  /** Which way the camera currently lies from the subject, in content axes. */
-  viewDirection() {
-    return new THREE5.Vector3().setFromSpherical(this.spherical).applyQuaternion(this.root.quaternion.clone().invert()).normalize();
-  }
-  orbit(phi, theta, animate) {
-    if (!animate) {
-      this.move = null;
-      this.spherical.phi = phi;
-      this.spherical.theta = theta;
-      return;
-    }
-    this.animate({ phi, theta: shortestTurn(this.spherical.theta, theta) });
-  }
-  /** Start a camera move to a partial end state, holding whatever it omits. */
-  animate(to, ms = 340) {
-    const from = {
-      phi: this.spherical.phi,
-      theta: this.spherical.theta,
-      radius: this.spherical.radius,
-      target: this.target.clone()
-    };
-    this.move = {
-      from,
-      to: {
-        phi: to.phi ?? from.phi,
-        theta: to.theta ?? from.theta,
-        radius: to.radius ?? from.radius,
-        target: to.target?.clone() ?? from.target.clone()
-      },
-      start: performance.now(),
-      ms
-    };
-  }
-  /** Advance a camera move, if one is running. Called once per frame. */
-  step() {
-    if (!this.move) return;
-    const { from, to, start, ms } = this.move;
-    const t = easeInOut((performance.now() - start) / ms);
-    this.spherical.phi = from.phi + (to.phi - from.phi) * t;
-    this.spherical.theta = from.theta + (to.theta - from.theta) * t;
-    this.spherical.radius = from.radius + (to.radius - from.radius) * t;
-    this.target.lerpVectors(from.target, to.target, t);
-    if (t >= 1) this.move = null;
-  }
-  /**
-   * Label these things, in the margins, with leaders to them.
-   *
-   * What a label says is the host's business, as colour is: this class knows
-   * how a drawing is annotated and nothing about what the annotation means.
-   * Pass an empty array to clear.
-   *
-   * Anchors are measured here and once, because a bounding box costs a walk of
-   * the geometry and nothing in this scene moves except the camera.
-   */
-  setCallouts(items) {
-    if (!items.length && !this.callouts) return;
-    if (!this.callouts) {
-      this.callouts = new Callouts(this.host, {
-        onPick: (id) => this.opts.onPickCallout?.(id),
-        onHover: (id) => this.opts.onHoverCallout?.(id)
+  upsertDragHandle(name, x, y, z, color = "#38d9a9", size = 0.12, constrain, plane) {
+    this.dragSeenThisRun.add(name);
+    let mesh = this.dragHandles.get(name);
+    if (!mesh) {
+      const geo = new THREE5.SphereGeometry(size, 16, 12);
+      const mat = this._makeMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: 0.55
       });
+      mesh = new THREE5.Mesh(geo, mat);
+      mesh.userData.handleName = name;
+      mesh.userData.baseSize = size;
+      mesh.userData.baseColor = color;
+      mesh.renderOrder = 999;
+      mesh.material.depthTest = false;
+      this.threeScene.add(mesh);
+      this.dragHandles.set(name, mesh);
+    } else {
+      const mat = mesh.material;
+      if (mat.color.getHexString() !== color.replace(/^#/, "").toLowerCase()) {
+        mat.color.set(color);
+        mat.emissive.set(color);
+        mesh.userData.baseColor = color;
+      }
+      const cur = mesh.geometry.parameters?.radius;
+      if (cur !== size) {
+        mesh.geometry.dispose();
+        mesh.geometry = new THREE5.SphereGeometry(size, 16, 12);
+        mesh.userData.baseSize = size;
+      }
     }
-    this.callouts.setItems(items);
-    this.calloutAnchors.clear();
-    this.root.updateMatrixWorld(true);
-    const box = new THREE5.Box3();
-    for (const item of items) {
-      if (!item.objects.length) continue;
-      box.makeEmpty();
-      for (const o of item.objects) box.expandByObject(o);
-      if (!box.isEmpty()) this.calloutAnchors.set(item.id, box.getCenter(new THREE5.Vector3()));
-    }
-    this.calloutCheckedAt = 0;
+    if (constrain) this.dragHandleConstraints.set(name, constrain);
+    else this.dragHandleConstraints.delete(name);
+    if (plane) this.dragHandlePlanes.set(name, plane);
+    else this.dragHandlePlanes.delete(name);
+    if (this.activeDragHandle !== name) mesh.position.set(x, y, z);
+    if (this.selectedDragHandle === name) this.applyHandleStyle(name, true);
+    this.requestRender();
   }
-  /**
-   * Which anchors the reader can actually see.
-   *
-   * A leader pointing confidently at a wall that is behind three other walls
-   * is worse than no leader: on a face view half the building is occluded, and
-   * without this every one of those elements would still be labelled and the
-   * reader would have no way to tell which. One raycast per callout, on a
-   * timer, because the answer only changes when the camera moves.
-   */
-  checkCalloutVisibility() {
-    this.calloutVisible.clear();
-    const camera = this.camera;
-    const ray = new THREE5.Raycaster();
-    const meshes = this.meshGroup.children;
-    const direction = new THREE5.Vector3();
-    for (const [id, anchor] of this.calloutAnchors) {
-      const wanted = this.callouts?.objectsOf(id) ?? [];
-      direction.copy(anchor).sub(camera.position);
-      const distance = direction.length();
-      ray.set(camera.position, direction.normalize());
-      ray.far = distance;
-      const hit = ray.intersectObjects(meshes, false)[0];
-      if (!hit || wanted.includes(hit.object) || hit.distance >= distance - 1e-3) {
-        this.calloutVisible.add(id);
+  /** Remove any drag handles that weren't visited in this run. */
+  endDragHandleSweep() {
+    for (const [name, mesh] of this.dragHandles) {
+      if (!this.dragSeenThisRun.has(name)) {
+        this.threeScene.remove(mesh);
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+        this.dragHandles.delete(name);
+        this.dragHandleConstraints.delete(name);
+        this.dragHandlePlanes.delete(name);
+        if (this.selectedDragHandle === name) this.selectedDragHandle = null;
+        this.requestRender();
       }
     }
   }
+  /** Currently selected drag handle, or null. */
+  getSelectedHandle() {
+    return this.selectedDragHandle;
+  }
+  /** The handle currently being DRAGGED (set on pointer-down, cleared on pointer-up); null when idle. */
+  getActiveDragHandle() {
+    return this.activeDragHandle;
+  }
+  /** Programmatically select / deselect a drag handle (visual + callback). */
+  setHandleSelected(name) {
+    if (this.selectedDragHandle === name) return;
+    if (this.selectedDragHandle) this.applyHandleStyle(this.selectedDragHandle, false);
+    this.selectedDragHandle = name;
+    if (name) this.applyHandleStyle(name, true);
+  }
+  applyHandleStyle(name, selected) {
+    const mesh = this.dragHandles.get(name);
+    if (!mesh) return;
+    const mat = mesh.material;
+    if (selected) {
+      mat.emissiveIntensity = 1;
+      mesh.scale.setScalar(1.6);
+    } else {
+      mat.emissiveIntensity = 0.55;
+      mesh.scale.setScalar(1);
+    }
+    this.requestRender();
+  }
+  /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
+  pickAt(clientX, clientY) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE5.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const cam = this.activeCamera;
+    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
+    const pickable = [];
+    for (const t of this.objectMap.values()) {
+      if (t.userData.pickable !== false) pickable.push(t);
+    }
+    const hits = this.raycaster.intersectObjects(pickable, true);
+    for (const h of hits) {
+      if (this._cutAway(h.point)) continue;
+      let cur = h.object;
+      while (cur && !cur.userData.geomId) cur = cur.parent;
+      if (cur?.userData.geomId) return cur.userData.geomId;
+    }
+    return null;
+  }
+  /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
+   *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
+  hitAt(clientX, clientY) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE5.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const cam = this.activeCamera;
+    this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
+    const targets = [];
+    for (const t of this.objectMap.values()) if (t.visible) targets.push(t);
+    const hits = this.raycaster.intersectObjects(targets, true);
+    for (const h of hits) {
+      if (this._cutAway(h.point)) continue;
+      let cur = h.object;
+      let shown = true;
+      while (cur && !cur.userData.geomId) {
+        if (!cur.visible) shown = false;
+        cur = cur.parent;
+      }
+      if (shown && cur?.userData.geomId) {
+        return { id: cur.userData.geomId, point: new Vec3(h.point.x, h.point.y, h.point.z) };
+      }
+    }
+    return null;
+  }
+  /** Where a viewport ray meets the ground plane (z=0 for Z-up, y=0 otherwise), via the active camera. */
+  groundAt(clientX, clientY) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE5.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.activeCamera);
+    const n = this.isZUp ? new THREE5.Vector3(0, 0, 1) : new THREE5.Vector3(0, 1, 0);
+    const hit = new THREE5.Vector3();
+    return this.raycaster.ray.intersectPlane(new THREE5.Plane(n, 0), hit) ? new Vec3(hit.x, hit.y, hit.z) : null;
+  }
+  /** World-space bounds of a scene object as currently rendered, or null if empty/unknown. */
+  objectBounds(id) {
+    const t = this.objectMap.get(id);
+    if (!t) return null;
+    const b = new THREE5.Box3().setFromObject(t);
+    if (b.isEmpty()) return null;
+    return { min: new Vec3(b.min.x, b.min.y, b.min.z), max: new Vec3(b.max.x, b.max.y, b.max.z) };
+  }
+  /** Is the scene object currently shown (its own style and every parent)? */
+  isObjectShown(id) {
+    let cur = this.objectMap.get(id) ?? null;
+    if (!cur) return false;
+    for (; cur; cur = cur.parent) if (!cur.visible) return false;
+    return true;
+  }
+  /** The camera as plain numbers, enough to reproduce the view. */
+  cameraState() {
+    const c = this.activeCamera;
+    const t = this.controls?.target ?? new THREE5.Vector3();
+    return {
+      projection: this._isOrtho ? "orthographic" : "perspective",
+      position: [c.position.x, c.position.y, c.position.z],
+      target: [t.x, t.y, t.z],
+      up: [c.up.x, c.up.y, c.up.z],
+      fov: this.camera.fov
+    };
+  }
+  /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
+   *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
+  snapshotPng() {
+    this._buildEdges(Infinity);
+    this.render();
+    return this.renderer.domElement.toDataURL("image/png");
+  }
+  // ── Gizmo (transform controls) ──
+  setGizmoMode(mode) {
+    this.gizmoMode = mode;
+    if (mode === "none") {
+      this.detachGizmo();
+    } else {
+      this.ensureGizmo();
+      this.transformControls?.setMode(mode);
+      if (this.gizmoAttachedId) this.attachGizmo(this.gizmoAttachedId);
+    }
+    this.requestRender();
+  }
+  getGizmoMode() {
+    return this.gizmoMode;
+  }
+  attachGizmo(id) {
+    const t = this.objectMap.get(id);
+    if (!t) {
+      this.detachGizmo();
+      return;
+    }
+    if (this.gizmoMode === "none") {
+      this.gizmoAttachedId = id;
+      return;
+    }
+    this.ensureGizmo();
+    this.transformControls.attach(t);
+    this.gizmoAttachedId = id;
+    this.requestRender();
+  }
+  detachGizmo() {
+    this.transformControls?.detach();
+    this.gizmoAttachedId = null;
+    this.requestRender();
+  }
+  ensureGizmo() {
+    if (this.transformControls) return;
+    const tc = new TransformControls(this.activeCamera, this.renderer.domElement);
+    tc.setMode(this.gizmoMode === "none" ? "translate" : this.gizmoMode);
+    tc.addEventListener("dragging-changed", (e) => {
+      const dragging = e.value === true;
+      if (this.controls) this.controls.enabled = !dragging;
+      if (!dragging && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
+    });
+    tc.addEventListener("objectChange", () => {
+      if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
+    });
+    tc.addEventListener("change", () => this.requestRender());
+    this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
+    this.transformControls = tc;
+  }
+  /** Read the gizmo'd Three.Object3D's transform and write it back into the SceneObject. */
+  writeBackTransform(id) {
+    const t = this.objectMap.get(id);
+    if (!t) return;
+    const obj = this.gScene.get(id);
+    if (!obj) return;
+    const transform = {
+      position: new Vec3(t.position.x, t.position.y, t.position.z),
+      rotation: new Vec3(t.rotation.x, t.rotation.y, t.rotation.z),
+      scale: new Vec3(t.scale.x, t.scale.y, t.scale.z)
+    };
+    this.gScene.withSuspendedEvents(() => {
+      this.gScene.update(id, { transform });
+    });
+  }
+  // ── Selection visual feedback ──
+  /**
+   * How `setSelectionHighlight` marks a selection: `"tint"` (default) lights it up in the
+   * accent colour; `"outline"` draws its edges on top of everything instead and leaves its
+   * fill alone — for apps whose colours mean something (a product, a state, a grade), and
+   * so a selection behind other parts still shows.
+   */
+  setSelectionStyle(style) {
+    this.selectionStyle = style;
+    this.setSelectionHighlight(this.highlightIds);
+  }
+  /** Highlight one object, several (a record's objects, a multi-selection), or none. */
+  setSelectionHighlight(ids) {
+    this.requestRender();
+    this.highlightIds = ids === null ? null : typeof ids === "string" ? [ids] : [...ids];
+    for (const o of this.outlined) {
+      o.line.geometry.dispose();
+      o.line.removeFromParent();
+    }
+    this.outlined = [];
+    for (const [, info] of this.selectionMaterials) {
+      const m = info.mat;
+      m.emissive.copy(info.oldEmissive);
+      m.emissiveIntensity = info.oldIntensity;
+      m.opacity = info.oldOpacity;
+      m.depthWrite = info.oldDepthWrite;
+    }
+    this.selectionMaterials.clear();
+    const list = ids === null ? [] : typeof ids === "string" ? [ids] : ids;
+    const ghost = this.gScene.renderMode === "ghost";
+    if (this.selectionStyle === "outline") {
+      for (const id of list) {
+        const t = this.objectMap.get(id);
+        if (!t) continue;
+        t.updateMatrixWorld(true);
+        t.traverse((c) => {
+          if (!c.userData.surface) return;
+          const line = new THREE5.LineSegments(new THREE5.EdgesGeometry(c.geometry, 30), this._outlineMaterial());
+          line.matrixAutoUpdate = false;
+          line.matrix.copy(c.matrixWorld);
+          line.renderOrder = 999;
+          this.outlineGroup.add(line);
+          this.outlined.push({ line, source: c });
+        });
+      }
+    }
+    for (const id of this.selectionStyle === "outline" ? [] : list) {
+      const t = this.objectMap.get(id);
+      if (!t) continue;
+      t.traverse((child) => {
+        const m = child.material;
+        if (m && m.emissive instanceof THREE5.Color) {
+          this.selectionMaterials.set(child.uuid, {
+            mat: m,
+            oldEmissive: m.emissive.clone(),
+            oldIntensity: m.emissiveIntensity ?? 0,
+            oldOpacity: m.opacity,
+            oldDepthWrite: m.depthWrite
+          });
+          m.emissive = new THREE5.Color(3725737);
+          m.emissiveIntensity = 0.35;
+          if (ghost && child.userData.surface) {
+            m.opacity = 0.85;
+            m.depthWrite = true;
+          }
+        }
+      });
+    }
+  }
+  /** Remove the outlines traced from `root`'s meshes (all of them for null). */
+  _dropOutlines(root) {
+    this.outlined = this.outlined.filter((o) => {
+      let inside2 = root === null;
+      for (let c = o.source; c && !inside2; c = c.parent) inside2 = c === root;
+      if (inside2) {
+        o.line.geometry.dispose();
+        o.line.removeFromParent();
+      }
+      return !inside2;
+    });
+  }
+  _outlineMaterial() {
+    if (!this.outlineMat) this.outlineMat = new THREE5.LineBasicMaterial({ color: 2063072, depthTest: false, transparent: true, opacity: 0.95 });
+    this.outlineMat.clippingPlanes = this.sectionClip ? [this.sectionClip] : null;
+    return this.outlineMat;
+  }
+  // ── Edges, a frame at a time ──
+  /** Crease lines for `geo`, built on a later frame (see `_buildEdges`): a mode switch on a
+   *  model of thousands of meshes no longer stalls the tab, it draws the creases in. */
+  _edgeLines(geo, angle, mat) {
+    const line = new THREE5.LineSegments(new THREE5.BufferGeometry(), mat);
+    this.edgeQueue.push({ line, source: geo, angle });
+    return line;
+  }
+  /** Build queued crease lines for up to `budgetMs`. Lines whose object is gone are skipped. */
+  _buildEdges(budgetMs) {
+    if (!this.edgeQueue.length) return;
+    const t0 = performance.now();
+    let built = 0;
+    while (this.edgeQueue.length && (built === 0 || performance.now() - t0 < budgetMs)) {
+      const { line, source, angle } = this.edgeQueue.shift();
+      let top = line;
+      while (top.parent) top = top.parent;
+      if (top !== this.threeScene) continue;
+      line.geometry.dispose();
+      line.geometry = new THREE5.EdgesGeometry(source, angle);
+      built++;
+    }
+    this.requestRender();
+  }
+  /** Crease lines still to be drawn (hidden line and ghost build them a frame at a time). */
+  get pendingEdges() {
+    return this.edgeQueue.length;
+  }
+  // ── Hover ──
+  /**
+   * Hear which object the pointer is over (null over nothing): reported only when it
+   * changes, never while a button is held (an orbit), at most every 40 ms — so an app can
+   * light what a click would select without a raycast per frame. Returns the unsubscribe.
+   */
+  onHover(listener) {
+    const dom = this.renderer.domElement;
+    if (this.hoverListeners.size === 0) {
+      dom.addEventListener("pointermove", this.onHoverMove);
+      dom.addEventListener("pointerleave", this.onHoverLeave);
+    }
+    this.hoverListeners.add(listener);
+    return () => {
+      this.hoverListeners.delete(listener);
+      if (this.hoverListeners.size === 0) {
+        dom.removeEventListener("pointermove", this.onHoverMove);
+        dom.removeEventListener("pointerleave", this.onHoverLeave);
+      }
+    };
+  }
+  _hover(id) {
+    if (id === this.hovered) return;
+    this.hovered = id;
+    for (const l of this.hoverListeners) l(id);
+  }
+  // ── Section ──
+  /**
+   * Cut the model with a plane and fill the cut, so it reads as solid: `{ axis: "z",
+   * coordinate: 1.2 }` is a plan cut at 1.2 m (what is above goes), `{ axis: "x", at: 0.5 }`
+   * a section through the middle of the content, `flip` keeps the other side. Null clears.
+   * Everything the scene draws is clipped (grid, axes, handles and the gizmo are not); a
+   * click picks what is still there. The cut stays while the scene is rebuilt — a `sketch()`
+   * re-run keeps it; `at` is measured against the content present when it is set.
+   *
+   * The cut face is the meshes' inside — their back faces, painted flat (poché) — not a
+   * capped polygon, so it needs nothing of the geometry: no closed solids, no winding. Only
+   * opaque surfaces get it: through a translucent one the inside would show uncut too.
+   */
+  setSection(section) {
+    this.sectionReq = section;
+    const axis = section && new THREE5.Vector3(section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
+    this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === void 0 ? this._contentBox() : null) : null;
+    this.renderer.localClippingEnabled = !!this.sectionClip;
+    for (const t of this.objectMap.values()) this._dressSection(t);
+    if (this.outlineMat) this._outlineMaterial();
+    this.requestRender();
+  }
+  /** The section in force, or null. */
+  get section() {
+    return this.sectionReq;
+  }
+  /** Paint the cut this colour; null follows the render mode (dark, pale in ghost). */
+  setSectionColour(colour) {
+    this.sectionColour = colour === null ? null : new THREE5.Color(colour).getHex();
+    if (this.sectionReq) this.setSection(this.sectionReq);
+  }
+  /** Clip one object's materials with the live section (or unclip it) and give its
+   *  surfaces their poché. */
+  _dressSection(t) {
+    const plane = this.sectionClip;
+    const old = [];
+    const surfaces = [];
+    t.traverse((c) => {
+      if (c.userData.poche) {
+        old.push(c);
+        return;
+      }
+      const m = c.material;
+      if (m) {
+        for (const one of Array.isArray(m) ? m : [m]) {
+          if ((one.clippingPlanes?.length ?? 0) === 0 && !plane) continue;
+          one.clippingPlanes = plane ? [plane] : null;
+          one.needsUpdate = true;
+        }
+      }
+      if (plane && c.userData.surface && !seeThrough(c.material)) surfaces.push(c);
+    });
+    for (const o of old) o.removeFromParent();
+    if (!plane || this.gScene.renderMode === "hiddenline" || this.gScene.renderMode === "ghost") return;
+    const mat = this._poche(plane);
+    for (const s of surfaces) {
+      const p = new THREE5.Mesh(s.geometry, mat);
+      p.userData.poche = true;
+      p.renderOrder = -1;
+      p.raycast = () => {
+      };
+      s.parent.add(p);
+    }
+  }
+  _poche(plane) {
+    const mode = this.gScene.renderMode === "ghost" ? "ghost" : "shaded";
+    const colour = this.sectionColour ?? sectionAppearance(mode).colour;
+    const m = this.pocheMat;
+    if (m && m.color.getHex() === colour && m.clippingPlanes?.[0] === plane) return m;
+    m?.dispose();
+    this.pocheMat = new THREE5.MeshBasicMaterial({ color: colour, side: THREE5.BackSide, clippingPlanes: [plane], toneMapped: false });
+    return this.pocheMat;
+  }
+  /** Is this world point on the side the section removed? */
+  _cutAway(p) {
+    return !!this.sectionClip && this.sectionClip.distanceToPoint(p) < -1e-9;
+  }
+  /** Bounds of what the scene shows. */
+  _contentBox() {
+    const box = new THREE5.Box3();
+    for (const t of this.objectMap.values()) if (t.visible) box.expandByObject(t);
+    return box;
+  }
+  // ── Render ──
+  /** Draw now, unconditionally. */
+  render() {
+    this._stepCameraMove();
+    this._buildEdges(EDGE_BUDGET_MS);
+    this.controls?.update();
+    this._draw();
+  }
+  _draw() {
+    if (this.sunDirty && this.currentLighting === "studio") this._fitSun();
+    for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
+    this.renderer.render(this.threeScene, this.activeCamera);
+    this._needsRender = false;
+    this.navGizmo?.update(this.activeCamera, NO_TURN);
+    this._drawCallouts();
+  }
+  /**
+   * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
+   * lights, drag handles, the gizmo, orbit controls and resizes already ask; call
+   * it after changing three.js objects directly (e.g. one added with
+   * `addExternalObject`).
+   */
+  requestRender() {
+    this._needsRender = true;
+  }
+  /**
+   * Draw only if something changed since the last draw, or while orbit damping
+   * is still moving the camera. Returns whether it drew. An idle scene of 10k
+   * objects otherwise costs a full draw on every animation frame.
+   */
+  renderIfNeeded() {
+    const turning = this._stepCameraMove();
+    this._buildEdges(EDGE_BUDGET_MS);
+    const moved = this.controls?.update() ?? false;
+    const settling = this._settleDamping();
+    if (!moved && !settling && !turning && !this._needsRender) return false;
+    this._draw();
+    return true;
+  }
+  /**
+   * OrbitControls only reports moves above its EPS (~1e-3 rad), but damping keeps
+   * creeping the camera after that, so the last drawn frame would lag the camera
+   * slightly. Follow the creep frame by frame instead, and once the remaining
+   * glide is under ~0.1 px apply it at once: the camera then rests exactly where
+   * it was last drawn. Returns whether the camera moved this frame.
+   */
+  _settleDamping() {
+    const c = this.controls;
+    if (!c) return false;
+    const pos = c.object.position;
+    const step = pos.distanceTo(this._lastCamPos);
+    this._lastCamPos.copy(pos);
+    if (!(step > 1e-9 * Math.max(pos.distanceTo(c.target), 1))) return false;
+    if (c.enableDamping && c.dampingFactor > 0) {
+      const f = c.dampingFactor;
+      const rest = step * (1 - f) / f / Math.max(pos.distanceTo(c.target), 1e-9);
+      if (rest < 1e-4) {
+        c.enableDamping = false;
+        c.update();
+        c.enableDamping = true;
+        this._lastCamPos.copy(pos);
+      }
+    }
+    return true;
+  }
+  startLoop() {
+    let running = true;
+    const loop = () => {
+      if (!running) return;
+      this.render();
+      this.rafId = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => {
+      running = false;
+      cancelAnimationFrame(this.rafId);
+    };
+  }
+  // ── Resize ──
+  resize() {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    if (w === 0 || h === 0) return;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this._syncOrthoCamFrustum();
+    this.renderer.setSize(w, h);
+    this.render();
+  }
+  // ── Projection & View ──
+  /** Compute the orthographic frustum to match the current perspective camera view distance. */
+  _syncOrthoCamFrustum() {
+    const target = this.controls?.target ?? new THREE5.Vector3();
+    const dist2 = Math.max(this.camera.position.distanceTo(target), 0.1);
+    const fovRad = this.camera.fov * Math.PI / 180;
+    const halfH = Math.tan(fovRad / 2) * dist2;
+    const halfW = halfH * this.camera.aspect;
+    this._orthoCam.left = -halfW;
+    this._orthoCam.right = halfW;
+    this._orthoCam.top = halfH;
+    this._orthoCam.bottom = -halfH;
+    this._orthoCam.near = -dist2 * 10;
+    this._orthoCam.far = dist2 * 10;
+    this._orthoCam.updateProjectionMatrix();
+  }
+  /**
+   * Switch between perspective and orthographic projection.
+   * Transfers the current camera position/orientation so the view is continuous.
+   */
+  setProjection(type) {
+    const wasOrtho = this._isOrtho;
+    this._isOrtho = type === "orthographic";
+    if (this._isOrtho && !wasOrtho) {
+      this._orthoCam.position.copy(this.camera.position);
+      this._orthoCam.quaternion.copy(this.camera.quaternion);
+      this._orthoCam.zoom = 1;
+      this._syncOrthoCamFrustum();
+    } else if (!this._isOrtho && wasOrtho) {
+      this.camera.position.copy(this._orthoCam.position);
+      this.camera.quaternion.copy(this._orthoCam.quaternion);
+      const zoom = this._orthoCam.zoom;
+      if (zoom !== 1 && this.controls) {
+        const t = this.controls.target;
+        this.camera.position.sub(t).divideScalar(zoom).add(t);
+        this._orthoCam.zoom = 1;
+      }
+    }
+    if (this.controls) {
+      this.controls.object = this.activeCamera;
+      this.controls.update();
+    }
+    this.navGizmo?.setProjection(type);
+    if (wasOrtho !== this._isOrtho) for (const l of this.projectionListeners) l(type);
+    this.requestRender();
+  }
+  /** Hear about projection changes from anywhere (the axis widget, a toolbar, code), so
+   *  every control that shows the projection stays true. Returns the unsubscribe. */
+  onProjection(listener) {
+    this.projectionListeners.add(listener);
+    return () => this.projectionListeners.delete(listener);
+  }
+  /** "perspective" or "orthographic". */
+  get projection() {
+    return this._isOrtho ? "orthographic" : "perspective";
+  }
+  // ── Named views ──
+  /**
+   * Look at the model from a named side, keeping the distance: `"top"` is a plan,
+   * `"front"` / `"back"` / `"left"` / `"right"` are elevations, `"iso"` the diagonal. With
+   * `setProjection("orthographic")` they are drawings rather than pictures. Turns there
+   * (about a third of a second) unless `{ animate: false }`.
+   */
+  setView(view, opts = {}) {
+    this.orbitTo(viewDirection(view, this.isZUp ? "z" : "y"), opts);
+  }
+  /** Put the camera on `direction` from the target, looking back along it, at the same
+   *  distance. What `setView` and the axis widget do. */
+  orbitTo(direction, opts = {}) {
+    const target = this.controls?.target ?? new THREE5.Vector3();
+    const cam = this.activeCamera;
+    const offset = cam.position.clone().sub(target);
+    const dist2 = offset.length() || 10;
+    const dir = new THREE5.Vector3(direction.x, direction.y, direction.z).normalize();
+    if (Math.abs(dir.dot(cam.up)) > 1 - 1e-6) {
+      dir.addScaledVector(this.isZUp ? new THREE5.Vector3(0, -1, 0) : new THREE5.Vector3(0, 0, 1), 1e-3).normalize();
+    }
+    if (opts.animate === false || offset.lengthSq() === 0) {
+      this.cameraMove = null;
+      this._placeCamera(target, dir.multiplyScalar(dist2));
+      return;
+    }
+    this._moveCamera(dir, target.clone(), dist2, this._orthoCam.zoom);
+  }
+  /**
+   * Frame part of the model — a selection, a storey, one element: centre on it and come
+   * close enough that it fills the view with room around it (`margin`, default 1.8, so the
+   * surroundings still say which part it is). `objects` are scene ids or record keys.
+   * Animated unless `{ animate: false }`, keeping the direction you look from.
+   */
+  fitTo(objects, opts = {}) {
+    const box = new THREE5.Box3();
+    for (const t of this._resolve(objects)) box.expandByObject(t);
+    if (box.isEmpty()) return;
+    const target = box.getCenter(new THREE5.Vector3());
+    const size = box.getSize(new THREE5.Vector3());
+    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+    const margin = opts.margin ?? 1.8;
+    const dist2 = fitRadius(radius, this.camera.fov, this.camera.aspect, margin);
+    const halfH = (this._orthoCam.top - this._orthoCam.bottom) / 2;
+    const halfW = (this._orthoCam.right - this._orthoCam.left) / 2;
+    const zoom = Math.min(halfH, halfW) / (radius * margin);
+    const dir = this._viewOffset();
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      if (this.controls) this.controls.target.copy(target);
+      if (this._isOrtho) {
+        this._orthoCam.zoom = zoom;
+        this._orthoCam.updateProjectionMatrix();
+      }
+      this._placeCamera(target, dir.multiplyScalar(dist2));
+      return;
+    }
+    this._moveCamera(dir, target, dist2, this._isOrtho ? zoom : this._orthoCam.zoom);
+  }
+  /** Start a move to `dir` from `target` at `dist` (and, in orthographic, `zoom`). */
+  _moveCamera(dir, target, dist2, zoom) {
+    const from = this.controls?.target.clone() ?? new THREE5.Vector3();
+    const offset = this.activeCamera.position.clone().sub(from);
+    this.cameraMove = {
+      from: offset,
+      turn: new THREE5.Quaternion().setFromUnitVectors(offset.clone().normalize(), dir.clone().normalize()),
+      fromTarget: from,
+      toTarget: target,
+      toDist: dist2,
+      fromZoom: this._orthoCam.zoom,
+      toZoom: zoom,
+      start: performance.now(),
+      ms: 340
+    };
+    this.requestRender();
+  }
+  /** Scene ids, or record keys resolved through the scene, to the three objects drawn for them. */
+  _resolve(objects) {
+    const out = [];
+    for (const s of objects) {
+      const t = this.objectMap.get(s);
+      if (t) {
+        out.push(t);
+        continue;
+      }
+      for (const o of this.gScene.byKey(s)) {
+        const k = this.objectMap.get(o.id);
+        if (k) out.push(k);
+      }
+    }
+    return out;
+  }
+  /** Orbit by a pointer travel in pixels — the axis widget's drag. */
+  orbitBy(dx, dy) {
+    this.cameraMove = null;
+    const target = this.controls?.target ?? new THREE5.Vector3();
+    const cam = this.activeCamera;
+    const up = cam.up.clone().normalize();
+    const offset = cam.position.clone().sub(target).applyAxisAngle(up, -dx * 5e-3);
+    const polar = offset.angleTo(up);
+    const next = THREE5.MathUtils.clamp(polar - dy * 5e-3, 0.05, Math.PI - 0.05);
+    const side = new THREE5.Vector3().crossVectors(offset, up);
+    if (side.lengthSq() > 0) offset.applyAxisAngle(side.normalize(), polar - next);
+    this._placeCamera(target, offset);
+  }
+  _placeCamera(target, offset) {
+    const cam = this.activeCamera;
+    cam.position.copy(target).add(offset);
+    cam.lookAt(target);
+    this.controls?.update();
+    this.requestRender();
+  }
+  /** Advance a camera move, if one is running. True while it moves the camera. */
+  _stepCameraMove() {
+    const m = this.cameraMove;
+    if (!m) return false;
+    const t = easeInOut((performance.now() - m.start) / m.ms);
+    const q = new THREE5.Quaternion().slerpQuaternions(NO_TURN, m.turn, t);
+    const target = new THREE5.Vector3().lerpVectors(m.fromTarget, m.toTarget, t);
+    const dist2 = THREE5.MathUtils.lerp(m.from.length(), m.toDist, t);
+    if (this.controls) this.controls.target.copy(target);
+    const cam = this.activeCamera;
+    cam.position.copy(target).add(m.from.clone().applyQuaternion(q).setLength(dist2));
+    cam.lookAt(target);
+    if (m.toZoom !== m.fromZoom) {
+      this._orthoCam.zoom = THREE5.MathUtils.lerp(m.fromZoom, m.toZoom, t);
+      this._orthoCam.updateProjectionMatrix();
+    }
+    if (t >= 1) this.cameraMove = null;
+    return true;
+  }
+  // ── Callouts ──
+  /**
+   * Labels in the margins with leaders to what they name, the way a drawing is annotated:
+   * they never overlap and don't swim as the model turns; a label whose thing is hidden
+   * behind other things is left out; what doesn't fit is counted, not dropped silently.
+   * `objects` are scene ids or record keys (a key follows its record through rebuilds).
+   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
+   */
+  setCallouts(items, handlers = {}) {
+    this.calloutHandlers = handlers;
+    if (!items.length && !this.callouts) return;
+    this.callouts ?? (this.callouts = new Callouts(this.container, {
+      onPick: (id) => this.calloutHandlers.onPick?.(id),
+      onHover: (id) => this.calloutHandlers.onHover?.(id)
+    }));
+    this.callouts.setItems(items);
+    this.calloutsDirty = true;
+    this.requestRender();
+  }
+  /** Re-measure each callout's anchor: the centre of its objects' bounds. */
+  _measureCallouts() {
+    this.calloutsDirty = false;
+    this.calloutAnchors.clear();
+    const box = new THREE5.Box3();
+    for (const id of this.callouts?.ids ?? []) {
+      box.makeEmpty();
+      for (const t of this._resolve(this.callouts.objectsOf(id))) if (t.visible) box.expandByObject(t);
+      if (!box.isEmpty()) this.calloutAnchors.set(id, box.getCenter(new THREE5.Vector3()));
+    }
+    this.calloutCheckedAt = 0;
+  }
+  /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
+  _checkCalloutVisibility() {
+    this.calloutVisible.clear();
+    const cam = this.activeCamera;
+    const meshes = [...this.objectMap.values()].filter((t) => t.visible);
+    const ray = new THREE5.Raycaster();
+    const eye = cam.getWorldPosition(new THREE5.Vector3());
+    for (const [id, anchor] of this.calloutAnchors) {
+      const own = new Set(this._resolve(this.callouts.objectsOf(id)));
+      const dir = anchor.clone().sub(eye);
+      const dist2 = dir.length();
+      if (cam.isOrthographicCamera) {
+        cam.getWorldDirection(dir);
+        ray.set(anchor.clone().addScaledVector(dir, -1e4), dir);
+        ray.far = 1e4;
+      } else {
+        ray.set(eye, dir.normalize());
+        ray.far = dist2;
+      }
+      const hit = ray.intersectObjects(meshes, true).find((h) => !this._cutAway(h.point));
+      let owner = hit?.object ?? null;
+      while (owner && !own.has(owner)) owner = owner.parent;
+      if (!hit || owner || hit.distance >= ray.far - 1e-3) this.calloutVisible.add(id);
+    }
+  }
   /** Project, cull and lay out this frame's labels. */
-  drawCallouts() {
+  _drawCallouts() {
     if (!this.callouts) return;
-    const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
-    const camera = this.camera;
+    if (this.calloutsDirty) this._measureCallouts();
+    const w = this.container.clientWidth || 1, h = this.container.clientHeight || 1;
     const now = performance.now();
     if (now - this.calloutCheckedAt > 180) {
-      this.checkCalloutVisibility();
+      this._checkCalloutVisibility();
       this.calloutCheckedAt = now;
+    } else if (!this.calloutRecheck) {
+      this.calloutRecheck = window.setTimeout(() => {
+        this.calloutRecheck = 0;
+        this.calloutCheckedAt = 0;
+        this.requestRender();
+      }, 200);
     }
+    const cam = this.activeCamera;
+    cam.updateMatrixWorld();
     const v = new THREE5.Vector3();
     const anchors = [];
     for (const [id, anchor] of this.calloutAnchors) {
       if (!this.calloutVisible.has(id)) continue;
-      v.copy(anchor).project(camera);
+      v.copy(anchor).project(cam);
       if (v.z > 1) continue;
       anchors.push({ id, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
     }
@@ -4467,397 +4257,345 @@ var Viewport = class {
     const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
     this.callouts.update(placed, dropped.length);
   }
-  /**
-   * Cut the model with a plane, and cap the cut so it reads as solid.
-   *
-   * `axis` is in the content's own frame, so a Z-up model asks for "z" and
-   * gets a horizontal cut whichever way the viewport has turned the content to
-   * face three.js. `at` is a fraction of the content's extent along that axis,
-   * so 0.5 is halfway through whatever is loaded. Pass null to clear.
-   *
-   * The capping is the whole point and the reason this is not three lines. A
-   * clipping plane on its own leaves the cut hollow: you see the far side from
-   * the inside and the building reads as a shell, which is wrong about the one
-   * thing a section exists to show. How the cut is filled is explained where
-   * it is done, below.
-   */
-  setSection(section) {
-    this.clearSection();
-    this.sectionRequest = section;
-    this.renderer.localClippingEnabled = section !== null;
-    if (!section) {
-      this.applyClipping([]);
-      return;
-    }
-    this.root.updateMatrixWorld(true);
-    const box = new THREE5.Box3().setFromObject(this.meshGroup);
-    if (box.isEmpty()) {
-      this.applyClipping([]);
-      return;
-    }
-    const local = new THREE5.Vector3(
-      section.axis === "x" ? 1 : 0,
-      section.axis === "y" ? 1 : 0,
-      section.axis === "z" ? 1 : 0
-    );
-    const normal = local.clone().applyQuaternion(this.root.quaternion).normalize();
-    if (section.flip) normal.negate();
-    const lo = new THREE5.Vector3(), hi = new THREE5.Vector3();
-    box.getCenter(lo);
-    const half = box.getSize(new THREE5.Vector3()).multiplyScalar(0.5);
-    const reach = Math.abs(normal.x) * half.x + Math.abs(normal.y) * half.y + Math.abs(normal.z) * half.z;
-    const centre = box.getCenter(hi);
-    const t = (Math.min(1, Math.max(0, section.at)) - 0.5) * 2 * reach;
-    const plane = new THREE5.Plane(
-      normal.clone().negate(),
-      centre.dot(normal) + t
-    );
-    this.section = plane;
-    this.applyClipping([plane]);
-    const poche = new THREE5.MeshBasicMaterial({
-      color: this.sectionColour ?? sectionAppearance(this.mode).colour,
-      side: THREE5.BackSide,
-      clippingPlanes: [plane]
-    });
-    for (const mesh of this.meshGroup.children) {
-      if (!mesh.geometry) continue;
-      const inside2 = new THREE5.Mesh(mesh.geometry, poche);
-      inside2.matrixAutoUpdate = false;
-      inside2.matrix.copy(mesh.matrix);
-      inside2.matrixWorldNeedsUpdate = true;
-      inside2.renderOrder = -1;
-      this.sectionGroup.add(inside2);
-    }
-  }
-  /** Override what the cut face is painted. Pass null to go back to following
-   *  the view mode, which is what a section normally wants. */
-  setSectionColour(colour) {
-    if (colour === this.sectionColour) return;
-    this.sectionColour = colour;
-    if (this.sectionRequest) this.setSection(this.sectionRequest);
-  }
-  /** The section in force, or null. */
-  get sectionAt() {
-    return this.sectionRequest;
-  }
-  clearSection() {
-    for (const child of this.sectionGroup.children) {
-      const m = child.material;
-      (Array.isArray(m) ? m : [m]).forEach((x) => x.dispose());
-      if (child.geometry && !this.meshGroup.children.some((mesh) => mesh.geometry === child.geometry)) child.geometry.dispose();
-    }
-    this.sectionGroup.clear();
-    this.section = null;
-  }
-  /** Clipping is per material in three, so it has to reach every one the app
-   *  handed over as well as the ones this class makes. */
-  applyClipping(planes) {
-    const set = (m) => {
-      for (const one of Array.isArray(m) ? m : [m]) {
-        one.clippingPlanes = planes.length ? planes : null;
-        one.needsUpdate = true;
-      }
-    };
-    for (const mesh of this.meshGroup.children) set(mesh.material);
-    for (const line of this.outlines.children) set(line.material);
-    for (const line of this.highlight.children) set(line.material);
+  /** Where the camera sits, as a direction from its target. */
+  _viewOffset() {
+    return this.activeCamera.position.clone().sub(this.controls?.target ?? new THREE5.Vector3()).normalize();
   }
   /**
-   * Draw a bright outline around these meshes, on top of everything.
-   *
-   * The way to mark a set of elements without spending their fill colour,
-   * which matters once an app paints by something (a product, a state, an
-   * evidence grade) and still needs to say "these ones". Dimming everything
-   * else says the same thing by destroying the rest of the picture.
-   *
-   * Drawn with `depthTest` off, so an outlined element reads through the
-   * fabric in front of it. That is not a compromise: the usual reason to
-   * highlight a set is that some of it is behind something, and an outline you
-   * can only see when nothing is in the way answers the easy half of the
-   * question.
-   *
-   * One pixel wide. `LineBasicMaterial.linewidth` is ignored by every WebGL
-   * implementation worth naming, and this machine reports an aliased line
-   * width range of exactly [1, 1]. Thickness would mean the instanced-quad
-   * line from three's examples, which this library already imports elsewhere
-   * for its controls, so it is available; it is not used here because drawing
-   * over the top is what makes the highlight legible, and a saturated line at
-   * one pixel over the fabric reads better than a thick one behind it. If a
-   * host wants weight as well, that is the change to make.
+   * Set the camera up vector. Use (0,1,0) for top-down plan views (Z-up scenes),
+   * and restore (0,0,1) for side/elevation views.
    */
-  setOutlined(meshes, colour = 2063072) {
-    for (const line of this.highlight.children) {
-      line.geometry.dispose();
-      line.material.dispose();
-    }
-    this.highlight.clear();
-    if (!meshes.length) return;
-    const material = new THREE5.LineBasicMaterial({
-      color: colour,
-      depthTest: false,
-      transparent: true,
-      opacity: 0.95
-    });
-    const angle = this.content.creaseAngle ?? 30;
-    for (const object of meshes) {
-      const mesh = object;
-      if (!mesh.geometry) continue;
-      const edges = new THREE5.EdgesGeometry(mesh.geometry, angle);
-      const line = new THREE5.LineSegments(edges, material);
-      line.applyMatrix4(mesh.matrix);
-      line.renderOrder = 999;
-      this.highlight.add(line);
-    }
+  setCameraUp(x, y, z) {
+    this.camera.up.set(x, y, z);
+    this._orthoCam.up.set(x, y, z);
+    if (this.controls) this.controls.update();
+    this.requestRender();
   }
-  /** Repaint every mesh. Call after changing whatever `appearanceOf` reads. */
-  repaint() {
-    for (const child of this.meshGroup.children) this.paint(child);
+  /** The WebGL canvas element (for attaching input listeners / overlays). */
+  get canvasEl() {
+    return this.renderer.domElement;
   }
-  /** Apply the current mode to one mesh. The app's hook has the first word. */
-  paint(mesh) {
-    const material = mesh.material;
-    const base = mesh.userData.baseColour ?? FALLBACK_SURFACE;
-    const look = {
-      ...surfaceAppearance(this.mode, base),
-      ...this.opts.appearanceOf?.(mesh, this.mode) ?? {}
-    };
-    material.color.setHex(look.colour);
-    if (material.emissive) {
-      const flat = this.mode === "hidden-line" || this.mode === "ghost";
-      material.emissive.setHex(flat ? look.colour : 0);
-      material.emissiveIntensity = this.mode === "ghost" ? 0.8 : 1;
-    }
-    material.opacity = look.opacity;
-    material.transparent = look.opacity < 1;
-    material.depthWrite = look.depthWrite;
-    material.polygonOffset = look.polygonOffset;
-    if (look.polygonOffset) {
-      material.polygonOffsetFactor = 1;
-      material.polygonOffsetUnits = 1;
-    }
-    material.needsUpdate = true;
+  /** Set the viewport background color. */
+  setBackground(color) {
+    this.threeScene.background = new THREE5.Color(color);
+    this.config.backgroundColor = color;
+    this.requestRender();
   }
-  applyMode(mode) {
-    const changed = mode !== this.mode;
-    this.mode = mode;
-    this.scene.background.setHex(
-      modeBackground(mode, this.opts.background ?? DEFAULT_BACKGROUND)
-    );
-    const balance = lightBalance(mode, this.shadows);
-    const floor = groundAppearance(mode);
-    this.groundPlane.visible = floor.visible && (this.opts.ground ?? true);
-    const gm = this.groundPlane.material;
-    gm.color.setHex(floor.colour);
-    gm.opacity = floor.opacity;
-    gm.transparent = floor.opacity < 1;
-    gm.needsUpdate = true;
-    if (changed && this.sectionRequest && this.sectionColour === null) {
-      queueMicrotask(() => {
-        if (this.sectionRequest) this.setSection(this.sectionRequest);
-      });
+  /** Move the camera without changing its target. */
+  setCameraPosition(x, y, z) {
+    this.camera.position.set(x, y, z);
+    this.requestRender();
+  }
+  /** Aim the camera (and orbit-controls target) at a point. */
+  lookAt(x, y, z) {
+    this.camera.lookAt(x, y, z);
+    if (this.controls) {
+      this.controls.target.set(x, y, z);
+      this.controls.update();
     }
-    this.sun.castShadow = balance.shadowed;
-    this.ground.visible = balance.shadowed;
-    this.sun.intensity = balance.sun;
-    this.sky.intensity = balance.sky;
-    this.ground.material.opacity = balance.groundOpacity;
-    this.renderer.shadowMap.needsUpdate = true;
-    this.repaint();
-    const style = edgeStyle(mode);
-    for (const line of this.outlines.children) {
-      const lm = line.material;
-      lm.color.setHex(style.colour);
-      lm.opacity = style.opacity;
-      lm.transparent = style.opacity < 1;
-      lm.needsUpdate = true;
-    }
+    this.requestRender();
   }
   /**
-   * Creases for the content, a chunk per frame.
-   *
-   * One LineSegments per chunk rather than per mesh: a few thousand line
-   * objects is a few thousand draw calls, and merging costs nothing here
-   * because the outlines are styled as one anyway.
+   * Fit all visible scene objects inside the current view.
+   * Preserves the camera direction; only adjusts distance and target.
    */
-  buildOutlines(onProgress) {
-    if (this.buildingOutlines) return;
-    const meshes = this.wantsOutlines();
-    if (!meshes.length) {
-      this.outlinesBuilt = true;
-      return;
-    }
-    this.buildingOutlines = true;
-    const angle = this.content.creaseAngle ?? 30;
-    const style = edgeStyle(this.mode);
-    let i = 0;
-    const step = () => {
-      const positions = [];
-      const end = Math.min(i + OUTLINE_CHUNK, meshes.length);
-      for (; i < end; i++) {
-        const edges = new THREE5.EdgesGeometry(meshes[i].geometry, angle);
-        const p = edges.getAttribute("position").array;
-        const m = meshes[i].matrix;
-        const v = new THREE5.Vector3();
-        for (let k = 0; k < p.length; k += 3) {
-          v.set(p[k], p[k + 1], p[k + 2]).applyMatrix4(m);
-          positions.push(v.x, v.y, v.z);
-        }
-        edges.dispose();
-      }
-      if (positions.length) {
-        const g = new THREE5.BufferGeometry();
-        g.setAttribute("position", new THREE5.Float32BufferAttribute(positions, 3));
-        this.outlines.add(new THREE5.LineSegments(g, new THREE5.LineBasicMaterial({
-          color: style.colour,
-          opacity: style.opacity,
-          transparent: style.opacity < 1
-        })));
-      }
-      if (i < meshes.length) {
-        onProgress?.(`Drawing edges: ${i} of ${meshes.length} ...`);
-        requestAnimationFrame(step);
-      } else {
-        this.outlinesBuilt = true;
-        this.buildingOutlines = false;
-        this.applyMode(this.mode);
-        onProgress?.(null);
-      }
-    };
-    requestAnimationFrame(step);
-  }
-  // -- the sun --------------------------------------------------------------
-  get shadowsOn() {
-    return this.shadows;
-  }
-  /** Sun shadows on or off. Off by default: they are a presentation choice, and
-   *  in hidden line they are a departure from the drawing convention. */
-  setShadows(on) {
-    this.shadows = on;
-    this.frameSun();
-    this.applyMode(this.mode);
-  }
-  get sunDescription() {
-    return this.sunNote;
-  }
-  /**
-   * Put a real sun in the sky, for a place and an instant.
-   *
-   * Two honest limits, both reported through `sunDescription`: the content's
-   * +Y (or +Z, for Z-up content) is assumed to be north, because a viewport
-   * cannot know a project's true north; and a sun below the horizon falls back
-   * to a generic light rather than showing a black building.
-   */
-  setSun(date, latitude, longitude, place = "") {
-    const sun = SunPosition.compute({ date, latitude, longitude });
-    const when = date.toISOString().slice(0, 16).replace("T", " ") + " UTC";
-    if (!sun.isDaytime) {
-      this.sunDir.set(1, 1.6, 1.1).normalize();
-      this.sunNote = `sun is below the horizon at ${when}, showing a generic light`;
-    } else {
-      this.sunDir.set(sun.direction.x, sun.direction.z, -sun.direction.y).normalize();
-      const alt = Math.round(sun.altitude * 180 / Math.PI);
-      const azi = Math.round(sun.azimuth * 180 / Math.PI);
-      this.sunNote = `${place || `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`}, ${when}: altitude ${alt} degrees, azimuth ${azi} from north. The model's north is taken as its own up-plane +Y.`;
-    }
-    this.frameSun();
-  }
-  /** Sun and ground, framed to whatever is in the scene. Cheap, and only run
-   *  when the contents or the light change. */
-  frameSun() {
-    this.root.updateMatrixWorld(true);
-    const box = new THREE5.Box3().setFromObject(this.meshGroup);
-    if (box.isEmpty()) return;
-    const sphere = box.getBoundingSphere(new THREE5.Sphere());
-    const r = Math.max(sphere.radius, 0.5);
-    this.sun.position.copy(sphere.center).addScaledVector(this.sunDir, r * 3);
-    this.sun.target.position.copy(sphere.center);
-    this.sun.target.updateMatrixWorld();
-    this.sun.shadow.normalBias = r * 2e-3;
-    const cam = this.sun.shadow.camera;
-    cam.left = -r * 1.2;
-    cam.right = r * 1.2;
-    cam.top = r * 1.2;
-    cam.bottom = -r * 1.2;
-    cam.near = r * 0.5;
-    cam.far = r * 6;
-    cam.updateProjectionMatrix();
-    this.ground.position.set(sphere.center.x, box.min.y - r * 1e-3, sphere.center.z);
-    this.ground.scale.set(r * 6, r * 6, 1);
-    this.groundPlane.position.set(sphere.center.x, box.min.y - r * 4e-3, sphere.center.z);
-    this.groundPlane.scale.set(r * 7, r * 7, 1);
-    this.renderer.shadowMap.needsUpdate = true;
-  }
-  // -- framing --------------------------------------------------------------
-  /** Frame the contents: centre on the bounding box and pull back far enough
-   *  that it fits the tighter of the two field-of-view axes. */
-  fit(margin = 1.25) {
-    this.root.updateMatrixWorld(true);
-    const box = new THREE5.Box3().setFromObject(this.root);
-    if (box.isEmpty()) return;
-    this.move = null;
-    box.getCenter(this.target);
-    this.spherical.radius = this.radiusFor(box, margin);
-    this.resize();
-  }
-  /**
-   * Frame part of the content: a selection, a storey, one component.
-   *
-   * Animated, unlike `fit`, because the reader is going somewhere within a
-   * model they can already see and needs to keep hold of where. The margin is
-   * looser than `fit`'s for the same reason: a part framed edge to edge loses
-   * the surroundings that say which part it is.
-   */
-  fitTo(objects, opts = {}) {
-    if (!objects.length) return;
-    this.root.updateMatrixWorld(true);
+  fitAll() {
     const box = new THREE5.Box3();
-    for (const o of objects) box.expandByObject(o);
-    if (box.isEmpty()) return;
-    const target = box.getCenter(new THREE5.Vector3());
-    const radius = this.radiusFor(box, opts.margin ?? 1.8);
-    if (opts.animate === false) {
-      this.move = null;
-      this.target.copy(target);
-      this.spherical.radius = radius;
-      this.resize();
-      return;
+    for (const obj of this.objectMap.values()) {
+      if (obj.visible) {
+        const b = new THREE5.Box3().setFromObject(obj);
+        if (!b.isEmpty()) box.union(b);
+      }
     }
-    this.animate({ radius, target });
+    if (box.isEmpty()) return;
+    const center = box.getCenter(new THREE5.Vector3());
+    const sphere = box.getBoundingSphere(new THREE5.Sphere());
+    const target = this.controls?.target.clone() ?? center;
+    let dir = new THREE5.Vector3().subVectors(this.camera.position, target);
+    if (dir.length() < 1e-6) dir.set(1, 1, 1);
+    dir.normalize();
+    const fovRad = this.camera.fov * Math.PI / 180;
+    const dist2 = sphere.radius / Math.tan(fovRad / 2) * 1.3;
+    this.camera.position.copy(center).addScaledVector(dir, dist2);
+    if (this.controls) {
+      this.controls.target.copy(center);
+      this.controls.update();
+    }
+    if (this._isOrtho) {
+      this._orthoCam.position.copy(this.camera.position);
+      this._orthoCam.quaternion.copy(this.camera.quaternion);
+      this._syncOrthoCamFrustum();
+    }
+    this.requestRender();
   }
-  radiusFor(box, margin) {
-    const size = box.getSize(new THREE5.Vector3());
-    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
-    return fitRadius(radius, this.perspective.fov, this.perspective.aspect, margin);
+  // ── Raycasting ──
+  /** Pick scene objects under a screen coordinate */
+  pick(screenX, screenY) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE5.Vector2(
+      (screenX - rect.left) / rect.width * 2 - 1,
+      -((screenY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE5.Raycaster();
+    raycaster.setFromCamera(mouse, this.camera);
+    const targets = [...this.objectMap.values()];
+    const hits = raycaster.intersectObjects(targets, true);
+    for (const hit of hits) {
+      if (this._cutAway(hit.point)) continue;
+      let obj = hit.object;
+      while (obj && !obj.userData.geomId) obj = obj.parent;
+      if (obj?.userData.geomId) {
+        return { id: obj.userData.geomId, point: hit.point };
+      }
+    }
+    return null;
   }
-  resize() {
-    const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
-    this.renderer.setSize(w, h);
-    const aspect = w / h;
-    this.perspective.aspect = aspect;
-    this.perspective.updateProjectionMatrix();
-    const f = orthoFrustum(this.spherical.radius, this.perspective.fov, aspect);
-    this.orthographic.left = f.left;
-    this.orthographic.right = f.right;
-    this.orthographic.top = f.top;
-    this.orthographic.bottom = f.bottom;
-    this.orthographic.near = 0.01;
-    this.orthographic.far = Math.max(100, this.spherical.radius * 10);
-    this.orthographic.updateProjectionMatrix();
+  /** Project a screen position onto a plane */
+  screenToPlane(screenX, screenY, plane) {
+    const defaultNormal = this.isZUp ? new THREE5.Vector3(0, 0, 1) : new THREE5.Vector3(0, 1, 0);
+    const p = plane ?? new THREE5.Plane(defaultNormal, 0);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE5.Vector2(
+      (screenX - rect.left) / rect.width * 2 - 1,
+      -((screenY - rect.top) / rect.height) * 2 + 1
+    );
+    const raycaster = new THREE5.Raycaster();
+    raycaster.setFromCamera(mouse, this.camera);
+    const target = new THREE5.Vector3();
+    return raycaster.ray.intersectPlane(p, target) ? target : null;
+  }
+  // ── Cleanup ──
+  disposeObject(obj) {
+    obj.traverse((child) => {
+      if (child.userData.poche) return;
+      const m = child;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) {
+        if (Array.isArray(m.material)) m.material.forEach((mat) => mat.dispose());
+        else m.material.dispose();
+      }
+    });
   }
   dispose() {
-    cancelAnimationFrame(this.frame);
-    this.gizmo?.dispose();
+    this.unsub?.();
+    this.clearThree();
+    this.pocheMat?.dispose();
+    this.outlineMat?.dispose();
+    for (const o of this.outlined) o.line.geometry.dispose();
+    this.renderer.domElement.removeEventListener("pointermove", this.onHoverMove);
+    this.renderer.domElement.removeEventListener("pointerleave", this.onHoverLeave);
+    this.threeScene.environment = null;
+    this.envMap?.dispose();
+    this.envMap = null;
+    cancelAnimationFrame(this.rafId);
+    this.navGizmo?.dispose();
     this.callouts?.dispose();
-    this.setOutlined([]);
-    this.clearSection();
-    this.clear();
-    for (const plane of [this.ground, this.groundPlane]) {
-      plane.geometry.dispose();
-      plane.material.dispose();
+    clearTimeout(this.calloutRecheck);
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.controls?.dispose();
+    try {
+      this.renderer.forceContextLoss();
+    } catch {
     }
     this.renderer.dispose();
-    this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
+  }
+};
+
+// src/render/SVGRenderer.ts
+var DEFAULTS2 = {
+  width: 800,
+  height: 600,
+  viewBox: { minX: -5, minY: -5, width: 10, height: 10 },
+  backgroundColor: "#0a0b14",
+  showGrid: true,
+  gridSpacing: 1,
+  gridColor: "#1a1c3a",
+  showLabels: true,
+  projection: "xz",
+  padding: 20,
+  pointRadius: 5
+};
+var SVGRenderer = class {
+  constructor(gScene, container, config) {
+    this.unsub = null;
+    this.gScene = gScene;
+    this.config = { ...DEFAULTS2, ...config };
+    const c = this.config;
+    this.svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    this.svg.setAttribute("width", String(c.width));
+    this.svg.setAttribute("height", String(c.height));
+    this.svg.setAttribute("viewBox", `${c.viewBox.minX} ${c.viewBox.minY} ${c.viewBox.width} ${c.viewBox.height}`);
+    this.svg.style.background = c.backgroundColor;
+    this.svg.style.display = "block";
+    container.appendChild(this.svg);
+    this.gridGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this.svg.appendChild(this.gridGroup);
+    if (c.showGrid) this.drawGrid();
+    this.contentGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    this.contentGroup.setAttribute("transform", "scale(1, -1)");
+    this.svg.appendChild(this.contentGroup);
+    this.unsub = gScene.on(() => this.render());
+    this.render();
+  }
+  project(v) {
+    switch (this.config.projection) {
+      case "xz":
+        return { x: v.x, y: v.z };
+      case "xy":
+        return { x: v.x, y: v.y };
+      case "yz":
+        return { x: v.y, y: v.z };
+    }
+  }
+  drawGrid() {
+    const { viewBox: vb, gridSpacing: gs, gridColor } = this.config;
+    const startX = Math.floor(vb.minX / gs) * gs;
+    const startY = Math.floor(vb.minY / gs) * gs;
+    const endX = vb.minX + vb.width;
+    const endY = vb.minY + vb.height;
+    for (let x = startX; x <= endX; x += gs) {
+      const line = this.createSVGLine(x, vb.minY, x, vb.minY + vb.height, gridColor, 0.02);
+      this.gridGroup.appendChild(line);
+    }
+    for (let y = startY; y <= endY; y += gs) {
+      const line = this.createSVGLine(vb.minX, y, vb.minX + vb.width, y, gridColor, 0.02);
+      this.gridGroup.appendChild(line);
+    }
+    this.gridGroup.appendChild(this.createSVGLine(vb.minX, 0, endX, 0, "#2a3055", 0.04));
+    this.gridGroup.appendChild(this.createSVGLine(0, vb.minY, 0, endY, "#2a3055", 0.04));
+  }
+  render() {
+    while (this.contentGroup.firstChild) this.contentGroup.removeChild(this.contentGroup.firstChild);
+    for (const obj of this.gScene.all()) {
+      if (!obj.style.visible) continue;
+      this.renderObject(obj);
+    }
+  }
+  renderObject(obj) {
+    const s = obj.style;
+    const pr = this.config.pointRadius * this.config.viewBox.width / this.config.width;
+    switch (obj.type) {
+      case "point": {
+        if (!obj.position) break;
+        const p = this.project(obj.position);
+        const circle = this.createSVGCircle(p.x, p.y, pr, s.color, s.opacity);
+        circle.dataset.geomId = obj.id;
+        this.contentGroup.appendChild(circle);
+        if (s.label && this.config.showLabels) {
+          const text = this.createSVGText(p.x + pr * 2, p.y + pr * 2, s.label, s.labelColor ?? s.color);
+          text.setAttribute("transform", `scale(1,-1)`);
+          text.setAttribute("y", String(-p.y - pr * 2));
+          this.contentGroup.appendChild(text);
+        }
+        break;
+      }
+      case "segment": {
+        if (!obj.start || !obj.end) break;
+        const a = this.project(obj.start);
+        const b = this.project(obj.end);
+        const line = this.createSVGLine(a.x, a.y, b.x, b.y, s.color, 0.03, s.opacity);
+        line.dataset.geomId = obj.id;
+        this.contentGroup.appendChild(line);
+        break;
+      }
+      case "polygon": {
+        if (!obj.vertices || obj.vertices.length < 2) break;
+        const pts = obj.vertices.map((v) => this.project(v));
+        const poly = this.createSVGPolygon(pts, s.color, s.opacity);
+        poly.dataset.geomId = obj.id;
+        this.contentGroup.appendChild(poly);
+        break;
+      }
+      case "circle": {
+        if (!obj.center || obj.radius == null) break;
+        const c = this.project(obj.center);
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", String(c.x));
+        circle.setAttribute("cy", String(c.y));
+        circle.setAttribute("r", String(obj.radius));
+        circle.setAttribute("fill", "none");
+        circle.setAttribute("stroke", s.color);
+        circle.setAttribute("stroke-width", "0.03");
+        circle.setAttribute("opacity", String(s.opacity));
+        circle.dataset.geomId = obj.id;
+        this.contentGroup.appendChild(circle);
+        break;
+      }
+      case "mesh": {
+        if (!obj.mesh) break;
+        for (const face of obj.mesh.faces()) {
+          const pts = face.nodes.map((nid) => {
+            const node = obj.mesh.node(nid);
+            return node ? this.project(node.position) : { x: 0, y: 0 };
+          });
+          const poly = this.createSVGPolygon(pts, s.color, s.opacity * 0.3);
+          this.contentGroup.appendChild(poly);
+        }
+        for (const edge of obj.mesh.edges()) {
+          const a = obj.mesh.node(edge.nodes[0]);
+          const b = obj.mesh.node(edge.nodes[1]);
+          if (!a || !b) continue;
+          const pa = this.project(a.position);
+          const pb = this.project(b.position);
+          this.contentGroup.appendChild(
+            this.createSVGLine(pa.x, pa.y, pb.x, pb.y, s.color, 0.02, s.opacity * 0.5)
+          );
+        }
+        break;
+      }
+    }
+  }
+  // ── SVG Helpers ──
+  createSVGCircle(cx, cy, r, color, opacity = 1) {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    el.setAttribute("cx", String(cx));
+    el.setAttribute("cy", String(cy));
+    el.setAttribute("r", String(r));
+    el.setAttribute("fill", color);
+    el.setAttribute("opacity", String(opacity));
+    return el;
+  }
+  createSVGLine(x1, y1, x2, y2, color, width = 0.02, opacity = 1) {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    el.setAttribute("x1", String(x1));
+    el.setAttribute("y1", String(y1));
+    el.setAttribute("x2", String(x2));
+    el.setAttribute("y2", String(y2));
+    el.setAttribute("stroke", color);
+    el.setAttribute("stroke-width", String(width));
+    el.setAttribute("opacity", String(opacity));
+    return el;
+  }
+  createSVGPolygon(pts, color, opacity = 0.5) {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    el.setAttribute("points", pts.map((p) => `${p.x},${p.y}`).join(" "));
+    el.setAttribute("fill", color);
+    el.setAttribute("fill-opacity", String(opacity));
+    el.setAttribute("stroke", color);
+    el.setAttribute("stroke-width", "0.03");
+    return el;
+  }
+  createSVGText(x, y, text, color) {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    el.setAttribute("x", String(x));
+    el.setAttribute("y", String(y));
+    el.setAttribute("fill", color);
+    el.setAttribute("font-size", "0.2");
+    el.setAttribute("font-family", "monospace");
+    el.textContent = text;
+    return el;
+  }
+  /** Update the viewBox (pan/zoom) */
+  setViewBox(minX, minY, width, height) {
+    this.config.viewBox = { minX, minY, width, height };
+    this.svg.setAttribute("viewBox", `${minX} ${minY} ${width} ${height}`);
+    this.render();
+  }
+  dispose() {
+    this.unsub?.();
+    this.svg.remove();
   }
 };
 
@@ -5812,7 +5550,8 @@ var SketchInstance = class {
       showAxes: this.config.axes !== false,
       cameraPosition: this.config.camera ?? (zUp ? [8, -10, 6] : [5, 6, 8]),
       cameraTarget: this.config.target ?? [0, 0, 0],
-      up: this.config.up ?? "y"
+      up: this.config.up ?? "y",
+      navGizmo: this.config.navGizmo ?? false
     });
   }
   // ── Input Wiring ──
@@ -6227,6 +5966,12 @@ var SketchInstance = class {
       },
       setProjection(type) {
         self.renderer.setProjection(type);
+      },
+      setSection(section) {
+        self.renderer.setSection(section);
+      },
+      setView(view, opts) {
+        self.renderer.setView(view, opts);
       },
       cameraUp(x, y, z) {
         self.renderer.setCameraUp(x, y, z);
@@ -7011,9 +6756,13 @@ var SketchInstance = class {
   requestRender() {
     this.renderer.requestRender();
   }
-  /** Change the scene render mode (solid / wireframe / hiddenline). */
+  /** Change the scene render mode (solid / wireframe / hiddenline / ghost). */
   setRenderMode(mode) {
     this.scene.setRenderMode(mode);
+  }
+  /** Cut the model with a section (see `ThreeRenderer.setSection`); null clears. */
+  setSection(section) {
+    this.renderer.setSection(section);
   }
   /**
    * Switch shading preset. `"studio"` enables PBR materials, sun-style
@@ -7309,7 +7058,7 @@ function appShell(config) {
   const vpWrap = document.createElement("div");
   vpWrap.style.cssText = "position:relative;overflow:hidden;";
   const viewportEl = document.createElement("div");
-  viewportEl.style.cssText = "width:100%;height:100%;";
+  viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
   vpWrap.appendChild(viewportEl);
   const statusEl = document.createElement("div");
   statusEl.style.cssText = `
@@ -7343,10 +7092,11 @@ function appShell(config) {
     // the architectural / BIM / voxel geometry these apps usually build. Pass
     // `up: "y"` if you're showing the Y-up built-in primitives (box/cylinder/sphere).
     up: config.up ?? "z",
+    navGizmo: config.navGizmo ?? false,
     ...config.renderer
   });
   if (config.topBar !== false) {
-    buildTopBar(header, scene, renderer, t);
+    buildTopBar(header, scene, renderer, t, config.topBar === true || config.topBar === void 0 ? {} : config.topBar);
   }
   let buildFn = null;
   let displayFn = null;
@@ -7472,7 +7222,7 @@ function appShell(config) {
   });
   return instance;
 }
-function buildTopBar(header, scene, renderer, t) {
+function buildTopBar(header, scene, renderer, t, show) {
   const bar = document.createElement("div");
   bar.style.cssText = "margin-left:auto; display:flex; align-items:center; gap:16px;";
   header.appendChild(bar);
@@ -7482,7 +7232,7 @@ function buildTopBar(header, scene, renderer, t) {
     el.style.cssText = `color:${t.textFaint}; text-transform:uppercase; letter-spacing:1px; font-size:9px;`;
     return el;
   };
-  function segmented(opts, initial, onSel) {
+  function segmented(opts, initial, onSel, follow) {
     const wrap = document.createElement("div");
     wrap.style.cssText = `display:flex; border:1px solid ${t.border}; border-radius:5px; overflow:hidden;`;
     const btns = [];
@@ -7505,6 +7255,7 @@ function buildTopBar(header, scene, renderer, t) {
       btns.push([b, val]);
     }
     set(initial);
+    follow?.(set);
     return wrap;
   }
   const group = (label, control) => {
@@ -7513,36 +7264,92 @@ function buildTopBar(header, scene, renderer, t) {
     g.append(tag(label), control);
     return g;
   };
-  bar.appendChild(group("Light", segmented(
+  if (show.light !== false) bar.appendChild(group("Light", segmented(
     [["Flat", "flat"], ["Studio", "studio"]],
-    "flat",
-    (v) => scene.setLightingMode(v)
+    scene.lightingMode,
+    (v) => scene.setLightingMode(v),
+    (set) => scene.on((e) => {
+      if (e.type === "scene:lightingMode") set(e.mode);
+    })
   )));
-  bar.appendChild(group("Mode", segmented(
-    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"]],
-    "solid",
-    (v) => scene.setRenderMode(v)
+  if (show.mode !== false) bar.appendChild(group("Mode", segmented(
+    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]],
+    scene.renderMode,
+    (v) => scene.setRenderMode(v),
+    (set) => scene.on((e) => {
+      if (e.type === "scene:renderMode") set(e.mode);
+    })
   )));
-  bar.appendChild(group("Cam", segmented(
-    [["Persp", "persp"], ["Iso", "iso"]],
-    "persp",
-    (v) => {
-      if (v === "iso") {
-        renderer.setProjection("perspective");
-        const c = renderer.controls;
-        if (c) {
-          const target = c.target;
-          const step = renderer.camera.position.distanceTo(target) / Math.sqrt(3);
-          renderer.setCameraPosition(target.x + step, target.y - step, target.z + step);
-          c.update();
-        }
-        renderer.setProjection("orthographic");
-      } else {
-        renderer.setProjection("perspective");
-      }
-    }
-  )));
-  bar.appendChild(buildSun(renderer, t));
+  if (show.camera !== false) {
+    const cam = group("Cam", segmented(
+      [["Persp", "perspective"], ["Ortho", "orthographic"]],
+      renderer.projection,
+      (v) => renderer.setProjection(v),
+      (set) => renderer.onProjection(set)
+    ));
+    const iso = document.createElement("button");
+    iso.textContent = "Iso";
+    iso.title = "Isometric: orthographic, from the diagonal";
+    iso.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
+    iso.onclick = () => {
+      renderer.setProjection("orthographic");
+      renderer.setView("iso");
+    };
+    cam.appendChild(iso);
+    bar.appendChild(cam);
+  }
+  if (show.cut !== false) bar.appendChild(buildCut(renderer, t, segmented));
+  if (show.sun !== false) bar.appendChild(buildSun(renderer, t));
+}
+function buildCut(renderer, t, segmented) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "position:relative;";
+  const btn = document.createElement("button");
+  btn.textContent = "Cut \u25BE";
+  btn.style.cssText = `padding:3px 9px; border:1px solid ${t.border}; border-radius:5px; background:transparent; color:${t.textDim}; font:inherit; font-size:11px; cursor:pointer;`;
+  const pop = document.createElement("div");
+  pop.style.cssText = `position:absolute; top:130%; right:0; z-index:50; display:none; flex-direction:column; gap:8px;
+    padding:12px; border:1px solid ${t.border}; border-radius:8px; background:${t.panelBg};
+    box-shadow:0 8px 24px rgba(0,0,0,.45); width:228px; font-size:11px; color:${t.textDim};`;
+  btn.onclick = () => {
+    pop.style.display = pop.style.display === "none" ? "flex" : "none";
+  };
+  wrap.append(btn, pop);
+  const state = { axis: "off", at: 50, flip: false };
+  const apply = () => {
+    renderer.setSection(state.axis === "off" ? null : { axis: state.axis, at: state.at / 100, flip: state.flip });
+    btn.style.color = state.axis === "off" ? t.textDim : t.accent;
+  };
+  const pos = document.createElement("input");
+  pos.type = "range";
+  pos.min = "0";
+  pos.max = "100";
+  pos.step = "1";
+  pos.value = "50";
+  pos.className = "tekto-slider";
+  pos.style.cssText = `cursor:pointer;--tekto-track:${t.controlBorder};--tekto-thumb:${t.accent};`;
+  pos.oninput = () => {
+    state.at = Number(pos.value);
+    apply();
+  };
+  const flip = document.createElement("label");
+  flip.style.cssText = "display:flex; align-items:center; gap:6px; cursor:pointer;";
+  const flipBox = document.createElement("input");
+  flipBox.type = "checkbox";
+  flipBox.onchange = () => {
+    state.flip = flipBox.checked;
+    apply();
+  };
+  flip.append(flipBox, "Keep the other side");
+  pop.append(
+    segmented([["Off", "off"], ["Plan", "z"], ["X", "x"], ["Y", "y"]], "off", (v) => {
+      state.axis = v;
+      apply();
+    }),
+    pos,
+    flip
+  );
+  return wrap;
 }
 function buildSun(renderer, t) {
   const wrap = document.createElement("div");
@@ -7815,7 +7622,6 @@ export {
   Vec3,
   Vec4,
   VecMath,
-  Viewport,
   VoxelGrid,
   VoxelGrid2D,
   Wall,
@@ -7880,6 +7686,7 @@ export {
   repelBodies,
   reverse as reverseContact,
   sectionAppearance,
+  sectionPlane,
   segmentSegmentClosest,
   selectOnClick,
   setClipSnap,

@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.8.0 — 2026-10-13
+
+One renderer. `ThreeRenderer` gains the separate `Viewport`'s features: ghost, section cuts, named views and the axis widget, progressive creases, a framed sun, outlines, hover, callouts and `fitTo`. Each is opt-in where it shows up on screen, and `Viewport` is removed (**breaking**, see the first entry).
+
 - **Breaking: `Viewport` is removed. tekto has one renderer.** Everything the separate
   `Viewport` did is on `ThreeRenderer` (#48–#50 and this release). So every `sketch()` and
   `appShell()` app has it, along with picking, selection, Markup and snapshots, which
