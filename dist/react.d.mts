@@ -1,6 +1,7 @@
 import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Params-op8yBPbB.mjs';
-import React, { ReactNode, CSSProperties } from 'react';
-import { S as Scene, a as SceneObject } from './Scene-CaG0H74_.mjs';
+import * as React from 'react';
+import React__default, { ReactNode, CSSProperties, SVGProps } from 'react';
+import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-CaG0H74_.mjs';
 
 /**
  * The `Scene` of the enclosing `<TektoApp>`; throws outside one.
@@ -16,7 +17,7 @@ declare function useScene(): Scene;
 declare function TektoApp({ scene: extScene, children, }: {
     scene?: Scene;
     children: ReactNode;
-}): React.JSX.Element;
+}): React__default.JSX.Element;
 /**
  * Reactively watch all scene objects
  *
@@ -58,7 +59,7 @@ interface ParamPanelProps {
  *
  * @experimental No app uses this yet; it may still change.
  */
-declare function ParamPanel({ store, layout, title, style, className }: ParamPanelProps): React.JSX.Element;
+declare function ParamPanel({ store, layout, title, style, className }: ParamPanelProps): React__default.JSX.Element;
 /**
  * A list of the scene's objects (type, id, label); clicking one toggles its selection and calls `onSelect`.
  *
@@ -68,7 +69,7 @@ declare function InspectorPanel({ style, className, onSelect, }: {
     style?: CSSProperties;
     className?: string;
     onSelect?: (id: string) => void;
-}): React.JSX.Element;
+}): React__default.JSX.Element;
 /**
  * One `Toolbar` button: label, optional icon, click handler, `active` highlight and `group`; `shortcut` only appears in the tooltip.
  *
@@ -92,15 +93,13 @@ declare function Toolbar({ actions, style, className, }: {
     actions: ToolbarAction[];
     style?: CSSProperties;
     className?: string;
-}): React.JSX.Element;
+}): React__default.JSX.Element;
 /**
  * One section of an AccordionColumn.
  *
  * `meta` is the part that earns a closed section its place on screen: a count,
  * a total, a setting. A header that says only "Cut list" is worth nothing shut;
  * one that says "Cut list, 94 pieces" answers the question most readers had.
- *
- * @experimental No app uses this yet; it may still change.
  */
 interface AccordionSection {
     id: string;
@@ -127,8 +126,6 @@ interface AccordionSection {
 }
 /**
  * Props of `AccordionColumn`: its sections, the `localStorage` key for open state and heights, and class names for the host's styling.
- *
- * @experimental No app uses this yet; it may still change.
  */
 interface AccordionColumnProps {
     sections: AccordionSection[];
@@ -164,10 +161,8 @@ interface AccordionColumnProps {
  * The flexible section takes the leftover until a sash gives it a height of its
  * own; from then on it is a section like the others, which is what makes a
  * boundary stay where it was put.
- *
- * @experimental No app uses this yet; it may still change.
  */
-declare function AccordionColumn({ sections, storageKey, className, style, classes, }: AccordionColumnProps): React.JSX.Element;
+declare function AccordionColumn({ sections, storageKey, className, style, classes, }: AccordionColumnProps): React__default.JSX.Element;
 /**
  * A small circled i that explains something on hover or focus.
  *
@@ -180,14 +175,17 @@ declare function AccordionColumn({ sections, storageKey, className, style, class
  * click, so it works with a mouse, a keyboard and a finger. Positioned to the
  * right-bottom of the mark by default; a host that needs it elsewhere styles
  * the box.
- *
- * @experimental No app uses this yet; it may still change.
  */
 declare function InfoHint({ text, className, boxClassName, label }: {
     text: ReactNode;
     className?: string;
     boxClassName?: string;
     label?: string;
-}): React.JSX.Element;
+}): React__default.JSX.Element;
 
-export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, useParams, useScene, useSceneObjects, useSelection };
+/** A cube drawn the way a render mode draws (solid, ghost, hidden line, wireframe), in `currentColor`: `<ViewModeIcon mode="ghost" width={16} />`. */
+declare function ViewModeIcon({ mode, ...props }: {
+    mode: RenderMode;
+} & SVGProps<SVGSVGElement>): React.JSX.Element;
+
+export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, ViewModeIcon, useParams, useScene, useSceneObjects, useSelection };

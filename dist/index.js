@@ -159,6 +159,8 @@ __export(index_exports, {
   SunPosition: () => SunPosition,
   ThreeRenderer: () => ThreeRenderer,
   Triangle: () => Triangle,
+  VIEW_MODE_ICON_CORNERS: () => VIEW_MODE_ICON_CORNERS,
+  VIEW_MODE_ICON_SVG: () => VIEW_MODE_ICON_SVG,
   Vec2: () => Vec2,
   Vec3: () => Vec3,
   Vec4: () => Vec4,
@@ -242,6 +244,8 @@ __export(index_exports, {
   supabaseAdapter: () => supabaseAdapter,
   surfaceAppearance: () => surfaceAppearance,
   viewCommands: () => viewCommands,
+  viewModeIconShapes: () => viewModeIconShapes,
+  viewModeIconSvg: () => viewModeIconSvg,
   writeDxf2D: () => writeDxf2D,
   writeDxf3D: () => writeDxf3D
 });
@@ -284,19 +288,19 @@ var HMath = {
   },
   /** Solve quadratic Bezier (1-t)²a + 2(1-t)t·b + t²c = target for t ∈ [0,1]. Returns t or null. */
   solveQuadraticBezier(a, b, c, target) {
-    const A = a - 2 * b + c;
-    const B = 2 * (b - a);
-    const C = a - target;
-    if (Math.abs(A) < 1e-12) {
-      if (Math.abs(B) < 1e-12) return null;
-      const t = -C / B;
+    const A3 = a - 2 * b + c;
+    const B3 = 2 * (b - a);
+    const C3 = a - target;
+    if (Math.abs(A3) < 1e-12) {
+      if (Math.abs(B3) < 1e-12) return null;
+      const t = -C3 / B3;
       return t >= -1e-6 && t <= 1 + 1e-6 ? Math.max(0, Math.min(1, t)) : null;
     }
-    const disc = B * B - 4 * A * C;
+    const disc = B3 * B3 - 4 * A3 * C3;
     if (disc < 0) return null;
     const sq = Math.sqrt(disc);
-    const t1 = (-B - sq) / (2 * A);
-    const t2 = (-B + sq) / (2 * A);
+    const t1 = (-B3 - sq) / (2 * A3);
+    const t2 = (-B3 + sq) / (2 * A3);
     for (const t of [t1, t2]) {
       if (t >= -1e-6 && t <= 1 + 1e-6) return Math.max(0, Math.min(1, t));
     }
@@ -682,20 +686,20 @@ var VecMath = {
   /** Generates evenly spaced points along a segment (inclusive of endpoints). */
   pointsBetween(a, b, segments) {
     if (segments < 1) return [a, b];
-    const pts = [];
+    const pts2 = [];
     for (let i = 0; i <= segments; i++)
-      pts.push(a.lerp(b, i / segments));
-    return pts;
+      pts2.push(a.lerp(b, i / segments));
+    return pts2;
   },
   /** Generates points along a segment with minimum spacing. */
   pointsAlongSegment(a, b, spacing) {
     const len = a.distTo(b);
     const n = Math.max(1, Math.floor(len / spacing));
     const step = b.sub(a).div(n);
-    const pts = [];
+    const pts2 = [];
     for (let i = 0; i <= n; i++)
-      pts.push(a.add(step.mul(i)));
-    return pts;
+      pts2.push(a.add(step.mul(i)));
+    return pts2;
   },
   // ================================================================
   // POLAR / ANGLE CONSTRUCTION
@@ -854,10 +858,10 @@ var VecMath = {
     const c = v.dot(v);
     const d = u.dot(w);
     const e = v.dot(w);
-    const D = a * c - b * b;
-    let sN, sD = D;
-    let tN, tD = D;
-    if (D < EPSILON) {
+    const D3 = a * c - b * b;
+    let sN, sD = D3;
+    let tN, tD = D3;
+    if (D3 < EPSILON) {
       sN = 0;
       sD = 1;
       tN = e;
@@ -1379,12 +1383,12 @@ function noise3D(x, y, z) {
   const u = fade(x);
   const v = fade(y);
   const w = fade(z);
-  const A = perm[X] + Y;
-  const AA = perm[A] + Z;
-  const AB = perm[A + 1] + Z;
-  const B = perm[X + 1] + Y;
-  const BA = perm[B] + Z;
-  const BB = perm[B + 1] + Z;
+  const A3 = perm[X] + Y;
+  const AA = perm[A3] + Z;
+  const AB = perm[A3 + 1] + Z;
+  const B3 = perm[X + 1] + Y;
+  const BA = perm[B3] + Z;
+  const BB = perm[B3 + 1] + Z;
   const res = lerp(
     w,
     lerp(
@@ -1672,10 +1676,10 @@ var Segment = class _Segment {
   /** Splits a segment into n equal parts, returning n+1 points. */
   static split(a, b, segments) {
     if (segments < 1) segments = 1;
-    const pts = [];
+    const pts2 = [];
     for (let i = 0; i <= segments; i++)
-      pts.push(a.lerp(b, i / segments));
-    return pts;
+      pts2.push(a.lerp(b, i / segments));
+    return pts2;
   }
   /**
    * Finds the closest points between this segment and another.
@@ -2101,11 +2105,11 @@ var Intersections = {
     const dy = b.y - a.y;
     const cx = center.x - a.x;
     const cy = center.y - a.y;
-    const A = dx * dx + dy * dy;
-    const B = dx * cx + dy * cy;
-    const C = cx * cx + cy * cy - radius * radius;
-    const pBy2 = B / A;
-    const q = C / A;
+    const A3 = dx * dx + dy * dy;
+    const B3 = dx * cx + dy * cy;
+    const C3 = cx * cx + cy * cy - radius * radius;
+    const pBy2 = B3 / A3;
+    const q = C3 / A3;
     const disc = pBy2 * pBy2 - q;
     if (disc < 0) return [];
     const sqrtDisc = Math.sqrt(disc);
@@ -2228,13 +2232,13 @@ var Polygon2D = {
   // ================================================================
   /** Signed area of a 2D polygon (positive if CCW, negative if CW). */
   signedArea(polygon) {
-    let area2 = 0;
+    let area = 0;
     const n = polygon.length;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      area2 += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
+      area += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
     }
-    return area2 / 2;
+    return area / 2;
   },
   /** Unsigned area. */
   area(polygon) {
@@ -2296,8 +2300,8 @@ var Polygon2D = {
   },
   /** Area-weighted centroid (gravity center). */
   centroid2D(polygon) {
-    const A = Polygon2D.signedArea(polygon);
-    if (Math.abs(A) < HMath.EPSILON) return Polygon2D.averageCenter(polygon);
+    const A3 = Polygon2D.signedArea(polygon);
+    if (Math.abs(A3) < HMath.EPSILON) return Polygon2D.averageCenter(polygon);
     let cx = 0, cy = 0;
     const n = polygon.length;
     for (let i = 0; i < n; i++) {
@@ -2306,7 +2310,7 @@ var Polygon2D = {
       cx += (polygon[i].x + polygon[j].x) * f2;
       cy += (polygon[i].y + polygon[j].y) * f2;
     }
-    const factor = 1 / (6 * A);
+    const factor = 1 / (6 * A3);
     return new Vec2(cx * factor, cy * factor);
   },
   // ================================================================
@@ -2624,13 +2628,13 @@ var Polygon2D = {
   // ================================================================
   /** Creates a regular polygon (circle approximation) with n sides. */
   createCircle(radius, segments) {
-    const pts = [];
+    const pts2 = [];
     const twoPi = Math.PI * 2;
     for (let i = 0; i < segments; i++) {
       const angle = twoPi * i / segments;
-      pts.push(new Vec2(radius * Math.cos(angle), radius * Math.sin(angle)));
+      pts2.push(new Vec2(radius * Math.cos(angle), radius * Math.sin(angle)));
     }
-    return pts;
+    return pts2;
   },
   /** Creates a rectangle centered at origin. */
   createRect(width, height) {
@@ -2752,6 +2756,21 @@ var Polygon2D = {
     }
     return triangles;
   },
+  /**
+   * Triangles covering a polygon with holes, as indices into `[outer, ...holes].flat()`,
+   * counter-clockwise. Rings may be open or closed and wound either way. Each hole is
+   * bridged into the outer ring and the result ear-clipped: for simple rings, holes inside
+   * the outer ring and apart from each other.
+   */
+  triangulateWithHoles(outer, holes = []) {
+    const index = /* @__PURE__ */ new Map();
+    [outer, ...holes].flat().forEach((p, i) => {
+      if (!index.has(p)) index.set(p, i);
+    });
+    let poly = orientRing(outer, true);
+    for (const hole of holes) poly = bridgeHole(poly, orientRing(hole, false));
+    return earClipRing(poly).map(([a, b, c]) => [index.get(a), index.get(b), index.get(c)]);
+  },
   // ================================================================
   // MINIMUM ENCLOSING CIRCLE
   // ================================================================
@@ -2778,19 +2797,19 @@ var Polygon2D = {
       return { center, radius: center.distTo(a) };
     };
     const inside2 = (circ, q) => circ.center.distTo(q) <= circ.radius + 1e-8;
-    let D = from2(p[0], p[1]);
+    let D3 = from2(p[0], p[1]);
     for (let i = 2; i < p.length; i++) {
-      if (inside2(D, p[i])) continue;
-      D = { center: p[i], radius: 0 };
+      if (inside2(D3, p[i])) continue;
+      D3 = { center: p[i], radius: 0 };
       for (let j = 0; j < i; j++) {
-        if (inside2(D, p[j])) continue;
-        D = from2(p[i], p[j]);
+        if (inside2(D3, p[j])) continue;
+        D3 = from2(p[i], p[j]);
         for (let k = 0; k < j; k++) {
-          if (!inside2(D, p[k])) D = from3(p[i], p[j], p[k]);
+          if (!inside2(D3, p[k])) D3 = from3(p[i], p[j], p[k]);
         }
       }
     }
-    return D;
+    return D3;
   },
   // ================================================================
   // MINIMUM AREA RECTANGLE (OBB)
@@ -2833,9 +2852,9 @@ var Polygon2D = {
       }
       const w = maxU - minU;
       const h = maxV - minV;
-      const area2 = w * h;
-      if (area2 < bestArea) {
-        bestArea = area2;
+      const area = w * h;
+      if (area < bestArea) {
+        bestArea = area;
         bestAngle = angle;
         bestW = w;
         bestH = h;
@@ -2847,6 +2866,79 @@ var Polygon2D = {
     return new OBB2D(bestCenter, bestW, bestH, bestAngle);
   }
 };
+function ringArea(r) {
+  let a = 0;
+  for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
+}
+function orientRing(r, ccw) {
+  const last = r[r.length - 1];
+  const ring = r.length > 1 && r[0].x === last.x && r[0].y === last.y ? r.slice(0, -1) : r.slice();
+  return ringArea(ring) > 0 === ccw ? ring : ring.reverse();
+}
+function bridgeHole(outer, hole) {
+  let hi = 0;
+  for (let i = 1; i < hole.length; i++) if (hole[i].x > hole[hi].x) hi = i;
+  const h = hole[hi];
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < outer.length; i++) {
+    const o = outer[i];
+    if (o.x < h.x) continue;
+    const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2;
+    if (d < bestD && !cutCrosses(h, o, outer, hole)) {
+      bestD = d;
+      best = i;
+    }
+  }
+  if (best < 0) best = 0;
+  const holeLoop = [...hole.slice(hi), ...hole.slice(0, hi), h];
+  return [...outer.slice(0, best + 1), ...holeLoop, ...outer.slice(best)];
+}
+function cutCrosses(a, b, ...rings) {
+  const side = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+  for (const r of rings) for (let i = 0; i < r.length; i++) {
+    const p = r[i], q = r[(i + 1) % r.length];
+    if (p === a || q === a || p === b || q === b) continue;
+    if (side(a, b, p) !== side(a, b, q) && side(p, q, a) !== side(p, q, b)) return true;
+  }
+  return false;
+}
+function earClipRing(poly) {
+  const tris = [];
+  const idx = poly.map((_, i) => i);
+  const isEar = (i, j, k) => {
+    const a = poly[i], b = poly[j], c = poly[k];
+    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 1e-18) return false;
+    for (const m of idx) {
+      if (m === i || m === j || m === k) continue;
+      const p = poly[m];
+      const s1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+      const s2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
+      const s3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
+      if (s1 >= 0 && s2 >= 0 && s3 >= 0 && !(p.x === a.x && p.y === a.y) && !(p.x === b.x && p.y === b.y) && !(p.x === c.x && p.y === c.y)) return false;
+    }
+    return true;
+  };
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 1e4) {
+    let clipped = false;
+    for (let n = 0; n < idx.length; n++) {
+      const i = idx[(n + idx.length - 1) % idx.length], j = idx[n], k = idx[(n + 1) % idx.length];
+      if (isEar(i, j, k)) {
+        tris.push([poly[i], poly[j], poly[k]]);
+        idx.splice(n, 1);
+        clipped = true;
+        break;
+      }
+    }
+    if (!clipped) break;
+  }
+  if (idx.length === 3) tris.push([poly[idx[0]], poly[idx[1]], poly[idx[2]]]);
+  return tris;
+}
 function pointInTriangle2D(p, a, b, c) {
   const d1 = Polygon2D.cross2D(a, b, p);
   const d2 = Polygon2D.cross2D(b, c, p);
@@ -3018,13 +3110,13 @@ function multiToPC(mp) {
   return mp.map((poly) => poly.map(ringToPC));
 }
 function pcRingToRing(r) {
-  const pts = r.map(([x, y]) => new Vec2(x, y));
-  if (pts.length > 1) {
-    const a = pts[0];
-    const b = pts[pts.length - 1];
-    if (a.x === b.x && a.y === b.y) pts.pop();
+  const pts2 = r.map(([x, y]) => new Vec2(x, y));
+  if (pts2.length > 1) {
+    const a = pts2[0];
+    const b = pts2[pts2.length - 1];
+    if (a.x === b.x && a.y === b.y) pts2.pop();
   }
-  return pts;
+  return pts2;
 }
 function pcToMulti(geom) {
   return geom.map((poly) => poly.map(pcRingToRing));
@@ -3099,11 +3191,11 @@ var NoFitPolygon = {
    */
   decomposeConvex(ring) {
     if (ring.length <= 3) return [ring.slice()];
-    const pts = ring.map((v) => [v.x, v.y]);
-    (0, import_poly_decomp.removeCollinearPoints)(pts, 0.01);
-    if (pts.length <= 3) return [pts.map(([x, y]) => new Vec2(x, y))];
-    (0, import_poly_decomp.makeCCW)(pts);
-    const pieces = (0, import_poly_decomp.quickDecomp)(pts);
+    const pts2 = ring.map((v) => [v.x, v.y]);
+    (0, import_poly_decomp.removeCollinearPoints)(pts2, 0.01);
+    if (pts2.length <= 3) return [pts2.map(([x, y]) => new Vec2(x, y))];
+    (0, import_poly_decomp.makeCCW)(pts2);
+    const pieces = (0, import_poly_decomp.quickDecomp)(pts2);
     return pieces.map((piece) => piece.map(([x, y]) => new Vec2(x, y)));
   },
   /**
@@ -3111,9 +3203,9 @@ var NoFitPolygon = {
    * sums. O(|a|·|b|) but the inputs are small convex pieces.
    */
   minkowskiSumConvex(a, b) {
-    const pts = [];
-    for (const pa of a) for (const pb of b) pts.push(pa.add(pb));
-    return Polygon2D.convexHull2D(pts);
+    const pts2 = [];
+    for (const pa of a) for (const pb of b) pts2.push(pa.add(pb));
+    return Polygon2D.convexHull2D(pts2);
   },
   /**
    * Minkowski sum of two arbitrary simple polygons. Decomposes both into convex
@@ -4045,15 +4137,15 @@ var Mesh = class _Mesh {
   }
   surfaceArea() {
     const pos = this._pos, idx = this.indices;
-    let area2 = 0;
+    let area = 0;
     for (let t = 0; t < idx.length; t += 3) {
       const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
       const abx = pos[b] - pos[a], aby = pos[b + 1] - pos[a + 1], abz = pos[b + 2] - pos[a + 2];
       const acx = pos[c] - pos[a], acy = pos[c + 1] - pos[a + 1], acz = pos[c + 2] - pos[a + 2];
       const cx = aby * acz - abz * acy, cy = abz * acx - abx * acz, cz = abx * acy - aby * acx;
-      area2 += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
+      area += Math.sqrt(cx * cx + cy * cy + cz * cz) * 0.5;
     }
-    return area2;
+    return area;
   }
   /** Average of the live node positions. */
   centroid() {
@@ -4974,15 +5066,15 @@ var CurveUtils = {
     return (lo + hi) / 2;
   },
   /** Unroll a 3D polyline into a flat elevation profile: X = cumulative XY arc length, Z = original height. */
-  unrollPolyline(pts, yOffset = 0) {
+  unrollPolyline(pts2, yOffset = 0) {
     const out = [];
     let cumD = 0;
-    for (let i = 0; i < pts.length; i++) {
+    for (let i = 0; i < pts2.length; i++) {
       if (i > 0) {
-        const dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
+        const dx = pts2[i].x - pts2[i - 1].x, dy = pts2[i].y - pts2[i - 1].y;
         cumD += Math.sqrt(dx * dx + dy * dy);
       }
-      out.push(new Vec3(cumD, yOffset, pts[i].z));
+      out.push(new Vec3(cumD, yOffset, pts2[i].z));
     }
     return out;
   },
@@ -6383,17 +6475,17 @@ function findExitEdge(mesh, faceId, pos, dir, faceNormalFor) {
   let bestPoint = Vec3.zero();
   for (const eid of f2.edges) {
     const edge = mesh.edge(eid);
-    const A = mesh.node(edge.nodes[0]).position;
-    const B = mesh.node(edge.nodes[1]).position;
-    const edgeDir = B.sub(A);
+    const A3 = mesh.node(edge.nodes[0]).position;
+    const B3 = mesh.node(edge.nodes[1]).position;
+    const edgeDir = B3.sub(A3);
     const cross = edgeDir.cross(n);
     const denom = dir.dot(cross);
     if (Math.abs(denom) < 1e-6) continue;
-    const t = A.sub(pos).dot(cross) / denom;
+    const t = A3.sub(pos).dot(cross) / denom;
     if (t > -1e-4 && t < closest) {
       const hit = pos.add(dir.mul(t));
       const lenSq = edgeDir.lenSq();
-      const u = lenSq > 0 ? hit.sub(A).dot(edgeDir) / lenSq : 0;
+      const u = lenSq > 0 ? hit.sub(A3).dot(edgeDir) / lenSq : 0;
       if (u >= -0.01 && u <= 1.01) {
         closest = t;
         bestEdge = eid;
@@ -6410,9 +6502,9 @@ function closestEdgeFallback(mesh, faceId, proposedNext) {
   let bestPoint = Vec3.zero();
   for (const eid of f2.edges) {
     const edge = mesh.edge(eid);
-    const A = mesh.node(edge.nodes[0]).position;
-    const B = mesh.node(edge.nodes[1]).position;
-    const close = closestPointOnSegment(proposedNext, A, B);
+    const A3 = mesh.node(edge.nodes[0]).position;
+    const B3 = mesh.node(edge.nodes[1]).position;
+    const close = closestPointOnSegment(proposedNext, A3, B3);
     const d = proposedNext.distSqTo(close);
     if (d < minDist) {
       minDist = d;
@@ -7025,10 +7117,10 @@ var NurbsSurface = class _NurbsSurface {
    * @param axisDir      axis direction (need not be unit). Default world Y.
    */
   static revolve(profile, axisOrigin = new Vec3(0, 0, 0), axisDir = new Vec3(0, 1, 0)) {
-    const A = axisDir.normalize();
-    let xRef = Math.abs(A.dot(new Vec3(1, 0, 0))) < 0.9 ? new Vec3(1, 0, 0) : new Vec3(0, 0, 1);
-    xRef = xRef.sub(A.mul(A.dot(xRef))).normalize();
-    const yRef = A.cross(xRef).normalize();
+    const A3 = axisDir.normalize();
+    let xRef = Math.abs(A3.dot(new Vec3(1, 0, 0))) < 0.9 ? new Vec3(1, 0, 0) : new Vec3(0, 0, 1);
+    xRef = xRef.sub(A3.mul(A3.dot(xRef))).normalize();
+    const yRef = A3.cross(xRef).normalize();
     const SQRT1_2 = Math.SQRT1_2;
     const distMul = [1, Math.SQRT2, 1, Math.SQRT2, 1, Math.SQRT2, 1, Math.SQRT2, 1];
     const weightMul = [1, SQRT1_2, 1, SQRT1_2, 1, SQRT1_2, 1, SQRT1_2, 1];
@@ -7044,20 +7136,20 @@ var NurbsSurface = class _NurbsSurface {
       for (let j = 0; j < nV; j++) {
         const P2 = profile.controlPoints[j];
         const rel = P2.sub(axisOrigin);
-        const h = rel.dot(A);
-        const radialVec = rel.sub(A.mul(h));
+        const h = rel.dot(A3);
+        const radialVec = rel.sub(A3.mul(h));
         const radius = radialVec.len();
         let radialDir;
         let perpRadialDir;
         if (radius > 1e-10) {
           radialDir = radialVec.div(radius);
-          perpRadialDir = A.cross(radialDir);
+          perpRadialDir = A3.cross(radialDir);
         } else {
           radialDir = xRef;
           perpRadialDir = yRef;
         }
         const offset = radialDir.mul(ca).add(perpRadialDir.mul(sa)).mul(radius * distMul[i]);
-        const pos = axisOrigin.add(A.mul(h)).add(offset);
+        const pos = axisOrigin.add(A3.mul(h)).add(offset);
         const profW = profile.weights ? profile.weights[j] : 1;
         grid[i][j] = pos;
         weights[i][j] = weightMul[i] * profW;
@@ -7072,14 +7164,14 @@ var NurbsSurface = class _NurbsSurface {
     const rowPw = new Array(nU);
     const rowW = new Array(nU);
     for (let i = 0; i < nU; i++) {
-      const pts = this.controlPoints[i];
+      const pts2 = this.controlPoints[i];
       const wts = this.weights ? this.weights[i] : null;
-      const nV = pts.length;
+      const nV = pts2.length;
       const pw = new Array(nV);
       const w = new Array(nV);
       for (let j = 0; j < nV; j++) {
         const wj = wts ? wts[j] : 1;
-        pw[j] = pts[j].mul(wj);
+        pw[j] = pts2[j].mul(wj);
         w[j] = wj;
       }
       const r = deBoor4D(pw, w, this.degreeV, this.knotsV, v);
@@ -7593,15 +7685,15 @@ var PGFace = class {
     return n;
   }
   signedArea() {
-    let area2 = 0;
+    let area = 0;
     let h = this.edge;
     do {
       const a = h.origin.position;
       const b = h.destination.position;
-      area2 += a.x * b.y - b.x * a.y;
+      area += a.x * b.y - b.x * a.y;
       h = h.next;
     } while (h !== this.edge);
-    return area2 * 0.5;
+    return area * 0.5;
   }
   get isCCW() {
     return this.signedArea() > 0;
@@ -14790,8 +14882,8 @@ function aciFromHex(hex) {
   const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
   if (Math.max(r, g, b) - Math.min(r, g, b) < 24 && (r < 40 || r > 235)) return 7;
   let best = 7, bestD = Infinity;
-  for (const [i, R, G, B] of ACI) {
-    const d = (R - r) ** 2 + (G - g) ** 2 + (B - b) ** 2;
+  for (const [i, R, G, B3] of ACI) {
+    const d = (R - r) ** 2 + (G - g) ** 2 + (B3 - b) ** 2;
     if (d < bestD) {
       bestD = d;
       best = i;
@@ -14822,8 +14914,8 @@ var SheetView = class {
   /** Lines through points; `closed` shuts the ring, `fill` colours its inside. Accepts 2D
    *  points, or `Vec3` when the view has `project`. */
   polyline(points, opts = {}) {
-    const pts = points.map((p) => this.local(p));
-    if (pts.length >= 2) this.entities.push({ t: "polyline", points: pts, closed: !!opts.closed, fill: opts.fill, o: opts });
+    const pts2 = points.map((p) => this.local(p));
+    if (pts2.length >= 2) this.entities.push({ t: "polyline", points: pts2, closed: !!opts.closed, fill: opts.fill, o: opts });
     return this;
   }
   line(a, b, opts = {}) {
@@ -14867,8 +14959,8 @@ var SheetView = class {
   /** A leader: an arrow at `points[0]` (what it points at), lines through the rest, and the
    *  text beside the last point. */
   leader(points, text, opts = {}) {
-    const pts = points.map((p) => this.local(p));
-    if (pts.length >= 2) this.entities.push({ t: "leader", points: pts, text, o: opts });
+    const pts2 = points.map((p) => this.local(p));
+    if (pts2.length >= 2) this.entities.push({ t: "leader", points: pts2, text, o: opts });
     return this;
   }
   /** A level mark: a triangle standing on the level at `at`, and the level in metres with
@@ -15233,8 +15325,8 @@ function sheetToSVG(sheet, opts) {
     const key = p.key ? ` data-key="${esc(p.key)}"` : "";
     const layer = ` data-layer="${esc(p.kind === "fill" ? p.layer : p.style.layer)}"`;
     if (p.kind === "polyline") {
-      const pts = p.points.map((q) => `${X(q)},${Y(q)}`).join(" ");
-      out.push(`<${p.closed ? "polygon" : "polyline"} points="${pts}" ${stroke(p.style)}${layer}${key}/>`);
+      const pts2 = p.points.map((q) => `${X(q)},${Y(q)}`).join(" ");
+      out.push(`<${p.closed ? "polygon" : "polyline"} points="${pts2}" ${stroke(p.style)}${layer}${key}/>`);
     } else if (p.kind === "circle") {
       out.push(`<circle cx="${X(p.center)}" cy="${Y(p.center)}" r="${n(p.radius * k)}" ${stroke(p.style)}${layer}${key}/>`);
     } else if (p.kind === "arc") {
@@ -15289,85 +15381,8 @@ function sheetToDXF(sheet, opts) {
   return writeDxf2D({ ...c, layers }, { scale: units === "mm" ? 1e3 : 1, linetypeScale: sheet.scale * (units === "mm" ? 1 : 1e-3) });
 }
 function triangulateRings(rings) {
-  let poly = normalize(rings[0], true);
-  for (const hole of rings.slice(1)) poly = bridge(poly, normalize(hole, false));
-  return earClip(poly);
-}
-function area(r) {
-  let a = 0;
-  for (let i = 0; i < r.length; i++) {
-    const p = r[i], q = r[(i + 1) % r.length];
-    a += p.x * q.y - q.x * p.y;
-  }
-  return a / 2;
-}
-function normalize(r, ccw) {
-  let ring = r.length > 1 && r[0].x === r[r.length - 1].x && r[0].y === r[r.length - 1].y ? r.slice(0, -1) : r.slice();
-  if (area(ring) > 0 !== ccw) ring = ring.reverse();
-  return ring;
-}
-function bridge(outer, hole) {
-  let hi = 0;
-  for (let i = 1; i < hole.length; i++) if (hole[i].x > hole[hi].x) hi = i;
-  const h = hole[hi];
-  let best = -1, bestD = Infinity;
-  for (let i = 0; i < outer.length; i++) {
-    const o = outer[i];
-    if (o.x < h.x) continue;
-    const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2;
-    if (d < bestD && !crossesAny(h, o, outer, hole)) {
-      bestD = d;
-      best = i;
-    }
-  }
-  if (best < 0) best = 0;
-  const holeLoop = [...hole.slice(hi), ...hole.slice(0, hi), h];
-  return [...outer.slice(0, best + 1), ...holeLoop, ...outer.slice(best)];
-}
-function crossesAny(a, b, ...rings) {
-  for (const r of rings) for (let i = 0; i < r.length; i++) {
-    const p = r[i], q = r[(i + 1) % r.length];
-    if (p === a || q === a || p === b || q === b) continue;
-    if (segX(a, b, p, q)) return true;
-  }
-  return false;
-}
-function segX(a, b, c, d) {
-  const o = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
-  return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
-}
-function earClip(poly) {
-  const tris = [];
-  const idx = poly.map((_, i) => i);
-  const isEar = (i, j, k) => {
-    const a = poly[i], b = poly[j], c = poly[k];
-    if ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) <= 1e-18) return false;
-    for (const m of idx) {
-      if (m === i || m === j || m === k) continue;
-      const p = poly[m];
-      const s1 = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-      const s2 = (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x);
-      const s3 = (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x);
-      if (s1 >= 0 && s2 >= 0 && s3 >= 0 && !(p.x === a.x && p.y === a.y) && !(p.x === b.x && p.y === b.y) && !(p.x === c.x && p.y === c.y)) return false;
-    }
-    return true;
-  };
-  let guard = 0;
-  while (idx.length > 3 && guard++ < 1e4) {
-    let clipped = false;
-    for (let n = 0; n < idx.length; n++) {
-      const i = idx[(n + idx.length - 1) % idx.length], j = idx[n], k = idx[(n + 1) % idx.length];
-      if (isEar(i, j, k)) {
-        tris.push([poly[i], poly[j], poly[k]]);
-        idx.splice(n, 1);
-        clipped = true;
-        break;
-      }
-    }
-    if (!clipped) break;
-  }
-  if (idx.length === 3) tris.push(idx.map((i) => poly[i]));
-  return tris;
+  const all = rings.flat();
+  return Polygon2D.triangulateWithHoles(rings[0], rings.slice(1)).map((t) => t.map((i) => all[i]));
 }
 
 // src/io/download.ts
@@ -15828,8 +15843,12 @@ var IfcWriter = class {
     // storey at save time.
     this.storeyPlacementByRef = /* @__PURE__ */ new Map();
     // storeyRef → placementRef
+    this.storeyElevationByRef = /* @__PURE__ */ new Map();
+    // storeyRef → elevation
     this.elementsByStorey = /* @__PURE__ */ new Map();
     // storeyRef → contained element refs
+    this.partRefs = /* @__PURE__ */ new Set();
+    // what addRoof may gather: addSlab / addMember results
     // Tracking.
     this.wallRefs = [];
     this.wallByObject = /* @__PURE__ */ new Map();
@@ -15879,7 +15898,8 @@ var IfcWriter = class {
    * line id. Pass that id as `opts.storey` on subsequent `addWall` /
    * `addSlab` / `addWallSystem` calls to attach elements to the new
    * storey. The bootstrap storey (created from `IfcWriterOptions`)
-   * stays the default for any call that omits `storey`.
+   * stays the default for any call that omits `storey`. Heights stay
+   * absolute: a wall on a storey at 3 m has `baseElevation: 3`.
    *
    * @example
    *   const writer = new IfcWriter({ storeyName: "Ground floor", storeyElevation: 0 });
@@ -15984,11 +16004,12 @@ var IfcWriter = class {
     const opDepth = wall.thickness;
     const opCenter = pointAlongCenterline(wall.centerline, opening.centerlinePosition);
     const tangent = tangentAlongCenterline(wall.centerline, opening.centerlinePosition);
-    const z = wall.baseElevation + opening.sillHeight;
+    const frame = this.storeyFrame(storeyRef ?? this.storeyRef);
+    const z = wall.baseElevation + opening.sillHeight - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(opCenter.x)},${ifcReal(opCenter.y)},${ifcReal(z)}))`);
     const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(tangent.x)},${ifcReal(tangent.y)},0.))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${refDir})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storeyRef ?? this.storeyRef) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const profileOrigin = this.addEntity(`IFCCARTESIANPOINT((0.,0.))`);
     const profileAxis2D = this.addEntity(`IFCAXIS2PLACEMENT2D(#${profileOrigin},${"$"})`);
@@ -16039,11 +16060,18 @@ var IfcWriter = class {
   /**
    * Add a framed member (stud / plate / header / cripple / etc.) as an
    * IfcMember with a tessellated body (IfcTriangulatedFaceSet — efficient,
-   * IFC4-native). Aggregating under a wall is the caller's responsibility
-   * (see addWallSystem).
+   * IFC4-native). The mesh is in world coordinates. Aggregating under a
+   * wall is the caller's responsibility (see addWallSystem).
+   *
+   * An element that stands on its own — a railing, a column — passes
+   * `opts.storey` and is contained in that storey. A part that a wall, slab
+   * or roof gathers leaves it out: it is contained through its whole.
+   *
+   *   ifc.addMember(0, { name: "Railing", role: "railing", mesh, ifcType: "IfcRailing" }, { storey: first });
    */
-  addMember(_parentWallRef, part) {
+  addMember(_parentWallRef, part, opts = {}) {
     void _parentWallRef;
+    const storey = opts.storey === void 0 ? null : this.resolveStorey(opts.storey);
     const mesh = part.mesh;
     const positions = mesh.positions;
     const indices = mesh.indices;
@@ -16061,12 +16089,14 @@ var IfcWriter = class {
       `IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','Tessellation',(#${faceSet}))`
     );
     const productShape = this.addEntity(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${shapeRep}))`);
-    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.storeyPlacementRef},#${this.worldPlacementRef})`);
+    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.buildingPlacementRef},#${this.worldPlacementRef})`);
     const ifcType = part.ifcType ?? "IfcMember";
     const typeName = ifcType.toUpperCase();
     const memberRef = this.addEntity(
       `${typeName}(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(part.name)},$,${ifcStr(part.role)},#${placement},#${productShape},$,.NOTDEFINED.)`
     );
+    this.partRefs.add(memberRef);
+    if (storey !== null) this.attachToStorey(memberRef, storey);
     if (part.material) {
       const matRef = this.ensureMaterial(part.material);
       this.addEntity(
@@ -16126,10 +16156,11 @@ var IfcWriter = class {
     const closedPts = [...ptRefs, ptRefs[0]];
     const polyline = this.addEntity(`IFCPOLYLINE((${closedPts.map((r) => `#${r}`).join(",")}))`);
     const profile = this.addEntity(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${polyline})`);
-    const bottomZ = slab.elevation - slab.thickness;
+    const frame = this.storeyFrame(storey);
+    const bottomZ = slab.elevation - slab.thickness - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(bottomZ)}))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${this.dirXRef})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storey) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const extrusion = this.addEntity(
       `IFCEXTRUDEDAREASOLID(#${profile},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(slab.thickness)})`
@@ -16144,7 +16175,27 @@ var IfcWriter = class {
       `IFCSLAB(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(slabName)},$,$,#${localPlacement},#${productShape},$,.${predef}.)`
     );
     this.slabRefs.push(slabRef);
+    this.partRefs.add(slabRef);
     this.attachToStorey(slabRef, storey);
+    const openingRings = slab.openingRings();
+    slab.openings.forEach((opening, i) => {
+      const [p0, p1] = openingRings[i];
+      const u = p1.sub(p0).normalize();
+      const at = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(opening.centerX)},${ifcReal(opening.centerY)},${ifcReal(bottomZ)}))`);
+      const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(u.x)},${ifcReal(u.y)},0.))`);
+      const axis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${at},#${this.dirZRef},#${refDir})`);
+      const placement = this.addEntity(`IFCLOCALPLACEMENT(#${frame.placement},#${axis})`);
+      const centre = this.addEntity(`IFCCARTESIANPOINT((0.,0.))`);
+      const centreAxis = this.addEntity(`IFCAXIS2PLACEMENT2D(#${centre},$)`);
+      const rect = this.addEntity(`IFCRECTANGLEPROFILEDEF(.AREA.,$,#${centreAxis},${ifcReal(opening.width)},${ifcReal(opening.depth)})`);
+      const solid = this.addEntity(`IFCEXTRUDEDAREASOLID(#${rect},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(slab.thickness)})`);
+      const rep = this.addEntity(`IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','SweptSolid',(#${solid}))`);
+      const shape = this.addEntity(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}))`);
+      const openingRef = this.addEntity(
+        `IFCOPENINGELEMENT(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(opening.name ?? "Slab opening")},$,$,#${placement},#${shape},$,.OPENING.)`
+      );
+      this.addEntity(`IFCRELVOIDSELEMENT(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${slabRef},#${openingRef})`);
+    });
     const mergedProps = {
       ...slab.type?.properties ?? {},
       ...slab.properties ?? {}
@@ -16188,6 +16239,36 @@ var IfcWriter = class {
     );
     this.slabTypeRefs.set(type, typeRef);
     return typeRef;
+  }
+  // ── Roofs ────────────────────────────────────────────────────────
+  /**
+   * Add a roof: an `IfcRoof` that gathers its parts — slabs, members, plates,
+   * coverings already written with `addSlab` / `addMember` — and is contained
+   * in a storey (default: the bootstrap storey). The parts stop being
+   * contained in a storey themselves: in IFC a part belongs to its whole, and
+   * the whole to the storey.
+   *
+   *   const deck = ifc.addSlab(roofSlab, { predefinedType: "ROOF", storey: top });
+   *   const rafters = rafterParts.map((p) => ifc.addMember(0, p));
+   *   ifc.addRoof([deck, ...rafters], { storey: top, predefinedType: "GABLE_ROOF" });
+   */
+  addRoof(parts, opts = {}) {
+    const storey = this.resolveStorey(opts.storey);
+    if (parts.length === 0) throw new Error("IfcWriter.addRoof: a roof needs at least one part (a ref from addSlab or addMember).");
+    for (const p of parts) {
+      if (!this.partRefs.has(p)) throw new Error(`IfcWriter.addRoof: #${p} is not a slab or member this writer wrote (refs come from addSlab / addMember).`);
+    }
+    const gathered = new Set(parts);
+    for (const [ref, list] of this.elementsByStorey) this.elementsByStorey.set(ref, list.filter((e) => !gathered.has(e)));
+    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.storeyFrame(storey).placement},#${this.worldPlacementRef})`);
+    const roofRef = this.addEntity(
+      `IFCROOF(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(opts.name ?? "Roof")},$,$,#${placement},$,$,.${opts.predefinedType ?? "NOTDEFINED"}.)`
+    );
+    this.attachToStorey(roofRef, storey);
+    this.addEntity(
+      `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${roofRef},(${parts.map((r) => `#${r}`).join(",")}))`
+    );
+    return roofRef;
   }
   // ── Stairs ───────────────────────────────────────────────────────
   /**
@@ -16299,9 +16380,10 @@ var IfcWriter = class {
     const closedPts = [...ptRefs, ptRefs[0]];
     const polyline = this.addEntity(`IFCPOLYLINE((${closedPts.map((r) => `#${r}`).join(",")}))`);
     const profile = this.addEntity(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${polyline})`);
-    const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(space.elevation)}))`);
+    const frame = this.storeyFrame(storey);
+    const placementPt = this.addEntity(`IFCCARTESIANPOINT((0.,0.,${ifcReal(space.elevation - frame.elevation)}))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${this.dirXRef})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storey) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const extrusion = this.addEntity(
       `IFCEXTRUDEDAREASOLID(#${profile},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(space.height)})`
@@ -16438,7 +16520,20 @@ var IfcWriter = class {
     const storeyRef = this.addEntity(
       `IFCBUILDINGSTOREY(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(name)},$,$,#${placementRef},$,$,.ELEMENT.,${ifcReal(elevation)})`
     );
+    this.storeyElevationByRef.set(storeyRef, elevation);
     return { storeyRef, placementRef };
+  }
+  /**
+   * Where an element on a storey is placed: in the storey's placement, which is already
+   * raised to the storey's elevation. Heights in the API are absolute (`Wall.baseElevation`,
+   * `Slab.elevation`, `Space.elevation`), so the element's local z is its height minus
+   * `elevation`.
+   */
+  storeyFrame(storeyRef) {
+    return {
+      placement: this.storeyPlacementByRef.get(storeyRef) ?? this.storeyPlacementRef,
+      elevation: this.storeyElevationByRef.get(storeyRef) ?? 0
+    };
   }
   // ── Wall geometry ────────────────────────────────────────────────
   /**
@@ -16498,11 +16593,12 @@ var IfcWriter = class {
     }
     const length = Math.hypot(endX - startX, endY - startY);
     if (length < 1e-9) throw new Error("IfcWriter: zero-length trimmed wall segment");
-    const z = wall.baseElevation;
+    const frame = this.storeyFrame(storeyRef ?? this.storeyRef);
+    const z = wall.baseElevation - frame.elevation;
     const placementPt = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(startX)},${ifcReal(startY)},${ifcReal(z)}))`);
     const refDir = this.addEntity(`IFCDIRECTION((${ifcReal(ux)},${ifcReal(uy)},0.))`);
     const placementAxis = this.addEntity(`IFCAXIS2PLACEMENT3D(#${placementPt},#${this.dirZRef},#${refDir})`);
-    const parentPlacementRef = this.storeyPlacementByRef.get(storeyRef ?? this.storeyRef) ?? this.storeyPlacementRef;
+    const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
     const profileOrigin = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(length / 2)},0.))`);
     const profileAxisDir = this.addEntity(`IFCDIRECTION((1.,0.))`);
@@ -18664,111 +18760,6 @@ var CltConstruction = (wall) => [{
   ifcType: "IfcWall"
 }];
 
-// src/bim/slabs/types.ts
-var SlabOpening = class {
-  constructor(centerX, centerY, width, depth, name) {
-    this.centerX = centerX;
-    this.centerY = centerY;
-    this.width = width;
-    this.depth = depth;
-    this.name = name;
-  }
-};
-var SlabType = class {
-  constructor(opts) {
-    this.name = opts.name;
-    this.description = opts.description;
-    this.construction = opts.construction;
-    this.layers = opts.layers;
-    this.properties = opts.properties ?? {};
-    this.defaultJoistSpacing = opts.defaultJoistSpacing;
-    this.defaultJoistProfile = opts.defaultJoistProfile;
-    this.defaultMaterial = opts.defaultMaterial;
-  }
-  get layeredThickness() {
-    return (this.layers ?? []).reduce((s, l) => s + l.thickness, 0);
-  }
-};
-var Slab = class {
-  constructor(opts) {
-    this.openings = [];
-    this.boundary = opts.boundary;
-    this.thickness = opts.thickness ?? 0.2;
-    this.elevation = opts.elevation ?? 0;
-    this.name = opts.name;
-    this.type = opts.type;
-    this.properties = opts.properties;
-    if (opts.openings) this.openings.push(...opts.openings);
-    this.joistDirection = opts.joistDirection;
-  }
-  /** Total perimeter length (m). */
-  get perimeter() {
-    let total = 0;
-    const b = this.boundary;
-    for (let i = 0; i < b.length - 1; i++) total += b[i].distTo(b[i + 1]);
-    return total;
-  }
-  /** Slab footprint area (m²). Uses signed-area magnitude. */
-  get area() {
-    return Math.abs(Polygon2D.signedArea(this.boundary));
-  }
-  /**
-   * Build the slab envelope mesh: top face + bottom face + side quads.
-   * Uses `Polygon2D.triangulate2D` (ear-clipping) for the caps.
-   */
-  toMesh() {
-    const ring = Polygon2D.openRing(this.boundary);
-    const n = ring.length;
-    if (n < 3) {
-      return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
-    }
-    const zTop = this.elevation;
-    const zBot = this.elevation - this.thickness;
-    const positions = [];
-    const normals = [];
-    const indices = [];
-    const tris = Polygon2D.triangulate2D(ring);
-    const topBase = positions.length / 3;
-    for (const p of ring) {
-      positions.push(p.x, p.y, zTop);
-      normals.push(0, 0, 1);
-    }
-    for (const [a, b2, c] of tris) {
-      indices.push(topBase + a, topBase + b2, topBase + c);
-    }
-    const botBase = positions.length / 3;
-    for (const p of ring) {
-      positions.push(p.x, p.y, zBot);
-      normals.push(0, 0, -1);
-    }
-    for (const [a, b2, c] of tris) {
-      indices.push(botBase + c, botBase + b2, botBase + a);
-    }
-    for (let i = 0; i < n; i++) {
-      const p0 = ring[i];
-      const p1 = ring[(i + 1) % n];
-      const dx = p1.x - p0.x;
-      const dy = p1.y - p0.y;
-      const len = Math.hypot(dx, dy);
-      if (len < 1e-9) continue;
-      const nx = dy / len, ny = -dx / len;
-      const base = positions.length / 3;
-      positions.push(p0.x, p0.y, zBot, p1.x, p1.y, zBot, p1.x, p1.y, zTop, p0.x, p0.y, zTop);
-      for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
-      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
-    return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));
-  }
-};
-function realizeSlab(slab, ctx) {
-  const type = slab.type;
-  const envelopeMesh = slab.toMesh();
-  const parts = type?.construction ? type.construction(slab, ctx) : [];
-  const layers = type?.layers ?? [];
-  const properties = { ...type?.properties ?? {}, ...slab.properties ?? {} };
-  return { slab, parts, layers, envelopeMesh, properties, joistDirection: ctx?.joistDirection };
-}
-
 // src/bim/slabs/orientation.ts
 function chooseJoistDirection(slab, opts = {}) {
   const method = opts.method ?? "auto";
@@ -18896,6 +18887,133 @@ function lineClipPolygon(origin, direction, boundary) {
   return dedup;
 }
 
+// src/bim/slabs/types.ts
+var SlabOpening = class {
+  constructor(centerX, centerY, width, depth, name) {
+    this.centerX = centerX;
+    this.centerY = centerY;
+    this.width = width;
+    this.depth = depth;
+    this.name = name;
+  }
+};
+var SlabType = class {
+  constructor(opts) {
+    this.name = opts.name;
+    this.description = opts.description;
+    this.construction = opts.construction;
+    this.layers = opts.layers;
+    this.properties = opts.properties ?? {};
+    this.defaultJoistSpacing = opts.defaultJoistSpacing;
+    this.defaultJoistProfile = opts.defaultJoistProfile;
+    this.defaultMaterial = opts.defaultMaterial;
+  }
+  get layeredThickness() {
+    return (this.layers ?? []).reduce((s, l) => s + l.thickness, 0);
+  }
+};
+var Slab = class {
+  constructor(opts) {
+    this.openings = [];
+    this.boundary = opts.boundary;
+    this.thickness = opts.thickness ?? 0.2;
+    this.elevation = opts.elevation ?? 0;
+    this.name = opts.name;
+    this.type = opts.type;
+    this.properties = opts.properties;
+    if (opts.openings) this.openings.push(...opts.openings);
+    this.joistDirection = opts.joistDirection;
+  }
+  /** Total perimeter length (m). */
+  get perimeter() {
+    let total = 0;
+    const b = this.boundary;
+    for (let i = 0; i < b.length - 1; i++) total += b[i].distTo(b[i + 1]);
+    return total;
+  }
+  /** Slab footprint area (m²). Uses signed-area magnitude. */
+  get area() {
+    return Math.abs(Polygon2D.signedArea(this.boundary));
+  }
+  /**
+   * The openings as rings in the XY plane (counter-clockwise, open): each a rectangle
+   * `width` along `direction` and `depth` across it, about its centre. `direction` defaults
+   * to the way `JoistedSlab` runs its joists without a context: `joistDirection`, else the
+   * one the bounds suggest. Throws for an opening that is empty or not inside the boundary.
+   */
+  openingRings(direction = this.joistDirection ?? joistDirectionFromBounds(this.boundary)) {
+    const u = direction.normalize();
+    const v = u.perp();
+    const outer = Polygon2D.openRing(this.boundary);
+    return this.openings.map((o, i) => {
+      const label = `Slab "${this.name ?? "slab"}": opening ${o.name ?? i}`;
+      if (!(o.width > 0 && o.depth > 0)) throw new Error(`${label} needs a width and depth above 0, got ${o.width} \xD7 ${o.depth}.`);
+      const c = new Vec2(o.centerX, o.centerY), a = u.mul(o.width / 2), b = v.mul(o.depth / 2);
+      const ring = [c.sub(a).sub(b), c.add(a).sub(b), c.add(a).add(b), c.sub(a).add(b)];
+      if (!ring.every((p) => Polygon2D.pointInPolygon(p, outer))) {
+        throw new Error(`${label} at (${o.centerX}, ${o.centerY}) is not inside the slab's boundary.`);
+      }
+      return ring;
+    });
+  }
+  /**
+   * Build the slab envelope mesh: top and bottom faces with the openings cut out, the
+   * outside edge and the openings' sides.
+   */
+  toMesh() {
+    const outer = Polygon2D.openRing(this.boundary);
+    if (outer.length < 3) {
+      return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
+    }
+    const zTop = this.elevation;
+    const zBot = this.elevation - this.thickness;
+    const wound = (r, ccw) => Polygon2D.signedArea(r) > 0 === ccw ? r : r.slice().reverse();
+    const rings = [wound(outer, true), ...this.openingRings().map((r) => wound(r, false))];
+    const all = rings.flat();
+    const tris = Polygon2D.triangulateWithHoles(rings[0], rings.slice(1));
+    const positions = [];
+    const normals = [];
+    const indices = [];
+    const topBase = positions.length / 3;
+    for (const p of all) {
+      positions.push(p.x, p.y, zTop);
+      normals.push(0, 0, 1);
+    }
+    for (const [a, b2, c] of tris) indices.push(topBase + a, topBase + b2, topBase + c);
+    const botBase = positions.length / 3;
+    for (const p of all) {
+      positions.push(p.x, p.y, zBot);
+      normals.push(0, 0, -1);
+    }
+    for (const [a, b2, c] of tris) indices.push(botBase + c, botBase + b2, botBase + a);
+    for (const ring of rings) {
+      const n = ring.length;
+      for (let i = 0; i < n; i++) {
+        const p0 = ring[i];
+        const p1 = ring[(i + 1) % n];
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const len = Math.hypot(dx, dy);
+        if (len < 1e-9) continue;
+        const nx = dy / len, ny = -dx / len;
+        const base = positions.length / 3;
+        positions.push(p0.x, p0.y, zBot, p1.x, p1.y, zBot, p1.x, p1.y, zTop, p0.x, p0.y, zTop);
+        for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
+        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+    }
+    return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));
+  }
+};
+function realizeSlab(slab, ctx) {
+  const type = slab.type;
+  const envelopeMesh = slab.toMesh();
+  const parts = type?.construction ? type.construction(slab, ctx) : [];
+  const layers = type?.layers ?? [];
+  const properties = { ...type?.properties ?? {}, ...slab.properties ?? {} };
+  return { slab, parts, layers, envelopeMesh, properties, joistDirection: ctx?.joistDirection };
+}
+
 // src/bim/slabs/solid.ts
 var SolidSlabConstruction = (slab) => [{
   name: "shell",
@@ -18963,41 +19081,50 @@ function JoistedSlab(options = {}) {
       if (proj < minP) minP = proj;
       if (proj > maxP) maxP = proj;
     }
+    const at = (t, p) => new Vec2(direction.x * t + perp.x * p, direction.y * t + perp.y * p);
+    const member = (name, role, a, b) => {
+      const length = a.distTo(b);
+      if (length < 0.01) return;
+      const ribbon = new ExtrudedRibbon({ centerline: [a, b], width: opts.profile.w, height: opts.profile.h, baseZ: joistBottomZ });
+      parts.push({ name, role, mesh: ribbon.toMesh(), material: opts.material, profile: opts.profile, length, ifcType: "IfcMember" });
+    };
+    const span = (p) => {
+      const hits = lineClipPolygon(at(0, p), direction, regularJoistClipBoundary);
+      return hits.length < 2 ? null : [hits[0], hits[hits.length - 1]];
+    };
+    const w = opts.profile.w;
+    const wells = slab.openingRings(direction).map((ring) => {
+      const ts = ring.map((q) => q.dot(direction)), ps = ring.map((q) => q.dot(perp));
+      return { t0: Math.min(...ts), t1: Math.max(...ts), p0: Math.min(...ps), p1: Math.max(...ps) };
+    });
+    const trimmerPs = wells.flatMap((o) => [o.p0 - w / 2, o.p1 + w / 2]);
     const startP = minP + edgeOffset;
     const endP = maxP - edgeOffset;
     let joistIdx = 0;
     for (let p = startP; p <= endP + 1e-6; p += opts.spacing) {
-      const origin = new Vec2(perp.x * p, perp.y * p);
-      const hits = lineClipPolygon(origin, direction, regularJoistClipBoundary);
-      if (hits.length < 2) continue;
-      const tMin = hits[0];
-      const tMax = hits[hits.length - 1];
-      const startPt = new Vec2(origin.x + direction.x * tMin, origin.y + direction.y * tMin);
-      const endPt = new Vec2(origin.x + direction.x * tMax, origin.y + direction.y * tMax);
-      const length = startPt.distTo(endPt);
-      if (length < 0.01) continue;
-      const ribbon = new ExtrudedRibbon({
-        centerline: [startPt, endPt],
-        width: opts.profile.w,
-        height: opts.profile.h,
-        baseZ: joistBottomZ
-      });
-      parts.push({
-        name: `Joist ${++joistIdx}`,
-        role: "joist",
-        mesh: ribbon.toMesh(),
-        material: opts.material,
-        profile: opts.profile,
-        length,
-        ifcType: "IfcMember"
-      });
+      if (trimmerPs.some((tp) => Math.abs(p - tp) < w)) continue;
+      const range = span(p);
+      if (!range) continue;
+      let pieces = [range];
+      for (const o of wells) {
+        if (p <= o.p0 - w / 2 || p >= o.p1 + w / 2) continue;
+        const cut0 = o.t0 - w - bearingGap, cut1 = o.t1 + w + bearingGap;
+        pieces = pieces.flatMap(([a, b]) => cut1 <= a || cut0 >= b ? [[a, b]] : [[a, Math.min(b, cut0)], [Math.max(a, cut1), b]]);
+      }
+      for (const [a, b] of pieces) member(`Joist ${++joistIdx}`, "joist", at(a, p), at(b, p));
     }
+    wells.forEach((o, i) => {
+      const n = wells.length > 1 ? ` ${i + 1}` : "";
+      for (const [k, p] of [o.p0 - w / 2, o.p1 + w / 2].entries()) {
+        const range = span(p);
+        if (range) member(`Trimmer${n}${k ? "b" : "a"}`, "trimmer", at(range[0], p), at(range[1], p));
+      }
+      for (const [k, t] of [o.t0 - w / 2, o.t1 + w / 2].entries()) {
+        member(`Header${n}${k ? "b" : "a"}`, "header", at(t, o.p0 + bearingGap), at(t, o.p1 - bearingGap));
+      }
+    });
     if (opts.sheathingThickness > 1e-6) {
-      const sheathingSlab = makeFlatPlate(
-        slab.boundary,
-        slab.elevation - opts.sheathingThickness,
-        opts.sheathingThickness
-      );
+      const sheathingSlab = makeFlatPlate(slab, direction, slab.elevation - opts.sheathingThickness, opts.sheathingThickness);
       parts.push({
         name: "Sheathing",
         role: "sheathing",
@@ -19008,7 +19135,7 @@ function JoistedSlab(options = {}) {
     }
     if (opts.ceilingThickness > 1e-6) {
       const ceilingZ = joistBottomZ - opts.ceilingThickness;
-      const ceilingMesh = makeFlatPlate(slab.boundary, ceilingZ, opts.ceilingThickness);
+      const ceilingMesh = makeFlatPlate(slab, direction, ceilingZ, opts.ceilingThickness);
       parts.push({
         name: "Ceiling",
         role: "ceiling",
@@ -19029,40 +19156,14 @@ function ensureClosedRing(polygon) {
 function ringPerimeter(closedRing) {
   return Polygon2D.polylineLength(closedRing);
 }
-function makeFlatPlate(boundary, baseZ, thickness) {
-  const ring = Polygon2D.openRing(boundary);
-  const n = ring.length;
-  if (n < 3) return new Mesh(new Float32Array(), new Uint32Array(), new Float32Array());
-  const positions = [];
-  const normals = [];
-  const indices = [];
-  const tris = Polygon2D.triangulate2D(ring);
-  const topBase = positions.length / 3;
-  for (const p of ring) {
-    positions.push(p.x, p.y, baseZ + thickness);
-    normals.push(0, 0, 1);
-  }
-  for (const [a, b, c] of tris) indices.push(topBase + a, topBase + b, topBase + c);
-  const botBase = positions.length / 3;
-  for (const p of ring) {
-    positions.push(p.x, p.y, baseZ);
-    normals.push(0, 0, -1);
-  }
-  for (const [a, b, c] of tris) indices.push(botBase + c, botBase + b, botBase + a);
-  for (let i = 0; i < n; i++) {
-    const p0 = ring[i];
-    const p1 = ring[(i + 1) % n];
-    const dx = p1.x - p0.x;
-    const dy = p1.y - p0.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-9) continue;
-    const nx = dy / len, ny = -dx / len;
-    const base = positions.length / 3;
-    positions.push(p0.x, p0.y, baseZ, p1.x, p1.y, baseZ, p1.x, p1.y, baseZ + thickness, p0.x, p0.y, baseZ + thickness);
-    for (let k = 0; k < 4; k++) normals.push(nx, ny, 0);
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-  return new Mesh(new Float32Array(positions), new Uint32Array(indices), new Float32Array(normals));
+function makeFlatPlate(slab, direction, baseZ, thickness) {
+  return new Slab({
+    boundary: slab.boundary,
+    thickness,
+    elevation: baseZ + thickness,
+    openings: slab.openings,
+    joistDirection: direction
+  }).toMesh();
 }
 
 // src/bim/openings.ts
@@ -19789,10 +19890,10 @@ function contactBetween(a, b, opts = {}) {
   const gaps = [0, 1, 2].map((k) => share(a.min[k], a.max[k], b.min[k], b.max[k]));
   if (gaps.some((g) => g < -tol)) return null;
   const flat = [0, 1, 2].filter((k) => k !== up);
-  const area2 = flat.reduce((p, k) => p * Math.max(0, gaps[k]), 1);
+  const area = flat.reduce((p, k) => p * Math.max(0, gaps[k]), 1);
   const footprint = (box) => flat.reduce((p, k) => p * (box.max[k] - box.min[k]), 1);
   const smaller = Math.min(footprint(a), footprint(b));
-  const overlap = smaller > 0 ? Math.min(1, area2 / smaller) : 0;
+  const overlap = smaller > 0 ? Math.min(1, area / smaller) : 0;
   const verticalTouch = gaps[up] <= tol;
   if (verticalTouch) {
     if (overlap < (opts.minOverlap ?? 0.02)) return null;
@@ -21171,10 +21272,10 @@ var DxfExporter = class {
     return this;
   }
   /** Add a polyline as a sequence of edges. */
-  addPolyline(pts, options) {
+  addPolyline(pts2, options) {
     const layer = options?.layer ?? "0";
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
+    for (let i = 0; i < pts2.length - 1; i++) {
+      const a = pts2[i], b = pts2[i + 1];
       this._edges.push({ ax: a.x, ay: a.y, az: a.z, bx: b.x, by: b.y, bz: b.z, layer });
     }
     return this;
@@ -22419,6 +22520,62 @@ var Commands = class {
   }
 };
 
+// src/gui/viewModeIcons.ts
+var A = [3, 7.5];
+var B = [13, 4];
+var C = [21, 8];
+var D = [11, 11.5];
+var DROP = 9;
+var down = ([x, y]) => [x, y + DROP];
+var [A2, B2, C2, D2] = [A, B, C, D].map(down);
+var pts = (...ps) => ps.map((p) => p.join(",")).join(" ");
+var VIEW_MODE_ICON_CORNERS = { front: D, back: B2 };
+var OUTLINE = pts(A, B, C, C2, D2, A2);
+var inner = () => [[D, A], [D, C], [D, D2]].map(([from, to]) => ({ kind: "line", from, to }));
+var hidden = (opacity) => [[B, B2], [A2, B2], [C2, B2]].map(([from, to]) => ({ kind: "line", from, to, ...opacity === void 0 ? {} : { opacity } }));
+function viewModeIconShapes(mode) {
+  if (mode === "solid") {
+    return [
+      { kind: "polygon", points: pts(A, B, C, D), fill: 0.18 },
+      { kind: "polygon", points: pts(A, D, D2, A2), fill: 0.45 },
+      { kind: "polygon", points: pts(D, C, C2, D2), fill: 0.8 },
+      { kind: "polygon", points: OUTLINE, stroke: true },
+      ...inner()
+    ];
+  }
+  if (mode === "ghost") {
+    return [
+      { kind: "polygon", points: OUTLINE, fill: 0.12 },
+      ...hidden(0.45),
+      { kind: "polygon", points: OUTLINE, stroke: true },
+      ...inner()
+    ];
+  }
+  if (mode === "wireframe") return [...hidden(), { kind: "polygon", points: OUTLINE, stroke: true }, ...inner()];
+  return [{ kind: "polygon", points: OUTLINE, stroke: true }, ...inner()];
+}
+var VIEW_MODE_ICON_SVG = {
+  xmlns: "http://www.w3.org/2000/svg",
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.5,
+  strokeLinejoin: "round",
+  strokeLinecap: "round"
+};
+function viewModeIconSvg(mode, size = 16) {
+  const a = VIEW_MODE_ICON_SVG;
+  const body = viewModeIconShapes(mode).map((s) => {
+    if (s.kind === "line") {
+      const o = s.opacity !== void 0 ? ` stroke-opacity="${s.opacity}"` : "";
+      return `<line x1="${s.from[0]}" y1="${s.from[1]}" x2="${s.to[0]}" y2="${s.to[1]}"${o}/>`;
+    }
+    const fill = s.fill !== void 0 ? ` fill="currentColor" fill-opacity="${s.fill}"` : "";
+    return `<polygon points="${s.points}"${fill}${s.stroke ? "" : ` stroke="none"`}/>`;
+  }).join("");
+  return `<svg xmlns="${a.xmlns}" viewBox="${a.viewBox}" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${a.strokeWidth}" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${body}</svg>`;
+}
+
 // src/gui/ControlPanel.ts
 var DEFAULT_GROUP = "Parameters";
 var SLIDER_STYLE_ID = "tekto-slider-style";
@@ -22954,7 +23111,7 @@ var ControlPanel = class {
 };
 
 // src/render/ThreeRenderer.ts
-var THREE10 = __toESM(require("three"));
+var THREE11 = __toESM(require("three"));
 var import_OrbitControls = require("three/examples/jsm/controls/OrbitControls.js");
 
 // src/render/ObjectBuilder.ts
@@ -23076,6 +23233,39 @@ function sectionPlane(req, axisWorld, box) {
   }
   return req.flip ? new THREE3.Plane(a, -level) : new THREE3.Plane(a.negate(), level);
 }
+function groundGrid(radius) {
+  const r = Math.max(radius, 0.5);
+  const minor = 10 ** Math.floor(Math.log10(r / 4));
+  return { minor, major: minor * 5, fadeFrom: r * 2, fadeTo: r * 6, size: r * 14 };
+}
+function gridLineColour(background) {
+  const hex = new THREE3.Color(background).getHex();
+  const to = luminance(background) > 0.5 ? 0 : 255;
+  let out = 0;
+  for (const shift of [16, 8, 0]) {
+    const c = hex >> shift & 255;
+    out |= Math.round(c + (to - c) * 0.2) << shift;
+  }
+  return out;
+}
+function shown(o) {
+  for (; o; o = o.parent) if (!o.visible) return false;
+  return true;
+}
+function calloutSamples(box) {
+  const centre = box.getCenter(new THREE3.Vector3());
+  const out = [centre];
+  for (const x of [box.min.x, box.max.x]) {
+    for (const y of [box.min.y, box.max.y]) {
+      for (const z of [box.min.z, box.max.z]) out.push(new THREE3.Vector3(x, y, z).lerp(centre, 0.3));
+    }
+  }
+  return out;
+}
+function occludes(material) {
+  const m = Array.isArray(material) ? material[0] : material;
+  return !!m && m.visible !== false && m.depthWrite !== false;
+}
 function luminance(colour) {
   const c = new THREE3.Color(colour);
   return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
@@ -23114,25 +23304,18 @@ var ObjectBuilder = class {
    * Same option surface — caller doesn't have to care which one comes back.
    */
   makeMaterial(opts) {
+    const { metalness, roughness, ...rest } = opts;
+    const given = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== void 0));
     if (this.lighting.currentLighting === "studio") {
       return new THREE4.MeshStandardMaterial({
+        ...given,
         color: this.lighting.studioColor ?? opts.color,
-        emissive: opts.emissive,
-        emissiveIntensity: opts.emissiveIntensity,
-        opacity: opts.opacity,
-        transparent: opts.transparent,
-        side: opts.side,
-        wireframe: opts.wireframe,
         flatShading: opts.flatShading ?? this.lighting.studioFlatShading,
-        depthTest: opts.depthTest,
-        depthWrite: opts.depthWrite,
-        vertexColors: opts.vertexColors,
-        roughness: opts.roughness ?? this.lighting.studioRoughness,
-        metalness: opts.metalness ?? this.lighting.studioMetalness
+        roughness: roughness ?? this.lighting.studioRoughness,
+        metalness: metalness ?? this.lighting.studioMetalness
       });
     }
-    const { metalness: _m, roughness: _r, ...rest } = opts;
-    return new THREE4.MeshPhongMaterial(rest);
+    return new THREE4.MeshPhongMaterial(given);
   }
   _stripeTexture(layerH) {
     let tex = this._stripeTexCache.get(layerH);
@@ -23235,9 +23418,9 @@ var ObjectBuilder = class {
       case "polygon": {
         if (!obj.vertices || obj.vertices.length < 2) return null;
         const group = new THREE4.Group();
-        const pts = obj.vertices.map((v) => new THREE4.Vector3(v.x, v.y, v.z));
-        if (pts.length > 2) pts.push(pts[0].clone());
-        const lineGeo = new THREE4.BufferGeometry().setFromPoints(pts);
+        const pts2 = obj.vertices.map((v) => new THREE4.Vector3(v.x, v.y, v.z));
+        if (pts2.length > 2) pts2.push(pts2[0].clone());
+        const lineGeo = new THREE4.BufferGeometry().setFromPoints(pts2);
         group.add(new THREE4.Line(lineGeo, new THREE4.LineBasicMaterial({ color: s.color })));
         if (obj.vertices.length >= 3) {
           if (this.core.isZUp) {
@@ -23274,18 +23457,18 @@ var ObjectBuilder = class {
       }
       case "circle": {
         if (!obj.center || obj.radius == null) return null;
-        const pts = [];
+        const pts2 = [];
         const seg = 64;
         for (let i = 0; i <= seg; i++) {
           const a = i / seg * Math.PI * 2;
           const ca = Math.cos(a) * obj.radius, sa = Math.sin(a) * obj.radius;
           if (this.core.isZUp) {
-            pts.push(new THREE4.Vector3(obj.center.x + ca, obj.center.y + sa, obj.center.z));
+            pts2.push(new THREE4.Vector3(obj.center.x + ca, obj.center.y + sa, obj.center.z));
           } else {
-            pts.push(new THREE4.Vector3(obj.center.x + ca, obj.center.y, obj.center.z + sa));
+            pts2.push(new THREE4.Vector3(obj.center.x + ca, obj.center.y, obj.center.z + sa));
           }
         }
-        const geo = new THREE4.BufferGeometry().setFromPoints(pts);
+        const geo = new THREE4.BufferGeometry().setFromPoints(pts2);
         return this._makeLine(geo, s);
       }
       case "plane": {
@@ -23577,6 +23760,7 @@ var Lighting = class {
     core.threeScene.add(this.dirLight);
     core.threeScene.add(this.dirLight.target);
     this.hemiLight = new THREE5.HemisphereLight(4482730, 3351057, 0.4);
+    if (isZUp) this.hemiLight.position.set(0, 0, 1);
     core.threeScene.add(this.hemiLight);
     this.sunDir.copy(this.dirLight.position).normalize();
   }
@@ -24544,11 +24728,11 @@ var Pointer = class {
     this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
     const pickable = [];
     for (const t of this.core.objectMap.values()) {
-      if (t.userData.pickable !== false) pickable.push(t);
+      if (t.userData.pickable !== false && t.visible) pickable.push(t);
     }
     const hits = this.raycaster.intersectObjects(pickable, true);
     for (const h of hits) {
-      if (this.marks.cutAway(h.point)) continue;
+      if (this.marks.cutAway(h.point) || !shown(h.object)) continue;
       let cur = h.object;
       while (cur && !cur.userData.geomId) cur = cur.parent;
       if (cur?.userData.geomId) return cur.userData.geomId;
@@ -24570,12 +24754,12 @@ var Pointer = class {
     for (const h of hits) {
       if (this.marks.cutAway(h.point)) continue;
       let cur = h.object;
-      let shown = true;
+      let shown2 = true;
       while (cur && !cur.userData.geomId) {
-        if (!cur.visible) shown = false;
+        if (!cur.visible) shown2 = false;
         cur = cur.parent;
       }
-      if (shown && cur?.userData.geomId) {
+      if (shown2 && cur?.userData.geomId) {
         return { id: cur.userData.geomId, point: new Vec3(h.point.x, h.point.y, h.point.z) };
       }
     }
@@ -24685,10 +24869,10 @@ var Pointer = class {
     );
     const raycaster = new THREE8.Raycaster();
     raycaster.setFromCamera(mouse, this.core.camera);
-    const targets = [...this.core.objectMap.values()];
+    const targets = [...this.core.objectMap.values()].filter((t) => t.visible);
     const hits = raycaster.intersectObjects(targets, true);
     for (const hit of hits) {
-      if (this.marks.cutAway(hit.point)) continue;
+      if (this.marks.cutAway(hit.point) || !shown(hit.object)) continue;
       let obj = hit.object;
       while (obj && !obj.userData.geomId) obj = obj.parent;
       if (obj?.userData.geomId) {
@@ -24724,11 +24908,17 @@ var SVG2 = "http://www.w3.org/2000/svg";
 function labelWidthFor(hostWidth) {
   return Math.round(Math.max(88, Math.min(170, hostWidth * 0.27)));
 }
+function marginCapacity(height, opts = {}) {
+  return Math.max(0, Math.floor((height - 2 * (opts.inset ?? 8)) / (opts.rowHeight ?? 30)));
+}
+function calloutChanged(was, now2) {
+  return !was || !now2 || was.text !== now2.text || was.detail !== now2.detail || was.colour !== now2.colour;
+}
 function layoutLabels(anchors, opts) {
   const rowHeight = opts.rowHeight ?? 30;
   const labelWidth = opts.labelWidth ?? labelWidthFor(opts.width);
   const inset = opts.inset ?? 8;
-  const capacity = Math.max(0, Math.floor((opts.height - 2 * inset) / rowHeight));
+  const capacity = marginCapacity(opts.height, { rowHeight, inset });
   const placed = [];
   const dropped = [];
   for (const side of ["left", "right"]) {
@@ -24779,14 +24969,15 @@ var Callouts = class {
   }
   /** What there is to say. Placements arrive separately, each frame. */
   setItems(items) {
-    this.items = new Map(items.map((i) => [i.id, i]));
+    const next = new Map(items.map((i) => [i.id, i]));
     for (const [id, el] of this.labels) {
-      if (!this.items.has(id)) {
+      if (calloutChanged(this.items.get(id), next.get(id))) {
         el.box.remove();
         el.leader.remove();
         this.labels.delete(id);
       }
     }
+    this.items = next;
   }
   /** Track the host's width, so labels stay a share of it rather than a
    *  constant that only suits one panel size. */
@@ -24810,13 +25001,14 @@ var Callouts = class {
    * `unplaced` is how many the margins had no room for, and it is shown. A
    * reader who can see fifteen labels and is not told there were twenty-two
    * has been given a wrong count, quietly, which is the failure this whole
-   * project is arranged against.
+   * project is arranged against. `upTo`: some of them were never looked at
+   * (the margins were full), so it is how many there could be: "up to n".
    */
-  update(placements, unplaced = 0) {
+  update(placements, unplaced = 0, upTo = false) {
     const placed = new Set(placements.map((p) => p.id));
     for (const [id, el] of this.labels) {
       if (!placed.has(id)) {
-        el.box.hidden = true;
+        el.box.style.display = "none";
         el.leader.setAttribute("points", "");
       }
     }
@@ -24824,7 +25016,7 @@ var Callouts = class {
       const item = this.items.get(p.id);
       if (!item) continue;
       const el = this.labels.get(p.id) ?? this.make(p.id, item);
-      el.box.hidden = false;
+      el.box.style.display = "block";
       el.box.style.left = `${p.x}px`;
       el.box.style.top = `${p.y}px`;
       const from = p.side === "left" ? p.x + this.labelWidth : p.x;
@@ -24835,9 +25027,9 @@ var Callouts = class {
         `${from},${mid} ${knee},${mid} ${p.anchorX},${p.anchorY}`
       );
     }
-    this.showOverflow(unplaced);
+    this.showOverflow(unplaced, upTo);
   }
-  showOverflow(n) {
+  showOverflow(n, upTo = false) {
     if (!n) {
       this.overflow?.remove();
       this.overflow = null;
@@ -24851,7 +25043,7 @@ var Callouts = class {
         font:500 10px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#79838d`;
       this.root.append(this.overflow);
     }
-    this.overflow.textContent = `${n} more not labelled: no room in the margins`;
+    this.overflow.textContent = `${upTo ? "up to " : ""}${n} more not labelled: no room in the margins`;
   }
   make(id, item) {
     const leader = document.createElementNS(SVG2, "polyline");
@@ -24902,6 +25094,8 @@ var Callouts = class {
 };
 
 // src/render/Marks.ts
+var CALLOUT_SETTLE_MS = 120;
+var CALLOUT_BUDGET_MS = 6;
 function seeThrough(m) {
   return (Array.isArray(m) ? m : [m]).some((x) => x.transparent && x.opacity < 1);
 }
@@ -24917,9 +25111,20 @@ var Marks = class {
     this.pocheMat = null;
     // ── Callouts (setCallouts) ──
     this.callouts = null;
+    /** Per callout, where to look for it: its centre, then points toward its box's corners. */
     this.calloutAnchors = /* @__PURE__ */ new Map();
-    this.calloutVisible = /* @__PURE__ */ new Set();
-    this.calloutCheckedAt = 0;
+    /** Per callout seen, the point its leader goes to. Redone only once the camera is still. */
+    this.calloutVisible = /* @__PURE__ */ new Map();
+    /** Something that decides visibility changed since the last answer. */
+    this.calloutCheckDirty = true;
+    /** The camera the answer is for, and since when it has been still. */
+    this.calloutCamera = "";
+    this.calloutStillSince = 0;
+    /** A check in progress, a slice per frame: what is left, and how many labels each margin
+     *  has found so far against what it holds. */
+    this.calloutPending = null;
+    /** Callouts the last check never looked at, because the margins were full. */
+    this.calloutUnchecked = 0;
     this.calloutRecheck = 0;
     this.calloutsDirty = false;
     this.calloutHandlers = {};
@@ -24935,10 +25140,13 @@ var Marks = class {
     this.outlineGroup.renderOrder = 999;
     core.threeScene.add(this.outlineGroup);
   }
-  /** Keep outlines on their objects (a gizmo drag moves them without a rebuild). */
+  /** Keep outlines on their objects (a gizmo drag moves them without a rebuild), and hidden
+   *  with them: a hidden object shows no outline. */
   followOutlines() {
-    for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
-    for (const o of this.presenceLines) o.line.matrix.copy(o.source.matrixWorld);
+    for (const o of [...this.outlined, ...this.presenceLines]) {
+      o.line.matrix.copy(o.source.matrixWorld);
+      o.line.visible = shown(o.source);
+    }
   }
   setSelectionStyle(style) {
     this.selectionStyle = style;
@@ -25061,6 +25269,7 @@ var Marks = class {
     const axis = section && new THREE9.Vector3(section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
     this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === void 0 ? this.core.contentBox() : null) : null;
     this.core.renderer.localClippingEnabled = !!this.sectionClip;
+    this.calloutCheckDirty = true;
     for (const t of this.core.objectMap.values()) this.dressSection(t);
     if (this.outlineMat) this._outlineMaterial();
     for (const c of this.presenceMats.keys()) this._presenceMaterial(c);
@@ -25089,6 +25298,7 @@ var Marks = class {
         for (const one of Array.isArray(m) ? m : [m]) {
           if ((one.clippingPlanes?.length ?? 0) === 0 && !plane) continue;
           one.clippingPlanes = plane ? [plane] : null;
+          one.clipShadows = !!plane;
           one.needsUpdate = true;
         }
       }
@@ -25127,10 +25337,13 @@ var Marks = class {
       onHover: (id) => this.calloutHandlers.onHover?.(id)
     }));
     this.callouts.setItems(items);
+    const ids = new Set(items.map((i) => i.id));
+    for (const id of [...this.calloutVisible.keys()]) if (!ids.has(id)) this.calloutVisible.delete(id);
+    this.calloutPending = null;
     this.calloutsDirty = true;
     this.core.requestRender();
   }
-  /** Re-measure each callout's anchor: the centre of its objects' bounds. */
+  /** Re-measure where to look for each callout: points in its objects' bounds. */
   _measureCallouts() {
     this.calloutsDirty = false;
     this.calloutAnchors.clear();
@@ -25138,33 +25351,69 @@ var Marks = class {
     for (const id of this.callouts?.ids ?? []) {
       box.makeEmpty();
       for (const t of this.core.resolve(this.callouts.objectsOf(id))) if (t.visible) box.expandByObject(t);
-      if (!box.isEmpty()) this.calloutAnchors.set(id, box.getCenter(new THREE9.Vector3()));
+      if (!box.isEmpty()) this.calloutAnchors.set(id, calloutSamples(box));
     }
-    this.calloutCheckedAt = 0;
+    this.calloutPending = null;
+    this.calloutCheckDirty = true;
   }
-  /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
-  _checkCalloutVisibility() {
-    this.calloutVisible.clear();
+  /**
+   * Work on which callouts the reader can see, until `deadline`. Seen means any of its
+   * sample points is: the centre first, the others only if it is hidden, and the leader goes
+   * to the first one seen. Only a surface that writes depth hides it (`occludes`), its own
+   * objects don't count, nor does what the section removed. A margin that is full takes no
+   * more, so its side needs no rays, and the check ends when both are.
+   */
+  _checkCalloutVisibility(deadline) {
+    const pending = this.calloutPending;
+    if (!pending) return;
     const cam = this.core.activeCamera;
     const meshes = [...this.core.objectMap.values()].filter((t) => t.visible);
     const ray = new THREE9.Raycaster();
     const eye = cam.getWorldPosition(new THREE9.Vector3());
-    for (const [id, anchor] of this.calloutAnchors) {
-      const own = new Set(this.core.resolve(this.callouts.objectsOf(id)));
-      const dir = anchor.clone().sub(eye);
-      const dist2 = dir.length();
-      if (cam.isOrthographicCamera) {
-        cam.getWorldDirection(dir);
-        ray.set(anchor.clone().addScaledVector(dir, -1e4), dir);
-        ray.far = 1e4;
-      } else {
-        ray.set(eye, dir.normalize());
-        ray.far = dist2;
+    const view = cam.getWorldDirection(new THREE9.Vector3());
+    const ortho = cam.isOrthographicCamera;
+    const ndc = new THREE9.Vector3(), dir = new THREE9.Vector3();
+    const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
+    while (pending.queue.length && !full() && performance.now() < deadline) {
+      const id = pending.queue.pop();
+      const samples = this.calloutAnchors.get(id);
+      if (!samples) continue;
+      const side = ndc.copy(samples[0]).project(cam).x < 0 ? "left" : "right";
+      if (pending[side] >= pending.capacity) {
+        pending.skipped.push(id);
+        continue;
       }
-      const hit = ray.intersectObjects(meshes, true).find((h) => !this.cutAway(h.point));
-      let owner = hit?.object ?? null;
-      while (owner && !own.has(owner)) owner = owner.parent;
-      if (!hit || owner || hit.distance >= ray.far - 1e-3) this.calloutVisible.add(id);
+      const own = new Set(this.core.resolve(this.callouts.objectsOf(id)));
+      let seen = null;
+      for (const point of samples) {
+        ndc.copy(point).project(cam);
+        if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;
+        if (ortho) {
+          ray.set(point.clone().addScaledVector(view, -1e4), view);
+          ray.far = 1e4;
+        } else {
+          dir.copy(point).sub(eye);
+          ray.far = dir.length();
+          ray.set(eye, dir.normalize());
+        }
+        const hit = ray.intersectObjects(meshes, true).find((h) => h.object.isMesh && occludes(h.object.material) && !this.cutAway(h.point));
+        let owner = hit?.object ?? null;
+        while (owner && !own.has(owner)) owner = owner.parent;
+        if (!hit || owner || hit.distance >= ray.far - 1e-3) {
+          seen = point;
+          break;
+        }
+      }
+      if (seen) {
+        this.calloutVisible.set(id, seen);
+        pending[side]++;
+      } else this.calloutVisible.delete(id);
+    }
+    if (!pending.queue.length || full()) {
+      const unchecked = [...pending.queue, ...pending.skipped];
+      for (const id of unchecked) this.calloutVisible.delete(id);
+      this.calloutUnchecked = unchecked.length;
+      this.calloutPending = null;
     }
   }
   /** Project, cull and lay out this frame's labels. */
@@ -25173,22 +25422,39 @@ var Marks = class {
     if (this.calloutsDirty) this._measureCallouts();
     const w = this.core.container.clientWidth || 1, h = this.core.container.clientHeight || 1;
     const now2 = performance.now();
-    if (now2 - this.calloutCheckedAt > 180) {
-      this._checkCalloutVisibility();
-      this.calloutCheckedAt = now2;
-    } else if (!this.calloutRecheck) {
-      this.calloutRecheck = window.setTimeout(() => {
-        this.calloutRecheck = 0;
-        this.calloutCheckedAt = 0;
-        this.core.requestRender();
-      }, 200);
-    }
     const cam = this.core.activeCamera;
     cam.updateMatrixWorld();
+    const key = (m) => m.elements.map((e) => e.toFixed(6)).join();
+    const at = `${key(cam.matrixWorld)}|${key(cam.projectionMatrix)}|${w}|${h}`;
+    if (at !== this.calloutCamera) {
+      this.calloutCamera = at;
+      this.calloutStillSince = now2;
+      this.calloutPending = null;
+      this.calloutCheckDirty = true;
+    }
+    if (this.calloutCheckDirty && !this.calloutPending) {
+      if (now2 - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
+        this.calloutPending = { queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0, capacity: marginCapacity(h) };
+        this.calloutCheckDirty = false;
+      } else if (!this.calloutRecheck) {
+        this.calloutRecheck = window.setTimeout(
+          () => {
+            this.calloutRecheck = 0;
+            this.core.requestRender();
+          },
+          CALLOUT_SETTLE_MS - (now2 - this.calloutStillSince) + 5
+        );
+      }
+    }
+    if (this.calloutPending) {
+      this._checkCalloutVisibility(now2 + CALLOUT_BUDGET_MS);
+      if (this.calloutPending) this.core.requestRender();
+    }
     const v = new THREE9.Vector3();
     const anchors = [];
-    for (const [id, anchor] of this.calloutAnchors) {
-      if (!this.calloutVisible.has(id)) continue;
+    for (const id of this.calloutAnchors.keys()) {
+      const anchor = this.calloutVisible.get(id);
+      if (!anchor) continue;
       v.copy(anchor).project(cam);
       if (v.z > 1) continue;
       anchors.push({ id, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
@@ -25196,7 +25462,7 @@ var Marks = class {
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);
     const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length);
+    this.callouts.update(placed, dropped.length + this.calloutUnchecked, this.calloutUnchecked > 0);
   }
   dispose() {
     this.pocheMat?.dispose();
@@ -25209,12 +25475,90 @@ var Marks = class {
   }
 };
 
+// src/render/FadingGrid.ts
+var THREE10 = __toESM(require("three"));
+var srgb = (hex) => new THREE10.Vector3((hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255);
+var FadingGrid = class {
+  constructor(background, zUp) {
+    const material = new THREE10.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      defines: zUp ? { Z_UP: 1 } : {},
+      uniforms: {
+        // A plain vector of sRGB components, not a Color: a ShaderMaterial writes its colour
+        // to the screen as is, without the linear-to-sRGB step other materials get.
+        uLine: { value: srgb(gridLineColour(background)) },
+        uCentre: { value: new THREE10.Vector2() },
+        uMinor: { value: 1 },
+        uMajor: { value: 5 },
+        uFadeFrom: { value: 10 },
+        uFadeTo: { value: 30 }
+      },
+      vertexShader: `
+        varying vec3 vWorld;
+        void main() {
+          vec4 world = modelMatrix * vec4(position, 1.0);
+          vWorld = world.xyz;
+          gl_Position = projectionMatrix * viewMatrix * world;
+        }`,
+      fragmentShader: `
+        uniform vec3 uLine;
+        uniform vec2 uCentre;
+        uniform float uMinor;
+        uniform float uMajor;
+        uniform float uFadeFrom;
+        uniform float uFadeTo;
+        varying vec3 vWorld;
+        float rule(vec2 p, float step) {
+          vec2 q = p / step;
+          vec2 g = abs(fract(q - 0.5) - 0.5) / fwidth(q);
+          return 1.0 - min(min(g.x, g.y), 1.0);
+        }
+        void main() {
+          #ifdef Z_UP
+            vec2 p = vWorld.xy;
+          #else
+            vec2 p = vWorld.xz;
+          #endif
+          float fade = 1.0 - smoothstep(uFadeFrom, uFadeTo, length(p - uCentre));
+          float line = max(rule(p, uMinor) * 0.55, rule(p, uMajor));
+          gl_FragColor = vec4(uLine, line * fade);
+        }`
+    });
+    this.mesh = new THREE10.Mesh(new THREE10.PlaneGeometry(1, 1), material);
+    if (!zUp) this.mesh.rotation.x = -Math.PI / 2;
+    this.mesh.renderOrder = -2;
+    this.mesh.raycast = () => {
+    };
+    this.zUp = zUp;
+  }
+  /** Space and centre the grid for content of this bounding sphere (world coordinates). */
+  fit(sphere) {
+    const grid = groundGrid(sphere.radius);
+    const c = sphere.center;
+    const [u, v] = this.zUp ? [c.x, c.y] : [c.x, c.z];
+    const uni = this.mesh.material.uniforms;
+    uni.uCentre.value.set(u, v);
+    uni.uMinor.value = grid.minor;
+    uni.uMajor.value = grid.major;
+    uni.uFadeFrom.value = grid.fadeFrom;
+    uni.uFadeTo.value = grid.fadeTo;
+    this.mesh.position.set(u, this.zUp ? v : 0, this.zUp ? 0 : v);
+    this.mesh.scale.set(grid.size, grid.size, 1);
+  }
+  dispose() {
+    this.mesh.geometry.dispose();
+    this.mesh.material.dispose();
+  }
+};
+
 // src/render/ThreeRenderer.ts
 var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
 var DEFAULTS5 = {
   antialias: true,
   backgroundColor: 658196,
   showGrid: true,
+  gridStyle: "lines",
   gridSize: 20,
   gridDivisions: 20,
   showAxes: true,
@@ -25240,6 +25584,8 @@ var ThreeRenderer = class {
     // that shows only solid meshes). Solid geometry is unaffected.
     this.hideHelpers = false;
     this.gridHelper = null;
+    this.fadingGrid = null;
+    this.gridDirty = true;
     this.axesHelper = null;
     // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
     // sketch re-runs (clearThree only touches objectMap-managed objects).
@@ -25250,18 +25596,18 @@ var ThreeRenderer = class {
     this.config = { ...DEFAULTS5, ...config };
     this.isZUp = this.config.up === "z";
     const cfg = this.config;
-    this.threeScene = new THREE10.Scene();
-    this.threeScene.background = new THREE10.Color(cfg.backgroundColor);
+    this.threeScene = new THREE11.Scene();
+    this.threeScene.background = new THREE11.Color(cfg.backgroundColor);
     const aspect = container.clientWidth / container.clientHeight || 1;
-    this.camera = new THREE10.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
+    this.camera = new THREE11.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
     if (this.isZUp) this.camera.up.set(0, 0, 1);
     this.camera.position.set(...cfg.cameraPosition);
     this.camera.lookAt(...cfg.cameraTarget);
-    const orthoCam = new THREE10.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
+    const orthoCam = new THREE11.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
     if (this.isZUp) orthoCam.up.set(0, 0, 1);
     orthoCam.position.set(...cfg.cameraPosition);
     orthoCam.lookAt(...cfg.cameraTarget);
-    this.renderer = new THREE10.WebGLRenderer({ antialias: cfg.antialias });
+    this.renderer = new THREE11.WebGLRenderer({ antialias: cfg.antialias });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
@@ -25290,14 +25636,18 @@ var ThreeRenderer = class {
     this.marks = new Marks(this.core);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
-    if (cfg.showGrid) {
-      const grid = new THREE10.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
+    if (cfg.showGrid && cfg.gridStyle === "fading") {
+      this.fadingGrid = new FadingGrid(cfg.backgroundColor, this.isZUp);
+      this.gridHelper = this.fadingGrid.mesh;
+      this.threeScene.add(this.fadingGrid.mesh);
+    } else if (cfg.showGrid) {
+      const grid = new THREE11.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
       if (this.isZUp) grid.rotation.x = Math.PI / 2;
       this.gridHelper = grid;
       this.threeScene.add(grid);
     }
     if (cfg.showAxes) {
-      this.axesHelper = new THREE10.AxesHelper(cfg.axesSize);
+      this.axesHelper = new THREE11.AxesHelper(cfg.axesSize);
       this.threeScene.add(this.axesHelper);
     }
     if (cfg.enableOrbitControls) {
@@ -25324,6 +25674,7 @@ var ThreeRenderer = class {
     this._needsRender = true;
     this.lighting.sunDirty = true;
     this.marks.calloutsDirty = true;
+    this.gridDirty = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -25380,7 +25731,7 @@ var ThreeRenderer = class {
     if (this.lighting.currentLighting === "studio") {
       const cast = this.gScene.renderMode !== "ghost";
       t.traverse((child) => {
-        if (child instanceof THREE10.Mesh) {
+        if (child instanceof THREE11.Mesh) {
           child.castShadow = cast;
           child.receiveShadow = true;
         }
@@ -25517,16 +25868,14 @@ var ThreeRenderer = class {
   objectBounds(id) {
     const t = this.objectMap.get(id);
     if (!t) return null;
-    const b = new THREE10.Box3().setFromObject(t);
+    const b = new THREE11.Box3().setFromObject(t);
     if (b.isEmpty()) return null;
     return { min: new Vec3(b.min.x, b.min.y, b.min.z), max: new Vec3(b.max.x, b.max.y, b.max.z) };
   }
   /** Is the scene object currently shown (its own style and every parent)? */
   isObjectShown(id) {
-    let cur = this.objectMap.get(id) ?? null;
-    if (!cur) return false;
-    for (; cur; cur = cur.parent) if (!cur.visible) return false;
-    return true;
+    const t = this.objectMap.get(id);
+    return !!t && shown(t);
   }
   /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
    *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
@@ -25537,7 +25886,7 @@ var ThreeRenderer = class {
   }
   /** Bounds of what the scene shows. */
   contentBox() {
-    const box = new THREE10.Box3();
+    const box = new THREE11.Box3();
     for (const t of this.objectMap.values()) if (t.visible) box.expandByObject(t);
     return box;
   }
@@ -25551,6 +25900,11 @@ var ThreeRenderer = class {
   }
   _draw() {
     if (this.lighting.sunDirty && this.lighting.currentLighting === "studio") this.lighting.fitSun();
+    if (this.gridDirty && this.fadingGrid) {
+      this.gridDirty = false;
+      const box = this.contentBox();
+      this.fadingGrid.fit(box.isEmpty() ? new THREE11.Sphere(new THREE11.Vector3(), 10) : box.getBoundingSphere(new THREE11.Sphere()));
+    }
     this.marks.followOutlines();
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
@@ -25626,7 +25980,7 @@ var ThreeRenderer = class {
   }
   /** Set the viewport background color. */
   setBackground(color) {
-    this.threeScene.background = new THREE10.Color(color);
+    this.threeScene.background = new THREE11.Color(color);
     this.config.backgroundColor = color;
     this.requestRender();
   }
@@ -25646,6 +26000,7 @@ var ThreeRenderer = class {
     this.unsub?.();
     this.clearThree();
     this.marks.dispose();
+    this.fadingGrid?.dispose();
     this.pointer.dispose();
     this.lighting.dispose();
     cancelAnimationFrame(this.rafId);
@@ -26053,8 +26408,8 @@ var SVGRenderer = class {
       }
       case "polygon": {
         if (!obj.vertices || obj.vertices.length < 2) break;
-        const pts = obj.vertices.map((v) => this.project(v));
-        const poly = this.createSVGPolygon(pts, s.color, s.opacity);
+        const pts2 = obj.vertices.map((v) => this.project(v));
+        const poly = this.createSVGPolygon(pts2, s.color, s.opacity);
         poly.dataset.geomId = obj.id;
         this.contentGroup.appendChild(poly);
         break;
@@ -26077,11 +26432,11 @@ var SVGRenderer = class {
       case "mesh": {
         if (!obj.mesh) break;
         for (const face of obj.mesh.faces()) {
-          const pts = face.nodes.map((nid) => {
+          const pts2 = face.nodes.map((nid) => {
             const node = obj.mesh.node(nid);
             return node ? this.project(node.position) : { x: 0, y: 0 };
           });
-          const poly = this.createSVGPolygon(pts, s.color, s.opacity * 0.3);
+          const poly = this.createSVGPolygon(pts2, s.color, s.opacity * 0.3);
           this.contentGroup.appendChild(poly);
         }
         for (const edge of obj.mesh.edges()) {
@@ -26119,9 +26474,9 @@ var SVGRenderer = class {
     el.setAttribute("opacity", String(opacity));
     return el;
   }
-  createSVGPolygon(pts, color, opacity = 0.5) {
+  createSVGPolygon(pts2, color, opacity = 0.5) {
     const el = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    el.setAttribute("points", pts.map((p) => `${p.x},${p.y}`).join(" "));
+    el.setAttribute("points", pts2.map((p) => `${p.x},${p.y}`).join(" "));
     el.setAttribute("fill", color);
     el.setAttribute("fill-opacity", String(opacity));
     el.setAttribute("stroke", color);
@@ -27209,12 +27564,12 @@ function sceneSummary(scene, renderer, describe) {
   const objects = [];
   const meshIssues = [];
   let meshesWithIssues = 0;
-  let shown = 0;
+  let shown2 = 0;
   for (const o of scene.all()) {
     if (!renderer.isObjectShown(o.id)) continue;
     const b = renderer.objectBounds(o.id);
     if (!b) continue;
-    shown++;
+    shown2++;
     const d = describe(o.id);
     if (o.mesh && typeof o.mesh.validate === "function") {
       const v = o.mesh.validate();
@@ -27243,11 +27598,11 @@ function sceneSummary(scene, renderer, describe) {
   return {
     camera: { ...cam, position: r4(cam.position), target: r4(cam.target) },
     scene: {
-      shownObjects: shown,
+      shownObjects: shown2,
       meshesWithIssues,
       meshIssues,
       groups: [...groups.values()].map(({ min, max, ...g }) => ({ ...g, bounds: [r4(min), r4(max)] })),
-      ...shown <= 150 ? { objects } : {}
+      ...shown2 <= 150 ? { objects } : {}
     }
   };
 }
@@ -27260,15 +27615,15 @@ function addOverlay(viewportEl, existing) {
 }
 function snapshotWithOverlays(renderer, wrap) {
   const base = renderer.snapshotPng();
-  const shown = [...wrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
-  if (!shown.length) return base;
+  const shown2 = [...wrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
+  if (!shown2.length) return base;
   const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
   const out = document.createElement("canvas");
   out.width = src.width;
   out.height = src.height;
   const g = out.getContext("2d");
   g.drawImage(src, 0, 0);
-  for (const c of shown) {
+  for (const c of shown2) {
     const r = c.getBoundingClientRect();
     g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
   }
@@ -27731,11 +28086,11 @@ function resample(s, step, max) {
 }
 function gridInside(ring, target) {
   const [x0, y0, x1, y1] = bbox2(ring);
-  const area2 = Math.abs(ring.reduce((a, p, i) => {
+  const area = Math.abs(ring.reduce((a, p, i) => {
     const q = ring[(i + 1) % ring.length];
     return a + p[0] * q[1] - q[0] * p[1];
   }, 0)) / 2;
-  const step = Math.max(4, Math.sqrt(area2 / target));
+  const step = Math.max(4, Math.sqrt(area / target));
   const out = [];
   for (let y = y0 + step / 2; y < y1; y += step) {
     for (let x = x0 + step / 2; x < x1; x += step) if (inside([x, y], ring)) out.push([x, y]);
@@ -27828,11 +28183,11 @@ function spaceToConstrain(space) {
     }
     case "curve": {
       const m = space.samples ?? 64;
-      const pts = [];
-      for (let i = 0; i <= m; i++) pts.push(space.at(i / m));
+      const pts2 = [];
+      for (let i = 0; i <= m; i++) pts2.push(space.at(i / m));
       return (x, y, z) => {
-        let bx = pts[0].x, by = pts[0].y, bz = pts[0].z, bestD = Infinity;
-        for (const p of pts) {
+        let bx = pts2[0].x, by = pts2[0].y, bz = pts2[0].z, bestD = Infinity;
+        for (const p of pts2) {
           const d = (p.x - x) ** 2 + (p.y - y) ** 2 + (p.z - z) ** 2;
           if (d < bestD) {
             bestD = d;
@@ -29178,8 +29533,12 @@ function appShell(config) {
     const now2 = performance.now();
     const dt = Math.min((now2 - lastTime) / 1e3, 1 / 15);
     lastTime = now2;
-    if (animateFn) animateFn(dt, (now2 - startTime) / 1e3);
-    renderer.render();
+    if (animateFn) {
+      animateFn(dt, (now2 - startTime) / 1e3);
+      renderer.render();
+    } else {
+      renderer.renderIfNeeded();
+    }
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
@@ -29219,7 +29578,7 @@ function appShell(config) {
     dispose() {
       disposed = true;
       markup?.dispose();
-      bridge2.dispose();
+      bridge.dispose();
       unbindKeys();
       panel.dispose();
       renderer.dispose();
@@ -29234,7 +29593,7 @@ function appShell(config) {
     params: params.getAll(),
     logs: statusText ? [{ label: "status", value: statusText }] : [],
     commands: commands.list(),
-    errors: bridge2.errors()
+    errors: bridge.errors()
   });
   const markup = config.markup === false ? null : new MarkupOverlay({
     viewport: vpWrap,
@@ -29247,7 +29606,7 @@ function appShell(config) {
     setTracking: () => {
     }
   });
-  const bridge2 = installAgentBridge({
+  const bridge = installAgentBridge({
     owner: instance,
     commands,
     harness: "appShell",
@@ -29288,10 +29647,14 @@ function buildTopBar(header, scene, renderer, t, show) {
         b.style.color = on ? t.panelBg : t.textDim;
       }
     };
-    for (const [label, val] of opts) {
+    for (const [label, val, icon] of opts) {
       const b = document.createElement("button");
       b.textContent = label;
       b.style.cssText = "padding:3px 9px; border:0; background:transparent; font:inherit; font-size:11px; cursor:pointer;";
+      if (icon) {
+        b.insertAdjacentHTML("afterbegin", icon);
+        b.style.cssText += "display:flex; align-items:center; gap:4px; padding-left:6px;";
+      }
       b.onclick = () => {
         set(val);
         onSel(val);
@@ -29318,7 +29681,7 @@ function buildTopBar(header, scene, renderer, t, show) {
     })
   )));
   if (show.mode !== false) bar.appendChild(group("Mode", segmented(
-    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]],
+    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]].map(([label, mode]) => [label, mode, viewModeIconSvg(mode, 14)]),
     scene.renderMode,
     (v) => scene.setRenderMode(v),
     (set) => scene.on((e) => {
@@ -30091,6 +30454,8 @@ var Sketch2DInstance = class {
   SunPosition,
   ThreeRenderer,
   Triangle,
+  VIEW_MODE_ICON_CORNERS,
+  VIEW_MODE_ICON_SVG,
   Vec2,
   Vec3,
   Vec4,
@@ -30174,6 +30539,8 @@ var Sketch2DInstance = class {
   supabaseAdapter,
   surfaceAppearance,
   viewCommands,
+  viewModeIconShapes,
+  viewModeIconSvg,
   writeDxf2D,
   writeDxf3D
 });

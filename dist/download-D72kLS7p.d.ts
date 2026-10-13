@@ -1,4 +1,4 @@
-import { M as Mesh, V as Vec3, b as Vec2, A as AABB } from './Scene-CaG0H74_.mjs';
+import { M as Mesh, V as Vec3, b as Vec2, A as AABB } from './Scene-CaG0H74_.js';
 
 /**
  * Tekto HMath — Scalar math utilities.
@@ -278,6 +278,13 @@ declare const Polygon2D: {
     convexHull2D(points: Vec2[]): Vec2[];
     /** Ear-clipping triangulation for simple 2D polygons. */
     triangulate2D(polygon: Vec2[]): [number, number, number][];
+    /**
+     * Triangles covering a polygon with holes, as indices into `[outer, ...holes].flat()`,
+     * counter-clockwise. Rings may be open or closed and wound either way. Each hole is
+     * bridged into the outer ring and the result ear-clipped: for simple rings, holes inside
+     * the outer ring and apart from each other.
+     */
+    triangulateWithHoles<P extends XY>(outer: readonly P[], holes?: readonly (readonly P[])[]): [number, number, number][];
     /** Minimum enclosing circle (Welzl's algorithm, randomized). */
     minEnclosingCircle(points: Vec2[]): {
         center: Vec2;
@@ -288,6 +295,10 @@ declare const Polygon2D: {
      * Uses convex hull + edge-projection. O(n log n) total.
      */
     minAreaRect(points: Vec2[]): OBB2D;
+};
+type XY = {
+    readonly x: number;
+    readonly y: number;
 };
 /**
  * Compute the intersection of two simple polygons using Greiner-Hormann.
@@ -355,6 +366,10 @@ declare const Algo: {
     filletRays(origin: Vec2, angle1: number, angle2: number, radius: number): FilletResult;
     convexHull2D(points: Vec2[]): Vec2[];
     triangulate2D(polygon: Vec2[]): [number, number, number][];
+    triangulateWithHoles<P extends {
+        readonly x: number;
+        readonly y: number;
+    }>(outer: readonly P[], holes?: readonly (readonly P[])[]): [number, number, number][];
     minEnclosingCircle(points: Vec2[]): {
         center: Vec2;
         radius: number;

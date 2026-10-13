@@ -1,7 +1,7 @@
 import { V as Vec3, b as Vec2, g as Mat4, T as Triangle, A as AABB, M as Mesh, e as MeshData, S as Scene } from './Scene-CaG0H74_.mjs';
 export { F as ColoredMeshData, f as LegacyMeshJSON, L as LightingMode, h as MeshEdge, i as MeshFace, j as MeshJSON, k as MeshNode, l as MeshValidation, O as ObjFile, m as ObjMeshData, P as Projection, R as RenderMode, n as SceneEvent, o as SceneEventListener, p as SceneJSON, a as SceneObject, q as SceneObjectType, d as SectionRequest, c as StandardView, r as Vec4, s as VisualStyle } from './Scene-CaG0H74_.mjs';
-import { z as Ring2, v as MultiPoly2 } from './download-DxT2M8eM.mjs';
-export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-DxT2M8eM.mjs';
+import { z as Ring2, v as MultiPoly2 } from './download-xZr_iAUy.mjs';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-xZr_iAUy.mjs';
 export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, b as ParamSchema, P as ParamStore, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-op8yBPbB.mjs';
 
 /**
@@ -2555,11 +2555,12 @@ interface RealizedWall {
  */
 declare function realize(wall: Wall, ctx?: WallContext): RealizedWall;
 /**
- * Roll a list of parts (typically from a `RealizedWall.parts`) into a
- * cut list keyed by (material × profile × length-bucket). The default
+ * Roll a list of parts into a cut list keyed by (material × profile × length-bucket): a
+ * wall's (`RealizedWall.parts`), a slab's (`realizeSlab(…).parts`), or both together. Parts
+ * without a length, profile or material (sheathing, the envelope) are left out. The default
  * bucket is exact-millimetre — pass `roundMm` to coarsen.
  */
-declare function buildCutList(parts: WallPart[], roundMm?: number): CutListItem[];
+declare function buildCutList(parts: readonly Pick<WallPart, "material" | "profile" | "length" | "role">[], roundMm?: number): CutListItem[];
 
 /**
  * SharedStore — a document of keyed records that several people (and agents) edit together.
@@ -2995,7 +2996,7 @@ declare class WallSystem {
  *   topping / screed / finish        → IfcCovering
  *   monolithic                       → IfcSlab (the whole envelope as one piece)
  */
-type SlabPartRole = "joist" | "beam" | "header" | "blocking" | "sheathing" | "decking" | "topping" | "insulation" | "ceiling" | "monolithic" | string;
+type SlabPartRole = "joist" | "beam" | "header" | "trimmer" | "blocking" | "sheathing" | "decking" | "topping" | "insulation" | "ceiling" | "monolithic" | string;
 /** One mesh sub-element of a slab (a joist, the sheathing, the ceiling) with the material, profile and length a cut list or the IFC exporter needs; `ifcType` defaults from `role`. */
 interface SlabPart {
     name: string;
@@ -3013,7 +3014,8 @@ interface SlabPart {
  * A rectangular opening in a slab (stair well, mechanical penetration,
  * skylight). Positioned in world coordinates within the slab boundary.
  * Aligned with the slab's local frame (X = joist direction by default,
- * but can be overridden by the construction).
+ * but can be overridden by the construction). `Slab.openingRings()` gives
+ * its outline; the slab's mesh and its IFC export cut it out.
  */
 declare class SlabOpening {
     centerX: number;
@@ -3135,8 +3137,15 @@ declare class Slab {
     /** Slab footprint area (m²). Uses signed-area magnitude. */
     get area(): number;
     /**
-     * Build the slab envelope mesh: top face + bottom face + side quads.
-     * Uses `Polygon2D.triangulate2D` (ear-clipping) for the caps.
+     * The openings as rings in the XY plane (counter-clockwise, open): each a rectangle
+     * `width` along `direction` and `depth` across it, about its centre. `direction` defaults
+     * to the way `JoistedSlab` runs its joists without a context: `joistDirection`, else the
+     * one the bounds suggest. Throws for an opening that is empty or not inside the boundary.
+     */
+    openingRings(direction?: Vec2): Vec2[][];
+    /**
+     * Build the slab envelope mesh: top and bottom faces with the openings cut out, the
+     * outside edge and the openings' sides.
      */
     toMesh(): Mesh;
 }
@@ -3332,7 +3341,9 @@ declare class IfcWriter {
     private worldPlacementRef;
     private rootPlacementRef;
     private storeyPlacementByRef;
+    private storeyElevationByRef;
     private elementsByStorey;
+    private partRefs;
     private wallRefs;
     private wallByObject;
     private slabRefs;
@@ -3362,7 +3373,8 @@ declare class IfcWriter {
      * line id. Pass that id as `opts.storey` on subsequent `addWall` /
      * `addSlab` / `addWallSystem` calls to attach elements to the new
      * storey. The bootstrap storey (created from `IfcWriterOptions`)
-     * stays the default for any call that omits `storey`.
+     * stays the default for any call that omits `storey`. Heights stay
+     * absolute: a wall on a storey at 3 m has `baseElevation: 3`.
      *
      * @example
      *   const writer = new IfcWriter({ storeyName: "Ground floor", storeyElevation: 0 });
@@ -3410,8 +3422,14 @@ declare class IfcWriter {
     /**
      * Add a framed member (stud / plate / header / cripple / etc.) as an
      * IfcMember with a tessellated body (IfcTriangulatedFaceSet — efficient,
-     * IFC4-native). Aggregating under a wall is the caller's responsibility
-     * (see addWallSystem).
+     * IFC4-native). The mesh is in world coordinates. Aggregating under a
+     * wall is the caller's responsibility (see addWallSystem).
+     *
+     * An element that stands on its own — a railing, a column — passes
+     * `opts.storey` and is contained in that storey. A part that a wall, slab
+     * or roof gathers leaves it out: it is contained through its whole.
+     *
+     *   ifc.addMember(0, { name: "Railing", role: "railing", mesh, ifcType: "IfcRailing" }, { storey: first });
      */
     addMember(_parentWallRef: number, part: {
         name: string;
@@ -3426,6 +3444,8 @@ declare class IfcWriter {
         length?: number;
         ifcType?: string;
         properties?: PropertyMap;
+    }, opts?: {
+        storey?: number;
     }): number;
     /**
      * Add a wall-to-wall joint as IfcRelConnectsPathElements. The joint's
@@ -3450,6 +3470,22 @@ declare class IfcWriter {
         storey?: number;
     }): number;
     private ensureSlabType;
+    /**
+     * Add a roof: an `IfcRoof` that gathers its parts — slabs, members, plates,
+     * coverings already written with `addSlab` / `addMember` — and is contained
+     * in a storey (default: the bootstrap storey). The parts stop being
+     * contained in a storey themselves: in IFC a part belongs to its whole, and
+     * the whole to the storey.
+     *
+     *   const deck = ifc.addSlab(roofSlab, { predefinedType: "ROOF", storey: top });
+     *   const rafters = rafterParts.map((p) => ifc.addMember(0, p));
+     *   ifc.addRoof([deck, ...rafters], { storey: top, predefinedType: "GABLE_ROOF" });
+     */
+    addRoof(parts: readonly number[], opts?: {
+        name?: string;
+        storey?: number;
+        predefinedType?: "FLAT_ROOF" | "SHED_ROOF" | "GABLE_ROOF" | "HIP_ROOF" | "HIPPED_GABLE_ROOF" | "GAMBREL_ROOF" | "MANSARD_ROOF" | "BARREL_ROOF" | "RAINBOW_ROOF" | "BUTTERFLY_ROOF" | "PAVILION_ROOF" | "DOME_ROOF" | "FREEFORM" | "NOTDEFINED";
+    }): number;
     /**
      * Add a stair as an `IfcStair` that aggregates one `IfcStairFlight` per
      * computed flight. The stair is contained in its storey; flights carry the
@@ -3495,6 +3531,13 @@ declare class IfcWriter {
     private bootstrap;
     /** Build the IfcBuildingStorey + IfcLocalPlacement pair. Returns both refs. */
     private createStoreyEntities;
+    /**
+     * Where an element on a storey is placed: in the storey's placement, which is already
+     * raised to the storey's elevation. Heights in the API are absolute (`Wall.baseElevation`,
+     * `Slab.elevation`, `Space.elevation`), so the element's local z is its height minus
+     * `elevation`.
+     */
+    private storeyFrame;
     /**
      * Per-wall deltas from butt joints. Sign convention along the wall's
      * tangent (p0 → p1):

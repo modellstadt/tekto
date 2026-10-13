@@ -14,7 +14,7 @@ import {
   sketch2d,
   slug,
   snapshotWithOverlays
-} from "./chunk-YFTL3I3X.mjs";
+} from "./chunk-QMJ63WHT.mjs";
 import {
   Algo,
   ArcCurve,
@@ -153,7 +153,7 @@ import {
   selectOnClick,
   shareSelection,
   supabaseAdapter
-} from "./chunk-K3ANIKKA.mjs";
+} from "./chunk-NDCENBAZ.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -177,7 +177,13 @@ import {
   stampName,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-K7LUW25N.mjs";
+} from "./chunk-QA7NH7ES.mjs";
+import {
+  VIEW_MODE_ICON_CORNERS,
+  VIEW_MODE_ICON_SVG,
+  viewModeIconShapes,
+  viewModeIconSvg
+} from "./chunk-T72HXZNL.mjs";
 import {
   Mesh,
   Plane,
@@ -1849,7 +1855,7 @@ var Commands = class {
 };
 
 // src/render/ThreeRenderer.ts
-import * as THREE10 from "three";
+import * as THREE11 from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 // src/render/ObjectBuilder.ts
@@ -1971,6 +1977,39 @@ function sectionPlane(req, axisWorld, box) {
   }
   return req.flip ? new THREE3.Plane(a, -level) : new THREE3.Plane(a.negate(), level);
 }
+function groundGrid(radius) {
+  const r = Math.max(radius, 0.5);
+  const minor = 10 ** Math.floor(Math.log10(r / 4));
+  return { minor, major: minor * 5, fadeFrom: r * 2, fadeTo: r * 6, size: r * 14 };
+}
+function gridLineColour(background) {
+  const hex = new THREE3.Color(background).getHex();
+  const to = luminance(background) > 0.5 ? 0 : 255;
+  let out = 0;
+  for (const shift of [16, 8, 0]) {
+    const c = hex >> shift & 255;
+    out |= Math.round(c + (to - c) * 0.2) << shift;
+  }
+  return out;
+}
+function shown(o) {
+  for (; o; o = o.parent) if (!o.visible) return false;
+  return true;
+}
+function calloutSamples(box) {
+  const centre = box.getCenter(new THREE3.Vector3());
+  const out = [centre];
+  for (const x of [box.min.x, box.max.x]) {
+    for (const y of [box.min.y, box.max.y]) {
+      for (const z of [box.min.z, box.max.z]) out.push(new THREE3.Vector3(x, y, z).lerp(centre, 0.3));
+    }
+  }
+  return out;
+}
+function occludes(material) {
+  const m = Array.isArray(material) ? material[0] : material;
+  return !!m && m.visible !== false && m.depthWrite !== false;
+}
 function luminance(colour) {
   const c = new THREE3.Color(colour);
   return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
@@ -2009,25 +2048,18 @@ var ObjectBuilder = class {
    * Same option surface — caller doesn't have to care which one comes back.
    */
   makeMaterial(opts) {
+    const { metalness, roughness, ...rest } = opts;
+    const given = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== void 0));
     if (this.lighting.currentLighting === "studio") {
       return new THREE4.MeshStandardMaterial({
+        ...given,
         color: this.lighting.studioColor ?? opts.color,
-        emissive: opts.emissive,
-        emissiveIntensity: opts.emissiveIntensity,
-        opacity: opts.opacity,
-        transparent: opts.transparent,
-        side: opts.side,
-        wireframe: opts.wireframe,
         flatShading: opts.flatShading ?? this.lighting.studioFlatShading,
-        depthTest: opts.depthTest,
-        depthWrite: opts.depthWrite,
-        vertexColors: opts.vertexColors,
-        roughness: opts.roughness ?? this.lighting.studioRoughness,
-        metalness: opts.metalness ?? this.lighting.studioMetalness
+        roughness: roughness ?? this.lighting.studioRoughness,
+        metalness: metalness ?? this.lighting.studioMetalness
       });
     }
-    const { metalness: _m, roughness: _r, ...rest } = opts;
-    return new THREE4.MeshPhongMaterial(rest);
+    return new THREE4.MeshPhongMaterial(given);
   }
   _stripeTexture(layerH) {
     let tex = this._stripeTexCache.get(layerH);
@@ -2472,6 +2504,7 @@ var Lighting = class {
     core.threeScene.add(this.dirLight);
     core.threeScene.add(this.dirLight.target);
     this.hemiLight = new THREE5.HemisphereLight(4482730, 3351057, 0.4);
+    if (isZUp) this.hemiLight.position.set(0, 0, 1);
     core.threeScene.add(this.hemiLight);
     this.sunDir.copy(this.dirLight.position).normalize();
   }
@@ -3439,11 +3472,11 @@ var Pointer = class {
     this.raycaster.params.Line.threshold = cam.isOrthographicCamera ? Math.max(1e-3, (cam.top - cam.bottom) / cam.zoom * 0.012) : 0.08;
     const pickable = [];
     for (const t of this.core.objectMap.values()) {
-      if (t.userData.pickable !== false) pickable.push(t);
+      if (t.userData.pickable !== false && t.visible) pickable.push(t);
     }
     const hits = this.raycaster.intersectObjects(pickable, true);
     for (const h of hits) {
-      if (this.marks.cutAway(h.point)) continue;
+      if (this.marks.cutAway(h.point) || !shown(h.object)) continue;
       let cur = h.object;
       while (cur && !cur.userData.geomId) cur = cur.parent;
       if (cur?.userData.geomId) return cur.userData.geomId;
@@ -3465,12 +3498,12 @@ var Pointer = class {
     for (const h of hits) {
       if (this.marks.cutAway(h.point)) continue;
       let cur = h.object;
-      let shown = true;
+      let shown2 = true;
       while (cur && !cur.userData.geomId) {
-        if (!cur.visible) shown = false;
+        if (!cur.visible) shown2 = false;
         cur = cur.parent;
       }
-      if (shown && cur?.userData.geomId) {
+      if (shown2 && cur?.userData.geomId) {
         return { id: cur.userData.geomId, point: new Vec3(h.point.x, h.point.y, h.point.z) };
       }
     }
@@ -3580,10 +3613,10 @@ var Pointer = class {
     );
     const raycaster = new THREE8.Raycaster();
     raycaster.setFromCamera(mouse, this.core.camera);
-    const targets = [...this.core.objectMap.values()];
+    const targets = [...this.core.objectMap.values()].filter((t) => t.visible);
     const hits = raycaster.intersectObjects(targets, true);
     for (const hit of hits) {
-      if (this.marks.cutAway(hit.point)) continue;
+      if (this.marks.cutAway(hit.point) || !shown(hit.object)) continue;
       let obj = hit.object;
       while (obj && !obj.userData.geomId) obj = obj.parent;
       if (obj?.userData.geomId) {
@@ -3619,11 +3652,17 @@ var SVG2 = "http://www.w3.org/2000/svg";
 function labelWidthFor(hostWidth) {
   return Math.round(Math.max(88, Math.min(170, hostWidth * 0.27)));
 }
+function marginCapacity(height, opts = {}) {
+  return Math.max(0, Math.floor((height - 2 * (opts.inset ?? 8)) / (opts.rowHeight ?? 30)));
+}
+function calloutChanged(was, now) {
+  return !was || !now || was.text !== now.text || was.detail !== now.detail || was.colour !== now.colour;
+}
 function layoutLabels(anchors, opts) {
   const rowHeight = opts.rowHeight ?? 30;
   const labelWidth = opts.labelWidth ?? labelWidthFor(opts.width);
   const inset = opts.inset ?? 8;
-  const capacity = Math.max(0, Math.floor((opts.height - 2 * inset) / rowHeight));
+  const capacity = marginCapacity(opts.height, { rowHeight, inset });
   const placed = [];
   const dropped = [];
   for (const side of ["left", "right"]) {
@@ -3674,14 +3713,15 @@ var Callouts = class {
   }
   /** What there is to say. Placements arrive separately, each frame. */
   setItems(items) {
-    this.items = new Map(items.map((i) => [i.id, i]));
+    const next = new Map(items.map((i) => [i.id, i]));
     for (const [id, el] of this.labels) {
-      if (!this.items.has(id)) {
+      if (calloutChanged(this.items.get(id), next.get(id))) {
         el.box.remove();
         el.leader.remove();
         this.labels.delete(id);
       }
     }
+    this.items = next;
   }
   /** Track the host's width, so labels stay a share of it rather than a
    *  constant that only suits one panel size. */
@@ -3705,13 +3745,14 @@ var Callouts = class {
    * `unplaced` is how many the margins had no room for, and it is shown. A
    * reader who can see fifteen labels and is not told there were twenty-two
    * has been given a wrong count, quietly, which is the failure this whole
-   * project is arranged against.
+   * project is arranged against. `upTo`: some of them were never looked at
+   * (the margins were full), so it is how many there could be: "up to n".
    */
-  update(placements, unplaced = 0) {
+  update(placements, unplaced = 0, upTo = false) {
     const placed = new Set(placements.map((p) => p.id));
     for (const [id, el] of this.labels) {
       if (!placed.has(id)) {
-        el.box.hidden = true;
+        el.box.style.display = "none";
         el.leader.setAttribute("points", "");
       }
     }
@@ -3719,7 +3760,7 @@ var Callouts = class {
       const item = this.items.get(p.id);
       if (!item) continue;
       const el = this.labels.get(p.id) ?? this.make(p.id, item);
-      el.box.hidden = false;
+      el.box.style.display = "block";
       el.box.style.left = `${p.x}px`;
       el.box.style.top = `${p.y}px`;
       const from = p.side === "left" ? p.x + this.labelWidth : p.x;
@@ -3730,9 +3771,9 @@ var Callouts = class {
         `${from},${mid} ${knee},${mid} ${p.anchorX},${p.anchorY}`
       );
     }
-    this.showOverflow(unplaced);
+    this.showOverflow(unplaced, upTo);
   }
-  showOverflow(n) {
+  showOverflow(n, upTo = false) {
     if (!n) {
       this.overflow?.remove();
       this.overflow = null;
@@ -3746,7 +3787,7 @@ var Callouts = class {
         font:500 10px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#79838d`;
       this.root.append(this.overflow);
     }
-    this.overflow.textContent = `${n} more not labelled: no room in the margins`;
+    this.overflow.textContent = `${upTo ? "up to " : ""}${n} more not labelled: no room in the margins`;
   }
   make(id, item) {
     const leader = document.createElementNS(SVG2, "polyline");
@@ -3797,6 +3838,8 @@ var Callouts = class {
 };
 
 // src/render/Marks.ts
+var CALLOUT_SETTLE_MS = 120;
+var CALLOUT_BUDGET_MS = 6;
 function seeThrough(m) {
   return (Array.isArray(m) ? m : [m]).some((x) => x.transparent && x.opacity < 1);
 }
@@ -3812,9 +3855,20 @@ var Marks = class {
     this.pocheMat = null;
     // ── Callouts (setCallouts) ──
     this.callouts = null;
+    /** Per callout, where to look for it: its centre, then points toward its box's corners. */
     this.calloutAnchors = /* @__PURE__ */ new Map();
-    this.calloutVisible = /* @__PURE__ */ new Set();
-    this.calloutCheckedAt = 0;
+    /** Per callout seen, the point its leader goes to. Redone only once the camera is still. */
+    this.calloutVisible = /* @__PURE__ */ new Map();
+    /** Something that decides visibility changed since the last answer. */
+    this.calloutCheckDirty = true;
+    /** The camera the answer is for, and since when it has been still. */
+    this.calloutCamera = "";
+    this.calloutStillSince = 0;
+    /** A check in progress, a slice per frame: what is left, and how many labels each margin
+     *  has found so far against what it holds. */
+    this.calloutPending = null;
+    /** Callouts the last check never looked at, because the margins were full. */
+    this.calloutUnchecked = 0;
     this.calloutRecheck = 0;
     this.calloutsDirty = false;
     this.calloutHandlers = {};
@@ -3830,10 +3884,13 @@ var Marks = class {
     this.outlineGroup.renderOrder = 999;
     core.threeScene.add(this.outlineGroup);
   }
-  /** Keep outlines on their objects (a gizmo drag moves them without a rebuild). */
+  /** Keep outlines on their objects (a gizmo drag moves them without a rebuild), and hidden
+   *  with them: a hidden object shows no outline. */
   followOutlines() {
-    for (const o of this.outlined) o.line.matrix.copy(o.source.matrixWorld);
-    for (const o of this.presenceLines) o.line.matrix.copy(o.source.matrixWorld);
+    for (const o of [...this.outlined, ...this.presenceLines]) {
+      o.line.matrix.copy(o.source.matrixWorld);
+      o.line.visible = shown(o.source);
+    }
   }
   setSelectionStyle(style) {
     this.selectionStyle = style;
@@ -3956,6 +4013,7 @@ var Marks = class {
     const axis = section && new THREE9.Vector3(section.axis === "x" ? 1 : 0, section.axis === "y" ? 1 : 0, section.axis === "z" ? 1 : 0);
     this.sectionClip = section && axis ? sectionPlane(section, axis, section.coordinate === void 0 ? this.core.contentBox() : null) : null;
     this.core.renderer.localClippingEnabled = !!this.sectionClip;
+    this.calloutCheckDirty = true;
     for (const t of this.core.objectMap.values()) this.dressSection(t);
     if (this.outlineMat) this._outlineMaterial();
     for (const c of this.presenceMats.keys()) this._presenceMaterial(c);
@@ -3984,6 +4042,7 @@ var Marks = class {
         for (const one of Array.isArray(m) ? m : [m]) {
           if ((one.clippingPlanes?.length ?? 0) === 0 && !plane) continue;
           one.clippingPlanes = plane ? [plane] : null;
+          one.clipShadows = !!plane;
           one.needsUpdate = true;
         }
       }
@@ -4022,10 +4081,13 @@ var Marks = class {
       onHover: (id) => this.calloutHandlers.onHover?.(id)
     }));
     this.callouts.setItems(items);
+    const ids = new Set(items.map((i) => i.id));
+    for (const id of [...this.calloutVisible.keys()]) if (!ids.has(id)) this.calloutVisible.delete(id);
+    this.calloutPending = null;
     this.calloutsDirty = true;
     this.core.requestRender();
   }
-  /** Re-measure each callout's anchor: the centre of its objects' bounds. */
+  /** Re-measure where to look for each callout: points in its objects' bounds. */
   _measureCallouts() {
     this.calloutsDirty = false;
     this.calloutAnchors.clear();
@@ -4033,33 +4095,69 @@ var Marks = class {
     for (const id of this.callouts?.ids ?? []) {
       box.makeEmpty();
       for (const t of this.core.resolve(this.callouts.objectsOf(id))) if (t.visible) box.expandByObject(t);
-      if (!box.isEmpty()) this.calloutAnchors.set(id, box.getCenter(new THREE9.Vector3()));
+      if (!box.isEmpty()) this.calloutAnchors.set(id, calloutSamples(box));
     }
-    this.calloutCheckedAt = 0;
+    this.calloutPending = null;
+    this.calloutCheckDirty = true;
   }
-  /** Which anchors the reader can see: one ray each, its own objects not counting as cover. */
-  _checkCalloutVisibility() {
-    this.calloutVisible.clear();
+  /**
+   * Work on which callouts the reader can see, until `deadline`. Seen means any of its
+   * sample points is: the centre first, the others only if it is hidden, and the leader goes
+   * to the first one seen. Only a surface that writes depth hides it (`occludes`), its own
+   * objects don't count, nor does what the section removed. A margin that is full takes no
+   * more, so its side needs no rays, and the check ends when both are.
+   */
+  _checkCalloutVisibility(deadline) {
+    const pending = this.calloutPending;
+    if (!pending) return;
     const cam = this.core.activeCamera;
     const meshes = [...this.core.objectMap.values()].filter((t) => t.visible);
     const ray = new THREE9.Raycaster();
     const eye = cam.getWorldPosition(new THREE9.Vector3());
-    for (const [id, anchor] of this.calloutAnchors) {
-      const own = new Set(this.core.resolve(this.callouts.objectsOf(id)));
-      const dir = anchor.clone().sub(eye);
-      const dist2 = dir.length();
-      if (cam.isOrthographicCamera) {
-        cam.getWorldDirection(dir);
-        ray.set(anchor.clone().addScaledVector(dir, -1e4), dir);
-        ray.far = 1e4;
-      } else {
-        ray.set(eye, dir.normalize());
-        ray.far = dist2;
+    const view = cam.getWorldDirection(new THREE9.Vector3());
+    const ortho = cam.isOrthographicCamera;
+    const ndc = new THREE9.Vector3(), dir = new THREE9.Vector3();
+    const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
+    while (pending.queue.length && !full() && performance.now() < deadline) {
+      const id = pending.queue.pop();
+      const samples = this.calloutAnchors.get(id);
+      if (!samples) continue;
+      const side = ndc.copy(samples[0]).project(cam).x < 0 ? "left" : "right";
+      if (pending[side] >= pending.capacity) {
+        pending.skipped.push(id);
+        continue;
       }
-      const hit = ray.intersectObjects(meshes, true).find((h) => !this.cutAway(h.point));
-      let owner = hit?.object ?? null;
-      while (owner && !own.has(owner)) owner = owner.parent;
-      if (!hit || owner || hit.distance >= ray.far - 1e-3) this.calloutVisible.add(id);
+      const own = new Set(this.core.resolve(this.callouts.objectsOf(id)));
+      let seen = null;
+      for (const point of samples) {
+        ndc.copy(point).project(cam);
+        if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;
+        if (ortho) {
+          ray.set(point.clone().addScaledVector(view, -1e4), view);
+          ray.far = 1e4;
+        } else {
+          dir.copy(point).sub(eye);
+          ray.far = dir.length();
+          ray.set(eye, dir.normalize());
+        }
+        const hit = ray.intersectObjects(meshes, true).find((h) => h.object.isMesh && occludes(h.object.material) && !this.cutAway(h.point));
+        let owner = hit?.object ?? null;
+        while (owner && !own.has(owner)) owner = owner.parent;
+        if (!hit || owner || hit.distance >= ray.far - 1e-3) {
+          seen = point;
+          break;
+        }
+      }
+      if (seen) {
+        this.calloutVisible.set(id, seen);
+        pending[side]++;
+      } else this.calloutVisible.delete(id);
+    }
+    if (!pending.queue.length || full()) {
+      const unchecked = [...pending.queue, ...pending.skipped];
+      for (const id of unchecked) this.calloutVisible.delete(id);
+      this.calloutUnchecked = unchecked.length;
+      this.calloutPending = null;
     }
   }
   /** Project, cull and lay out this frame's labels. */
@@ -4068,22 +4166,39 @@ var Marks = class {
     if (this.calloutsDirty) this._measureCallouts();
     const w = this.core.container.clientWidth || 1, h = this.core.container.clientHeight || 1;
     const now = performance.now();
-    if (now - this.calloutCheckedAt > 180) {
-      this._checkCalloutVisibility();
-      this.calloutCheckedAt = now;
-    } else if (!this.calloutRecheck) {
-      this.calloutRecheck = window.setTimeout(() => {
-        this.calloutRecheck = 0;
-        this.calloutCheckedAt = 0;
-        this.core.requestRender();
-      }, 200);
-    }
     const cam = this.core.activeCamera;
     cam.updateMatrixWorld();
+    const key = (m) => m.elements.map((e) => e.toFixed(6)).join();
+    const at = `${key(cam.matrixWorld)}|${key(cam.projectionMatrix)}|${w}|${h}`;
+    if (at !== this.calloutCamera) {
+      this.calloutCamera = at;
+      this.calloutStillSince = now;
+      this.calloutPending = null;
+      this.calloutCheckDirty = true;
+    }
+    if (this.calloutCheckDirty && !this.calloutPending) {
+      if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
+        this.calloutPending = { queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0, capacity: marginCapacity(h) };
+        this.calloutCheckDirty = false;
+      } else if (!this.calloutRecheck) {
+        this.calloutRecheck = window.setTimeout(
+          () => {
+            this.calloutRecheck = 0;
+            this.core.requestRender();
+          },
+          CALLOUT_SETTLE_MS - (now - this.calloutStillSince) + 5
+        );
+      }
+    }
+    if (this.calloutPending) {
+      this._checkCalloutVisibility(now + CALLOUT_BUDGET_MS);
+      if (this.calloutPending) this.core.requestRender();
+    }
     const v = new THREE9.Vector3();
     const anchors = [];
-    for (const [id, anchor] of this.calloutAnchors) {
-      if (!this.calloutVisible.has(id)) continue;
+    for (const id of this.calloutAnchors.keys()) {
+      const anchor = this.calloutVisible.get(id);
+      if (!anchor) continue;
       v.copy(anchor).project(cam);
       if (v.z > 1) continue;
       anchors.push({ id, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
@@ -4091,7 +4206,7 @@ var Marks = class {
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);
     const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length);
+    this.callouts.update(placed, dropped.length + this.calloutUnchecked, this.calloutUnchecked > 0);
   }
   dispose() {
     this.pocheMat?.dispose();
@@ -4104,12 +4219,90 @@ var Marks = class {
   }
 };
 
+// src/render/FadingGrid.ts
+import * as THREE10 from "three";
+var srgb = (hex) => new THREE10.Vector3((hex >> 16 & 255) / 255, (hex >> 8 & 255) / 255, (hex & 255) / 255);
+var FadingGrid = class {
+  constructor(background, zUp) {
+    const material = new THREE10.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      defines: zUp ? { Z_UP: 1 } : {},
+      uniforms: {
+        // A plain vector of sRGB components, not a Color: a ShaderMaterial writes its colour
+        // to the screen as is, without the linear-to-sRGB step other materials get.
+        uLine: { value: srgb(gridLineColour(background)) },
+        uCentre: { value: new THREE10.Vector2() },
+        uMinor: { value: 1 },
+        uMajor: { value: 5 },
+        uFadeFrom: { value: 10 },
+        uFadeTo: { value: 30 }
+      },
+      vertexShader: `
+        varying vec3 vWorld;
+        void main() {
+          vec4 world = modelMatrix * vec4(position, 1.0);
+          vWorld = world.xyz;
+          gl_Position = projectionMatrix * viewMatrix * world;
+        }`,
+      fragmentShader: `
+        uniform vec3 uLine;
+        uniform vec2 uCentre;
+        uniform float uMinor;
+        uniform float uMajor;
+        uniform float uFadeFrom;
+        uniform float uFadeTo;
+        varying vec3 vWorld;
+        float rule(vec2 p, float step) {
+          vec2 q = p / step;
+          vec2 g = abs(fract(q - 0.5) - 0.5) / fwidth(q);
+          return 1.0 - min(min(g.x, g.y), 1.0);
+        }
+        void main() {
+          #ifdef Z_UP
+            vec2 p = vWorld.xy;
+          #else
+            vec2 p = vWorld.xz;
+          #endif
+          float fade = 1.0 - smoothstep(uFadeFrom, uFadeTo, length(p - uCentre));
+          float line = max(rule(p, uMinor) * 0.55, rule(p, uMajor));
+          gl_FragColor = vec4(uLine, line * fade);
+        }`
+    });
+    this.mesh = new THREE10.Mesh(new THREE10.PlaneGeometry(1, 1), material);
+    if (!zUp) this.mesh.rotation.x = -Math.PI / 2;
+    this.mesh.renderOrder = -2;
+    this.mesh.raycast = () => {
+    };
+    this.zUp = zUp;
+  }
+  /** Space and centre the grid for content of this bounding sphere (world coordinates). */
+  fit(sphere) {
+    const grid = groundGrid(sphere.radius);
+    const c = sphere.center;
+    const [u, v] = this.zUp ? [c.x, c.y] : [c.x, c.z];
+    const uni = this.mesh.material.uniforms;
+    uni.uCentre.value.set(u, v);
+    uni.uMinor.value = grid.minor;
+    uni.uMajor.value = grid.major;
+    uni.uFadeFrom.value = grid.fadeFrom;
+    uni.uFadeTo.value = grid.fadeTo;
+    this.mesh.position.set(u, this.zUp ? v : 0, this.zUp ? 0 : v);
+    this.mesh.scale.set(grid.size, grid.size, 1);
+  }
+  dispose() {
+    this.mesh.geometry.dispose();
+    this.mesh.material.dispose();
+  }
+};
+
 // src/render/ThreeRenderer.ts
 var INERT_STYLE_KEYS = /* @__PURE__ */ new Set(["layer", "lineWidth", "noExport"]);
 var DEFAULTS = {
   antialias: true,
   backgroundColor: 658196,
   showGrid: true,
+  gridStyle: "lines",
   gridSize: 20,
   gridDivisions: 20,
   showAxes: true,
@@ -4135,6 +4328,8 @@ var ThreeRenderer = class {
     // that shows only solid meshes). Solid geometry is unaffected.
     this.hideHelpers = false;
     this.gridHelper = null;
+    this.fadingGrid = null;
+    this.gridDirty = true;
     this.axesHelper = null;
     // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
     // sketch re-runs (clearThree only touches objectMap-managed objects).
@@ -4145,18 +4340,18 @@ var ThreeRenderer = class {
     this.config = { ...DEFAULTS, ...config };
     this.isZUp = this.config.up === "z";
     const cfg = this.config;
-    this.threeScene = new THREE10.Scene();
-    this.threeScene.background = new THREE10.Color(cfg.backgroundColor);
+    this.threeScene = new THREE11.Scene();
+    this.threeScene.background = new THREE11.Color(cfg.backgroundColor);
     const aspect = container.clientWidth / container.clientHeight || 1;
-    this.camera = new THREE10.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
+    this.camera = new THREE11.PerspectiveCamera(cfg.fov, aspect, 0.1, 1e3);
     if (this.isZUp) this.camera.up.set(0, 0, 1);
     this.camera.position.set(...cfg.cameraPosition);
     this.camera.lookAt(...cfg.cameraTarget);
-    const orthoCam = new THREE10.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
+    const orthoCam = new THREE11.OrthographicCamera(-10, 10, 10, -10, 0.01, 2e3);
     if (this.isZUp) orthoCam.up.set(0, 0, 1);
     orthoCam.position.set(...cfg.cameraPosition);
     orthoCam.lookAt(...cfg.cameraTarget);
-    this.renderer = new THREE10.WebGLRenderer({ antialias: cfg.antialias });
+    this.renderer = new THREE11.WebGLRenderer({ antialias: cfg.antialias });
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
@@ -4185,14 +4380,18 @@ var ThreeRenderer = class {
     this.marks = new Marks(this.core);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
-    if (cfg.showGrid) {
-      const grid = new THREE10.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
+    if (cfg.showGrid && cfg.gridStyle === "fading") {
+      this.fadingGrid = new FadingGrid(cfg.backgroundColor, this.isZUp);
+      this.gridHelper = this.fadingGrid.mesh;
+      this.threeScene.add(this.fadingGrid.mesh);
+    } else if (cfg.showGrid) {
+      const grid = new THREE11.GridHelper(cfg.gridSize, cfg.gridDivisions, 3816538, 2763850);
       if (this.isZUp) grid.rotation.x = Math.PI / 2;
       this.gridHelper = grid;
       this.threeScene.add(grid);
     }
     if (cfg.showAxes) {
-      this.axesHelper = new THREE10.AxesHelper(cfg.axesSize);
+      this.axesHelper = new THREE11.AxesHelper(cfg.axesSize);
       this.threeScene.add(this.axesHelper);
     }
     if (cfg.enableOrbitControls) {
@@ -4219,6 +4418,7 @@ var ThreeRenderer = class {
     this._needsRender = true;
     this.lighting.sunDirty = true;
     this.marks.calloutsDirty = true;
+    this.gridDirty = true;
     switch (event.type) {
       case "object:add": {
         const obj = this.gScene.get(event.id);
@@ -4275,7 +4475,7 @@ var ThreeRenderer = class {
     if (this.lighting.currentLighting === "studio") {
       const cast = this.gScene.renderMode !== "ghost";
       t.traverse((child) => {
-        if (child instanceof THREE10.Mesh) {
+        if (child instanceof THREE11.Mesh) {
           child.castShadow = cast;
           child.receiveShadow = true;
         }
@@ -4412,16 +4612,14 @@ var ThreeRenderer = class {
   objectBounds(id) {
     const t = this.objectMap.get(id);
     if (!t) return null;
-    const b = new THREE10.Box3().setFromObject(t);
+    const b = new THREE11.Box3().setFromObject(t);
     if (b.isEmpty()) return null;
     return { min: new Vec3(b.min.x, b.min.y, b.min.z), max: new Vec3(b.max.x, b.max.y, b.max.z) };
   }
   /** Is the scene object currently shown (its own style and every parent)? */
   isObjectShown(id) {
-    let cur = this.objectMap.get(id) ?? null;
-    if (!cur) return false;
-    for (; cur; cur = cur.parent) if (!cur.visible) return false;
-    return true;
+    const t = this.objectMap.get(id);
+    return !!t && shown(t);
   }
   /** Render now and read the canvas back as a PNG data URL. Must stay synchronous: without
    *  `preserveDrawingBuffer` the buffer is only readable in the same task as the draw. */
@@ -4432,7 +4630,7 @@ var ThreeRenderer = class {
   }
   /** Bounds of what the scene shows. */
   contentBox() {
-    const box = new THREE10.Box3();
+    const box = new THREE11.Box3();
     for (const t of this.objectMap.values()) if (t.visible) box.expandByObject(t);
     return box;
   }
@@ -4446,6 +4644,11 @@ var ThreeRenderer = class {
   }
   _draw() {
     if (this.lighting.sunDirty && this.lighting.currentLighting === "studio") this.lighting.fitSun();
+    if (this.gridDirty && this.fadingGrid) {
+      this.gridDirty = false;
+      const box = this.contentBox();
+      this.fadingGrid.fit(box.isEmpty() ? new THREE11.Sphere(new THREE11.Vector3(), 10) : box.getBoundingSphere(new THREE11.Sphere()));
+    }
     this.marks.followOutlines();
     this.renderer.render(this.threeScene, this.activeCamera);
     this._needsRender = false;
@@ -4521,7 +4724,7 @@ var ThreeRenderer = class {
   }
   /** Set the viewport background color. */
   setBackground(color) {
-    this.threeScene.background = new THREE10.Color(color);
+    this.threeScene.background = new THREE11.Color(color);
     this.config.backgroundColor = color;
     this.requestRender();
   }
@@ -4541,6 +4744,7 @@ var ThreeRenderer = class {
     this.unsub?.();
     this.clearThree();
     this.marks.dispose();
+    this.fadingGrid?.dispose();
     this.pointer.dispose();
     this.lighting.dispose();
     cancelAnimationFrame(this.rafId);
@@ -7608,8 +7812,12 @@ function appShell(config) {
     const now = performance.now();
     const dt = Math.min((now - lastTime) / 1e3, 1 / 15);
     lastTime = now;
-    if (animateFn) animateFn(dt, (now - startTime) / 1e3);
-    renderer.render();
+    if (animateFn) {
+      animateFn(dt, (now - startTime) / 1e3);
+      renderer.render();
+    } else {
+      renderer.renderIfNeeded();
+    }
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
@@ -7718,10 +7926,14 @@ function buildTopBar(header, scene, renderer, t, show) {
         b.style.color = on ? t.panelBg : t.textDim;
       }
     };
-    for (const [label, val] of opts) {
+    for (const [label, val, icon] of opts) {
       const b = document.createElement("button");
       b.textContent = label;
       b.style.cssText = "padding:3px 9px; border:0; background:transparent; font:inherit; font-size:11px; cursor:pointer;";
+      if (icon) {
+        b.insertAdjacentHTML("afterbegin", icon);
+        b.style.cssText += "display:flex; align-items:center; gap:4px; padding-left:6px;";
+      }
       b.onclick = () => {
         set(val);
         onSel(val);
@@ -7748,7 +7960,7 @@ function buildTopBar(header, scene, renderer, t, show) {
     })
   )));
   if (show.mode !== false) bar.appendChild(group("Mode", segmented(
-    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]],
+    [["Solid", "solid"], ["Wire", "wireframe"], ["Hidden", "hiddenline"], ["Ghost", "ghost"]].map(([label, mode]) => [label, mode, viewModeIconSvg(mode, 14)]),
     scene.renderMode,
     (v) => scene.setRenderMode(v),
     (set) => scene.on((e) => {
@@ -8094,6 +8306,8 @@ export {
   SunPosition,
   ThreeRenderer,
   Triangle,
+  VIEW_MODE_ICON_CORNERS,
+  VIEW_MODE_ICON_SVG,
   Vec2,
   Vec3,
   Vec4,
@@ -8177,6 +8391,8 @@ export {
   supabaseAdapter,
   surfaceAppearance,
   viewCommands,
+  viewModeIconShapes,
+  viewModeIconSvg,
   writeDxf2D,
   writeDxf3D
 };

@@ -36,6 +36,7 @@ __export(react_exports, {
   ParamPanel: () => ParamPanel,
   TektoApp: () => TektoApp,
   Toolbar: () => Toolbar,
+  ViewModeIcon: () => ViewModeIcon,
   useParams: () => useParams,
   useScene: () => useScene,
   useSceneObjects: () => useSceneObjects,
@@ -84,19 +85,19 @@ var HMath = {
   },
   /** Solve quadratic Bezier (1-t)²a + 2(1-t)t·b + t²c = target for t ∈ [0,1]. Returns t or null. */
   solveQuadraticBezier(a, b, c, target) {
-    const A = a - 2 * b + c;
-    const B = 2 * (b - a);
-    const C = a - target;
-    if (Math.abs(A) < 1e-12) {
-      if (Math.abs(B) < 1e-12) return null;
-      const t = -C / B;
+    const A3 = a - 2 * b + c;
+    const B3 = 2 * (b - a);
+    const C3 = a - target;
+    if (Math.abs(A3) < 1e-12) {
+      if (Math.abs(B3) < 1e-12) return null;
+      const t = -C3 / B3;
       return t >= -1e-6 && t <= 1 + 1e-6 ? Math.max(0, Math.min(1, t)) : null;
     }
-    const disc = B * B - 4 * A * C;
+    const disc = B3 * B3 - 4 * A3 * C3;
     if (disc < 0) return null;
     const sq = Math.sqrt(disc);
-    const t1 = (-B - sq) / (2 * A);
-    const t2 = (-B + sq) / (2 * A);
+    const t1 = (-B3 - sq) / (2 * A3);
+    const t2 = (-B3 + sq) / (2 * A3);
     for (const t of [t1, t2]) {
       if (t >= -1e-6 && t <= 1 + 1e-6) return Math.max(0, Math.min(1, t));
     }
@@ -2474,6 +2475,10 @@ var buttonStyle = {
 };
 var ACCORDION_MIN = 40;
 var FLEXING = 1;
+function startHeight(s) {
+  const open = s.defaultOpen ?? !!s.fill;
+  return open ? s.fill ? FLEXING : s.defaultHeight ?? FLEXING : 0;
+}
 function AccordionColumn({
   sections,
   storageKey,
@@ -2483,12 +2488,10 @@ function AccordionColumn({
 }) {
   const initial = (0, import_react.useMemo)(() => {
     const out = {};
-    for (const s of sections) {
-      const open2 = s.defaultOpen ?? !!s.fill;
-      out[s.id] = open2 ? s.fill ? FLEXING : s.defaultHeight ?? FLEXING : 0;
-    }
+    for (const s of sections) out[s.id] = startHeight(s);
     return out;
   }, [sections]);
+  const heightOf = (s) => state[s.id] ?? startHeight(s);
   const [state, setState] = (0, import_react.useState)(() => {
     if (!storageKey) return initial;
     try {
@@ -2507,7 +2510,7 @@ function AccordionColumn({
   const toggle = (0, import_react.useCallback)((s) => {
     setState((v) => ({
       ...v,
-      [s.id]: v[s.id] > 0 ? 0 : s.fill ? FLEXING : s.defaultHeight ?? FLEXING
+      [s.id]: (v[s.id] ?? startHeight(s)) > 0 ? 0 : s.fill ? FLEXING : s.defaultHeight ?? FLEXING
     }));
   }, []);
   const bodies = (0, import_react.useRef)({});
@@ -2522,7 +2525,7 @@ function AccordionColumn({
       [belowId]: start.below - move
     }));
   }, []);
-  const open = sections.filter((s) => (state[s.id] ?? 0) > 0);
+  const open = sections.filter((s) => heightOf(s) > 0);
   const resizable = (s) => !!s.fill || s.defaultHeight !== void 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
     "div",
@@ -2536,10 +2539,10 @@ function AccordionColumn({
         ...style
       },
       children: sections.map((s) => {
-        const isOpen = (state[s.id] ?? 0) > 0;
+        const isOpen = heightOf(s) > 0;
         const at = open.indexOf(s);
         const above = isOpen && at > 0 ? open[at - 1] : void 0;
-        const flexing = !!s.fill && state[s.id] === FLEXING;
+        const flexing = !!s.fill && heightOf(s) === FLEXING;
         return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.default.Fragment, { children: [
           above && resizable(above) && resizable(s) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             AccordionHandle,
@@ -2616,7 +2619,7 @@ function AccordionColumn({
               ref: (el) => {
                 bodies.current[s.id] = el;
               },
-              style: flexing ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : resizable(s) ? { flexShrink: 0, height: state[s.id], overflow: "auto" } : { flexShrink: 0 },
+              style: flexing ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : resizable(s) ? { flexShrink: 0, height: heightOf(s), overflow: "auto" } : { flexShrink: 0 },
               children: s.children
             }
           )
@@ -2780,6 +2783,64 @@ function AccordionHandle({ onStart, onDrag, className }) {
     }
   );
 }
+
+// src/gui/viewModeIcons.ts
+var A = [3, 7.5];
+var B = [13, 4];
+var C = [21, 8];
+var D = [11, 11.5];
+var DROP = 9;
+var down = ([x, y]) => [x, y + DROP];
+var [A2, B2, C2, D2] = [A, B, C, D].map(down);
+var pts = (...ps) => ps.map((p) => p.join(",")).join(" ");
+var OUTLINE = pts(A, B, C, C2, D2, A2);
+var inner = () => [[D, A], [D, C], [D, D2]].map(([from, to]) => ({ kind: "line", from, to }));
+var hidden = (opacity) => [[B, B2], [A2, B2], [C2, B2]].map(([from, to]) => ({ kind: "line", from, to, ...opacity === void 0 ? {} : { opacity } }));
+function viewModeIconShapes(mode) {
+  if (mode === "solid") {
+    return [
+      { kind: "polygon", points: pts(A, B, C, D), fill: 0.18 },
+      { kind: "polygon", points: pts(A, D, D2, A2), fill: 0.45 },
+      { kind: "polygon", points: pts(D, C, C2, D2), fill: 0.8 },
+      { kind: "polygon", points: OUTLINE, stroke: true },
+      ...inner()
+    ];
+  }
+  if (mode === "ghost") {
+    return [
+      { kind: "polygon", points: OUTLINE, fill: 0.12 },
+      ...hidden(0.45),
+      { kind: "polygon", points: OUTLINE, stroke: true },
+      ...inner()
+    ];
+  }
+  if (mode === "wireframe") return [...hidden(), { kind: "polygon", points: OUTLINE, stroke: true }, ...inner()];
+  return [{ kind: "polygon", points: OUTLINE, stroke: true }, ...inner()];
+}
+var VIEW_MODE_ICON_SVG = {
+  xmlns: "http://www.w3.org/2000/svg",
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.5,
+  strokeLinejoin: "round",
+  strokeLinecap: "round"
+};
+
+// src/react/ViewModeIcon.tsx
+var import_jsx_runtime2 = require("react/jsx-runtime");
+function ViewModeIcon({ mode, ...props }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("svg", { ...VIEW_MODE_ICON_SVG, "aria-hidden": "true", ...props, children: viewModeIconShapes(mode).map((s, i) => s.kind === "line" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("line", { x1: s.from[0], y1: s.from[1], x2: s.to[0], y2: s.to[1], strokeOpacity: s.opacity }, i) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    "polygon",
+    {
+      points: s.points,
+      fill: s.fill !== void 0 ? "currentColor" : void 0,
+      fillOpacity: s.fill,
+      stroke: s.stroke ? void 0 : "none"
+    },
+    i
+  )) });
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   AccordionColumn,
@@ -2788,6 +2849,7 @@ function AccordionHandle({ onStart, onDrag, className }) {
   ParamPanel,
   TektoApp,
   Toolbar,
+  ViewModeIcon,
   useParams,
   useScene,
   useSceneObjects,

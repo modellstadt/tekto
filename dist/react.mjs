@@ -1,4 +1,8 @@
 import {
+  VIEW_MODE_ICON_SVG,
+  viewModeIconShapes
+} from "./chunk-T72HXZNL.mjs";
+import {
   Scene
 } from "./chunk-IYZEH7EG.mjs";
 import "./chunk-VTSIDLJ7.mjs";
@@ -391,6 +395,10 @@ var buttonStyle = {
 };
 var ACCORDION_MIN = 40;
 var FLEXING = 1;
+function startHeight(s) {
+  const open = s.defaultOpen ?? !!s.fill;
+  return open ? s.fill ? FLEXING : s.defaultHeight ?? FLEXING : 0;
+}
 function AccordionColumn({
   sections,
   storageKey,
@@ -400,12 +408,10 @@ function AccordionColumn({
 }) {
   const initial = useMemo(() => {
     const out = {};
-    for (const s of sections) {
-      const open2 = s.defaultOpen ?? !!s.fill;
-      out[s.id] = open2 ? s.fill ? FLEXING : s.defaultHeight ?? FLEXING : 0;
-    }
+    for (const s of sections) out[s.id] = startHeight(s);
     return out;
   }, [sections]);
+  const heightOf = (s) => state[s.id] ?? startHeight(s);
   const [state, setState] = useState(() => {
     if (!storageKey) return initial;
     try {
@@ -424,7 +430,7 @@ function AccordionColumn({
   const toggle = useCallback((s) => {
     setState((v) => ({
       ...v,
-      [s.id]: v[s.id] > 0 ? 0 : s.fill ? FLEXING : s.defaultHeight ?? FLEXING
+      [s.id]: (v[s.id] ?? startHeight(s)) > 0 ? 0 : s.fill ? FLEXING : s.defaultHeight ?? FLEXING
     }));
   }, []);
   const bodies = useRef({});
@@ -439,7 +445,7 @@ function AccordionColumn({
       [belowId]: start.below - move
     }));
   }, []);
-  const open = sections.filter((s) => (state[s.id] ?? 0) > 0);
+  const open = sections.filter((s) => heightOf(s) > 0);
   const resizable = (s) => !!s.fill || s.defaultHeight !== void 0;
   return /* @__PURE__ */ jsx(
     "div",
@@ -453,10 +459,10 @@ function AccordionColumn({
         ...style
       },
       children: sections.map((s) => {
-        const isOpen = (state[s.id] ?? 0) > 0;
+        const isOpen = heightOf(s) > 0;
         const at = open.indexOf(s);
         const above = isOpen && at > 0 ? open[at - 1] : void 0;
-        const flexing = !!s.fill && state[s.id] === FLEXING;
+        const flexing = !!s.fill && heightOf(s) === FLEXING;
         return /* @__PURE__ */ jsxs(React.Fragment, { children: [
           above && resizable(above) && resizable(s) && /* @__PURE__ */ jsx(
             AccordionHandle,
@@ -533,7 +539,7 @@ function AccordionColumn({
               ref: (el) => {
                 bodies.current[s.id] = el;
               },
-              style: flexing ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : resizable(s) ? { flexShrink: 0, height: state[s.id], overflow: "auto" } : { flexShrink: 0 },
+              style: flexing ? { flex: 1, minHeight: s.defaultHeight ?? 120, overflow: "auto" } : resizable(s) ? { flexShrink: 0, height: heightOf(s), overflow: "auto" } : { flexShrink: 0 },
               children: s.children
             }
           )
@@ -697,6 +703,21 @@ function AccordionHandle({ onStart, onDrag, className }) {
     }
   );
 }
+
+// src/react/ViewModeIcon.tsx
+import { jsx as jsx2 } from "react/jsx-runtime";
+function ViewModeIcon({ mode, ...props }) {
+  return /* @__PURE__ */ jsx2("svg", { ...VIEW_MODE_ICON_SVG, "aria-hidden": "true", ...props, children: viewModeIconShapes(mode).map((s, i) => s.kind === "line" ? /* @__PURE__ */ jsx2("line", { x1: s.from[0], y1: s.from[1], x2: s.to[0], y2: s.to[1], strokeOpacity: s.opacity }, i) : /* @__PURE__ */ jsx2(
+    "polygon",
+    {
+      points: s.points,
+      fill: s.fill !== void 0 ? "currentColor" : void 0,
+      fillOpacity: s.fill,
+      stroke: s.stroke ? void 0 : "none"
+    },
+    i
+  )) });
+}
 export {
   AccordionColumn,
   InfoHint,
@@ -704,6 +725,7 @@ export {
   ParamPanel,
   TektoApp,
   Toolbar,
+  ViewModeIcon,
   useParams,
   useScene,
   useSceneObjects,
