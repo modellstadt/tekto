@@ -7,9 +7,9 @@
 
 import * as THREE from "three";
 // @ts-ignore — OrbitControls typings vary across Three.js versions
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 // @ts-ignore — TransformControls typings vary across Three.js versions
-import { TransformControls } from "three/examples/jsm/controls/TransformControls";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { Scene as GScene, SceneObject, SceneEvent } from "../scene/Scene";
 import { Mesh as GMesh } from "../core/geometry/mesh/Mesh";
 import { Vec3 } from "../core/math/vectors";
@@ -1533,9 +1533,10 @@ export class ThreeRenderer {
     const tc = new TransformControls(this.activeCamera, this.renderer.domElement);
     tc.setMode(this.gizmoMode === "none" ? "translate" : this.gizmoMode);
     // Disable OrbitControls during gizmo drag, and write changes back to Scene.
-    tc.addEventListener("dragging-changed", (e: { value: boolean }) => {
-      if (this.controls) this.controls.enabled = !e.value;
-      if (!e.value && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
+    tc.addEventListener("dragging-changed", (e) => {
+      const dragging = e.value === true;
+      if (this.controls) this.controls.enabled = !dragging;
+      if (!dragging && this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
     });
     tc.addEventListener("objectChange", () => {
       if (this.gizmoAttachedId) this.writeBackTransform(this.gizmoAttachedId);
@@ -1545,7 +1546,7 @@ export class ThreeRenderer {
     // three ≥ r169: TransformControls is no longer an Object3D — its visible
     // gizmo is `getHelper()`. Adding `tc` itself throws ("not an instance of
     // THREE.Object3D") and no gizmo appears. Older three: add the controls.
-    this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : tc);
+    this.threeScene.add(typeof tc.getHelper === "function" ? tc.getHelper() : (tc as unknown as THREE.Object3D));
     this.transformControls = tc;
   }
 

@@ -17,6 +17,12 @@ before 1.0, breaking changes bump the minor version. See
   was built inside-out; flipped. Double-sided rendering hid both; volumes, back-face culling,
   hidden-line views, offsets and IFC/DXF solids did not. `MeshFactory.pipe` with a radius array
   that doesn't match the path now throws instead of producing NaN positions.
+- **Fix — `import "tekto"` works in plain Node** (ESM and CommonJS), so scripts, agents and
+  test runners other than Vite can use the geometry. The three.js addon imports lacked their
+  `.js` extension, which bundlers forgive and Node does not. Fixing the path also made
+  TypeScript see `OrbitControls`/`TransformControls` for the first time (they were silently
+  `any`); `@types/three` is now aligned with the runtime (0.160 → 0.183). CI checks that the
+  build loads in Node.
 
 ## 0.6.0 — 2026-10-05
 
