@@ -17,6 +17,16 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.mjs",
+      "require": "./dist/core.js"
+    },
+    "./2d": {
+      "types": "./dist/2d.d.ts",
+      "import": "./dist/2d.mjs",
+      "require": "./dist/2d.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.mjs",
@@ -26,8 +36,8 @@
     "./collab-vite": "./tools/collab-vite-plugin.mjs"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/react.ts --format cjs,esm --dts --clean --external three --external react --external react-dom --external web-ifc",
-    "dev": "tsup src/index.ts src/react.ts --format cjs,esm --dts --watch --external three --external react --external react-dom --external web-ifc",
+    "build": "tsup src/index.ts src/core.ts src/2d.ts src/react.ts --format cjs,esm --dts --clean --external three --external react --external react-dom --external web-ifc",
+    "dev": "tsup src/index.ts src/core.ts src/2d.ts src/react.ts --format cjs,esm --dts --watch --external three --external react --external react-dom --external web-ifc",
     "lint": "tsc --noEmit -p tsconfig.lint.json",
     "test": "vitest run",
     "test:watch": "vitest",

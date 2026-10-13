@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **New entry points `tekto/core` and `tekto/2d`.** `tekto/core` is the geometry and data
+  layer — meshes, curves, NURBS, polygons, BIM, IFC/OBJ writers, `writeDxf3D`, `Scene`,
+  `ParamStore`, `SharedStore` — with no three.js and no DOM: it runs in Node scripts, workers
+  and tests. `tekto/2d` is `sketch2d` with the 2D geometry a first sketch needs. The main
+  `tekto` entry is unchanged (it re-exports `tekto/core`). CI walks both entries and runs them
+  in Node with three and React blocked.
+- `writeDxf3D` and the DXF layer types moved into a three-free module (`DxfExporter`, which
+  renders hidden lines on the GPU, keeps its API and re-exports them); output is byte-identical.
+
 ## 0.6.1 — 2026-10-13
 
 - **Fix — `NurbsCurve` now uses its weights.** Evaluation ignored them, so every rational
