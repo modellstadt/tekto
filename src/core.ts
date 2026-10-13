@@ -192,6 +192,9 @@ export type {
 // Shared editing: a document of keyed records several people (and agents) edit together,
 // with presence; backends are adapters (in-process, Vite dev server, Supabase).
 export { SharedStore, collabColor, memoryAdapter, devServerAdapter, supabaseAdapter } from "./collab/SharedStore";
+// The document of a retained app: typed records, stable ids, undo/redo, save/open (on SharedStore).
+export { Doc, localAdapter } from "./collab/Doc";
+export type { DocSchema, DocChange, DocChangeSource, DocEditOptions, DocOptions, DocJSON } from "./collab/Doc";
 export type {
   SharedRecord, CollabUser, Presence, CollabStatus, CollabEvents, CollabAdapter, SharedStoreOptions, SupabaseLike,
 } from "./collab/SharedStore";
