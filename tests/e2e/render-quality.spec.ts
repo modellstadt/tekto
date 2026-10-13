@@ -40,8 +40,8 @@ test("in Studio the sun's shadow camera frames the content, not a fixed 30 m box
   const frame = () => page.evaluate(() => {
     const rr = (window as any).__tekto.owner.renderer;
     rr.render();
-    const sc = rr.dirLight.shadow.camera;
-    return { right: sc.right, targetZ: rr.dirLight.target.position.z };
+    const sc = rr.lighting.dirLight.shadow.camera;
+    return { right: sc.right, targetZ: rr.lighting.dirLight.target.position.z };
   });
   await page.evaluate(() => (window as any).__tekto.owner.scene.setLightingMode("studio"));
   const tower = await frame();                              // 12 floors, 0.7 m apart, 4 × 2.4 m slabs
@@ -62,7 +62,7 @@ test("selection as outlines leaves the colour alone; outlines go with their obje
     const id = doc.ids("blocks")[0];
     const group = id ? rr.getThreeObject(blocks.objectsOf(id)[0]) : null;
     const surface = group?.children.find((c: any) => c.userData.surface);
-    return { outlines: rr.outlineGroup.children.length, emissive: surface?.material.emissive.getHex() ?? null };
+    return { outlines: rr.marks.outlineGroup.children.length, emissive: surface?.material.emissive.getHex() ?? null };
   });
 
   await page.evaluate(() => (window as any).__tekto.owner.renderer.setSelectionStyle("outline"));

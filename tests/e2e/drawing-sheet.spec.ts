@@ -36,7 +36,7 @@ test("pick in the plan and an elevation; the 3D view shares the selection", asyn
   // Plan: column A3 sits at x = 6 m (12 m, 4 bays), y = 0.
   await clickSheet(page, 6, 0);
   expect(await ds(page, (d) => d.selection.keys())).toEqual(["columns/A3"]);
-  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.selectionMaterials.size)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.marks.selectionMaterials.size)).toBeGreaterThan(0);
 
   // South elevation: Shift-click the edge of column A2 adds it.
   const elev = await ds(page, (d) => d.sheet.view("south").options.at);

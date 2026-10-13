@@ -6,6 +6,13 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`ThreeRenderer` is split into parts** (internal; the public API is unchanged). The class
+  keeps the scene sync, the draw loop and its public methods, which delegate to:
+  `ObjectBuilder` (scene objects → three.js objects), `Lighting`, `CameraRig` (projection,
+  views, fitTo, the axis widget), `Pointer` (picking, hover, drag handles, transform gizmo)
+  and `Marks` (selection, section, callouts). The parts share a `RendererCore`. 2477 lines
+  became 885 + five files of 280–500 lines.
+
 ## 0.8.0 — 2026-10-13
 
 One renderer. `ThreeRenderer` gains the separate `Viewport`'s features: ghost, section cuts, named views and the axis widget, progressive creases, a framed sun, outlines, hover, callouts and `fitTo`. Each is opt-in where it shows up on screen, and `Viewport` is removed (**breaking**, see the first entry).

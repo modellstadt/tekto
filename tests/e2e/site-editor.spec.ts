@@ -44,7 +44,7 @@ test("add, select by click, resize as one undo step, delete and undo", async ({ 
   // Click the first block: it is selected and highlighted.
   await clickBlock(page, first);
   expect(await ed(page, (e) => e.selection.keys())).toEqual([`blocks/${first}`]);
-  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.selectionMaterials.size)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.marks.selectionMaterials.size)).toBeGreaterThan(0);
 
   // Shift-click adds the second.
   await clickBlock(page, second, ["Shift"]);
