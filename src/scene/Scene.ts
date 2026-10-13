@@ -116,6 +116,12 @@ export interface SceneObject {
   pickable?: boolean;
   /** Semantic pick tag surfaced in lab.onPick — select by meaning, not raw scene id. */
   pickTag?: string;
+  /**
+   * The document record this object shows, e.g. `"blocks/k3f9x2"` (set by `scene.withKey`
+   * and `bindScene`). Unlike the scene id it outlives re-renders, so selection, Markup and
+   * agents can name the thing a person sees.
+   */
+  key?: string;
 }
 
 /** A renderer-applied transform on top of baked geometry. All fields optional. */
@@ -172,6 +178,7 @@ export class Scene {
   private selectedIds = new Set<string>();
   private hoveredId: string | null = null;
   private suspendDepth = 0;
+  private currentKey: string | undefined;
   renderMode: RenderMode = "solid";
   lightingMode: LightingMode = "flat";
   environmentEnabled = false;
@@ -221,9 +228,29 @@ export class Scene {
   // ── Object Management ──
 
   private add(obj: SceneObject): SceneObject {
+    if (this.currentKey !== undefined && obj.key === undefined) obj.key = this.currentKey;
     this.objects.set(obj.id, obj);
     this.emit({ type: "object:add", id: obj.id });
     return obj;
+  }
+
+  /**
+   * Run `fn`; every object it adds carries `key` (the record it shows) from creation, so
+   * listeners — renderer, Markup, snapshots — see it with the add. Nested calls use the
+   * innermost key. `bindScene` does this for each record.
+   */
+  withKey<T>(key: string, fn: () => T): T {
+    const outer = this.currentKey;
+    this.currentKey = key;
+    try { return fn(); }
+    finally { this.currentKey = outer; }
+  }
+
+  /** The objects showing one record (see `withKey`). */
+  byKey(key: string): SceneObject[] {
+    const out: SceneObject[] = [];
+    for (const o of this.objects.values()) if (o.key === key) out.push(o);
+    return out;
   }
 
   get(id: string): SceneObject | undefined { return this.objects.get(id); }

@@ -49,6 +49,8 @@ export interface MarkupObjectRef {
   color?: string;
   /** Where the object was created, e.g. "pages/primitives.ts:12" (resolved by the dev server). */
   src?: string;
+  /** The document record it shows, e.g. "blocks/k3f9x2" (`bindScene` / `scene.withKey`). */
+  key?: string;
 }
 
 export type MarkKind = "point" | "loop" | "line" | "cross" | "stroke";
@@ -456,7 +458,7 @@ function summarize(kind: MarkKind, hits: MarkupObjectRef[]): string {
   if (!hits.length) return `${kind} ${verb} empty space`;
   const names = new Map<string, number>();
   for (const h of hits) {
-    const name = h.label ?? h.layer ?? h.tag ?? (h.color ? `${h.type} ${h.color}` : h.type);
+    const name = h.label ?? h.key ?? h.layer ?? h.tag ?? (h.color ? `${h.type} ${h.color}` : h.type);
     const key = h.src ? `${name} (${h.src})` : name;
     names.set(key, (names.get(key) ?? 0) + 1);
   }
