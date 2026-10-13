@@ -36,6 +36,11 @@ jobs:
       - name: tekto/core and tekto/2d stay three-free
         run: node tools/check-entries.mjs
 
+      # llms.txt / llms-full.txt are what an agent reads first: regenerated from the sources
+      # and the README's Start-here block, they must match, and every name they cite must exist.
+      - name: llms.txt matches the code
+        run: node tools/gen-llms.mjs --check
+
       # dist/ is committed so `github:` installs need no build step. It is rebuilt
       # ONLY in release PRs (branch release/vX.Y.Z); anywhere else, two open PRs
       # would conflict on generated files.

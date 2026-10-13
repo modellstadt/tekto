@@ -70,6 +70,7 @@ Before writing the edit:
 After the edit:
 
 - [ ] `npm run lint` (which is `tsc --noEmit -p tsconfig.lint.json`, covering `src/` + `playground/` + `tests/`) is clean.
+- [ ] Changed an export or its JSDoc? `node tools/gen-llms.mjs` regenerates `llms.txt` / `llms-full.txt` (CI fails if they're stale).
 - [ ] Affected tests pass (`npm test`). Add a test if the change is non-trivial *and* the rest of the module has tests; otherwise don't pad the suite.
 - [ ] If the change touches the public API (anything exported from `src/index.ts`), I've updated the README's [What's available from `tekto`](README.md#whats-available-from-tekto) list. (Sanity-check exact names against `src/index.ts` — that bucket list paraphrases.)
 

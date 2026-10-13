@@ -20,6 +20,12 @@ export interface FilletResult {
   endPt: Vec2;
 }
 
+/**
+ * 2D polygon operations on open rings of `Vec2` (no repeated closing point): `area`,
+ * `signedArea`, `centroid2D`, `pointInPolygon`, `offset`, `simplify`, `convexHull2D`,
+ * `triangulate2D`, `filletRays`, `minAreaRect`, `openRing`/`closeRing`, `createRect`/`createCircle`
+ * and more. For booleans with holes use {@link PolygonBool}.
+ */
 export const Polygon2D = {
 
   // ================================================================

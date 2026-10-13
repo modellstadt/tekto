@@ -403,6 +403,12 @@ export class PolylineCurve implements IMetricCurve {
 
 // ─── Curve Utilities ─────────────────────────
 
+/**
+ * Helpers over curves (`LineCurve`, `ArcCurve`, `HelixCurve`, `CubicBezierCurve`,
+ * `NurbsCurve`, `PolylineCurve` — all with `getPoint(t)`, `getTangent(t)`, arc length):
+ * `divideByCount` / `divideByFixedLength` / `divideByTargetLength` (sampling),
+ * `parallelTransportFrames` (sweeps), `unrollPolyline`, `arcFromPointTangentPoint`.
+ */
 export const CurveUtils = {
   /** Returns exactly 'count' points distributed along the curve. */
   divideByCount(curve: ICurve, count: number): Vec3[] {

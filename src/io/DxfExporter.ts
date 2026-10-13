@@ -124,6 +124,11 @@ type ISeg = DxfSegment;
 
 // ── Main class ────────────────────────────────────────────────────────────────
 
+/**
+ * 2D DXF views of 3D meshes with hidden lines removed: add meshes and edges, then
+ * `toDxf({ viewDir })` (CPU) or `toDxfGpu` / `toSegmentsGpu` (WebGL id buffer). For
+ * drawings you construct yourself use `writeDxf2D`; for true-3D lines, `writeDxf3D`.
+ */
 export class DxfExporter {
   private _tris: { ax: number; ay: number; az: number; bx: number; by: number; bz: number; cx: number; cy: number; cz: number }[] = [];
   /** Per-triangle face normal (parallel to _tris). null = normals unavailable. */

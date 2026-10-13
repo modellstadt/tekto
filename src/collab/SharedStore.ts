@@ -95,6 +95,13 @@ function randomId(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
 
+/**
+ * A document of keyed records that several people (and agents) edit together: `set` applies
+ * locally at once and syncs through an adapter (`memoryAdapter`, `devServerAdapter`,
+ * `supabaseAdapter`); last write wins per key; presence and broadcasts included.
+ *
+ *   const store = new SharedStore<[number, number, number]>({ doc: "site", adapter: devServerAdapter() });
+ */
 export class SharedStore<T = unknown> {
   readonly doc: string;
   /** This client (tab). */

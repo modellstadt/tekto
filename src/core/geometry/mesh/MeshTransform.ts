@@ -9,6 +9,11 @@ import type { Mesh } from "./Mesh";
 
 export type Axis = "x" | "y" | "z";
 
+/**
+ * In-place transforms of a {@link Mesh}: `transform` (Mat4), `translate`, `scale`,
+ * `rotate`/`rotateAbout`, `swapAxes` (Y-up ↔ Z-up), `mirror`, `flipFaces`, `reorientFaces`,
+ * `centerAtOrigin`. Mirroring and axis swaps re-wind faces so they still point outward.
+ */
 export const MeshTransform = {
 
   // ================================================================

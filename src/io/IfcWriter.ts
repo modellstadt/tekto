@@ -65,6 +65,13 @@ export interface AddWallSystemOptions {
 
 // ─── Writer ──────────────────────────────────────────────────────────
 
+/**
+ * Writes an IFC4 file as STEP text — no web-ifc needed. Add storeys, then walls, wall
+ * systems, openings, slabs, stairs; `save()` returns the `.ifc` content.
+ *
+ *   const ifc = new IfcWriter({ projectName: "Pavilion" }); const s = ifc.addStorey({ name: "EG", elevation: 0 });
+ *   ifc.addWallSystem(walls, { storey: s }); download(ifc.save(), "pavilion.ifc");
+ */
 export class IfcWriter {
   private entities: string[] = [];
   private nextId = 1;

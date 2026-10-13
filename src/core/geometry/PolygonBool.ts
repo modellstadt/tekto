@@ -72,6 +72,13 @@ function pcToMulti(geom: PCMultiPolygon): MultiPoly2 {
   return geom.map((poly) => poly.map(pcRingToRing));
 }
 
+/**
+ * Robust 2D booleans on polygons with holes: `union`, `intersection`, `difference` over
+ * multipolygons (`Ring2` → `Poly2` = [outer, …holes] → `MultiPoly2`), plus `fromRing`,
+ * `rings`, `area`. Winding doesn't matter on input. Prefer this over `polygonIntersection`.
+ *
+ *   const rooms = PolygonBool.difference(PolygonBool.fromRing(site), PolygonBool.fromRing(core));
+ */
 export const PolygonBool = {
 
   // ── construction / inspection ──

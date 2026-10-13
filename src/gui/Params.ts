@@ -113,6 +113,13 @@ export type ParamValues<S extends ParamSchema> = { [K in keyof S]: ParamValue<S[
 
 export type ParamChangeListener = (key: string, value: any, allValues: Record<string, any>) => void;
 
+/**
+ * The one parameter model: a schema of controls (`float`, `int`, `bool`, `select`, `color`,
+ * `string`, `vec3`, `button`) and their values, typed from the schema. Every harness keeps
+ * its controls here. `setByName` sets by label for tools and agents.
+ *
+ *   const p = new ParamStore({ r: { type: "float", min: 0, max: 5, default: 1 } }); p.get("r"); // number
+ */
 export class ParamStore<S extends ParamSchema = ParamSchema> {
   private schema: S;
   private values: Record<string, any> = {};

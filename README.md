@@ -35,6 +35,34 @@ npm install github:modellstadt/tekto three
 
 Use `tekto/core` for scripts and checks (`node check.mjs` with `import { MeshFactory } from "tekto/core"`) and in workers; CI guarantees it never pulls in three.js.
 
+### Start here
+
+<!-- start-here: copied into llms.txt by tools/gen-llms.mjs; bare `Names` must be exports (CI checks) -->
+About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `SharedStore`. **Files:** `writeDxf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
+
+| To … | use | not |
+|---|---|---|
+| make a parametric study | `sketch` | — |
+| make an app people edit, select and save | `appShell` with a `Scene` you keep | `sketch` (it rebuilds everything each run) |
+| run geometry in Node, a worker or a test | `import … from "tekto/core"` | `"tekto"` (pulls in three.js) |
+| build a mesh | `MeshFactory.box(…)` etc., or `new Mesh()` + `mesh.addNode` / `mesh.addFace` | hand-filled typed arrays |
+| measure or smooth a mesh | `mesh.volume()`, `mesh.smooth()` | the older `MeshAnalysis` / `Algo` wrappers |
+| check a mesh | `mesh.validate()` | judging a double-sided render |
+| 2D booleans, with holes | `PolygonBool` | `polygonIntersection` (two simple rings only) |
+| export a drawing | `writeDxf2D` + `download` | a hand-written DXF or Blob |
+| export 3D lines / views of meshes / BIM | `writeDxf3D` / `DxfExporter` / `IfcWriter` | — |
+| set a control from code | `handle.set(value)` on any control | clicking the panel's DOM |
+| save and reopen a design | `getParams()` / `setParams()` | `localStorage` + reload |
+| see what your change did | `npm run snap -- <url>`: exit code, `view.png`, `markup.json` | assuming it worked |
+
+Five rules that catch agents out:
+1. **Rebuilt or retained — decide first.** `sketch` re-creates every object on each change (ids are positional); `appShell` keeps a `Scene` whose objects live until removed. Selection, undo and save need the second.
+2. **Two coordinate conventions.** `sketch` and the `MeshFactory` primitives are Y-up; `appShell`, BIM, DXF and sun are Z-up. Pass `up: "z"` to `sketch` for CAD content.
+3. **The sketch function runs again on every change.** Put one-shot work in `lab.button` callbacks and caches in module scope.
+4. **One name per concept.** `Mesh` is the only mesh (edit by id, read as arrays); `face.nodes` is a snapshot — reverse a face with `mesh.reverseFace(id)`.
+5. **Look before you claim.** `npm run snap` exits 1 if the page logged an error; an error from `Mesh`, `MeshFactory` or `writeDxf3D` names the call and the bad value — fix the input, don't catch it.
+<!-- /start-here -->
+
 ### Sketch API (easiest)
 
 Write a single function, get an interactive 3D app with auto-generated sliders:
@@ -553,7 +581,7 @@ For curated category breakdowns see **[Generators](#generators)**, **[Algorithms
 
 ## For LLMs / coding assistants
 
-If you're an LLM helping someone use tekto, please:
+If you're an LLM helping someone use tekto, read [`llms.txt`](llms.txt) first — the names that cover most apps, which to use for what, and five rules — and [`llms-full.txt`](llms-full.txt) for every export with its one-line doc. Then:
 
 1. **Read [`CLAUDE.md`](CLAUDE.md) first** — it's the agent-editing handbook for this codebase: what catches agents out (one `Mesh`, re-running sketches), the two coordinate conventions, the lint setup (which extends to `playground/` + `tests/`, not just `src/`), and the "what to never do without asking" list.
 2. **Use only the names exported from `src/index.ts`** (or `src/react.ts`, imported as `tekto/react`, for the React layer). Don't import from `tekto/src/*` directly — that's a private surface. If something a user needs isn't exported, file it as an issue or add the re-export deliberately.

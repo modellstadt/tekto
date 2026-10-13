@@ -17,6 +17,14 @@ function need(ok: boolean, msg: string): void {
 }
 const isCount = (n: number, min: number) => Number.isInteger(n) && n >= min;
 
+/**
+ * Generators that return a {@link Mesh}. Primitives `box`, `sphere`, `cylinder`, `torus`,
+ * `grid` (heightfield, with `.update(fn)`); sweeps `extrude`, `revolve`, `loft`, `pipe`;
+ * modifiers `subdivide` (Catmull-Clark), `midpointSubdivide`, `triangulate`.
+ * Primitives are Y-up (three.js); faces point outward. Impossible arguments throw.
+ *
+ *   const wall = MeshFactory.extrude(outline, new Vec3(0, 0, 3));
+ */
 export const MeshFactory = {
 
   // ── Parametric Surfaces ──

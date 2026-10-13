@@ -107,6 +107,14 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
 
 // ─── Build the shell ─────────────────────────
 
+/**
+ * A persistent app ("retained" model): params declared once as a schema, geometry built in
+ * `onBuild`, restyled in `onDisplay`, objects added to a `Scene` the app owns and keeps.
+ * Z-up by default. The path for apps whose users build, select, name and save things.
+ *
+ *   const app = appShell({ container, params: { floors: { type: "int", min: 1, max: 40, default: 12 } } });
+ *   app.onBuild(() => { app.scene.clear(); … app.scene.addMesh(m); }); app.rebuild();
+ */
 export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppShellInstance<S> {
   const t = getTheme(config.theme);
   const panelWidth = config.panelWidth ?? 260;
