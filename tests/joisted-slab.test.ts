@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Vec2 } from "../src/core/math/vectors";
 import { Slab, SlabType, SlabOpening, JoistedSlab, chooseJoistDirection } from "../src/bim/slabs";
+import { buildCutList } from "../src/bim/walls";
 
 const RECT_5x4: Vec2[] = [
   new Vec2(0, 0), new Vec2(5, 0), new Vec2(5, 4), new Vec2(0, 4), new Vec2(0, 0),
@@ -171,5 +172,19 @@ describe("JoistedSlab — openings", () => {
       }
       expect(area, role).toBeCloseTo(20 - 1.2 * 1.0, 4);
     }
+  });
+});
+
+describe("buildCutList", () => {
+  it("takes a slab's parts without a cast", () => {
+    const type = makeType();
+    const slab = new Slab({ boundary: RECT_5x4, thickness: 0.28, type, joistDirection: new Vec2(1, 0) });
+    const parts = type.construction!(slab);
+    const cut = buildCutList(parts);
+    const joists = cut.filter(c => c.role === "joist");
+    expect(joists).toHaveLength(1);                                   // every regular joist the same length
+    expect(joists[0].count).toBe(parts.filter(p => p.role === "joist").length);
+    expect(joists[0].length).toBeCloseTo(5 - 2 * (0.06 + 0.01), 3);
+    expect(cut.some(c => c.role === "sheathing")).toBe(false);        // no length: not on a cut list
   });
 });
