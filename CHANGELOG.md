@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.8.3 — 2026-10-14
+
+The viewer 7DHouse asked for (#66): ambient occlusion, Studio light that follows the hour, a sky in one call, lamps, an inside camera, and the shell's top bar as one element any app (React included) mounts. With two fixes 7DHouse found in 0.8.2: poché through thin uncut parts, and a three r180+ deprecation warning.
+
 - Studio no longer logs "PCFSoftShadowMap has been deprecated" with three r180+: it asks
   for `PCFShadowMap` there (which three draws soft from r180) and `PCFSoftShadowMap` before.
 - **Fix: a thin part the section doesn't reach no longer turns the poché colour** at a

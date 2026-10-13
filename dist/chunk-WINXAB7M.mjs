@@ -1353,6 +1353,91 @@ var Mesh = class _Mesh {
   }
 };
 
+// src/core/solar/SunPosition.ts
+var SunPosition = {
+  /**
+   * Compute the sun's position in the sky for a given UTC instant and
+   * geographic coordinates.
+   *
+   * @example
+   *   // Solar noon, summer solstice, Zurich:
+   *   const sun = SunPosition.compute({
+   *     date:      new Date(Date.UTC(2025, 5, 21, 11, 30)),
+   *     latitude:  47.37,
+   *     longitude: 8.55,
+   *   });
+   *   // sun.altitude ≈ 1.10 rad (≈ 63°), sun.azimuth ≈ π (south).
+   *   threeLight.position.copy(sun.direction).multiplyScalar(50);
+   */
+  compute(opts) {
+    const { date, latitude, longitude } = opts;
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth() + 1;
+    const day = date.getUTCDate();
+    const hour = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+    const jd0 = julianDay(year, month, day);
+    const t = jd0 + hour / 24 - 2451545;
+    const meanLon = mod360(280.46 + 0.9856474 * t);
+    const meanAnom = mod360(357.528 + 0.9856003 * t);
+    const mA = rad(meanAnom);
+    const eclLon = mod360(
+      meanLon + 1.915 * Math.sin(mA) + 0.02 * Math.sin(2 * mA)
+    );
+    const eL = rad(eclLon);
+    const obliq = rad(23.439 - 4e-7 * t);
+    let ra = Math.atan2(Math.cos(obliq) * Math.sin(eL), Math.cos(eL));
+    if (ra < 0) ra += 2 * Math.PI;
+    const decl = Math.asin(Math.sin(obliq) * Math.sin(eL));
+    let gmst = (6.697375 + 0.0657098242 * t + hour) % 24;
+    if (gmst < 0) gmst += 24;
+    let lmst = (gmst + longitude / 15) % 24;
+    if (lmst < 0) lmst += 24;
+    let ha = rad(lmst * 15) - ra;
+    if (ha > Math.PI) ha -= 2 * Math.PI;
+    if (ha < -Math.PI) ha += 2 * Math.PI;
+    const lat = rad(latitude);
+    const sinAlt = Math.sin(decl) * Math.sin(lat) + Math.cos(decl) * Math.cos(lat) * Math.cos(ha);
+    const altitude = Math.asin(clamp(sinAlt, -1, 1));
+    const cosAlt = Math.cos(altitude);
+    let azimuth = 0;
+    if (cosAlt > 1e-9) {
+      const sinAz = -Math.cos(decl) * Math.sin(ha);
+      const cosAz = Math.sin(decl) * Math.cos(lat) - Math.cos(decl) * Math.cos(ha) * Math.sin(lat);
+      azimuth = Math.atan2(sinAz, cosAz);
+      if (azimuth < 0) azimuth += 2 * Math.PI;
+      if (azimuth >= 2 * Math.PI) azimuth -= 2 * Math.PI;
+    }
+    const direction = new Vec3(
+      Math.sin(azimuth) * cosAlt,
+      Math.cos(azimuth) * cosAlt,
+      Math.sin(altitude)
+    );
+    return { altitude, azimuth, direction, isDaytime: altitude > 0 };
+  }
+};
+function rad(deg) {
+  return deg * Math.PI / 180;
+}
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+function mod360(deg) {
+  let d = deg % 360;
+  if (d < 0) d += 360;
+  return d;
+}
+function julianDay(year, month, day) {
+  let y = year;
+  let m = month;
+  if (m <= 2) {
+    y -= 1;
+    m += 12;
+  }
+  const a = Math.floor(y / 100);
+  const b = 2 - a + Math.floor(a / 4);
+  return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + day + b - 1524.5;
+}
+
 // src/scene/Scene.ts
 var DEFAULT_STYLE = {
   color: "#6ee7b7",
@@ -1730,5 +1815,6 @@ export {
   Plane,
   Triangle,
   Mesh,
+  SunPosition,
   Scene
 };
