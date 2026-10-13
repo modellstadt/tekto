@@ -362,6 +362,25 @@ In a `sketch()` it is `lab.setSection(…)`, and it stays across re-runs. Clicks
 still there. The cut face is the solids' inside drawn flat (poché) on opaque surfaces, so it
 needs no closed meshes; translucent ones are just clipped. Both cost nothing until used.
 
+### Commands and shortcuts
+
+What an app can do goes in one list, with its keys, rather than in a hand-written `keydown`
+handler nobody else can see. `appShell()` has `app.commands`; a `sketch()` declares
+them per run with `lab.command`:
+
+```ts
+app.commands.add([
+  { id: "edit.undo", label: "Undo", keys: "Mod+Z", run: () => doc.undo(), enabled: () => doc.canUndo() },
+  { id: "edit.delete", label: "Delete", keys: ["Delete", "Backspace"], run: removeSelected },
+]);
+```
+
+`Mod` is ⌘ on a Mac and Ctrl elsewhere; keys typed into a field stay in the field; a command
+whose `enabled()` says no is skipped. `formatKeys("Shift+Mod+Z")` writes it as the platform
+does (⇧⌘Z / Ctrl+Shift+Z). Every 3D app starts with the view commands (`view.fitAll`,
+`view.top`, `view.front`, …, `view.toggleProjection`) without keys. Agents list them with
+`window.__tekto.commands()` and run one with `__tekto.run(id)`; snapshots name them.
+
 ### Named views and the axis widget
 
 `renderer.setView("top")` is a plan (north up), `"front"`, `"back"`, `"left"`, `"right"` are
@@ -408,7 +427,7 @@ npm run snap -- "http://localhost:5173/testbench.html?page=mesh-factory" \
   [--params '{"Subdivision Levels":2}'] [--camera 8,6,10,0,0,0] [--size 1400x900]
 ```
 
-`snap` drives headless Chrome over the DevTools protocol (no extra dependency) and writes to `.tekto/markup/<stamp>-snap/`. It works on every kind of app — `sketch()`, `sketch2d()` and `appShell()` all install `window.__tekto` — prints the app's `lab.log` lines, and **exits 1 when the page threw or logged an error** (`--allow-errors` accepts that), so a broken page is never taken for a finished one. `markup.json` carries the params, the log lines and those errors; in the page, `window.__tekto.schema()` lists every control with its range and value. `--params` names controls by their label (case-insensitive), or `"Group:Label"` when two share a label; a name that matches nothing fails the run and lists the page's controls, so a change that didn't apply is never photographed as if it had.
+`snap` drives headless Chrome over the DevTools protocol (no extra dependency) and writes to `.tekto/markup/<stamp>-snap/`. It works on every kind of app — `sketch()`, `sketch2d()` and `appShell()` all install `window.__tekto` — prints the app's `lab.log` lines, and **exits 1 when the page threw or logged an error** (`--allow-errors` accepts that), so a broken page is never taken for a finished one. `markup.json` carries the params, the log lines, those errors and the app's commands; in the page, `window.__tekto.schema()` lists every control with its range and value, and `window.__tekto.commands()` / `__tekto.run("edit.undo")` list and run what the app can do, the way a person would by key. `--params` names controls by their label (case-insensitive), or `"Group:Label"` when two share a label; a name that matches nothing fails the run and lists the page's controls, so a change that didn't apply is never photographed as if it had.
 
 Saving to disk and mapping stack positions to `.ts` lines is done by a small Vite plugin; the playground already has it. In an app's `vite.config`:
 

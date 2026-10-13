@@ -6,6 +6,17 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **New: commands and shortcuts.** `Commands` is one list of what an app can do: id, label,
+  keys (`"Mod+Z"`: ⌘ on a Mac, Ctrl elsewhere), `run`, and `enabled`.
+  - It runs commands from their keys, but not while typing in a field, and lists them.
+  - `appShell()` has `app.commands`; `sketch()` has `lab.command(…)`, declared per run.
+  - Both start with the view commands (`viewCommands`: frame all, plan, the elevations, iso,
+    perspective/ortho), without keys.
+  - Agents get `window.__tekto.commands()` and `__tekto.run(id)`, and snapshots
+    (`markup.json`) list the commands.
+  - `keyMatches` / `formatKeys` are exported for apps with their own UI.
+  - The Site Editor's keys are now commands. The MeshFactory page shows `lab.command` (`]` / `[`).
+
 - **`SketchInstance` sheds its frame and its handles** (internal; nothing changes for a
   sketch). The chainable handles `lab.mesh(…)` / `lab.point(…)` / `lab.line(…)` return move to
   `sketch/handles.ts` as functions of the scene. The sketch's frame moves to

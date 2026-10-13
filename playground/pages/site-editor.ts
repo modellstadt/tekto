@@ -9,7 +9,8 @@
  *   undo / redo    a slider drag or a run of arrow-key nudges is one step
  *   toJSON / load  Save JSON / Open JSON
  *
- * Keys: Delete, ⌘/Ctrl-Z, ⇧⌘/Ctrl-Shift-Z, arrows (move 0.5 m).
+ *   commands       Delete, ⌘/Ctrl-Z, ⇧⌘/Ctrl-Shift-Z, ⌘/Ctrl-D, arrows (move 0.5 m) — as
+ *                  `app.commands`, so an agent can list and run them too (`__tekto.run`)
  */
 import {
   appShell, Doc, bindScene, Selection, selectOnClick, localAdapter, devServerAdapter,
@@ -115,18 +116,20 @@ export default function (container: HTMLElement) {
     input.click();
   }
 
-  const onKey = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-    const mod = e.metaKey || e.ctrlKey;
-    if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) doc.redo(); else doc.undo(); }
-    else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSelected(); }
-    else if (e.key.startsWith("Arrow")) {
-      e.preventDefault();
-      const s = 0.5;
-      move(e.key === "ArrowLeft" ? -s : e.key === "ArrowRight" ? s : 0, e.key === "ArrowDown" ? -s : e.key === "ArrowUp" ? s : 0);
-    }
-  };
-  window.addEventListener("keydown", onKey);
+  // ── Keys, as commands: one list a person, a palette and an agent all read ──
+  const STEP = 0.5;
+  const selected = () => selection.ids("blocks").length > 0;
+  app.commands.add([
+    { id: "edit.undo", label: "Undo", keys: "Mod+Z", group: "Edit", run: () => doc.undo(), enabled: () => doc.canUndo() },
+    { id: "edit.redo", label: "Redo", keys: ["Shift+Mod+Z", "Mod+Y"], group: "Edit", run: () => doc.redo(), enabled: () => doc.canRedo() },
+    { id: "edit.add", label: "Add block", group: "Edit", run: addBlock },
+    { id: "edit.duplicate", label: "Duplicate", keys: "Mod+D", group: "Edit", run: duplicate, enabled: selected },
+    { id: "edit.delete", label: "Delete", keys: ["Delete", "Backspace"], group: "Edit", run: removeSelected, enabled: selected },
+    { id: "move.left", label: "Move left", keys: "ArrowLeft", group: "Move", run: () => move(-STEP, 0), enabled: selected },
+    { id: "move.right", label: "Move right", keys: "ArrowRight", group: "Move", run: () => move(STEP, 0), enabled: selected },
+    { id: "move.up", label: "Move north", keys: "ArrowUp", group: "Move", run: () => move(0, STEP), enabled: selected },
+    { id: "move.down", label: "Move south", keys: "ArrowDown", group: "Move", run: () => move(0, -STEP), enabled: selected },
+  ]);
 
   // ── Status: count, selection, what Undo would do ──
   function status() {
@@ -148,7 +151,6 @@ export default function (container: HTMLElement) {
 
   return {
     dispose() {
-      window.removeEventListener("keydown", onKey);
       stopSelecting();
       blocks.dispose();
       doc.dispose();

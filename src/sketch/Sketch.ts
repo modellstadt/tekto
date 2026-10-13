@@ -46,6 +46,7 @@ import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../
 import { getTheme, Theme } from "../gui/theme";
 import { ThreeRenderer } from "../render/ThreeRenderer";
 import { buildSketchLayout, renderFileMenus } from "./sketchLayout";
+import { Commands, viewCommands, type Command } from "../gui/Commands";
 import { meshHandle, flatMeshHandle, pointHandle, lineHandle, polylineHandle, shapeHandle } from "./handles";
 import type { SectionRequest } from "../scene/Scene";
 import { MarkupOverlay, MarkupCaptureOptions } from "./Markup";
@@ -149,6 +150,11 @@ export class SketchInstance {
   private fn: SketchFn;
   private config: SketchConfig;
   private container: HTMLElement;
+  /** What the sketch can do, with its keys — the view commands, and what `lab.command`
+   *  declares in the current run. Agents list and run them through `window.__tekto`. */
+  readonly commands = new Commands();
+  private _runCommands: Command[] = [];
+  private _unbindCommandKeys: (() => void) | null = null;
   private scene: Scene;
   private renderer!: ThreeRenderer;
 
@@ -293,6 +299,8 @@ export class SketchInstance {
 
     this.buildDOM();
     this.initRenderer();
+    this.commands.add(viewCommands(this.renderer));
+    this._unbindCommandKeys = this.commands.bindKeys();
     this.wireInput();
     this.runSketch();
     this.startLoop();
@@ -509,6 +517,10 @@ export class SketchInstance {
     this._retain = false;
     this.separatorCount = 0;
     this._onceSeq = 0;
+
+    // Commands declared by the last run go; this run declares its own.
+    for (const c of this._runCommands) this.commands.remove(c.id);
+    this._runCommands = [];
 
     // Clear per-run callbacks
     this._onMouseClicked = null;
@@ -756,6 +768,12 @@ export class SketchInstance {
 
       separator() {
         self.separatorCount++;
+      },
+
+      command(cmd) {
+        const list = Array.isArray(cmd) ? cmd : [cmd as Command];
+        self.commands.add(list);
+        self._runCommands.push(...list);
       },
 
       registerExport(opts) {
@@ -1356,6 +1374,7 @@ export class SketchInstance {
       owner: this,
       harness: "sketch",
       store: this.store,
+      commands: this.commands,
       snapshot: (opts?: MarkupCaptureOptions) => this.markup!.capture(opts),
       camera: (pos: number[], target?: number[]) => {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
@@ -1377,6 +1396,7 @@ export class SketchInstance {
       params: this.store.getAll(),
       logs: this.logs.map(l => ({ ...l })),
       errors: this.bridge?.errors() ?? [],
+      commands: this.commands.list(),
     };
   }
 
@@ -1403,6 +1423,7 @@ export class SketchInstance {
     this.disposed = true;
     this.markup?.dispose();
     this.bridge?.dispose();
+    this._unbindCommandKeys?.();
     if (this._boundKeyDown) window.removeEventListener("keydown", this._boundKeyDown);
     if (this._boundKeyUp) window.removeEventListener("keyup", this._boundKeyUp);
     this._boundKeyDown = null;

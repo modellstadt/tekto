@@ -24,6 +24,9 @@ export type { IdBufferOptions } from "./io/IdBufferHiddenLine";
 // also usable standalone for custom panels).
 export { getTheme } from "./gui/theme";
 export type { Theme } from "./gui/theme";
+// Commands: what an app can do, with its keys — run by key, listed for a palette, run by agents.
+export { Commands, keyMatches, formatKeys, viewCommands } from "./gui/Commands";
+export type { Command, CommandInfo, ViewControl } from "./gui/Commands";
 export { ControlPanel } from "./gui/ControlPanel";
 export type {
   ControlItem, PanelButton, CustomRow, ExtraTab, ControlPanelConfig,
