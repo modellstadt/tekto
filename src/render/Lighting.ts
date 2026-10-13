@@ -57,6 +57,9 @@ export class Lighting {
     core.threeScene.add(this.dirLight.target);
 
     this.hemiLight = new THREE.HemisphereLight(0x4466aa, 0x332211, 0.4);
+    // The sky comes from the light's position: +Y by default, so a Z-up scene needs it on +Z,
+    // or its -Y facades (the ones the default and iso cameras look at) get the ground colour.
+    if (isZUp) this.hemiLight.position.set(0, 0, 1);
     core.threeScene.add(this.hemiLight);
     this.sunDir.copy(this.dirLight.position).normalize();
   }

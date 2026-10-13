@@ -97,3 +97,51 @@ test("selection as outlines leaves the colour alone; outlines go with their obje
   await page.mouse.move(at.left, at.top);
   await expect.poll(() => page.evaluate(() => (window as any).__hovered.at(-1))).toBeNull();
 });
+
+test("Studio: no warnings, a cut shows its poché on double-sided meshes and drops its shadows; the flat sky is up", async ({ page }) => {
+  const warnings: string[] = [];
+  page.on("console", (m) => { if (/THREE\.Material: parameter/.test(m.text())) warnings.push(m.text()); });
+  await page.goto("/testbench.html?page=site-editor");
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  // appShell is Z-up: the hemisphere's sky comes from +Z, not from the side.
+  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.lighting.hemiLight.position.toArray())).toEqual([0, 0, 1]);
+
+  await page.evaluate(() => (window as any).__tekto.owner.scene.setLightingMode("studio"));
+  const cut = () => page.evaluate(async () => {
+    const { doc, blocks } = (window as any).siteEditor;
+    const r = (window as any).__tekto.owner.renderer;
+    const id = doc.ids("blocks")[0];
+    const b = doc.get("blocks", id);
+    r.setSection({ axis: "z", coordinate: b.h / 2 });
+    const surface = r.getThreeObject(blocks.objectsOf(id)[0]).children.find((c: any) => c.userData.surface);
+    // Seen from the default view, a point of the block at the cut height (off the axes at the
+    // origin) is inside it: the pixel there is the poché, not the lit inside of its far walls.
+    const p = r.worldToScreen({ x: b.x + b.w / 4, y: b.y + b.d / 4, z: b.h / 2 });
+    const img = new Image();
+    img.src = r.snapshotPng();
+    await img.decode();
+    const k = img.width / r.canvasEl.getBoundingClientRect().width;
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext("2d")!;
+    g.drawImage(img, 0, 0);
+    return {
+      pixel: [...g.getImageData(Math.round(p.x * k), Math.round(p.y * k), 1, 1).data.slice(0, 3)],
+      offset: surface.material.polygonOffset,
+      clipShadows: surface.material.clipShadows,
+    };
+  });
+  const studio = await cut();
+  expect(studio.offset).toBe(true);
+  expect(studio.clipShadows).toBe(true);
+  // The poché colour (0x1b2733, untoned) give or take the fog; the lit inside walls are far lighter.
+  studio.pixel.forEach((v, i) => expect(Math.abs(v - [0x1b, 0x27, 0x33][i])).toBeLessThan(14));
+  expect(warnings).toEqual([]);
+
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setSection(null));
+  expect(await page.evaluate(() => {
+    const { doc, blocks } = (window as any).siteEditor;
+    const r = (window as any).__tekto.owner.renderer;
+    return r.getThreeObject(blocks.objectsOf(doc.ids("blocks")[0])[0]).children.find((c: any) => c.userData.surface).material.clipShadows;
+  })).toBe(false);
+});

@@ -198,6 +198,7 @@ export class Marks {
         for (const one of Array.isArray(m) ? m : [m]) {
           if ((one.clippingPlanes?.length ?? 0) === 0 && !plane) continue;
           one.clippingPlanes = plane ? [plane] : null;
+          one.clipShadows = !!plane;               // what the cut removed casts no shadow either
           one.needsUpdate = true;
         }
       }

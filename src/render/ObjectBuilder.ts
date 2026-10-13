@@ -27,26 +27,22 @@ export class ObjectBuilder {
   makeMaterial(
     opts: THREE.MeshPhongMaterialParameters & { metalness?: number; roughness?: number },
   ): THREE.MeshPhongMaterial | THREE.MeshStandardMaterial {
+    // Only the parameters that are set: three.js warns once per material for each one passed as
+    // undefined, and a list of named keys silently drops the rest (polygonOffset did, so in
+    // Studio a surface's back faces painted over a section's poché).
+    const { metalness, roughness, ...rest } = opts;
+    const given = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
     if (this.lighting.currentLighting === "studio") {
       return new THREE.MeshStandardMaterial({
-        color:             this.lighting.studioColor ?? opts.color,
-        emissive:          opts.emissive,
-        emissiveIntensity: opts.emissiveIntensity,
-        opacity:           opts.opacity,
-        transparent:       opts.transparent,
-        side:              opts.side,
-        wireframe:         opts.wireframe,
-        flatShading:       opts.flatShading ?? this.lighting.studioFlatShading,
-        depthTest:         opts.depthTest,
-        depthWrite:        opts.depthWrite,
-        vertexColors:      opts.vertexColors,
-        roughness:         opts.roughness ?? this.lighting.studioRoughness,
-        metalness:         opts.metalness ?? this.lighting.studioMetalness,
+        ...given,
+        color:       this.lighting.studioColor ?? opts.color,
+        flatShading: opts.flatShading ?? this.lighting.studioFlatShading,
+        roughness:   roughness ?? this.lighting.studioRoughness,
+        metalness:   metalness ?? this.lighting.studioMetalness,
       });
     }
-    // Phong has no metalness/roughness — strip them before constructing.
-    const { metalness: _m, roughness: _r, ...rest } = opts;
-    return new THREE.MeshPhongMaterial(rest);
+    // Phong has no metalness/roughness.
+    return new THREE.MeshPhongMaterial(given);
   }
 
 
