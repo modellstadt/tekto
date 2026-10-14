@@ -1,6 +1,7 @@
-import { S as Scene, V as Vec3, b as StandardView, c as SectionRequest } from './Scene-D1oqHdQy.js';
+import { b as SectionRequest, q as StandardView, S as Scene, V as Vec3 } from './Scene-BHniJuab.mjs';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { D as Doc } from './Doc-QTiSEVwH.mjs';
 
 /**
  * Tekto GUI theme — the single source of panel chrome colors.
@@ -172,6 +173,166 @@ declare class Callouts {
 }
 
 /**
+ * The rules a 3D view draws by — what each render mode paints, where a named view puts the
+ * camera, how far back to sit to fit, where a section cuts — as plain functions, so they
+ * can be tested without a GPU. `ThreeRenderer` draws by them.
+ */
+
+/**
+ * How the content is drawn. Not decoration: each answers a different question.
+ *  shaded      what is it made of
+ *  ghost       where does this part sit in the whole, everything else stepped
+ *              back so the selection reads through the fabric
+ *  hidden-line the drawing convention: white surfaces, dark creases, occluded
+ *              lines hidden by the surfaces in front of them
+ */
+type ViewMode = "shaded" | "ghost" | "hidden-line";
+/** How one mesh is painted. Colours are hex integers, as three.js takes them. */
+interface Appearance {
+    colour: number;
+    opacity: number;
+    depthWrite: boolean;
+    polygonOffset: boolean;
+}
+/** The page shaded and hidden-line are drawn on, when the host names none. */
+declare const DEFAULT_BACKGROUND = 16119802;
+/** Crease colour and weight for a mode. Hidden line draws them at full strength
+ *  because in that mode the lines are the drawing. `background` (default: the dark ground
+ *  ghost brings with it) turns ghost's pale creases dark on a light page. */
+declare function edgeStyle(mode: ViewMode, background?: THREE.ColorRepresentation): {
+    colour: number;
+    opacity: number;
+};
+/**
+ * The page a mode is drawn on.
+ *
+ * Ghost inverts: pale edges over a dark ground read where dark edges over a
+ * pale one wash out, and a translucent surface adds light instead of
+ * subtracting it, so the parts stack up legibly instead of greying together.
+ * The other two keep the host's own background.
+ */
+declare function modeBackground(mode: ViewMode, base: number): number;
+/**
+ * How a cut face is drawn.
+ *
+ * Poché: solid and dark, and flat rather than lit. A section is a drawing
+ * convention before it is a picture, and the convention is that cut material
+ * reads as one mass so the eye separates what was sliced from what is merely
+ * seen beyond it. Shading the cut instead, which is what a lit material does,
+ * gives it highlights and gradients and it stops reading as a cut at all: it
+ * becomes another grey surface among the grey surfaces behind it.
+ *
+ * Ghost inverts, as it does everywhere else here. On its dark ground a black
+ * poché would be a hole rather than a solid, so the cut goes pale and the
+ * relationship survives.
+ */
+declare function sectionAppearance(mode: ViewMode): {
+    colour: number;
+};
+/**
+ * The visible plane the content stands on.
+ *
+ * Independent of whether the sun is casting: a building floating in a void
+ * with a smudge under it reads as floating, and the smudge alone was doing all
+ * the work of saying which way is down. Hidden in hidden line, where a grey
+ * plate is not what a drawing is. The tone is a step off the background rather
+ * than a colour of its own, so it reads as ground and not as a surface
+ * somebody modelled.
+ */
+declare function groundAppearance(mode: ViewMode): {
+    visible: boolean;
+    colour: number;
+    opacity: number;
+};
+/** How a mode paints a surface whose own colour is `base`. */
+declare function surfaceAppearance(mode: ViewMode, base: number): Appearance;
+/**
+ * Sun and sky intensity for a mode.
+ *
+ * Ghost is transparent throughout and a shadow cast by something you can see
+ * through reads as dirt on the drawing, so it never casts. With the sun doing
+ * the work the sky has to step back, or the shadows wash out.
+ */
+declare function lightBalance(mode: ViewMode, shadows: boolean): {
+    shadowed: boolean;
+    sun: number;
+    sky: number;
+    groundOpacity: number;
+};
+/**
+ * Where the camera sits for a named view, as three.js spherical angles: phi
+ * from +Y, theta around Y from +Z towards +X.
+ */
+declare function standardOrbit(view: StandardView): {
+    phi: number;
+    theta: number;
+};
+/**
+ * Where the camera sits to look down `direction`, which points from the subject
+ * towards the camera. The inverse of what the tick loop does with a spherical.
+ *
+ * Clamped off the poles like the named views, so clicking the gizmo's Y ball
+ * lands on the same well-defined orientation that `setView("top")` does rather
+ * than on a plan whose north is whatever floating point decided.
+ */
+declare function orbitFor(direction: {
+    x: number;
+    y: number;
+    z: number;
+}): {
+    phi: number;
+    theta: number;
+};
+/**
+ * The end angle to interpolate towards so a turn takes the short way round.
+ *
+ * Without this, orbiting from theta 3.0 to -3.0 (a tenth of a turn apart on the
+ * screen) spins the building almost the whole way about instead, which reads as
+ * the viewport having lost its place rather than as a view change.
+ */
+declare function shortestTurn(from: number, to: number): number;
+/**
+ * Whichever of the six axis directions a view is already closest to. What a
+ * double click on the gizmo snaps to: the reader is nearly at an elevation and
+ * wants to be exactly at one, without having to work out which.
+ */
+declare function nearestAxis(direction: {
+    x: number;
+    y: number;
+    z: number;
+}): THREE.Vector3;
+/**
+ * The clipping plane for a section, in the frame `axisWorld` was given in (the content's
+ * axis turned into the scene's). Three.js keeps what lies on the plane's positive side, so
+ * the plane faces back down the axis: everything below the cut stays, or above with `flip`.
+ * Null when the cut is a fraction (`at`) and there is no content to measure.
+ */
+declare function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box: THREE.Box3 | null): THREE.Plane | null;
+/** A named sun for the shading bar: where it stands, as azimuth (degrees clockwise from
+ *  north) and altitude (degrees above the horizon). */
+type SunPreset = "morning" | "noon" | "sunset";
+/** Smoothstep. A camera that starts and stops abruptly reads as a cut, and a
+ *  cut is exactly what an animated view change exists to avoid. */
+declare function easeInOut(t: number): number;
+/**
+ * How far back to sit so a sphere of `boundingRadius` fits, on the tighter of
+ * the two field-of-view axes. A portrait panel clips a wide building on the
+ * horizontal, which is exactly the case a vertical-only fit gets wrong.
+ */
+declare function fitRadius(boundingRadius: number, fovDeg: number, aspect: number, margin?: number): number;
+/**
+ * The orthographic frustum that frames what a perspective camera would see at
+ * the same distance, so switching projection changes the drawing convention
+ * and not the subject.
+ */
+declare function orthoFrustum(distance: number, fovDeg: number, aspect: number): {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+};
+
+/**
  * What a pointer does in a ThreeRenderer's viewport: picking (a click, the object under a
  * point, the ground under a point), hover, drag handles, and the transform gizmo that moves
  * an object and writes its transform back to the Scene.
@@ -186,13 +347,17 @@ interface PickInfo {
     altKey: boolean;
 }
 
+/** Corner of the view the bar sits in. */
+type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
 /**
  * Ambient occlusion over a ThreeRenderer's frame, with three's GTAO: darkening where
  * surfaces meet and close in (corners, reveals, under decks and steps). The frame is drawn
  * as the renderer draws it, its tone mapping, background, grid, antialiasing and section as
  * they are, and the occlusion is then computed and multiplied over it; running the frame
  * through an EffectComposer instead tone-maps the background and hides the grid. It follows
- * the section, and the orthographic (drawing) views go without. Built on first use.
+ * the section, and the orthographic (drawing) views and the modes other than solid go
+ * without. Built on first use.
  */
 
 /** How far occlusion reaches (m) and how dark it gets (0..1). */
@@ -242,6 +407,10 @@ interface ThreeRendererConfig {
     /** The axis widget in a corner (`true` = bottom right): click an axis for a plan or an
      *  elevation, drag it to orbit, double-click to square up, toggle persp/ortho under it. */
     navGizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    /** The shading bar in a corner of the view (`true` = top left): minimal icons for the
+     *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
+     *  viewport header. The renderer draws it, so an app only switches it on. */
+    shadingBar: boolean | ShadingBarCorner;
 }
 /**
  * The one 3D renderer under `sketch()` and `appShell()`: keeps a three.js scene in step with a tekto `Scene` and draws it on demand.
@@ -265,6 +434,7 @@ declare class ThreeRenderer {
     private hideHelpers;
     private gridHelper;
     private fadingGrid;
+    private shadingBar;
     private ao;
     private gridDirty;
     private axesHelper;
@@ -323,6 +493,12 @@ declare class ThreeRenderer {
     /** Draw now, unconditionally. */
     render(): void;
     private _draw;
+    private drawListeners;
+    /**
+     * Run `cb` after every frame is drawn, for an overlay that follows the camera (notes,
+     * labels of your own): the camera and the view are current then. Returns the unsubscribe.
+     */
+    onDraw(cb: () => void): () => void;
     /**
      * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
      * lights, drag handles, the gizmo, orbit controls and resizes already ask; call
@@ -372,18 +548,14 @@ declare class ThreeRenderer {
      */
     setSunDirection(direction: Vec3, distance?: number): void;
     /**
-     * Lamps: a warm point light at each point (in the content's axes), in both lighting modes,
-     * without shadows (a point light's shadow is six renders, per lamp). One per room at
-     * pendant height carries an interior at dusk. Each takes a `colour` (default warm white
-     * 0xffd2a0), an `intensity` in candela (default 4) and a `distance` it reaches (m, default
-     * 8). Replaces the lamps there were; `[]` removes them.
+     * A named sun, as the shading bar's sun button sets it: `"morning"` (low in the east),
+     * `"noon"` (high in the south) or `"sunset"` (just above the horizon in the west). It
+     * switches to Studio and lets the light follow the sun (`setDaylight`), so a sunset is warm
+     * with a dusk sky. Moving the sun any other way clears it (`sunPreset` is then null).
      */
-    setLamps(lamps: readonly {
-        at: Vec3;
-        colour?: number | string;
-        intensity?: number;
-        distance?: number;
-    }[]): void;
+    setSunPreset(name: SunPreset): void;
+    /** The sun preset last set (`setSunPreset`), or null once the sun was moved another way. */
+    get sunPreset(): SunPreset | null;
     /**
      * Let Studio's light follow the sun: with it on, the sun's colour and strength, the sky,
      * the exposure and the background come from the sun's altitude (`setSunDirection`, which
@@ -399,8 +571,9 @@ declare class ThreeRenderer {
     /**
      * Ambient occlusion: darken where surfaces meet and close in (corners, reveals, under
      * decks and steps), with three's GTAO multiplied over the drawn frame, so tone mapping,
-     * background, grid and the section stay as they are; it follows the section. Perspective
-     * views only: the orthographic drawing views go without. `true`, `false`, or
+     * background, grid and the section stay as they are; it follows the section. Solid mode
+     * in perspective only: hidden line stays black and white, and the orthographic drawing
+     * views go without. `true`, `false`, or
      * `{ radius, intensity }`: how far it reaches (m, default 0.6) and how dark (0..1, 0.85).
      */
     setAmbientOcclusion(on: boolean | AmbientOcclusionOptions): void;
@@ -654,4 +827,201 @@ declare function viewerToolbar(scene: Scene, renderer: ThreeRenderer, opts?: Top
     dispose(): void;
 };
 
-export { type AmbientOcclusionOptions as A, type CalloutItem as C, type LayoutOptions as L, type PickInfo as P, ThreeRenderer as T, type TopBarOptions as a, type Theme as b, type ThreeRendererConfig as c, Callouts as d, type Placement as e, layoutLabels as f, getTheme as g, labelWidthFor as l, viewerToolbar as v };
+/**
+ * Notes that live with the model. A sketched note is its strokes in world space, its text,
+ * who wrote it and when, the records it is about and the view it was drawn from. It is kept
+ * as a plain record in a `Doc` collection, so it is saved and opened with the document,
+ * undone like any edit, and shared with everyone working on it.
+ *
+ * A `NotesLayer` draws the notes over the view from any camera: their strokes, and a numbered
+ * pin each. A pin opens the note, with "Go to view" (the camera it was drawn from) and
+ * "Delete". Markup's "Keep as notes" turns marks into notes (`markup(…, { notes })`,
+ * `appShell({ notes: doc })`).
+ *
+ *   const notes = notesLayer(renderer, doc);              // the doc's "notes" collection
+ *   markup(renderer, scene, { notes, author: "BD" });
+ */
+
+/** A note kept with the model. Plain JSON, so it lives in a `Doc` collection. */
+interface Note {
+    /** What it says. */
+    text: string;
+    /** Who wrote it. */
+    author?: string;
+    /** When, as an ISO date. */
+    createdAt: string;
+    /** Where its number sits, in world coordinates. */
+    pin: [number, number, number];
+    /** The strokes as drawn, laid on the model (or the ground), in world coordinates. */
+    strokes: [number, number, number][][];
+    /** The records it is about (`"blocks/k3f9x2"`), from what the strokes touched. */
+    keys: string[];
+    /** The view it was drawn from, for "Go to view". */
+    view: {
+        position: number[];
+        target: number[];
+        projection?: "perspective" | "orthographic";
+    };
+}
+/** What a `NotesLayer` needs from a renderer: structurally a `ThreeRenderer`. */
+interface NotesRenderer {
+    readonly canvasEl: HTMLCanvasElement;
+    worldToScreen(world: Vec3): {
+        x: number;
+        y: number;
+        visible: boolean;
+    };
+    onDraw(cb: () => void): () => void;
+    requestRender(): void;
+    setProjection(projection: "perspective" | "orthographic"): void;
+    setCameraPosition(x: number, y: number, z: number): void;
+    lookAt(x: number, y: number, z: number): void;
+}
+/** The notes of one `Doc` collection, drawn over a renderer's view. */
+declare class NotesLayer {
+    private renderer;
+    private doc;
+    readonly collection: string;
+    private host;
+    private canvas;
+    private ctx;
+    private pinLayer;
+    private pins;
+    private card;
+    private openId;
+    private shown;
+    private offs;
+    constructor(renderer: NotesRenderer, doc: Doc<any>, opts?: {
+        collection?: string;
+        host?: HTMLElement;
+    });
+    /** The notes, oldest first, with their ids: the order of their numbers. */
+    list(): [string, Note][];
+    /** Keep a note: one undo step. Returns its id. */
+    add(note: Note): string;
+    /** Keep several notes as one undo step ("Keep as notes"). Returns their ids. */
+    keep(notes: readonly Note[]): string[];
+    remove(id: string): void;
+    /** Back to the view the note was drawn from. */
+    goTo(id: string): void;
+    /** Show or hide the notes (they stay in the document). */
+    setVisible(on: boolean): void;
+    get visible(): boolean;
+    dispose(): void;
+    private draw;
+    private makePin;
+    private openCard;
+    private placeCard;
+    private closeCard;
+}
+/** Draw the notes of `doc`'s collection (default `"notes"`) over a renderer's view. */
+declare function notesLayer(renderer: NotesRenderer, doc: Doc<any>, opts?: {
+    collection?: string;
+    host?: HTMLElement;
+}): NotesLayer;
+
+/**
+ * Markup — draw on the viewport to tell an AI (or a colleague) what to change.
+ *
+ * The point is not the drawing, it is what the drawing is resolved to. A circle
+ * in a screenshot makes the reader guess which object, where in space, and which
+ * line of code. Here every mark is resolved at the moment it is drawn:
+ *
+ *   - the strokes are kept as vectors (screen space), simplified for the file;
+ *   - each mark is raycast into the scene: which objects it touches or encloses
+ *     (with their layer, label and the source line that created them), and the
+ *     world points it lands on;
+ *   - the same marks are burnt into a PNG with big numbers, for a vision model.
+ *
+ * A capture is a bundle — `view.png` (marks), `clean.png` (no marks) and
+ * `markup.json` (camera, params, marks, scene summary). It is POSTed to the dev
+ * server (tools/markup-vite-plugin.mjs writes it to `.tekto/markup/`); without
+ * the plugin the three files are downloaded instead.
+ *
+ * `window.__tekto.snapshot()` produces the same bundle without any marks, so an
+ * agent driving a headless browser (tools/snap.mjs) sees what a person sees.
+ */
+
+/** A scene object as a mark or snapshot names it: id, type, layer, label, pick tag, colour, the source line that created it, and its document `key`. */
+interface MarkupObjectRef {
+    id: string;
+    type: string;
+    layer?: string;
+    label?: string;
+    tag?: string;
+    color?: string;
+    /** Where the object was created, e.g. "pages/primitives.ts:12" (resolved by the dev server). */
+    src?: string;
+    /** The document record it shows, e.g. "blocks/k3f9x2" (`bindScene` / `scene.withKey`). */
+    key?: string;
+}
+/** What a mark was read as from its strokes: a click (`point`), a closed `loop` (the things inside), a straight `line`, two crossing strokes (`cross`), or a free `stroke`. */
+type MarkKind = "point" | "loop" | "line" | "cross" | "stroke";
+/** Options for a Markup capture: the overall instruction, whether to save it to the dev server, and the folder label. */
+interface MarkupCaptureOptions {
+    /** Overall instruction, written to markup.json and the PNG legend. */
+    note?: string;
+    /** POST to the dev server (default true); false only returns the bundle. */
+    save?: boolean;
+    /** Short word for the folder name, e.g. "snap". */
+    label?: string;
+}
+/** One capture: `markup.json` content, the view with marks (`viewPng`) and without (`cleanPng`) as PNG data URLs, and the folder it was saved to. */
+interface MarkupBundle {
+    markup: Record<string, unknown>;
+    viewPng: string;
+    cleanPng: string;
+    /** Folder the dev server wrote to, if it did. */
+    dir?: string;
+}
+/** What `markup()` needs from a renderer: structurally a `ThreeRenderer`. */
+interface MarkupRenderer {
+    readonly canvasEl: HTMLCanvasElement;
+    hitAt(clientX: number, clientY: number): {
+        id: string;
+        point: Vec3;
+    } | null;
+    groundAt(clientX: number, clientY: number): Vec3 | null;
+    snapshotPng(): string;
+    isObjectShown(id: string): boolean;
+    objectBounds(id: string): {
+        min: {
+            x: number;
+            y: number;
+            z: number;
+        };
+        max: {
+            x: number;
+            y: number;
+            z: number;
+        };
+    } | null;
+    cameraState(): {
+        position: number[];
+        target: number[];
+        [k: string]: unknown;
+    };
+}
+/**
+ * ✎ Markup in any app: the button and the drawing overlay `sketch()` and `appShell()` have,
+ * mounted over a renderer's view, for an app that builds its own UI (React, a custom page).
+ * Marks resolve to the objects and record keys under them; Save writes view.png, clean.png
+ * and markup.json to the dev server (`.tekto/markup/`), or downloads them without it.
+ *
+ *   const notes = markup(renderer, scene, { title: "7DHouse", context: () => ({ params }) });
+ *   // later: notes.dispose()
+ */
+declare function markup(renderer: MarkupRenderer, scene: Scene, opts?: {
+    title?: string;
+    context?: () => Record<string, unknown>;
+    host?: HTMLElement;
+    /** Offer "Keep as notes", keeping marks in this layer's document. */
+    notes?: NotesLayer;
+    /** Who is drawing, written into kept notes. */
+    author?: string;
+}): {
+    capture(opts?: MarkupCaptureOptions): Promise<MarkupBundle>;
+    dispose(): void;
+};
+
+export { type AmbientOcclusionOptions as A, orthoFrustum as B, type CalloutItem as C, DEFAULT_BACKGROUND as D, sectionAppearance as E, sectionPlane as F, shortestTurn as G, standardOrbit as H, surfaceAppearance as I, viewerToolbar as J, type LayoutOptions as L, type MarkupRenderer as M, NotesLayer as N, type PickInfo as P, type ShadingBarCorner as S, ThreeRenderer as T, type ViewMode as V, type TopBarOptions as a, type Theme as b, type ThreeRendererConfig as c, type Appearance as d, Callouts as e, type MarkKind as f, type MarkupBundle as g, type MarkupCaptureOptions as h, type MarkupObjectRef as i, type Note as j, type NotesRenderer as k, type Placement as l, type SunPreset as m, easeInOut as n, edgeStyle as o, fitRadius as p, getTheme as q, groundAppearance as r, labelWidthFor as s, layoutLabels as t, lightBalance as u, markup as v, modeBackground as w, nearestAxis as x, notesLayer as y, orbitFor as z };

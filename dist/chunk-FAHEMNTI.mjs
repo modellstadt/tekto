@@ -1658,6 +1658,36 @@ var Scene = class _Scene {
       data: {}
     });
   }
+  /**
+   * A light in the model, at `position`: a point light, or a spot aimed at `spec.target`.
+   * Like any object it is keyed, re-made by a sketch re-run and hidden by `style.visible`;
+   * the renderer lights the scene with it in both lighting modes, without shadows (a point
+   * light's shadow is six renders, per light). Its colour is `style.color` (default white).
+   *
+   *   scene.addLight(new Vec3(2, 3, 2.4), { intensity: 6 });
+   *   scene.addLight(new Vec3(0, 0, 3), { kind: "spot", target: new Vec3(0, 2, 0), angle: 25 }, { color: "#ffd2a0" });
+   */
+  addLight(position, spec = {}, style) {
+    const kind = spec.kind ?? "point";
+    const fail = (why) => {
+      throw new Error(`addLight: ${why}`);
+    };
+    if (![position.x, position.y, position.z].every(Number.isFinite)) fail(`a non-finite position (${position.x}, ${position.y}, ${position.z})`);
+    const intensity = spec.intensity ?? 4, range = spec.range ?? 8, angle = spec.angle ?? 30;
+    if (!(intensity >= 0)) fail(`intensity must be 0 or more, got ${spec.intensity}`);
+    if (!(range >= 0)) fail(`range must be 0 or more (0: without limit), got ${spec.range}`);
+    if (kind === "spot" && !spec.target) fail(`a spot needs a target to aim at`);
+    if (kind === "spot" && !(angle > 0 && angle < 90)) fail(`a spot's angle is a half angle between 0 and 90 degrees, got ${spec.angle}`);
+    return this.add({
+      id: this.genId("light"),
+      type: "light",
+      position,
+      light: { kind, intensity, range, angle, ...spec.target ? { target: spec.target } : {} },
+      style: { ...DEFAULT_STYLE, color: "#ffffff", ...style },
+      interactive: false,
+      data: {}
+    });
+  }
   addPlane(normal, distance, style) {
     return this.add({
       id: this.genId("plane"),

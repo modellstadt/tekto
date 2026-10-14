@@ -1,8 +1,8 @@
-import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Params-op8yBPbB.js';
+import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Doc-CaIknIs8.js';
 import * as React from 'react';
 import React__default, { ReactNode, CSSProperties, SVGProps } from 'react';
-import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-D1oqHdQy.js';
-import { T as ThreeRenderer, a as TopBarOptions, b as Theme } from './ViewerToolbar-CVh0EDSN.js';
+import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-BHniJuab.js';
+import { T as ThreeRenderer, a as TopBarOptions, b as Theme, M as MarkupRenderer, N as NotesLayer } from './Markup-BihjT14h.js';
 import 'three';
 import 'three/examples/jsm/controls/OrbitControls.js';
 
@@ -201,4 +201,14 @@ declare function ViewerToolbar({ scene, renderer, options, theme, className, sty
     style?: CSSProperties;
 }): React.JSX.Element;
 
-export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, ParamPanel, TektoApp, Toolbar, type ToolbarAction, ViewModeIcon, ViewerToolbar, useParams, useScene, useSceneObjects, useSelection };
+/** ✎ Markup over a renderer's view while mounted (`markup()`): `<Markup scene={scene} renderer={renderer} title="7DHouse" />`; pass `notes` (a `notesLayer`) to offer "Keep as notes". */
+declare function Markup({ scene, renderer, title, context, notes, author }: {
+    scene: Scene;
+    renderer: MarkupRenderer;
+    title?: string;
+    context?: () => Record<string, unknown>;
+    notes?: NotesLayer;
+    author?: string;
+}): null;
+
+export { AccordionColumn, type AccordionColumnProps, type AccordionSection, InfoHint, InspectorPanel, Markup, ParamPanel, TektoApp, Toolbar, type ToolbarAction, ViewModeIcon, ViewerToolbar, useParams, useScene, useSceneObjects, useSelection };

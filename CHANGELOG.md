@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.9.0 — 2026-10-14
+
+The viewer in the view and notes with the model: the shading bar (render style, lighting and a morning / noon / sunset sun as icons in the 3D view), lights as scene objects, ✎ Markup in any app, and sketched notes kept in the document, pinned in the view. Breaking: `renderer.setLamps` is removed (use `scene.addLight`).
+
 - **Notes that live with the model.** Markup's marks can be kept as notes: each mark's
   strokes laid on the model (or the ground) in world space, its text, the author and time,
   the records it touched and the view it was drawn from, as a plain record in a `Doc`

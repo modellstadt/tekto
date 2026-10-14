@@ -584,7 +584,20 @@ declare const ObjFile: {
  */
 
 /** The kinds of object a `Scene` holds; `type` decides which geometry fields of a `SceneObject` are set. */
-type SceneObjectType = "point" | "segment" | "polyline" | "polygon" | "mesh" | "circle" | "plane" | "group";
+type SceneObjectType = "point" | "segment" | "polyline" | "polygon" | "mesh" | "circle" | "plane" | "light" | "group";
+/**
+ * What kind of light `scene.addLight` adds, and how strong: a `"point"` light shines all
+ * round (a bulb), a `"spot"` in a cone toward `target`. `intensity` in candela (default 4);
+ * `range`, how far it reaches in metres (0 = without limit; default 8); a spot's `angle`,
+ * its cone's half angle in degrees (default 30).
+ */
+interface LightSpec {
+    kind?: "point" | "spot";
+    intensity?: number;
+    range?: number;
+    target?: Vec3;
+    angle?: number;
+}
 /** How meshes are drawn: lit surfaces, wireframe, a hidden-line drawing, or ghost —
  *  every surface translucent in its own colour with its creases, so what is inside reads
  *  through (a selection is drawn opaque). */
@@ -690,6 +703,9 @@ interface SceneObject {
     mesh?: Mesh;
     flatMeshData?: FlatMeshData;
     children?: string[];
+    light?: Required<Omit<LightSpec, "target">> & {
+        target?: Vec3;
+    };
     /** Optional transform applied on top of the baked geometry (interactive editing / gizmo drag). */
     transform?: SceneTransform;
     /** Pickable in the viewport (click → select). Default: true. */
@@ -835,6 +851,16 @@ declare class Scene {
     addMesh(mesh: Mesh, style?: Partial<VisualStyle>): SceneObject;
     addFlatMesh(data: FlatMeshData, style?: Partial<VisualStyle>): SceneObject;
     addCircle(center: Vec3, radius: number, style?: Partial<VisualStyle>): SceneObject;
+    /**
+     * A light in the model, at `position`: a point light, or a spot aimed at `spec.target`.
+     * Like any object it is keyed, re-made by a sketch re-run and hidden by `style.visible`;
+     * the renderer lights the scene with it in both lighting modes, without shadows (a point
+     * light's shadow is six renders, per light). Its colour is `style.color` (default white).
+     *
+     *   scene.addLight(new Vec3(2, 3, 2.4), { intensity: 6 });
+     *   scene.addLight(new Vec3(0, 0, 3), { kind: "spot", target: new Vec3(0, 2, 0), angle: 25 }, { color: "#ffd2a0" });
+     */
+    addLight(position: Vec3, spec?: LightSpec, style?: Partial<VisualStyle>): SceneObject;
     addPlane(normal: Vec3, distance: number, style?: Partial<VisualStyle>): SceneObject;
     select(id: string): void;
     deselect(id: string): void;
@@ -857,4 +883,4 @@ interface SceneJSON {
     objects: any[];
 }
 
-export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type Projection as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, type StandardView as b, type SectionRequest as c, type MeshData$1 as d, type LegacyMeshJSON as e, Mat4 as f, type MeshEdge as g, type MeshFace as h, type MeshJSON as i, type MeshNode as j, type MeshValidation as k, type MeshData as l, type SceneEvent as m, type SceneEventListener as n, type SceneJSON as o, type SceneObjectType as p, Vec2 as q, Vec4 as r, type VisualStyle as s };
+export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type Projection as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, type SectionRequest as b, type MeshData$1 as c, type LegacyMeshJSON as d, type LightSpec as e, Mat4 as f, type MeshEdge as g, type MeshFace as h, type MeshJSON as i, type MeshNode as j, type MeshValidation as k, type MeshData as l, type SceneEvent as m, type SceneEventListener as n, type SceneJSON as o, type SceneObjectType as p, type StandardView as q, Vec2 as r, Vec4 as s, type VisualStyle as t };
