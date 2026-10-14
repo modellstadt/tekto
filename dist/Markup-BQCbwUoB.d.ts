@@ -347,9 +347,6 @@ interface PickInfo {
     altKey: boolean;
 }
 
-/** Corner of the view the bar sits in. */
-type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
-
 /**
  * Ambient occlusion over a ThreeRenderer's frame, with three's GTAO: darkening where
  * surfaces meet and close in (corners, reveals, under decks and steps). The frame is drawn
@@ -365,6 +362,9 @@ interface AmbientOcclusionOptions {
     radius?: number;
     intensity?: number;
 }
+
+/** Corner of the view the bar sits in. */
+type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 /**
  * Tekto Three.js Renderer — the one 3D renderer under `sketch()` and `appShell()`.
@@ -411,6 +411,13 @@ interface ThreeRendererConfig {
      *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
      *  viewport header. The renderer draws it, so an app only switches it on. */
     shadingBar: boolean | ShadingBarCorner;
+    /**
+     * The scene's unit, as a label (`"m"`, `"mm"`, `"ft"`): readouts such as the shading bar's
+     * section show coordinates in it, and a cut stays at its coordinate. Unset (null, the
+     * default): readouts are relative to the content's extent (`35 %`), and a cut stays at its
+     * share of the content as the content changes. An app that knows its units says so.
+     */
+    units: string | null;
 }
 /**
  * The one 3D renderer under `sketch()` and `appShell()`: keeps a three.js scene in step with a tekto `Scene` and draws it on demand.

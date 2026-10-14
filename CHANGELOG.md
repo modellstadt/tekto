@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.9.2 — 2026-10-14
+
+Units are the app's to declare (the section reads relative to the content by default, metres where an app says so), and ambient occlusion in the shading bar.
+
 - **Ambient occlusion in the shading bar**: an AO toggle beside Flat / Studio
   (`renderer.setAmbientOcclusion`); it follows AO switched on or off in code.
 - **`units`** (renderer, `sketch()`, `appShell()`): the scene's unit as a label (`"m"`,

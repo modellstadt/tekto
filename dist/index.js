@@ -25845,6 +25845,8 @@ var SHADING_ICONS = {
   noon: svg(`<circle cx="12" cy="12" r="4"/><path d="${RAYS}"/>`),
   morning: HORIZON("M9 5.5 12 2.5l3 3"),
   sunset: HORIZON("M9 6.5l3 3 3-3"),
+  // Ambient occlusion: two faces meeting, darkened into the corner.
+  ao: svg(`<path d="M5 4v15h15"/><path d="M5 9.5v9.5h9.5A9.5 9.5 0 0 0 5 9.5z" fill="currentColor" fill-opacity="0.5" stroke="none"/>`),
   // A box with a slice through it.
   section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
   flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`)
@@ -25853,10 +25855,11 @@ var MODES = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hid
 var LIGHTS = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
 var SUNS = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
 var ShadingBar = class {
-  constructor(core, lighting, marks, corner = "top-left") {
+  constructor(core, lighting, marks, ao, corner = "top-left") {
     this.core = core;
     this.lighting = lighting;
     this.marks = marks;
+    this.ao = ao;
     this.root = document.createElement("div");
     this.openPop = null;
     // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
@@ -25875,6 +25878,7 @@ var ShadingBar = class {
     for (const [mode, label] of MODES) this.button(viewModeIconSvg(mode, 16), label, () => scene.renderMode === mode, () => scene.setRenderMode(mode));
     this.separator();
     for (const [mode, label] of LIGHTS) this.button(SHADING_ICONS[mode], label, () => scene.lightingMode === mode, () => scene.setLightingMode(mode));
+    this.button(SHADING_ICONS.ao, "Ambient occlusion: darker where surfaces meet (Solid, perspective)", () => this.ao.enabled, () => this.ao.set(!this.ao.enabled));
     this.separator();
     const sunPop = this.popover(v, h);
     const sun = this.button(SHADING_ICONS.noon, "Sun: morning, noon, sunset", () => this.openPop === sunPop, () => this.toggle(sunPop));
@@ -25943,22 +25947,29 @@ var ShadingBar = class {
       const b = this.core.contentBox();
       return b.isEmpty() ? null : [b.min[axis], b.max[axis]];
     };
-    const set = (axis, coordinate, flip = this.marks.section?.flip ?? false) => {
+    const units = this.core.config.units;
+    const here = () => {
+      const sec = this.marks.section;
+      return !sec ? void 0 : sec.coordinate !== void 0 ? { coordinate: sec.coordinate } : { at: sec.at ?? 0.5 };
+    };
+    const set = (axis, where, flip = this.marks.section?.flip ?? false) => {
       if (!axis) {
         this.marks.setSection(null);
         this.paint();
         return;
       }
       const r = range(axis);
-      this.marks.setSection({ axis, coordinate: coordinate ?? (r ? (r[0] + r[1]) / 2 : 0), ...flip ? { flip } : {} });
+      const w = where ?? (units ? { coordinate: r ? (r[0] + r[1]) / 2 : 0 } : { at: 0.5 });
+      this.marks.setSection({ axis, ...w, ...flip ? { flip } : {} });
       this.paint();
     };
+    const show = (c, r) => units ? `${c.toFixed(2)} ${units}` : `${Math.round((c - r[0]) / Math.max(r[1] - r[0], 1e-12) * 100)} %`;
     for (const [label, axis, title] of axes) {
       const b = this.button(
         `<span style="font:600 10px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${label}</span>`,
         title,
         () => (this.marks.section?.axis ?? null) === axis,
-        () => set(axis, axis === this.marks.section?.axis ? this.marks.sectionCoordinate() ?? void 0 : void 0),
+        () => set(axis, axis === this.marks.section?.axis ? here() : void 0),
         row
       );
       b.style.width = label.length > 1 ? "36px" : "26px";
@@ -25966,7 +25977,7 @@ var ShadingBar = class {
     const sep = document.createElement("div");
     sep.style.cssText = "width:1px;height:16px;margin:0 3px;background:rgba(255,255,255,.14);";
     row.appendChild(sep);
-    this.setCut = (axis, coordinate) => set(axis, coordinate);
+    this.setCut = (axis, coordinate) => set(axis, coordinate === void 0 ? void 0 : { coordinate });
     this.levelRow.style.cssText = "display:none;flex-wrap:wrap;gap:2px;max-width:220px;";
     this.paints.push(() => {
       for (const p of this.levelPaints) p();
@@ -25977,7 +25988,7 @@ var ShadingBar = class {
       () => !!this.marks.section?.flip,
       () => {
         const sec = this.marks.section;
-        if (sec) set(sec.axis, this.marks.sectionCoordinate() ?? void 0, !sec.flip);
+        if (sec) set(sec.axis, here(), !sec.flip);
       },
       row
     );
@@ -26011,15 +26022,16 @@ var ShadingBar = class {
           slider.value = String(near);
         }
       }
-      value.textContent = `${pending.toFixed(2)} m`;
+      value.textContent = show(pending, [Number(slider.min), Number(slider.max)]);
       this.marks.showSectionPlane(true);
       clearTimeout(hide);
       if (!frame) frame = requestAnimationFrame(() => {
         frame = 0;
         const sec = this.marks.section;
         if (sec && pending !== null) {
-          const { at: _share, ...rest } = sec;
-          this.marks.setSection({ ...rest, coordinate: pending });
+          const { at: _share, coordinate: _c, ...rest } = sec;
+          const lo = Number(slider.min), hi = Number(slider.max);
+          this.marks.setSection(units || hi <= lo ? { ...rest, coordinate: pending } : { ...rest, at: (pending - lo) / (hi - lo) });
           this.paint();
         }
         this.marks.showSectionPlane(true);
@@ -26042,7 +26054,7 @@ var ShadingBar = class {
         slider.step = String(Math.max((r[1] - r[0]) / 500, 1e-4));
         const c = this.marks.sectionCoordinate() ?? r[0];
         if (document.activeElement !== slider) slider.value = String(c);
-        value.textContent = `${c.toFixed(2)} m`;
+        value.textContent = show(c, r);
       } else {
         value.textContent = "\u2014";
       }
@@ -26216,7 +26228,8 @@ var DEFAULTS5 = {
   fov: 55,
   up: "y",
   navGizmo: false,
-  shadingBar: false
+  shadingBar: false,
+  units: null
 };
 var EDGE_BUDGET_MS = 8;
 var ThreeRenderer = class {
@@ -26284,7 +26297,7 @@ var ThreeRenderer = class {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
     if (cfg.showGrid && cfg.gridStyle === "fading") {
@@ -26758,6 +26771,7 @@ var ThreeRenderer = class {
    */
   setAmbientOcclusion(on) {
     this.ao.set(on);
+    this.shadingBar?.paint();
   }
   /** Whether ambient occlusion is on. */
   get ambientOcclusion() {
@@ -29195,7 +29209,8 @@ var SketchInstance = class {
       cameraTarget: this.config.target ?? [0, 0, 0],
       up: this.config.up ?? "y",
       navGizmo: this.config.navGizmo ?? false,
-      shadingBar: this.config.shadingBar ?? false
+      shadingBar: this.config.shadingBar ?? false,
+      units: this.config.units ?? null
     });
   }
   // ── Input Wiring ──
@@ -30787,6 +30802,7 @@ function appShell(config) {
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
     shadingBar: config.shadingBar ?? false,
+    units: config.units ?? null,
     ...config.renderer
   });
   const commands = new Commands();
