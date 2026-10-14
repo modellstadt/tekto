@@ -2,7 +2,7 @@
 
 > AI-first platform for online CAD experiments — one-function interactive geometry apps in the browser that coding agents can write, see and take markup on (meshes, NURBS, SDF, voxels, graphs, BIM/IFC)
 
-tekto 0.9.1. One function becomes an interactive CAD app in the browser; people point at what to change on the viewport (✎ Markup) and agents check their own work (`npm run snap`). Docs: [README](README.md) · [agent rules (CLAUDE.md)](CLAUDE.md) · [changelog](CHANGELOG.md) · [full API index (llms-full.txt)](llms-full.txt) · examples in [playground/pages](playground/pages/).
+tekto 0.9.2. One function becomes an interactive CAD app in the browser; people point at what to change on the viewport (✎ Markup) and agents check their own work (`npm run snap`). Docs: [README](README.md) · [agent rules (CLAUDE.md)](CLAUDE.md) · [changelog](CHANGELOG.md) · [full API index (llms-full.txt)](llms-full.txt) · examples in [playground/pages](playground/pages/).
 
 ## Start here
 

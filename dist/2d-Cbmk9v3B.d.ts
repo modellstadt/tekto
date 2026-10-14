@@ -1,5 +1,5 @@
-import { q as StandardView, M as Mesh, t as VisualStyle, V as Vec3, F as FlatMeshData, r as Vec2, e as LightSpec, b as SectionRequest, S as Scene } from './Scene-BHniJuab.mjs';
-import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-BGzzhlPz.mjs';
+import { q as StandardView, M as Mesh, t as VisualStyle, V as Vec3, F as FlatMeshData, r as Vec2, e as LightSpec, b as SectionRequest, S as Scene } from './Scene-BHniJuab.js';
+import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-YOiO7Lln.js';
 
 /**
  * LayerPanel — reusable tree-based layer/visibility panel.
@@ -207,6 +207,9 @@ interface SketchConfig {
     /** The shading bar in the view's top-left corner: icons for the render style, the lighting
      *  and the sun (morning, noon, sunset). Default `false`. */
     shadingBar?: boolean;
+    /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset (default):
+     *  relative to the content's extent. */
+    units?: string;
 }
 /** Item registered via `lab.registerExport(...)`. */
 interface ExportRegistration {
