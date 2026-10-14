@@ -146,27 +146,38 @@ test("Studio: no warnings, a cut shows its poché on double-sided meshes and dro
   })).toBe(false);
 });
 
-test("lamps: a point light at each point, replaced and removed, no shadows", async ({ page }) => {
+test("scene lights: a point or a spot in the model, drawn without shadows, gone with the object", async ({ page }) => {
   await page.goto("/testbench.html?page=site-editor");
   await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
-  const lamps = () => page.evaluate(() => {
-    const out: { at: number[]; shadow: boolean }[] = [];
+  const lights = () => page.evaluate(() => {
+    const out: { kind: string; at: number[]; shadow: boolean; target?: number[] }[] = [];
     (window as any).__tekto.owner.renderer.threeScene.traverse((o: any) => {
-      if (o.isPointLight) out.push({ at: o.position.toArray(), shadow: o.castShadow });
+      if (o.isPointLight) out.push({ kind: "point", at: o.position.toArray(), shadow: o.castShadow });
+      if (o.isSpotLight) out.push({ kind: "spot", at: o.position.toArray(), shadow: o.castShadow, target: o.target.position.toArray() });
     });
     return out;
   });
-  const set = (l: unknown) => page.evaluate((l) => (window as any).__tekto.owner.renderer.setLamps(l), l);
-  await set([{ at: { x: 0, y: 0, z: 2.4 } }, { at: { x: 4, y: 0, z: 2.4 }, intensity: 8 }]);
-  expect(await lamps()).toEqual([{ at: [0, 0, 2.4], shadow: false }, { at: [4, 0, 2.4], shadow: false }]);
-  await set([{ at: { x: 1, y: 1, z: 2.2 } }]);
-  expect((await lamps()).map((l) => l.at)).toEqual([[1, 1, 2.2]]);
-  await set([]);
-  expect(await lamps()).toEqual([]);
+  const ids = await page.evaluate(() => {
+    const scene = (window as any).__tekto.owner.scene;
+    const V = (x: number, y: number, z: number) => ({ x, y, z });
+    return [
+      scene.addLight(V(0, 0, 2.4)).id,
+      scene.addLight(V(4, 0, 3), { kind: "spot", target: V(4, 2, 0), angle: 25 }, { color: "#ffd2a0" }).id,
+    ];
+  });
+  expect(await lights()).toEqual([
+    { kind: "point", at: [0, 0, 2.4], shadow: false },
+    { kind: "spot", at: [4, 0, 3], shadow: false, target: [4, 2, 0] },
+  ]);
+  // Hidden like any object, and gone with it.
+  await page.evaluate((id) => (window as any).__tekto.owner.scene.setStyle(id, { visible: false }), ids[0]);
   expect(await page.evaluate(() => {
-    try { (window as any).__tekto.owner.renderer.setLamps([{ at: { x: NaN, y: 0, z: 0 } }]); return "no error"; }
-    catch (e) { return String(e); }
-  })).toMatch(/non-finite/);
+    let on = 0;
+    (window as any).__tekto.owner.renderer.threeScene.traverse((o: any) => { if (o.isPointLight && o.parent?.visible) on++; });
+    return on;
+  })).toBe(0);
+  await page.evaluate((ids) => ids.forEach((id: string) => (window as any).__tekto.owner.scene.remove(id)), ids);
+  expect(await lights()).toEqual([]);
 });
 
 test("daylight: Studio's light follows the sun's altitude, and goes back when it is off", async ({ page }) => {

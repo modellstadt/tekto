@@ -667,15 +667,6 @@ export class ThreeRenderer {
   get sunPreset(): SunPreset | null { return this.lighting.currentSunPreset; }
 
   /**
-   * Lamps: a warm point light at each point (in the content's axes), in both lighting modes,
-   * without shadows (a point light's shadow is six renders, per lamp). One per room at
-   * pendant height carries an interior at dusk. Each takes a `colour` (default warm white
-   * 0xffd2a0), an `intensity` in candela (default 4) and a `distance` it reaches (m, default
-   * 8). Replaces the lamps there were; `[]` removes them.
-   */
-  setLamps(lamps: readonly { at: Vec3; colour?: number | string; intensity?: number; distance?: number }[]): void { this.lighting.setLamps(lamps); }
-
-  /**
    * Let Studio's light follow the sun: with it on, the sun's colour and strength, the sky,
    * the exposure and the background come from the sun's altitude (`setSunDirection`, which
    * the shell's Sun popover drives by date and hour), so evening and dusk follow from the

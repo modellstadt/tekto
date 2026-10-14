@@ -169,7 +169,7 @@ export type { StairOptions, StairTypeOptions, StairFlight, StairShape } from "./
 // Scene
 export { Scene } from "./scene/Scene";
 export type {
-  SceneObject, SceneObjectType, VisualStyle, RenderMode, SectionRequest, Projection, StandardView, LightingMode,
+  SceneObject, SceneObjectType, LightSpec, VisualStyle, RenderMode, SectionRequest, Projection, StandardView, LightingMode,
   FlatMeshData as ColoredMeshData,
   SceneEvent, SceneEventListener, SceneJSON,
 } from "./scene/Scene";

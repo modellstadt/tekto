@@ -22,8 +22,9 @@ export default function (container: HTMLElement) {
       size:   { type: "float", min: 1, max: 8, default: 4, step: 0.1, label: "Slab Size" },
       twist:  { type: "float", min: 0, max: 180, default: 60, step: 1, label: "Twist (°)" },
       color:  { type: "color", default: "#cfd8dc", label: "Color", display: true },
+      lamps:  { type: "bool", default: false, label: "Lamps" },
     },
-    groups: { Tower: ["floors", "height", "size", "twist"], Display: ["color"] },
+    groups: { Tower: ["floors", "height", "size", "twist"], Display: ["color"], Lights: ["lamps"] },
   });
 
   const slabs: string[] = [];
@@ -40,6 +41,14 @@ export default function (container: HTMLElement) {
       MeshTransform.rotate(slab, new Vec3(0, 0, 1), (twist * i) / Math.max(1, floors - 1));
       slab.translate(0, 0, i * h);
       slabs.push(app.scene.addMesh(slab, { label: `floor ${i + 1}`, layer: "slab" }).id);
+    }
+    // Lights are model content, like the slabs: a warm bulb under every third floor and a
+    // spot from above. Try them with the shading bar's Sunset, or Studio at a low sun.
+    if (app.params.get("lamps")) {
+      for (let i = 1; i < floors; i += 3) {
+        app.scene.addLight(new Vec3(0, 0, i * h - 0.1), { intensity: 3, range: 4 }, { color: "#ffd2a0", label: "bulb" });
+      }
+      app.scene.addLight(new Vec3(size, -size, floors * h + 2), { kind: "spot", target: new Vec3(0, 0, 0), angle: 20, intensity: 40, range: 0 }, { label: "spot" });
     }
     app.status(`${floors} floors · ${(floors * h).toFixed(1)} m`);
   });

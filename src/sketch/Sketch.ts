@@ -861,6 +861,10 @@ export class SketchInstance {
         return shapeHandle(self.scene, self.scene.addCircle(new Vec3(cx, cy, cz), radius));
       },
 
+      light(position, spec, style) {
+        return self.scene.addLight(position, spec, style).id;
+      },
+
       // ── Algorithms ──
       algo: Algo,
       MeshFactory,

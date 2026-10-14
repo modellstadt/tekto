@@ -165,7 +165,8 @@ export function sceneSummary(
   let shown = 0;
   for (const o of scene.all()) {
     if (!renderer.isObjectShown(o.id)) continue;
-    const b = renderer.objectBounds(o.id);
+    // A light has no geometry: its place is its bounds, so a snapshot lists it.
+    const b = renderer.objectBounds(o.id) ?? (o.type === "light" && o.position ? { min: o.position, max: o.position } : null);
     if (!b) continue;
     shown++;
     const d = describe(o.id)!;
