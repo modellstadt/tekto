@@ -87,6 +87,9 @@ export type { PresenceBarOptions } from "./collab/PresenceBar";
 // Markup overlay types (the overlay itself is mounted by sketch(); see sketch/Markup.ts)
 export type { MarkupBundle, MarkupCaptureOptions, MarkupObjectRef, MarkKind, MarkupRenderer } from "./sketch/Markup";
 export { markup } from "./sketch/Markup";
+// Notes that live with the model: sketched notes kept in a Doc collection, drawn over the view.
+export { notesLayer, NotesLayer } from "./sketch/Notes";
+export type { Note, NotesRenderer } from "./sketch/Notes";
 
 // Sketch2D API (Level 1 — 2D canvas variant, no Three.js)
 export { sketch2d, Sketch2DInstance } from "./sketch/Sketch2D";

@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Notes that live with the model.** Markup's marks can be kept as notes: each mark's
+  strokes laid on the model (or the ground) in world space, its text, the author and time,
+  the records it touched and the view it was drawn from, as a plain record in a `Doc`
+  collection, so notes are saved and opened with the document, undone like any edit and
+  shared with everyone on it. `notesLayer(renderer, doc)` draws them over the view from any
+  camera with a numbered pin each; a pin opens the note (Go to view, Delete). `appShell({
+  notes: doc })` wires it all (`app.notes`); `markup(renderer, scene, { notes })` and
+  `<Markup notes />` offer "Keep as notes". `renderer.onDraw(cb)` runs after every frame.
+  The Site Editor page keeps notes.
 - **✎ Markup in any app**: `markup(renderer, scene, { title, context })` mounts the Markup
   button and overlay that `sketch()` and `appShell()` have over a renderer an app built
   itself, and `tekto/react`'s `<Markup scene renderer />` does the same while mounted. Marks

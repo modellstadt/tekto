@@ -16,14 +16,14 @@
  */
 import {
   appShell, Doc, bindScene, Selection, selectOnClick, shareSelection, PresenceBar, localAdapter, devServerAdapter,
-  MeshFactory, download, type DocJSON,
+  MeshFactory, download, type DocJSON, type Note,
 } from "../../src";
 
 type Block = { x: number; y: number; w: number; d: number; h: number };
 
 export default function (container: HTMLElement) {
   const shared = new URLSearchParams(location.search).get("shared");
-  const doc = new Doc<{ blocks: Block }>({ name: "site-editor", adapter: shared ? devServerAdapter() : localAdapter() });
+  const doc = new Doc<{ blocks: Block; notes: Note }>({ name: "site-editor", adapter: shared ? devServerAdapter() : localAdapter() });
   const selection = new Selection();
   let syncing = false;                     // pushing a selection's values into the sliders
 
@@ -34,6 +34,9 @@ export default function (container: HTMLElement) {
     navGizmo: true,
     // No top bar here: the render style, lighting and sun as icons in the view instead.
     shadingBar: true,
+    // Notes that live with the model: ✎ Markup → "Keep as notes" keeps marks in the doc's
+    // `notes` collection (saved, undoable, shared), pinned in the view.
+    notes: doc,
     // A site wants a sense of scale: a ground ruled in metres that fades out, fitted to the blocks.
     renderer: { gridStyle: "fading" },
     camera: [34, -40, 34],
