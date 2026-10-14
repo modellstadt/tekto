@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Ambient occlusion in the shading bar**: an AO toggle beside Flat / Studio
+  (`renderer.setAmbientOcclusion`); it follows AO switched on or off in code.
 - **`units`** (renderer, `sketch()`, `appShell()`): the scene's unit as a label (`"m"`,
   `"mm"`, `"ft"`). Without it (the default) the shading bar's section is relative to the
   content: the cut is a share of its extent (`at`, kept as the content changes) and reads

@@ -190,7 +190,7 @@ export class ThreeRenderer {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -709,7 +709,7 @@ export class ThreeRenderer {
    * views go without. `true`, `false`, or
    * `{ radius, intensity }`: how far it reaches (m, default 0.6) and how dark (0..1, 0.85).
    */
-  setAmbientOcclusion(on: boolean | AmbientOcclusionOptions): void { this.ao.set(on); }
+  setAmbientOcclusion(on: boolean | AmbientOcclusionOptions): void { this.ao.set(on); this.shadingBar?.paint(); }
 
   /** Whether ambient occlusion is on. */
   get ambientOcclusion(): boolean { return this.ao.enabled; }

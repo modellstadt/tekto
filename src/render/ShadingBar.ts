@@ -10,6 +10,7 @@ import { viewModeIconSvg } from "../gui/viewModeIcons";
 import type { RendererCore } from "./RendererCore";
 import type { Lighting } from "./Lighting";
 import type { Marks } from "./Marks";
+import type { AmbientOcclusion } from "./AmbientOcclusion";
 import { ensureSliderStyle } from "../gui/ControlPanel";
 
 const svg = (body: string) =>
@@ -29,6 +30,8 @@ export const SHADING_ICONS = {
   noon: svg(`<circle cx="12" cy="12" r="4"/><path d="${RAYS}"/>`),
   morning: HORIZON("M9 5.5 12 2.5l3 3"),
   sunset: HORIZON("M9 6.5l3 3 3-3"),
+  // Ambient occlusion: two faces meeting, darkened into the corner.
+  ao: svg(`<path d="M5 4v15h15"/><path d="M5 9.5v9.5h9.5A9.5 9.5 0 0 0 5 9.5z" fill="currentColor" fill-opacity="0.5" stroke="none"/>`),
   // A box with a slice through it.
   section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
   flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`),
@@ -53,7 +56,7 @@ export class ShadingBar {
   private paints: (() => void)[] = [];
   private off: () => void;
 
-  constructor(private core: RendererCore, private lighting: Lighting, private marks: Marks, corner: ShadingBarCorner = "top-left") {
+  constructor(private core: RendererCore, private lighting: Lighting, private marks: Marks, private ao: AmbientOcclusion, corner: ShadingBarCorner = "top-left") {
     const host = core.container;
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
     const [v, h] = [corner.startsWith("top") ? "top" : "bottom", corner.endsWith("left") ? "left" : "right"];
@@ -66,6 +69,7 @@ export class ShadingBar {
     for (const [mode, label] of MODES) this.button(viewModeIconSvg(mode, 16), label, () => scene.renderMode === mode, () => scene.setRenderMode(mode));
     this.separator();
     for (const [mode, label] of LIGHTS) this.button(SHADING_ICONS[mode], label, () => scene.lightingMode === mode, () => scene.setLightingMode(mode));
+    this.button(SHADING_ICONS.ao, "Ambient occlusion: darker where surfaces meet (Solid, perspective)", () => this.ao.enabled, () => this.ao.set(!this.ao.enabled));
     this.separator();
     const sunPop = this.popover(v, h);
     const sun = this.button(SHADING_ICONS.noon, "Sun: morning, noon, sunset", () => this.openPop === sunPop, () => this.toggle(sunPop));
