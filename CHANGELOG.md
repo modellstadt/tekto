@@ -6,6 +6,13 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`writePdf2D`**: a 2D drawing as a vector PDF at a true scale — the same content as
+  `writeDxf2D` (polylines, lines, circles, arcs, texts, solids, line types) on one page sized
+  to the drawing, with an optional title and scale bar; colours darkened for white paper by
+  default. No dependency (Helvetica, one content stream). The 2D types and `DxfLayerDef` gain an
+  optional `rgb` (CSS hex) true colour, which the PDF uses; DXF R12 keeps writing `color` (ACI).
+  `download` knows the `.pdf` MIME type.
+
 ## 0.9.4 — 2026-10-14
 
 Two wall fixes from 7DHouse: a window to the slab gets no header through the top plate, and the walls of a system meet at their corners when realized one by one.

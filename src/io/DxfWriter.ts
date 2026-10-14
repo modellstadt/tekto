@@ -15,6 +15,8 @@ export interface DxfLayerDef {
   color?: number;
   /** R12 line type for the layer: "CONTINUOUS" (default), "DASHED", "HIDDEN", "DOTTED" or "CENTER". */
   lineType?: string;
+  /** True colour (CSS hex) for writers that have it — `writePdf2D`; DXF R12 writes `color`. */
+  rgb?: string;
 }
 
 // ── True-3D DXF content (for writeDxf3D) ────────────────────────────────────────
@@ -195,8 +197,9 @@ export function writeDxf3D(content: Dxf3DContent): string {
 /** A point in the drawing plane. `Vec2`, or anything with x and y. */
 export interface Dxf2DPoint { x: number; y: number; }
 /** What a 2D entity may set beyond its layer: an ACI colour (1 red … 7 white/black) and an R12
- *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. */
-export interface Dxf2DLook { color?: number; linetype?: "DASHED" | "HIDDEN" | "DOTTED" | "CENTER"; }
+ *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. `rgb`: a true
+ *  colour (CSS hex) for writers that have it — `writePdf2D` prefers it over `color`; DXF R12 ignores it. */
+export interface Dxf2DLook { color?: number; linetype?: "DASHED" | "HIDDEN" | "DOTTED" | "CENTER"; rgb?: string; }
 /** A polyline in the drawing plane for `writeDxf2D`; emitted as an R12 2D POLYLINE (`closed` shuts the ring). */
 export interface Dxf2DPolyline extends Dxf2DLook { layer: string; points: Dxf2DPoint[]; closed?: boolean; }
 /** A straight segment in the drawing plane for `writeDxf2D`; emitted as a LINE. */
@@ -204,12 +207,12 @@ export interface Dxf2DLine extends Dxf2DLook { layer: string; start: Dxf2DPoint;
 /** A circle in the drawing plane for `writeDxf2D`; emitted as a CIRCLE, dropped if the radius is degenerate. */
 export interface Dxf2DCircle extends Dxf2DLook { layer: string; center: Dxf2DPoint; radius: number; }
 /** A filled triangle (or quad), e.g. one piece of a poché. */
-export interface Dxf2DSolid { layer: string; points: Dxf2DPoint[]; color?: number; }
+export interface Dxf2DSolid { layer: string; points: Dxf2DPoint[]; color?: number; rgb?: string; }
 /** CCW arc, angles in degrees; a full sweep is written as a CIRCLE (AutoCAD drops a 0→360 ARC). */
 export interface Dxf2DArc extends Dxf2DLook { layer: string; center: Dxf2DPoint; radius: number; startDeg: number; endDeg: number; }
 /** Single-line text at `at` (its baseline start), `height` in drawing units, rotated CCW. */
 export interface Dxf2DText {
-  layer: string; at: Dxf2DPoint; text: string; height: number; rotationDeg?: number; color?: number;
+  layer: string; at: Dxf2DPoint; text: string; height: number; rotationDeg?: number; color?: number; rgb?: string;
   /** Which point of the text `at` is: horizontally (default left) and vertically (default baseline). */
   align?: "left" | "center" | "right";
   valign?: "baseline" | "bottom" | "middle" | "top";
@@ -323,7 +326,7 @@ export function writeDxf2D(content: Dxf2DContent, opts: { scale?: number; linety
 }
 
 /** The AutoCAD Color Index entries tekto maps to: the primaries and a grey ramp (RGB). */
-const ACI: [number, number, number, number][] = [
+export const ACI: [number, number, number, number][] = [
   [1, 255, 0, 0], [2, 255, 255, 0], [3, 0, 255, 0], [4, 0, 255, 255], [5, 0, 0, 255], [6, 255, 0, 255],
   [7, 0, 0, 0], [8, 128, 128, 128], [9, 192, 192, 192],
   [250, 51, 51, 51], [251, 80, 80, 80], [252, 105, 105, 105], [253, 130, 130, 130], [254, 190, 190, 190], [255, 255, 255, 255],
