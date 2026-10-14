@@ -188,6 +188,24 @@ export class ObjectBuilder {
         return group;
       }
 
+      case "light": {
+        // A light the model holds: no shadows (a point light's shadow is six renders, per light).
+        if (!obj.position || !obj.light) return null;
+        const L = obj.light, p = obj.position;
+        const group = new THREE.Group();
+        if (L.kind === "spot" && L.target) {
+          const spot = new THREE.SpotLight(s.color, L.intensity, L.range, L.angle * Math.PI / 180, 0.3, 2);
+          spot.position.set(p.x, p.y, p.z);
+          spot.target.position.set(L.target.x, L.target.y, L.target.z);
+          group.add(spot, spot.target);
+        } else {
+          const bulb = new THREE.PointLight(s.color, L.intensity, L.range, 2);
+          bulb.position.set(p.x, p.y, p.z);
+          group.add(bulb);
+        }
+        return group;
+      }
+
       case "mesh": {
         if (obj.flatMeshData) return this.convertFlatMesh(obj.flatMeshData, s);
         if (!obj.mesh) return null;

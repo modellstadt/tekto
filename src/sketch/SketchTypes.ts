@@ -13,7 +13,7 @@ import type { Vec2, Vec3 } from "../core/math/vectors";
 import type { Mesh } from "../core/geometry/mesh/Mesh";
 import type { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import type { Algo } from "../core/algo/algorithms";
-import type { Scene, VisualStyle, FlatMeshData } from "../scene/Scene";
+import type { Scene, VisualStyle, FlatMeshData, LightSpec } from "../scene/Scene";
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 import type { SectionRequest, StandardView } from "../scene/Scene";
 import type { Command } from "../gui/Commands";
@@ -353,6 +353,12 @@ export interface Lab {
   polyline(points: Vec3[]): LineHandle;
   polygon(vertices: Vec3[], style?: Partial<VisualStyle>): ShapeHandle;
   circle(cx: number, cy: number, cz: number, radius: number): ShapeHandle;
+  /**
+   * A light at a point: a point light, or a spot aimed at `spec.target` (`scene.addLight`).
+   * Made again on every run like any object; colour by `style.color` (default white).
+   * Returns its scene id.
+   */
+  light(position: Vec3, spec?: LightSpec, style?: Partial<VisualStyle>): string;
 
   // ── Algorithms ──
   algo: typeof Algo;

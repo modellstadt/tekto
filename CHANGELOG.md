@@ -6,6 +6,16 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Lights are scene objects**: `scene.addLight(position, { kind: "point" | "spot",
+  intensity, range, target, angle }, style)` (and `lab.light(...)` in a sketch). A light is
+  model content like a mesh: keyed, made again by a sketch re-run, bound to records,
+  hidden by `style.visible`, listed in snapshots; colour is `style.color` (white by
+  default); drawn in both lighting modes, without shadows. The App Shell page has a Lamps
+  toggle.
+  **Breaking:** `renderer.setLamps(...)` (0.8.3) is removed. Migrate
+  `renderer.setLamps([{ at, colour, intensity, distance }])` to one
+  `scene.addLight(at, { intensity, range: distance }, { color: colour ?? "#ffd2a0" })` per
+  lamp (setLamps' default was warm white; addLight's is white).
 - **The shading bar**, `shadingBar: true` on a renderer, `sketch()` or `appShell()`: minimal
   icons in a corner of the 3D view (top left by default), as Blender has in its viewport
   header. The render style (solid, wireframe, hidden line, ghost), the lighting (Flat,
