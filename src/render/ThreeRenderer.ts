@@ -182,7 +182,7 @@ export class ThreeRenderer {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -921,7 +921,7 @@ export class ThreeRenderer {
    * capped polygon, so it needs nothing of the geometry: no closed solids, no winding. Only
    * opaque surfaces get it: through a translucent one the inside would show uncut too.
    */
-  setSection(section: SectionRequest | null): void { this.marks.setSection(section); }
+  setSection(section: SectionRequest | null): void { this.marks.setSection(section); this.shadingBar?.paint(); }
 
   /** The section in force, or null. */
   get section(): SectionRequest | null { return this.marks.section; }

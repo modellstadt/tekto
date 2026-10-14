@@ -199,6 +199,39 @@ export class Marks {
 
   get section(): SectionRequest | null { return this.sectionReq; }
 
+  /** Where the cut lies along its axis: its coordinate, or its `at` share of the content. */
+  sectionCoordinate(): number | null {
+    const req = this.sectionReq;
+    if (!req) return null;
+    if (req.coordinate !== undefined) return req.coordinate;
+    const box = this.core.contentBox();
+    return box.isEmpty() ? 0 : THREE.MathUtils.lerp(box.min[req.axis], box.max[req.axis], req.at ?? 0.5);
+  }
+
+  private sectionFrame: THREE.LineLoop | null = null;
+
+  /** Show the cut as a thin frame around the content, while it is being moved. */
+  showSectionPlane(on: boolean): void {
+    if (this.sectionFrame) {
+      this.sectionFrame.removeFromParent();
+      this.sectionFrame.geometry.dispose();
+      (this.sectionFrame.material as THREE.Material).dispose();
+      this.sectionFrame = null;
+    }
+    const req = this.sectionReq, c = this.sectionCoordinate(), box = this.core.contentBox();
+    if (on && req && c !== null && !box.isEmpty()) {
+      const pad = box.getSize(new THREE.Vector3()).multiplyScalar(0.06);
+      const lo = box.min.clone().sub(pad), hi = box.max.clone().add(pad);
+      const [u, v] = req.axis === "x" ? ["y", "z"] as const : req.axis === "y" ? ["x", "z"] as const : ["x", "y"] as const;
+      const corner = (a: number, b: number) => { const p = new THREE.Vector3(); p[req.axis] = c; p[u] = a; p[v] = b; return p; };
+      const geo = new THREE.BufferGeometry().setFromPoints([corner(lo[u], lo[v]), corner(hi[u], lo[v]), corner(hi[u], hi[v]), corner(lo[u], hi[v])]);
+      this.sectionFrame = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthTest: false }));
+      this.sectionFrame.renderOrder = 1000;
+      this.core.threeScene.add(this.sectionFrame);
+    }
+    this.core.requestRender();
+  }
+
   setSectionColour(colour: number | string | null): void {
     this.sectionColour = colour === null ? null : new THREE.Color(colour).getHex();
     if (this.sectionReq) this.setSection(this.sectionReq);

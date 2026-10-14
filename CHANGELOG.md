@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The section in the shading bar**: a cut icon opens Off / Plan / X / Y, a slider over the
+  content's extent in metres, and "keep the other side". While the slider moves, a thin
+  frame shows where the plane is; the icon lights while a cut is on, set from anywhere. The
+  fading grid now sits behind faces lying on the ground (it showed through a poché floor).
 ## 0.9.0 — 2026-10-14
 
 The viewer in the view and notes with the model: the shading bar (render style, lighting and a morning / noon / sunset sun as icons in the 3D view), lights as scene objects, ✎ Markup in any app, and sketched notes kept in the document, pinned in the view. Breaking: `renderer.setLamps` is removed (use `scene.addLight`).
