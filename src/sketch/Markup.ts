@@ -20,7 +20,8 @@
  * agent driving a headless browser (tools/snap.mjs) sees what a person sees.
  */
 import type { Vec3 } from "../core/math/vectors";
-import { saveBundle, slug } from "./AgentBridge";
+import type { Scene } from "../scene/Scene";
+import { saveBundle, slug, describeSceneObject, sceneSummary, snapshotWithOverlays } from "./AgentBridge";
 
 type Pt = [number, number];
 
@@ -558,4 +559,48 @@ function bounds(ps: Vec3[]) {
 
 export function round3(p: { x: number; y: number; z: number }): number[] {
   return [p.x, p.y, p.z].map((v) => +v.toFixed(4));
+}
+
+// ── Markup in any app ───────────────────────────────────────────────────
+
+/** What `markup()` needs from a renderer: structurally a `ThreeRenderer`. */
+export interface MarkupRenderer {
+  readonly canvasEl: HTMLCanvasElement;
+  hitAt(clientX: number, clientY: number): { id: string; point: Vec3 } | null;
+  groundAt(clientX: number, clientY: number): Vec3 | null;
+  snapshotPng(): string;
+  isObjectShown(id: string): boolean;
+  objectBounds(id: string): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null;
+  cameraState(): { position: number[]; target: number[]; [k: string]: unknown };
+}
+
+/**
+ * ✎ Markup in any app: the button and the drawing overlay `sketch()` and `appShell()` have,
+ * mounted over a renderer's view, for an app that builds its own UI (React, a custom page).
+ * Marks resolve to the objects and record keys under them; Save writes view.png, clean.png
+ * and markup.json to the dev server (`.tekto/markup/`), or downloads them without it.
+ *
+ *   const notes = markup(renderer, scene, { title: "7DHouse", context: () => ({ params }) });
+ *   // later: notes.dispose()
+ */
+export function markup(
+  renderer: MarkupRenderer,
+  scene: Scene,
+  opts: { title?: string; context?: () => Record<string, unknown>; host?: HTMLElement } = {},
+): { capture(opts?: MarkupCaptureOptions): Promise<MarkupBundle>; dispose(): void } {
+  const viewport = opts.host ?? renderer.canvasEl.parentElement;
+  if (!viewport) throw new Error("markup: the renderer's canvas is not in the page yet (or pass opts.host)");
+  if (getComputedStyle(viewport).position === "static") viewport.style.position = "relative";
+  const describe = (id: string) => describeSceneObject(scene, id);
+  const overlay = new MarkupOverlay({
+    viewport,
+    title: opts.title ?? "app",
+    hitAt: (x, y) => renderer.hitAt(x, y),
+    groundAt: (x, y) => renderer.groundAt(x, y),
+    snapshotPng: () => snapshotWithOverlays(renderer, viewport),
+    describe,
+    context: () => ({ ...sceneSummary(scene, renderer, describe), ...(opts.context?.() ?? {}) }),
+    setTracking: () => { /* objects carry their record key; no creation sites to track */ },
+  });
+  return { capture: (o) => overlay.capture(o), dispose: () => overlay.dispose() };
 }

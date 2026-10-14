@@ -326,6 +326,7 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
   members: el, update()
 - `layoutLabels` (function): Stack labels into the left and right margins without overlapping.
 - `lightBalance` (function): Sun and sky intensity for a mode.
+- `markup` (function): ✎ Markup in any app: the button and the drawing overlay `sketch()` and `appShell()` have, mounted over a renderer's view, for an app that builds its own UI (React, a custom page).
 - `modeBackground` (function): The page a mode is drawn on.
 - `NavGizmo` (class): The axis widget in a viewport corner, drawn as SVG: click an axis ball to look down it, drag to orbit, double-click to snap to the nearest axis, toggle perspective/ortho.
   members: setProjection(), update(), setVisible(), dispose()
@@ -360,7 +361,7 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
 - `viewModeIconShapes` (function): What to draw for a render mode, back to front.
 - `viewModeIconSvg` (function): A render mode's icon as SVG markup, for a DOM app: `button.innerHTML = viewModeIconSvg("ghost")`.
 
-Types: `AmbientOcclusionOptions`, `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `CalloutItem`, `Command`, `CommandInfo`, `ControlItem`, `ControlPanelConfig`, `CustomRow`, `DrawFn`, `DrawSheetOptions`, `DxfEdgeOptions`, `DxfMeshOptions`, `DxfSegment`, `DxfView`, `DxfWorkerRequest`, `DxfWriteOptions`, `ExportRegistration`, `ExtraTab`, `IconShape`, `IdBufferOptions`, `ImportRegistration`, `Lab`, `Lab2D`, `LayerMap`, `LayerNode`, `LayerState`, `LayoutOptions`, `LineHandle`, `MarkKind`, `MarkupBundle`, `MarkupCaptureOptions`, `MarkupObjectRef`, `MeshHandle`, `NavGizmoOptions`, `PanelButton`, `PickInfo`, `Placement`, `Pointer2D`, `PointerFn`, `PointHandle`, `PresenceBarOptions`, `ProjectedSegment`, `Reactive`, `SelectOpts`, `ShadingBarCorner`, `ShapeHandle`, `ShapeMode`, `SheetCanvasOptions`, `SheetTransform`, `Sketch2DConfig`, `Sketch2DFn`, `SketchConfig`, `SliderOpts`, `SunPreset`, `SVGOptions`, `SVGRendererConfig`, `Theme`, `ThreeRendererConfig`, `TopBarOptions`, `ViewControl`, `ViewMode`, `VisibilityOptions`, `VisibilityResult`, `VisibilityView`
+Types: `AmbientOcclusionOptions`, `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `CalloutItem`, `Command`, `CommandInfo`, `ControlItem`, `ControlPanelConfig`, `CustomRow`, `DrawFn`, `DrawSheetOptions`, `DxfEdgeOptions`, `DxfMeshOptions`, `DxfSegment`, `DxfView`, `DxfWorkerRequest`, `DxfWriteOptions`, `ExportRegistration`, `ExtraTab`, `IconShape`, `IdBufferOptions`, `ImportRegistration`, `Lab`, `Lab2D`, `LayerMap`, `LayerNode`, `LayerState`, `LayoutOptions`, `LineHandle`, `MarkKind`, `MarkupBundle`, `MarkupCaptureOptions`, `MarkupObjectRef`, `MarkupRenderer`, `MeshHandle`, `NavGizmoOptions`, `PanelButton`, `PickInfo`, `Placement`, `Pointer2D`, `PointerFn`, `PointHandle`, `PresenceBarOptions`, `ProjectedSegment`, `Reactive`, `SelectOpts`, `ShadingBarCorner`, `ShapeHandle`, `ShapeMode`, `SheetCanvasOptions`, `SheetTransform`, `Sketch2DConfig`, `Sketch2DFn`, `SketchConfig`, `SliderOpts`, `SunPreset`, `SVGOptions`, `SVGRendererConfig`, `Theme`, `ThreeRendererConfig`, `TopBarOptions`, `ViewControl`, `ViewMode`, `VisibilityOptions`, `VisibilityResult`, `VisibilityView`
 
 ## tekto/2d — sketch2d and the 2D geometry a first sketch needs — no three.js
 

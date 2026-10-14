@@ -12,3 +12,4 @@ export type {
 } from "./react/components";
 export { ViewModeIcon } from "./react/ViewModeIcon";
 export { ViewerToolbar } from "./react/ViewerToolbar";
+export { Markup } from "./react/Markup";
