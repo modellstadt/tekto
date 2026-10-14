@@ -144,7 +144,7 @@ import {
   selectOnClick,
   shareSelection,
   supabaseAdapter
-} from "./chunk-FUIXAYCP.mjs";
+} from "./chunk-7MB5NZPJ.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
