@@ -6,7 +6,7 @@ import {
   ensureSliderStyle,
   fitSheet,
   sketch2d
-} from "./chunk-TXFRHI7O.mjs";
+} from "./chunk-NG5LMW5V.mjs";
 import {
   Algo,
   ArcCurve,
@@ -144,7 +144,7 @@ import {
   selectOnClick,
   shareSelection,
   supabaseAdapter
-} from "./chunk-DQHOH3WF.mjs";
+} from "./chunk-FUIXAYCP.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -160,15 +160,13 @@ import {
   createLayout,
   createParams,
   createRandom,
-  download,
   noise,
   pickPrim,
   polygonIntersection,
   setClipSnap,
-  stampName,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-QA7NH7ES.mjs";
+} from "./chunk-ZNLNS4HM.mjs";
 import {
   MarkupOverlay,
   VIEW_MODE_ICON_CORNERS,
@@ -177,23 +175,24 @@ import {
   viewModeIconShapes,
   viewModeIconSvg,
   viewerToolbar
-} from "./chunk-XC3QEDGO.mjs";
+} from "./chunk-UK4TXUDY.mjs";
 import {
   addOverlay,
   describeSceneObject,
+  downloadSnapshot,
   getTheme,
   installAgentBridge,
   plainBundle,
   sceneSummary,
   snapshotWithOverlays
-} from "./chunk-SUDBKMRZ.mjs";
+} from "./chunk-R3QZS3QQ.mjs";
 import {
   Mesh,
   Plane,
   Scene,
   SunPosition,
   Triangle
-} from "./chunk-FAHEMNTI.mjs";
+} from "./chunk-4FLH7OLY.mjs";
 import {
   AABB,
   HMath,
@@ -205,8 +204,10 @@ import {
   Vec4,
   VecMath,
   closestPointOnSegment,
-  segmentSegmentClosest
-} from "./chunk-VTSIDLJ7.mjs";
+  download,
+  segmentSegmentClosest,
+  stampName
+} from "./chunk-EKKTPIOR.mjs";
 
 // src/io/IdBufferHiddenLine.ts
 import * as THREE from "three";
@@ -2465,7 +2466,10 @@ var ObjectBuilder = class {
           opacity: 0.04,
           transparent: true
         });
-        group.add(new THREE4.Mesh(geo.clone(), subtleWire));
+        const wire = new THREE4.Mesh(geo.clone(), subtleWire);
+        wire.userData.wireOverlay = true;
+        wire.visible = this.core.overlay("wireframe");
+        group.add(wire);
       }
     }
     return group;
@@ -4083,6 +4087,7 @@ var Marks = class {
     this.presenceLines = [];
     this.presenceMats = /* @__PURE__ */ new Map();
     this.highlightIds = null;
+    this.calloutsShown = true;
     this.outlineMat = null;
     this.sectionFrame = null;
     this.outlineGroup.renderOrder = 999;
@@ -4099,6 +4104,15 @@ var Marks = class {
   setSelectionStyle(style) {
     this.selectionStyle = style;
     this.setSelectionHighlight(this.highlightIds);
+  }
+  /** The selection as highlighted (scene ids), empty when none. */
+  get highlighted() {
+    return this.highlightIds ?? [];
+  }
+  /** Show or hide the callout labels (they keep working while hidden). */
+  setCalloutsVisible(on) {
+    this.calloutsShown = on;
+    this.callouts?.setVisible(on);
   }
   setSelectionHighlight(ids) {
     this.core.requestRender();
@@ -4327,6 +4341,7 @@ var Marks = class {
       onPick: (id) => this.calloutHandlers.onPick?.(id),
       onHover: (id) => this.calloutHandlers.onHover?.(id)
     }));
+    this.callouts.setVisible(this.calloutsShown);
     this.callouts.setItems(items);
     const ids = new Set(items.map((i) => i.id));
     for (const id of [...this.calloutVisible.keys()]) if (!ids.has(id)) this.calloutVisible.delete(id);
@@ -4561,6 +4576,12 @@ var SHADING_ICONS = {
   sunset: HORIZON("M9 6.5l3 3 3-3"),
   // Ambient occlusion: two faces meeting, darkened into the corner.
   ao: svg(`<path d="M5 4v15h15"/><path d="M5 9.5v9.5h9.5A9.5 9.5 0 0 0 5 9.5z" fill="currentColor" fill-opacity="0.5" stroke="none"/>`),
+  // Overlays: two overlapping rings, as Blender draws it.
+  overlays: svg(`<circle cx="9.5" cy="12" r="5.5"/><circle cx="14.5" cy="12" r="5.5"/>`),
+  // Frame: the corners of a view around a dot.
+  frame: svg(`<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>`),
+  // Snapshot: a camera.
+  snapshot: svg(`<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/>`),
   // A box with a slice through it.
   section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
   flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`)
@@ -4568,12 +4589,14 @@ var SHADING_ICONS = {
 var MODES = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hidden line"], ["ghost", "Ghost"]];
 var LIGHTS = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
 var SUNS = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
+var OVERLAY_LABELS = { grid: "Grid", axes: "Axes", wireframe: "Wireframe", labels: "Labels", notes: "Notes" };
 var ShadingBar = class {
-  constructor(core, lighting, marks, ao, corner = "top-left") {
+  constructor(core, lighting, marks, ao, view, corner = "top-left") {
     this.core = core;
     this.lighting = lighting;
     this.marks = marks;
     this.ao = ao;
+    this.view = view;
     this.root = document.createElement("div");
     this.openPop = null;
     // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
@@ -4581,6 +4604,7 @@ var ShadingBar = class {
     this.cutHeight = 1.2;
     this.levelRow = document.createElement("div");
     this.levelPaints = [];
+    this.overlayPaints = [];
     this.setCut = null;
     this.paints = [];
     const host = core.container;
@@ -4620,6 +4644,47 @@ var ShadingBar = class {
     cutPop.style.gap = "6px";
     this.button(SHADING_ICONS.section, "Section: cut the model", () => this.openPop === cutPop || !!this.marks.section, () => this.toggle(cutPop));
     this.sectionControls(cutPop);
+    this.separator();
+    const overlayPop = this.popover(v, h);
+    overlayPop.style.flexDirection = "column";
+    overlayPop.style.minWidth = "120px";
+    this.button(SHADING_ICONS.overlays, "Overlays: grid, axes, wireframe, labels, notes", () => this.openPop === overlayPop, () => this.toggle(overlayPop));
+    let listed = "";
+    this.paints.push(() => {
+      const names = Object.keys(this.view.overlays);
+      if (names.join() === listed) return;
+      listed = names.join();
+      overlayPop.replaceChildren();
+      this.overlayPaints = [];
+      for (const name of names) {
+        const label = OVERLAY_LABELS[name] ?? name[0].toUpperCase() + name.slice(1);
+        const b = this.button(
+          `<span style="width:14px;font:600 11px/1 system-ui,sans-serif">${"\u2713"}</span><span style="font:500 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${escapeHtml(label)}</span>`,
+          `${label}: show or hide`,
+          () => false,
+          // a checklist: a tick, not a filled button
+          () => this.view.setOverlays({ [name]: !(this.view.overlays[name] ?? false) }),
+          overlayPop,
+          this.overlayPaints
+        );
+        b.style.width = "auto";
+        b.style.justifyContent = "flex-start";
+        b.style.gap = "6px";
+        b.style.padding = "0 10px 0 6px";
+        const tick = b.firstElementChild;
+        this.overlayPaints.push(() => {
+          const on = !!this.view.overlays[name];
+          tick.style.visibility = on ? "visible" : "hidden";
+          b.style.color = on ? "#e8ebf0" : "rgba(232,235,240,.5)";
+          b.setAttribute("aria-pressed", String(on));
+        });
+      }
+    });
+    this.paints.push(() => {
+      for (const p of this.overlayPaints) p();
+    });
+    this.button(SHADING_ICONS.frame, "Frame: the selection, or everything", () => false, () => this.view.frame());
+    this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
     host.appendChild(this.root);
     this.off = scene.on((e) => {
       if (e.type === "scene:renderMode" || e.type === "scene:lightingMode") this.paint();
@@ -4960,6 +5025,8 @@ var ThreeRenderer = class {
     this.gridHelper = null;
     this.fadingGrid = null;
     this.shadingBar = null;
+    this.overlayState = { grid: true, axes: true, wireframe: true, labels: true };
+    this.overlayExtra = /* @__PURE__ */ new Map();
     this.gridDirty = true;
     this.axesHelper = null;
     // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
@@ -4998,6 +5065,7 @@ var ThreeRenderer = class {
       externalObjects: this.externalObjects,
       config: this.config,
       camera: this.camera,
+      overlay: (name) => this.overlayState[name] ?? true,
       get controls() {
         return self.controls;
       },
@@ -5011,7 +5079,7 @@ var ThreeRenderer = class {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
     if (cfg.showGrid && cfg.gridStyle === "fading") {
@@ -5229,14 +5297,74 @@ var ThreeRenderer = class {
    */
   setHelpersVisible(visible) {
     this.hideHelpers = !visible;
-    if (this.gridHelper) this.gridHelper.visible = visible;
-    if (this.axesHelper) this.axesHelper.visible = visible;
+    if (this.gridHelper) this.gridHelper.visible = visible && this.overlayState.grid;
+    if (this.axesHelper) this.axesHelper.visible = visible && this.overlayState.axes;
     this.threeScene.traverse((o) => {
       if (this._isHelper(o.userData?.objType)) {
         o.visible = visible ? o.userData.styleVisible ?? true : false;
       }
     });
     this.requestRender();
+  }
+  /**
+   * What is drawn over the model besides it, each on or off: `grid`, `axes`, `wireframe`
+   * (the faint triangles on solid surfaces), `labels` (callouts), and any overlay an app
+   * registered (`registerOverlay`; a notes layer registers "notes"). The shading bar's
+   * overlays popover lists them. An unknown name fails loudly.
+   */
+  setOverlays(overlays) {
+    for (const [name, on] of Object.entries(overlays)) {
+      if (name in this.overlayState) this.overlayState[name] = on;
+      else if (this.overlayExtra.has(name)) {
+        const o2 = this.overlayExtra.get(name);
+        o2.on = on;
+        o2.apply(on);
+      } else throw new Error(`setOverlays: no overlay "${name}" (there are ${Object.keys(this.overlays).join(", ")})`);
+    }
+    const o = this.overlayState;
+    if (this.gridHelper) this.gridHelper.visible = o.grid && !this.hideHelpers;
+    if (this.axesHelper) this.axesHelper.visible = o.axes && !this.hideHelpers;
+    this.threeScene.traverse((t) => {
+      if (t.userData.wireOverlay) t.visible = o.wireframe;
+    });
+    this.marks.setCalloutsVisible(o.labels);
+    this.shadingBar?.paint();
+    this.requestRender();
+  }
+  /** The overlays there are and whether each is on (see `setOverlays`). */
+  get overlays() {
+    const out = {};
+    if (this.gridHelper) out.grid = this.overlayState.grid;
+    if (this.axesHelper) out.axes = this.overlayState.axes;
+    out.wireframe = this.overlayState.wireframe;
+    out.labels = this.overlayState.labels;
+    for (const [name, o] of this.overlayExtra) out[name] = o.on;
+    return out;
+  }
+  /**
+   * Add an overlay of the app's own to `overlays` and the shading bar's popover: `apply(on)`
+   * shows or hides it. Returns the unregister.
+   */
+  registerOverlay(name, apply, on = true) {
+    if (name in this.overlayState) throw new Error(`registerOverlay: "${name}" is a built-in overlay`);
+    this.overlayExtra.set(name, { apply, on });
+    this.shadingBar?.paint();
+    return () => {
+      this.overlayExtra.delete(name);
+      this.shadingBar?.paint();
+    };
+  }
+  /** Frame the selection (the highlighted objects), or everything when nothing is selected:
+   *  Blender's Frame Selected / Home. Animated. */
+  frame() {
+    const sel = this.marks.highlighted.filter((id) => this.objectMap.has(id));
+    const ids = sel.length ? sel : [...this.objectMap.keys()].filter((id) => this.isObjectShown(id));
+    if (ids.length) this.rig.fitTo(ids, sel.length ? {} : { margin: 1.3 });
+  }
+  /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named
+   *  `fileName` with a date-time stamp. */
+  saveSnapshot(fileName = "view.png") {
+    downloadSnapshot(this, this.container.parentElement ?? this.container, fileName);
   }
   // ── Get Three.js object for a scene ID ──
   getThreeObject(id) {
@@ -8004,6 +8132,7 @@ var NotesLayer = class {
     this.pinLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:16;";
     host.append(this.canvas, this.pinLayer);
     this.offs.push(renderer.onDraw(() => this.draw()));
+    if (renderer.registerOverlay) this.offs.push(renderer.registerOverlay("notes", (on) => this.setVisible(on), this.shown));
     this.offs.push(doc.onChange((changes) => {
       if (!changes.some((c) => c.collection === this.collection)) return;
       if (this.openId && !doc.has(this.collection, this.openId)) this.closeCard();

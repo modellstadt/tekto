@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.9.3 — 2026-10-14
+
+Overlays, Frame and Snapshot in the shading bar, as in Blender's viewport header.
+
 - **Overlays, Frame and Snapshot in the shading bar**, as in Blender's viewport header.
   `renderer.setOverlays({ grid, axes, wireframe, labels })` (and `renderer.overlays`) shows
   or hides what is drawn over the model; `registerOverlay(name, apply)` adds an app's own,

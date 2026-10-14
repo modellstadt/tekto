@@ -3,7 +3,7 @@ import {
   Vec2,
   Vec3,
   VecMath
-} from "./chunk-VTSIDLJ7.mjs";
+} from "./chunk-EKKTPIOR.mjs";
 
 // src/core/math/noise.ts
 var P = [
@@ -2338,39 +2338,6 @@ function triangulateRings(rings) {
   return Polygon2D.triangulateWithHoles(rings[0], rings.slice(1)).map((t) => t.map((i) => all[i]));
 }
 
-// src/io/download.ts
-function stampName(fileName, date = /* @__PURE__ */ new Date()) {
-  const p = (n) => String(n).padStart(2, "0");
-  const stamp = `${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}`;
-  const dot = fileName.lastIndexOf(".");
-  return dot > 0 ? `${fileName.slice(0, dot)}-${stamp}${fileName.slice(dot)}` : `${fileName}-${stamp}`;
-}
-var MIME = {
-  dxf: "application/dxf",
-  svg: "image/svg+xml",
-  json: "application/json",
-  obj: "model/obj",
-  ifc: "application/x-step",
-  csv: "text/csv",
-  txt: "text/plain",
-  png: "image/png",
-  stl: "model/stl"
-};
-function download(data, fileName, opts = {}) {
-  const name = opts.stamp ? stampName(fileName) : fileName;
-  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
-  const blob = data instanceof Blob ? data : new Blob([data], { type: opts.type ?? MIME[ext] ?? "application/octet-stream" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.style.display = "none";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 6e4);
-}
-
 export {
   noise,
   createRandom,
@@ -2392,7 +2359,5 @@ export {
   SheetView,
   Sheet,
   boundsOf,
-  pickPrim,
-  stampName,
-  download
+  pickPrim
 };

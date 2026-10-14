@@ -1,7 +1,7 @@
-import { b as SectionRequest, q as StandardView, S as Scene, V as Vec3 } from './Scene-BHniJuab.js';
+import { b as SectionRequest, q as StandardView, S as Scene, V as Vec3 } from './Scene-BHniJuab.mjs';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { D as Doc } from './Doc-CaIknIs8.js';
+import { D as Doc } from './Doc-QTiSEVwH.mjs';
 
 /**
  * Tekto GUI theme — the single source of panel chrome colors.
@@ -442,6 +442,8 @@ declare class ThreeRenderer {
     private gridHelper;
     private fadingGrid;
     private shadingBar;
+    private overlayState;
+    private overlayExtra;
     private ao;
     private gridDirty;
     private axesHelper;
@@ -484,6 +486,26 @@ declare class ThreeRenderer {
      * objects and to all future ones until changed.
      */
     setHelpersVisible(visible: boolean): void;
+    /**
+     * What is drawn over the model besides it, each on or off: `grid`, `axes`, `wireframe`
+     * (the faint triangles on solid surfaces), `labels` (callouts), and any overlay an app
+     * registered (`registerOverlay`; a notes layer registers "notes"). The shading bar's
+     * overlays popover lists them. An unknown name fails loudly.
+     */
+    setOverlays(overlays: Record<string, boolean>): void;
+    /** The overlays there are and whether each is on (see `setOverlays`). */
+    get overlays(): Record<string, boolean>;
+    /**
+     * Add an overlay of the app's own to `overlays` and the shading bar's popover: `apply(on)`
+     * shows or hides it. Returns the unregister.
+     */
+    registerOverlay(name: string, apply: (on: boolean) => void, on?: boolean): () => void;
+    /** Frame the selection (the highlighted objects), or everything when nothing is selected:
+     *  Blender's Frame Selected / Home. Animated. */
+    frame(): void;
+    /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named
+     *  `fileName` with a date-time stamp. */
+    saveSnapshot(fileName?: string): void;
     getThreeObject(id: string): THREE.Object3D | undefined;
     /** World-space bounds of a scene object as currently rendered, or null if empty/unknown. */
     objectBounds(id: string): {
@@ -892,6 +914,8 @@ interface NotesRenderer {
     };
     onDraw(cb: () => void): () => void;
     requestRender(): void;
+    /** When the renderer has it, the notes join its overlays ("notes") and the shading bar's popover. */
+    registerOverlay?(name: string, apply: (on: boolean) => void, on?: boolean): () => void;
     setProjection(projection: "perspective" | "orthographic"): void;
     setCameraPosition(x: number, y: number, z: number): void;
     lookAt(x: number, y: number, z: number): void;
