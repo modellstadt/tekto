@@ -338,12 +338,6 @@ export function realize(wall: Wall, ctx?: WallContext): RealizedWall {
   return { wall, parts, layers, envelopeMesh, properties };
 }
 
-/**
- * Realise every wall in a system with automatic junction context.
- * Calls `realize()` for each wall after gathering trims + T-junctions
- * via the underlying `RibbonSystem`. Use this instead of looping over
- * walls + calling `realize(wall)` when you want junction-aware framing.
- */
 /** A wall's envelope cut at its joints: what `WallSystem.buildMesh()` draws for it. */
 function trimmedEnvelope(wall: Wall, ctx: WallContext): Mesh {
   wall.syncOpeningsToRibbon();
@@ -352,6 +346,12 @@ function trimmedEnvelope(wall: Wall, ctx: WallContext): Mesh {
   return finishMesh(buf);
 }
 
+/**
+ * Realise every wall in a system with automatic junction context.
+ * Calls `realize()` for each wall after gathering trims + T-junctions
+ * via the underlying `RibbonSystem`. Use this instead of looping over
+ * walls + calling `realize(wall)` when you want junction-aware framing.
+ */
 export function realizeSystem(system: WallSystem): RealizedWall[] {
   const trims = system.ribbons.computeTrims();
   const out: RealizedWall[] = [];
