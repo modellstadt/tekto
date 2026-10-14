@@ -244,6 +244,12 @@ test("ambient occlusion darkens the frame in perspective, never lightens it, and
   const persp = await compare();
   expect(persp.darker).toBeGreaterThan(500);                     // the slabs' undersides and the floor plates
   expect(persp.lighter).toBe(0);
+  // Solid only: a hidden-line drawing stays black and white (7DHouse saw grey shading).
+  for (const mode of ["hiddenline", "wireframe", "ghost"]) {
+    await page.evaluate((m) => (window as any).__tekto.owner.scene.setRenderMode(m), mode);
+    expect(await compare(), mode).toEqual({ darker: 0, lighter: 0 });
+  }
+  await page.evaluate(() => (window as any).__tekto.owner.scene.setRenderMode("solid"));
   await page.evaluate(() => (window as any).__tekto.owner.renderer.setProjection("orthographic"));
   expect(await compare()).toEqual({ darker: 0, lighter: 0 });
   expect(errors).toEqual([]);

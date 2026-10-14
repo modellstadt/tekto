@@ -6,6 +6,8 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- Ambient occlusion applies in Solid only: a hidden-line drawing stays black and white, and
+  wireframe and ghost go without (7DHouse saw grey shading in hidden line).
 - **Lights are scene objects**: `scene.addLight(position, { kind: "point" | "spot",
   intensity, range, target, angle }, style)` (and `lab.light(...)` in a sketch). A light is
   model content like a mesh: keyed, made again by a sketch re-run, bound to records,

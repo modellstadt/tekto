@@ -4,7 +4,8 @@
  * as the renderer draws it, its tone mapping, background, grid, antialiasing and section as
  * they are, and the occlusion is then computed and multiplied over it; running the frame
  * through an EffectComposer instead tone-maps the background and hides the grid. It follows
- * the section, and the orthographic (drawing) views go without. Built on first use.
+ * the section, and the orthographic (drawing) views and the modes other than solid go
+ * without. Built on first use.
  */
 import * as THREE from "three";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -44,6 +45,9 @@ export class AmbientOcclusion {
   /** After the frame is on the screen: multiply the occlusion over it. */
   apply(camera: THREE.Camera, clip: THREE.Plane | null): void {
     if (!this.enabled || !(camera as THREE.PerspectiveCamera).isPerspectiveCamera) return;
+    // Shading, so the shaded view only: a hidden-line drawing stays black and white, and
+    // wireframe and ghost have no surfaces for it to sit on.
+    if (this.core.gScene.renderMode !== "solid") return;
     const gl = this.core.renderer;
     if (gl.getRenderTarget() !== null) return;
     gl.getSize(this.size);
