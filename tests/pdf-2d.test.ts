@@ -60,6 +60,9 @@ describe("writePdf2D", () => {
     expect(pdf).toContain("/BaseFont /Helvetica /Encoding /WinAnsiEncoding");
     expect(pdf).toContain("(a\\(b\\)\\\\c \\330 ? \\227) Tj");
     expect(pdf).toMatch(/\[[\d.]+ [\d.]+\] 0 d/);
+    const onLayer = (lineType: string) => text(writePdf2D({ lines: [{ layer: "h", start: { x: 0, y: 0 }, end: { x: 1, y: 0 } }], layers: [{ name: "h", lineType }] }));
+    expect(onLayer("hidden")).toMatch(/\[[\d.]+ [\d.]+\] 0 d\n[\d. ]+ m [\d. ]+ l S/);   // follows its layer's line type, as in the DXF
+    expect(onLayer("CONTINUOUS")).not.toMatch(/\[[\d.][\d. ]*\] 0 d/);
     expect((pdf.match(/ c/g) ?? []).length).toBeGreaterThanOrEqual(2);   // 180° = two quarter Béziers
   });
 

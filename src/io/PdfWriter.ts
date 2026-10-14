@@ -68,7 +68,7 @@ const forPaper = ([r, g, b]: [number, number, number]): [number, number, number]
 /**
  * Write a 2D drawing as a vector PDF at a true scale: one page, sized to the drawing plus margins,
  * the drawing's y up. Takes the same {@link Dxf2DContent} as `writeDxf2D`; an entity's colour is its
- * `rgb` (CSS hex), else its ACI `color`, else its layer's `rgb` / `color`, else black. Line types
+ * `rgb` (CSS hex), else its ACI `color`, else its layer's `rgb` / `color`, else black. Line types (its own, else its layer's)
  * become dash patterns; text is Helvetica (`height` = cap height, as in DXF). Returns the file's bytes.
  *
  *   download(writePdf2D(plan, { scale: 50, title: "Plan" }), "plan.pdf");
@@ -107,9 +107,12 @@ export function writePdf2D(content: Dxf2DContent, opts: Pdf2DOptions = {}): Uint
   const X = (x: number) => (margin + (x - x0) * k) * MM, Y = (y: number) => (margin + foot + (y - y0) * k) * MM;
   const n = (v: number) => (Math.abs(v) < 5e-4 ? "0" : v.toFixed(2).replace(/\.?0+$/, ""));
 
-  const layerRgb = new Map<string, [number, number, number]>();
+  const layerRgb = new Map<string, [number, number, number]>(), layerType = new Map<string, string>();
   const aciRgb = (c: number): [number, number, number] | null => { const e = ACI.find(a => a[0] === c); return e ? [e[1] / 255, e[2] / 255, e[3] / 255] : null; };
-  for (const d of content.layers ?? []) { const c = (d.rgb && parseHex(d.rgb)) || (d.color !== undefined ? aciRgb(d.color) : null); if (c) layerRgb.set(d.name, c); }
+  for (const d of content.layers ?? []) {
+    const c = (d.rgb && parseHex(d.rgb)) || (d.color !== undefined ? aciRgb(d.color) : null); if (c) layerRgb.set(d.name, c);
+    if (d.lineType) layerType.set(d.name, d.lineType.toUpperCase());   // as writeDxf2D: an entity without its own follows its layer
+  }
   const paper = opts.forPaper ?? true;
   const colourOf = (e: { layer: string; rgb?: string; color?: number }): [number, number, number] => {
     const c = (e.rgb && parseHex(e.rgb)) || (e.color !== undefined ? aciRgb(e.color) : null) || layerRgb.get(e.layer) || [0, 0, 0];
@@ -122,7 +125,8 @@ export function writePdf2D(content: Dxf2DContent, opts: Pdf2DOptions = {}): Uint
   const DASH: Record<string, number[]> = { DASHED: [3, 1.5], HIDDEN: [1.5, 1], DOTTED: [0.2, 1], CENTER: [6, 1.2, 1.2, 1.2] };
   const setLook = (e: Dxf2DLook & { layer: string }) => {
     setStroke(colourOf(e));
-    const d = e.linetype ? `[${DASH[e.linetype].map(v => n(v * MM)).join(" ")}] 0 d` : "[] 0 d";
+    const pattern = DASH[e.linetype ?? layerType.get(e.layer) ?? ""];   // CONTINUOUS or unknown: solid
+    const d = pattern ? `[${pattern.map(v => n(v * MM)).join(" ")}] 0 d` : "[] 0 d";
     if (d !== dash) { ops.push(d); dash = d; }
   };
   /** A circular arc as cubic Béziers (≤ 90° each), from angle a to b (radians, CCW). */
