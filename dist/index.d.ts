@@ -1,15 +1,15 @@
-import { V as Vec3, M as Mesh, R as RenderMode, S as Scene, c as SectionRequest, b as StandardView, L as LightingMode } from './Scene-D1oqHdQy.js';
-export { A as AABB, F as ColoredMeshData, d as FlatMeshData, e as LegacyMeshJSON, f as Mat4, g as MeshEdge, h as MeshFace, i as MeshJSON, j as MeshNode, k as MeshValidation, O as ObjFile, l as ObjMeshData, P as Projection, m as SceneEvent, n as SceneEventListener, o as SceneJSON, a as SceneObject, p as SceneObjectType, T as Triangle, q as Vec2, r as Vec4, s as VisualStyle } from './Scene-D1oqHdQy.js';
-import { D as DxfLayerDef } from './download-MngNdStk.js';
-export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-MngNdStk.js';
-import { BspTree, SharedStore, Presence } from './core.js';
-export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BalloonFrame, BalloonFrameOptions, BlobDetect, Box, BspNode, BspPolygon, Capsule2D, CltConstruction, CltOptions, CollabAdapter, CollabEvents, CollabStatus, CollabUser, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, Doc, DocChange, DocChangeSource, DocEditOptions, DocJSON, DocOptions, DocSchema, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, PerpSegment, PickingView, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PresenceView, PropertyMap, Ray, RealizedSlab, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, SceneBinding, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Selection, SharedRecord, SharedStoreOptions, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOptions, SlabPart, SlabPartRole, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOptions, StairShape, StairType, StairTypeOptions, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, SupabaseLike, UpAxis, VecMath, VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallSystem, WallType, WindowPartitioning, bindScene, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, collabColor, contactBetween, devServerAdapter, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, localAdapter, memoryAdapter, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverseContact, selectOnClick, shareSelection, supabaseAdapter } from './core.js';
-import { P as ParamStore, b as ParamSchema } from './Params-op8yBPbB.js';
-export { B as BoolParam, d as ButtonParam, C as ColorParam, F as FloatParam, I as IntParam, e as ParamDef, f as ParamFolder, a as ParamLayout, S as SelectParam, g as StringParam, V as Vec3Param, h as createLayout, i as createParams } from './Params-op8yBPbB.js';
-import { b as Theme, c as ThreeRendererConfig, a as TopBarOptions, T as ThreeRenderer } from './ViewerToolbar-CVh0EDSN.js';
-export { A as AmbientOcclusionOptions, C as CalloutItem, d as Callouts, L as LayoutOptions, P as PickInfo, e as Placement, g as getTheme, l as labelWidthFor, f as layoutLabels, v as viewerToolbar } from './ViewerToolbar-CVh0EDSN.js';
-import { C as Commands, E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-CMoRvuzy.js';
-export { A as AnimateFn, a as Command, b as CommandInfo, D as DrawFn, c as DrawSheetOptions, d as Lab2D, e as LayerMap, f as LayerNode, g as LayerPanel, h as LayerState, i as LineHandle, M as MeshHandle, P as PointHandle, j as Pointer2D, k as PointerFn, l as SelectOpts, m as ShapeHandle, n as ShapeMode, o as SheetCanvas, p as SheetCanvasOptions, q as SheetTransform, r as Sketch2DConfig, s as Sketch2DFn, t as Sketch2DInstance, u as SliderOpts, V as ViewControl, v as computeEffectiveVisibility, w as drawSheet, x as fitSheet, y as formatKeys, z as keyMatches, B as sketch2d, F as viewCommands } from './2d-CMoRvuzy.js';
+import { V as Vec3, M as Mesh, R as RenderMode, S as Scene, b as SectionRequest, L as LightingMode } from './Scene-BHniJuab.js';
+export { A as AABB, F as ColoredMeshData, c as FlatMeshData, d as LegacyMeshJSON, e as LightSpec, f as Mat4, g as MeshEdge, h as MeshFace, i as MeshJSON, j as MeshNode, k as MeshValidation, O as ObjFile, l as ObjMeshData, P as Projection, m as SceneEvent, n as SceneEventListener, o as SceneJSON, a as SceneObject, p as SceneObjectType, q as StandardView, T as Triangle, r as Vec2, s as Vec4, t as VisualStyle } from './Scene-BHniJuab.js';
+import { D as DxfLayerDef } from './download-YOiO7Lln.js';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-YOiO7Lln.js';
+import { BspTree } from './core.js';
+export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BalloonFrame, BalloonFrameOptions, BlobDetect, Box, BspNode, BspPolygon, Capsule2D, CltConstruction, CltOptions, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PropertyMap, Ray, RealizedSlab, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOptions, SlabPart, SlabPartRole, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOptions, StairShape, StairType, StairTypeOptions, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, UpAxis, VecMath, VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallSystem, WallType, WindowPartitioning, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, contactBetween, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverseContact } from './core.js';
+import { P as ParamStore, b as ParamSchema, D as Doc, S as SharedStore, d as Presence } from './Doc-CaIknIs8.js';
+export { B as BoolParam, e as ButtonParam, C as CollabAdapter, f as CollabEvents, g as CollabStatus, h as CollabUser, i as ColorParam, j as DocChange, k as DocChangeSource, l as DocEditOptions, m as DocJSON, n as DocOptions, o as DocSchema, F as FloatParam, I as IntParam, p as ParamDef, q as ParamFolder, a as ParamLayout, r as PickingView, s as PresenceView, t as SceneBinding, u as SelectParam, v as Selection, w as SharedRecord, x as SharedStoreOptions, y as StringParam, z as SupabaseLike, V as Vec3Param, A as bindScene, E as collabColor, G as createLayout, H as createParams, J as devServerAdapter, K as localAdapter, L as memoryAdapter, M as selectOnClick, N as shareSelection, O as supabaseAdapter } from './Doc-CaIknIs8.js';
+import { b as Theme, c as ThreeRendererConfig, a as TopBarOptions, T as ThreeRenderer, N as NotesLayer } from './Markup-BihjT14h.js';
+export { A as AmbientOcclusionOptions, d as Appearance, C as CalloutItem, e as Callouts, D as DEFAULT_BACKGROUND, L as LayoutOptions, f as MarkKind, g as MarkupBundle, h as MarkupCaptureOptions, i as MarkupObjectRef, M as MarkupRenderer, j as Note, k as NotesRenderer, P as PickInfo, l as Placement, S as ShadingBarCorner, m as SunPreset, V as ViewMode, n as easeInOut, o as edgeStyle, p as fitRadius, q as getTheme, r as groundAppearance, s as labelWidthFor, t as layoutLabels, u as lightBalance, v as markup, w as modeBackground, x as nearestAxis, y as notesLayer, z as orbitFor, B as orthoFrustum, E as sectionAppearance, F as sectionPlane, G as shortestTurn, H as standardOrbit, I as surfaceAppearance, J as viewerToolbar } from './Markup-BihjT14h.js';
+import { C as Commands, E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-GDtNBzJM.js';
+export { A as AnimateFn, a as Command, b as CommandInfo, D as DrawFn, c as DrawSheetOptions, d as Lab2D, e as LayerMap, f as LayerNode, g as LayerPanel, h as LayerState, i as LineHandle, M as MeshHandle, P as PointHandle, j as Pointer2D, k as PointerFn, l as SelectOpts, m as ShapeHandle, n as ShapeMode, o as SheetCanvas, p as SheetCanvasOptions, q as SheetTransform, r as Sketch2DConfig, s as Sketch2DFn, t as Sketch2DInstance, u as SliderOpts, V as ViewControl, v as computeEffectiveVisibility, w as drawSheet, x as fitSheet, y as formatKeys, z as keyMatches, B as sketch2d, F as viewCommands } from './2d-GDtNBzJM.js';
 import * as THREE from 'three';
 import 'three/examples/jsm/controls/OrbitControls.js';
 
@@ -540,163 +540,6 @@ declare class SVGRenderer {
 }
 
 /**
- * The rules a 3D view draws by — what each render mode paints, where a named view puts the
- * camera, how far back to sit to fit, where a section cuts — as plain functions, so they
- * can be tested without a GPU. `ThreeRenderer` draws by them.
- */
-
-/**
- * How the content is drawn. Not decoration: each answers a different question.
- *  shaded      what is it made of
- *  ghost       where does this part sit in the whole, everything else stepped
- *              back so the selection reads through the fabric
- *  hidden-line the drawing convention: white surfaces, dark creases, occluded
- *              lines hidden by the surfaces in front of them
- */
-type ViewMode = "shaded" | "ghost" | "hidden-line";
-/** How one mesh is painted. Colours are hex integers, as three.js takes them. */
-interface Appearance {
-    colour: number;
-    opacity: number;
-    depthWrite: boolean;
-    polygonOffset: boolean;
-}
-/** The page shaded and hidden-line are drawn on, when the host names none. */
-declare const DEFAULT_BACKGROUND = 16119802;
-/** Crease colour and weight for a mode. Hidden line draws them at full strength
- *  because in that mode the lines are the drawing. `background` (default: the dark ground
- *  ghost brings with it) turns ghost's pale creases dark on a light page. */
-declare function edgeStyle(mode: ViewMode, background?: THREE.ColorRepresentation): {
-    colour: number;
-    opacity: number;
-};
-/**
- * The page a mode is drawn on.
- *
- * Ghost inverts: pale edges over a dark ground read where dark edges over a
- * pale one wash out, and a translucent surface adds light instead of
- * subtracting it, so the parts stack up legibly instead of greying together.
- * The other two keep the host's own background.
- */
-declare function modeBackground(mode: ViewMode, base: number): number;
-/**
- * How a cut face is drawn.
- *
- * Poché: solid and dark, and flat rather than lit. A section is a drawing
- * convention before it is a picture, and the convention is that cut material
- * reads as one mass so the eye separates what was sliced from what is merely
- * seen beyond it. Shading the cut instead, which is what a lit material does,
- * gives it highlights and gradients and it stops reading as a cut at all: it
- * becomes another grey surface among the grey surfaces behind it.
- *
- * Ghost inverts, as it does everywhere else here. On its dark ground a black
- * poché would be a hole rather than a solid, so the cut goes pale and the
- * relationship survives.
- */
-declare function sectionAppearance(mode: ViewMode): {
-    colour: number;
-};
-/**
- * The visible plane the content stands on.
- *
- * Independent of whether the sun is casting: a building floating in a void
- * with a smudge under it reads as floating, and the smudge alone was doing all
- * the work of saying which way is down. Hidden in hidden line, where a grey
- * plate is not what a drawing is. The tone is a step off the background rather
- * than a colour of its own, so it reads as ground and not as a surface
- * somebody modelled.
- */
-declare function groundAppearance(mode: ViewMode): {
-    visible: boolean;
-    colour: number;
-    opacity: number;
-};
-/** How a mode paints a surface whose own colour is `base`. */
-declare function surfaceAppearance(mode: ViewMode, base: number): Appearance;
-/**
- * Sun and sky intensity for a mode.
- *
- * Ghost is transparent throughout and a shadow cast by something you can see
- * through reads as dirt on the drawing, so it never casts. With the sun doing
- * the work the sky has to step back, or the shadows wash out.
- */
-declare function lightBalance(mode: ViewMode, shadows: boolean): {
-    shadowed: boolean;
-    sun: number;
-    sky: number;
-    groundOpacity: number;
-};
-/**
- * Where the camera sits for a named view, as three.js spherical angles: phi
- * from +Y, theta around Y from +Z towards +X.
- */
-declare function standardOrbit(view: StandardView): {
-    phi: number;
-    theta: number;
-};
-/**
- * Where the camera sits to look down `direction`, which points from the subject
- * towards the camera. The inverse of what the tick loop does with a spherical.
- *
- * Clamped off the poles like the named views, so clicking the gizmo's Y ball
- * lands on the same well-defined orientation that `setView("top")` does rather
- * than on a plan whose north is whatever floating point decided.
- */
-declare function orbitFor(direction: {
-    x: number;
-    y: number;
-    z: number;
-}): {
-    phi: number;
-    theta: number;
-};
-/**
- * The end angle to interpolate towards so a turn takes the short way round.
- *
- * Without this, orbiting from theta 3.0 to -3.0 (a tenth of a turn apart on the
- * screen) spins the building almost the whole way about instead, which reads as
- * the viewport having lost its place rather than as a view change.
- */
-declare function shortestTurn(from: number, to: number): number;
-/**
- * Whichever of the six axis directions a view is already closest to. What a
- * double click on the gizmo snaps to: the reader is nearly at an elevation and
- * wants to be exactly at one, without having to work out which.
- */
-declare function nearestAxis(direction: {
-    x: number;
-    y: number;
-    z: number;
-}): THREE.Vector3;
-/**
- * The clipping plane for a section, in the frame `axisWorld` was given in (the content's
- * axis turned into the scene's). Three.js keeps what lies on the plane's positive side, so
- * the plane faces back down the axis: everything below the cut stays, or above with `flip`.
- * Null when the cut is a fraction (`at`) and there is no content to measure.
- */
-declare function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box: THREE.Box3 | null): THREE.Plane | null;
-/** Smoothstep. A camera that starts and stops abruptly reads as a cut, and a
- *  cut is exactly what an animated view change exists to avoid. */
-declare function easeInOut(t: number): number;
-/**
- * How far back to sit so a sphere of `boundingRadius` fits, on the tighter of
- * the two field-of-view axes. A portrait panel clips a wide building on the
- * horizontal, which is exactly the case a vertical-only fit gets wrong.
- */
-declare function fitRadius(boundingRadius: number, fovDeg: number, aspect: number, margin?: number): number;
-/**
- * The orthographic frustum that frames what a perspective camera would see at
- * the same distance, so switching projection changes the drawing convention
- * and not the subject.
- */
-declare function orthoFrustum(distance: number, fovDeg: number, aspect: number): {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-};
-
-/**
  * The axis widget in the corner of a viewport.
  *
  * It exists because a renderer that knows how to be a plan or an elevation is
@@ -1095,10 +938,21 @@ interface AppShellConfig<S extends ParamSchema = ParamSchema> {
     topBar?: boolean | TopBarOptions;
     /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
     markup?: boolean;
+    /** Notes that live with the model: the doc whose `notes` collection keeps them (or
+     *  `{ doc, collection, author }`). Markup then offers "Keep as notes", and the notes are
+     *  drawn over the view with a pin each (`app.notes`). */
+    notes?: Doc<any> | {
+        doc: Doc<any>;
+        collection?: string;
+        author?: string;
+    };
     /** The axis widget in a viewport corner (`true` = bottom right): click an axis for a plan
      *  or an elevation, toggle persp/ortho under it. Default `false` — an app may have its own
      *  panels in that corner. */
     navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    /** The shading bar in a viewport corner (`true` = top left): icons for the render style, the
+     *  lighting and the sun (morning, noon, sunset). Default `false`. */
+    shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 }
 /** What `appShell()` returns: its params, scene, renderer, panel and commands, the build/display/animate hooks, the status line and overlays, and `dispose`. */
 interface AppShellInstance<S extends ParamSchema = ParamSchema> {
@@ -1112,6 +966,8 @@ interface AppShellInstance<S extends ParamSchema = ParamSchema> {
      *  typing in a field); agents list and run them through `window.__tekto`. The view commands
      *  (`view.top`, `view.fitAll`, …) are there from the start, without keys. */
     commands: Commands;
+    /** The notes layer when `notes` was given: show, hide, go to, keep. */
+    notes: NotesLayer | null;
     /**
      * Register an animation callback, called every frame with dt in seconds. While one is set
      * the view draws every frame; without one it draws only when something changed (the
@@ -1185,59 +1041,4 @@ declare class PresenceBar {
     render(): void;
 }
 
-/**
- * Markup — draw on the viewport to tell an AI (or a colleague) what to change.
- *
- * The point is not the drawing, it is what the drawing is resolved to. A circle
- * in a screenshot makes the reader guess which object, where in space, and which
- * line of code. Here every mark is resolved at the moment it is drawn:
- *
- *   - the strokes are kept as vectors (screen space), simplified for the file;
- *   - each mark is raycast into the scene: which objects it touches or encloses
- *     (with their layer, label and the source line that created them), and the
- *     world points it lands on;
- *   - the same marks are burnt into a PNG with big numbers, for a vision model.
- *
- * A capture is a bundle — `view.png` (marks), `clean.png` (no marks) and
- * `markup.json` (camera, params, marks, scene summary). It is POSTed to the dev
- * server (tools/markup-vite-plugin.mjs writes it to `.tekto/markup/`); without
- * the plugin the three files are downloaded instead.
- *
- * `window.__tekto.snapshot()` produces the same bundle without any marks, so an
- * agent driving a headless browser (tools/snap.mjs) sees what a person sees.
- */
-
-/** A scene object as a mark or snapshot names it: id, type, layer, label, pick tag, colour, the source line that created it, and its document `key`. */
-interface MarkupObjectRef {
-    id: string;
-    type: string;
-    layer?: string;
-    label?: string;
-    tag?: string;
-    color?: string;
-    /** Where the object was created, e.g. "pages/primitives.ts:12" (resolved by the dev server). */
-    src?: string;
-    /** The document record it shows, e.g. "blocks/k3f9x2" (`bindScene` / `scene.withKey`). */
-    key?: string;
-}
-/** What a mark was read as from its strokes: a click (`point`), a closed `loop` (the things inside), a straight `line`, two crossing strokes (`cross`), or a free `stroke`. */
-type MarkKind = "point" | "loop" | "line" | "cross" | "stroke";
-/** Options for a Markup capture: the overall instruction, whether to save it to the dev server, and the folder label. */
-interface MarkupCaptureOptions {
-    /** Overall instruction, written to markup.json and the PNG legend. */
-    note?: string;
-    /** POST to the dev server (default true); false only returns the bundle. */
-    save?: boolean;
-    /** Short word for the folder name, e.g. "snap". */
-    label?: string;
-}
-/** One capture: `markup.json` content, the view with marks (`viewPng`) and without (`cleanPng`) as PNG data URLs, and the folder it was saved to. */
-interface MarkupBundle {
-    markup: Record<string, unknown>;
-    viewPng: string;
-    cleanPng: string;
-    /** Folder the dev server wrote to, if it did. */
-    dir?: string;
-}
-
-export { type AppShellConfig, type AppShellInstance, type Appearance, BspTree, Commands, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, DEFAULT_BACKGROUND, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IconShape, type IdBufferOptions, ImportRegistration, Lab, LightingMode, type MarkKind, type MarkupBundle, type MarkupCaptureOptions, type MarkupObjectRef, Mesh, NavGizmo, type NavGizmoOptions, type PanelButton, ParamSchema, ParamStore, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SectionRequest, SharedStore, SketchConfig, SketchInstance, StandardView, Theme, ThreeRenderer, ThreeRendererConfig, TopBarOptions, VIEW_MODE_ICON_CORNERS, VIEW_MODE_ICON_SVG, Vec3, type ViewMode, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, easeInOut, edgeStyle, extractVisiblePolylines, fitRadius, groundAppearance, hiddenLineIdBuffer, lightBalance, modeBackground, nearestAxis, orbitFor, orthoFrustum, polylinesToSVG, processWorkerRequest, sectionAppearance, sectionPlane, shortestTurn, sketch, standardOrbit, surfaceAppearance, viewModeIconShapes, viewModeIconSvg };
+export { type AppShellConfig, type AppShellInstance, BspTree, Commands, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, Doc, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IconShape, type IdBufferOptions, ImportRegistration, Lab, LightingMode, Mesh, NavGizmo, type NavGizmoOptions, NotesLayer, type PanelButton, ParamSchema, ParamStore, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SectionRequest, SharedStore, SketchConfig, SketchInstance, Theme, ThreeRenderer, ThreeRendererConfig, TopBarOptions, VIEW_MODE_ICON_CORNERS, VIEW_MODE_ICON_SVG, Vec3, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, extractVisiblePolylines, hiddenLineIdBuffer, polylinesToSVG, processWorkerRequest, sketch, viewModeIconShapes, viewModeIconSvg };

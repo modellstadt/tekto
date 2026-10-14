@@ -1,12 +1,13 @@
 import {
   VIEW_MODE_ICON_SVG,
+  markup,
   viewModeIconShapes,
   viewerToolbar
-} from "./chunk-MXU464SM.mjs";
-import "./chunk-J5JH6N4D.mjs";
+} from "./chunk-XC3QEDGO.mjs";
+import "./chunk-SUDBKMRZ.mjs";
 import {
   Scene
-} from "./chunk-WINXAB7M.mjs";
+} from "./chunk-FAHEMNTI.mjs";
 import "./chunk-VTSIDLJ7.mjs";
 
 // src/react/components.tsx
@@ -734,10 +735,23 @@ function ViewerToolbar({ scene, renderer, options, theme, className, style }) {
   }, [scene, renderer, theme, key]);
   return /* @__PURE__ */ jsx3("div", { ref: host, className, style: { display: "flex", alignItems: "center", ...style } });
 }
+
+// src/react/Markup.tsx
+import { useEffect as useEffect3, useRef as useRef3 } from "react";
+function Markup({ scene, renderer, title, context, notes, author }) {
+  const ctx = useRef3(context);
+  ctx.current = context;
+  useEffect3(() => {
+    const m = markup(renderer, scene, { title, context: () => ctx.current?.() ?? {}, notes, author });
+    return () => m.dispose();
+  }, [scene, renderer, title, notes, author]);
+  return null;
+}
 export {
   AccordionColumn,
   InfoHint,
   InspectorPanel,
+  Markup,
   ParamPanel,
   TektoApp,
   Toolbar,

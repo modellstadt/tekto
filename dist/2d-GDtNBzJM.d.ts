@@ -1,5 +1,5 @@
-import { b as StandardView, M as Mesh, s as VisualStyle, V as Vec3, F as FlatMeshData, q as Vec2, c as SectionRequest, S as Scene } from './Scene-D1oqHdQy.mjs';
-import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-DAAonZzu.mjs';
+import { q as StandardView, M as Mesh, t as VisualStyle, V as Vec3, F as FlatMeshData, r as Vec2, e as LightSpec, b as SectionRequest, S as Scene } from './Scene-BHniJuab.js';
+import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-YOiO7Lln.js';
 
 /**
  * LayerPanel — reusable tree-based layer/visibility panel.
@@ -204,6 +204,9 @@ interface SketchConfig {
     /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
      *  toggle persp/ortho under it. Default `false`. */
     navGizmo?: boolean;
+    /** The shading bar in the view's top-left corner: icons for the render style, the lighting
+     *  and the sun (morning, noon, sunset). Default `false`. */
+    shadingBar?: boolean;
 }
 /** Item registered via `lab.registerExport(...)`. */
 interface ExportRegistration {
@@ -500,6 +503,12 @@ interface Lab {
     polyline(points: Vec3[]): LineHandle;
     polygon(vertices: Vec3[], style?: Partial<VisualStyle>): ShapeHandle;
     circle(cx: number, cy: number, cz: number, radius: number): ShapeHandle;
+    /**
+     * A light at a point: a point light, or a spot aimed at `spec.target` (`scene.addLight`).
+     * Made again on every run like any object; colour by `style.color` (default white).
+     * Returns its scene id.
+     */
+    light(position: Vec3, spec?: LightSpec, style?: Partial<VisualStyle>): string;
     algo: typeof Algo;
     MeshFactory: typeof MeshFactory;
     clear(): void;

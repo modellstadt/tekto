@@ -78,6 +78,7 @@ __export(index_exports, {
   MeshTransform: () => MeshTransform,
   NavGizmo: () => NavGizmo,
   NoFitPolygon: () => NoFitPolygon,
+  NotesLayer: () => NotesLayer,
   NurbsCurve: () => NurbsCurve,
   NurbsSurface: () => NurbsSurface,
   OBB2D: () => OBB2D,
@@ -212,11 +213,13 @@ __export(index_exports, {
   lightBalance: () => lightBalance,
   lineClipPolygon: () => lineClipPolygon,
   localAdapter: () => localAdapter,
+  markup: () => markup,
   memoryAdapter: () => memoryAdapter,
   modeBackground: () => modeBackground,
   nearestAxis: () => nearestAxis,
   neighboursOf: () => neighboursOf,
   noise: () => noise,
+  notesLayer: () => notesLayer,
   orbitFor: () => orbitFor,
   orthoFrustum: () => orthoFrustum,
   perpVisibility: () => perpVisibility,
@@ -19562,6 +19565,36 @@ var Scene = class _Scene {
       data: {}
     });
   }
+  /**
+   * A light in the model, at `position`: a point light, or a spot aimed at `spec.target`.
+   * Like any object it is keyed, re-made by a sketch re-run and hidden by `style.visible`;
+   * the renderer lights the scene with it in both lighting modes, without shadows (a point
+   * light's shadow is six renders, per light). Its colour is `style.color` (default white).
+   *
+   *   scene.addLight(new Vec3(2, 3, 2.4), { intensity: 6 });
+   *   scene.addLight(new Vec3(0, 0, 3), { kind: "spot", target: new Vec3(0, 2, 0), angle: 25 }, { color: "#ffd2a0" });
+   */
+  addLight(position, spec = {}, style) {
+    const kind = spec.kind ?? "point";
+    const fail = (why) => {
+      throw new Error(`addLight: ${why}`);
+    };
+    if (![position.x, position.y, position.z].every(Number.isFinite)) fail(`a non-finite position (${position.x}, ${position.y}, ${position.z})`);
+    const intensity = spec.intensity ?? 4, range = spec.range ?? 8, angle = spec.angle ?? 30;
+    if (!(intensity >= 0)) fail(`intensity must be 0 or more, got ${spec.intensity}`);
+    if (!(range >= 0)) fail(`range must be 0 or more (0: without limit), got ${spec.range}`);
+    if (kind === "spot" && !spec.target) fail(`a spot needs a target to aim at`);
+    if (kind === "spot" && !(angle > 0 && angle < 90)) fail(`a spot's angle is a half angle between 0 and 90 degrees, got ${spec.angle}`);
+    return this.add({
+      id: this.genId("light"),
+      type: "light",
+      position,
+      light: { kind, intensity, range, angle, ...spec.target ? { target: spec.target } : {} },
+      style: { ...DEFAULT_STYLE2, color: "#ffffff", ...style },
+      interactive: false,
+      data: {}
+    });
+  }
   addPlane(normal, distance, style) {
     return this.add({
       id: this.genId("plane"),
@@ -23279,6 +23312,18 @@ function daylight(altitudeDeg) {
   }
   return { ...DAYLIGHT[DAYLIGHT.length - 1][1] };
 }
+var SUN_PRESETS = {
+  morning: { azimuth: 100, altitude: 15 },
+  // low in the east-south-east
+  noon: { azimuth: 180, altitude: 55 },
+  // high in the south
+  sunset: { azimuth: 275, altitude: 4 }
+  // just above the horizon in the west
+};
+function sunDirection(azimuthDeg, altitudeDeg) {
+  const az = azimuthDeg * Math.PI / 180, alt = altitudeDeg * Math.PI / 180;
+  return { x: Math.sin(az) * Math.cos(alt), y: Math.cos(az) * Math.cos(alt), z: Math.sin(alt) };
+}
 function shown(o) {
   for (; o; o = o.parent) if (!o.visible) return false;
   return true;
@@ -23478,6 +23523,22 @@ var ObjectBuilder = class {
               roughness: s.roughness
             })));
           }
+        }
+        return group;
+      }
+      case "light": {
+        if (!obj.position || !obj.light) return null;
+        const L = obj.light, p = obj.position;
+        const group = new THREE4.Group();
+        if (L.kind === "spot" && L.target) {
+          const spot = new THREE4.SpotLight(s.color, L.intensity, L.range, L.angle * Math.PI / 180, 0.3, 2);
+          spot.position.set(p.x, p.y, p.z);
+          spot.target.position.set(L.target.x, L.target.y, L.target.z);
+          group.add(spot, spot.target);
+        } else {
+          const bulb = new THREE4.PointLight(s.color, L.intensity, L.range, 2);
+          bulb.position.set(p.x, p.y, p.z);
+          group.add(bulb);
         }
         return group;
       }
@@ -23786,7 +23847,8 @@ var Lighting = class {
     this.sunDirty = true;
     /** Studio's light follows the sun's altitude (setDaylight). */
     this.daylightOn = false;
-    this.lamps = [];
+    /** The last preset `sunPreset` set, until the sun is moved another way. */
+    this.currentSunPreset = null;
     const isZUp = core.isZUp;
     this.ambientLight = new THREE5.AmbientLight(16777215, 0.5);
     core.threeScene.add(this.ambientLight);
@@ -23841,6 +23903,7 @@ var Lighting = class {
     this.core.requestRender();
   }
   setSunDirection(direction, distance = 50) {
+    this.currentSunPreset = null;
     const x = direction.x;
     const y = this.core.isZUp ? direction.y : direction.z;
     const z = this.core.isZUp ? direction.z : -direction.y;
@@ -23863,6 +23926,7 @@ var Lighting = class {
     this.dirLight.target.updateMatrixWorld();
     const lift = Math.max(this.sunAltitude(), 0) * Math.PI / 180;
     this.dirLight.shadow.normalBias = r * 2e-3 * (Math.sin(lift) >= 0.5 ? 1 : 0.5 / Math.max(Math.sin(lift), 0.1));
+    this.dirLight.shadow.radius = Math.sin(lift) >= 0.5 ? 1 : 1 + 3 * (1 - Math.sin(lift) / 0.5);
     this._applyDaylight();
     const sc = this.dirLight.shadow.camera;
     sc.left = -r * 1.2;
@@ -23877,6 +23941,16 @@ var Lighting = class {
   sunAltitude() {
     const up = this.core.isZUp ? this.sunDir.z : this.sunDir.y;
     return Math.asin(Math.max(-1, Math.min(1, up))) * 180 / Math.PI;
+  }
+  /** A named sun: Studio, the light following the sun, the sun where the preset puts it. */
+  sunPreset(name) {
+    const p = SUN_PRESETS[name];
+    if (!p) throw new Error(`sunPreset: unknown preset "${name}" (morning, noon or sunset)`);
+    this.core.gScene.setLightingMode("studio");
+    this.setDaylight(true);
+    const d = sunDirection(p.azimuth, p.altitude);
+    this.setSunDirection(new Vec3(d.x, d.y, d.z));
+    this.currentSunPreset = name;
   }
   setDaylight(on) {
     this.daylightOn = on;
@@ -24084,22 +24158,7 @@ var Lighting = class {
     tex.dispose();
     return env;
   }
-  /** The lamps: a point light at each `at`, warm by default, replacing the ones there were. */
-  setLamps(lamps) {
-    for (const l of this.lamps) l.removeFromParent();
-    this.lamps = lamps.map(({ at, colour = 16765600, intensity = 4, distance = 8 }) => {
-      if (![at.x, at.y, at.z].every(Number.isFinite)) throw new Error(`setLamps: a lamp at a non-finite point (${at.x}, ${at.y}, ${at.z})`);
-      const light = new THREE5.PointLight(colour, intensity, distance, 2);
-      light.position.set(at.x, at.y, at.z);
-      light.castShadow = false;
-      this.core.threeScene.add(light);
-      return light;
-    });
-    this.core.requestRender();
-  }
   dispose() {
-    for (const l of this.lamps) l.removeFromParent();
-    this.lamps = [];
     this.core.threeScene.environment = null;
     this.envMap?.dispose();
     this.envMap = null;
@@ -25734,6 +25793,111 @@ var FadingGrid = class {
   }
 };
 
+// src/render/ShadingBar.ts
+var svg = (body) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+var RAYS = "M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4";
+var HORIZON = (arrow2) => svg(
+  `<path d="M3 19h18M7.5 19a4.5 4.5 0 0 1 9 0M12 9.5V3M4.6 13.6l1.4 1.4M19.4 13.6 18 15"/><path d="${arrow2}"/>`
+);
+var SHADING_ICONS = {
+  flat: svg(`<circle cx="12" cy="12" r="8" fill="currentColor" fill-opacity="0.35"/>`),
+  studio: svg(`<circle cx="12" cy="12" r="8"/><path d="M20 12a8 8 0 0 1-8 8a10 10 0 0 0 8-8z" fill="currentColor" fill-opacity="0.55" stroke="none"/><circle cx="9" cy="9" r="1.7" fill="currentColor" stroke="none"/>`),
+  noon: svg(`<circle cx="12" cy="12" r="4"/><path d="${RAYS}"/>`),
+  morning: HORIZON("M9 5.5 12 2.5l3 3"),
+  sunset: HORIZON("M9 6.5l3 3 3-3")
+};
+var MODES = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hidden line"], ["ghost", "Ghost"]];
+var LIGHTS = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
+var SUNS = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
+var ShadingBar = class {
+  constructor(core, lighting, corner = "top-left") {
+    this.core = core;
+    this.lighting = lighting;
+    this.root = document.createElement("div");
+    this.pop = document.createElement("div");
+    this.paints = [];
+    const host = core.container;
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    const [v, h] = [corner.startsWith("top") ? "top" : "bottom", corner.endsWith("left") ? "left" : "right"];
+    this.root.style.cssText = `position:absolute;${v}:10px;${h}:10px;z-index:5;display:flex;align-items:center;gap:2px;padding:3px;border-radius:7px;background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);box-shadow:0 2px 8px rgba(0,0,0,.3);user-select:none;`;
+    this.root.dataset.tektoShadingBar = "";
+    const scene = core.gScene;
+    for (const [mode, label] of MODES) this.button(viewModeIconSvg(mode, 16), label, () => scene.renderMode === mode, () => scene.setRenderMode(mode));
+    this.separator();
+    for (const [mode, label] of LIGHTS) this.button(SHADING_ICONS[mode], label, () => scene.lightingMode === mode, () => scene.setLightingMode(mode));
+    this.separator();
+    const sun = this.button(SHADING_ICONS.noon, "Sun: morning, noon, sunset", () => this.pop.style.display === "flex", () => this.togglePop());
+    this.paints.push(() => {
+      sun.innerHTML = SHADING_ICONS[this.lighting.currentSunPreset ?? "noon"];
+    });
+    this.pop.style.cssText = `position:absolute;${v === "top" ? "top" : "bottom"}:calc(100% + 6px);${h}:0;display:none;gap:2px;padding:4px;border-radius:7px;background:rgba(16,18,26,.92);border:1px solid rgba(255,255,255,.08);box-shadow:0 4px 14px rgba(0,0,0,.4);`;
+    for (const [preset, label] of SUNS) {
+      const b = this.button(
+        `${SHADING_ICONS[preset]}<span style="font:500 9.5px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${label}</span>`,
+        `${label}: Studio, the light following the sun`,
+        () => this.lighting.currentSunPreset === preset,
+        () => {
+          this.lighting.sunPreset(preset);
+          this.togglePop(false);
+        },
+        this.pop
+      );
+      b.style.width = "54px";
+      b.style.height = "42px";
+      b.style.flexDirection = "column";
+      b.style.gap = "4px";
+    }
+    this.root.appendChild(this.pop);
+    host.appendChild(this.root);
+    this.off = scene.on((e) => {
+      if (e.type === "scene:renderMode" || e.type === "scene:lightingMode") this.paint();
+    });
+    this.paint();
+  }
+  /** Redraw which buttons are on (after a change made elsewhere, such as the sun moved in code). */
+  paint() {
+    for (const p of this.paints) p();
+  }
+  togglePop(open = this.pop.style.display !== "flex") {
+    this.pop.style.display = open ? "flex" : "none";
+    this.paint();
+  }
+  button(icon, title, on, run, parent = this.root) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = title;
+    b.setAttribute("aria-label", title);
+    b.innerHTML = icon;
+    b.style.cssText = "display:flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:5px;cursor:pointer;";
+    const paint = () => {
+      const active = on();
+      b.setAttribute("aria-pressed", String(active));
+      b.style.background = active ? "#e8ebf0" : "transparent";
+      b.style.color = active ? "#11131a" : "rgba(232,235,240,.72)";
+    };
+    b.onmouseenter = () => {
+      if (!on()) b.style.color = "#fff";
+    };
+    b.onmouseleave = paint;
+    b.onclick = () => {
+      run();
+      this.paint();
+    };
+    this.paints.push(paint);
+    parent.appendChild(b);
+    return b;
+  }
+  separator() {
+    const s = document.createElement("div");
+    s.style.cssText = "width:1px;height:18px;margin:0 3px;background:rgba(255,255,255,.14);";
+    this.root.appendChild(s);
+  }
+  dispose() {
+    this.off();
+    this.root.remove();
+  }
+};
+
 // src/render/AmbientOcclusion.ts
 var THREE11 = __toESM(require("three"));
 var import_GTAOPass = require("three/examples/jsm/postprocessing/GTAOPass.js");
@@ -25769,6 +25933,7 @@ var AmbientOcclusion = class {
   /** After the frame is on the screen: multiply the occlusion over it. */
   apply(camera, clip) {
     if (!this.enabled || !camera.isPerspectiveCamera) return;
+    if (this.core.gScene.renderMode !== "solid") return;
     const gl = this.core.renderer;
     if (gl.getRenderTarget() !== null) return;
     gl.getSize(this.size);
@@ -25826,7 +25991,8 @@ var DEFAULTS5 = {
   cameraTarget: [0, 0, 0],
   fov: 55,
   up: "y",
-  navGizmo: false
+  navGizmo: false,
+  shadingBar: false
 };
 var EDGE_BUDGET_MS = 8;
 var ThreeRenderer = class {
@@ -25842,12 +26008,14 @@ var ThreeRenderer = class {
     this.hideHelpers = false;
     this.gridHelper = null;
     this.fadingGrid = null;
+    this.shadingBar = null;
     this.gridDirty = true;
     this.axesHelper = null;
     // Raw THREE objects (e.g. loaded glTF scenes) added by the app, kept across
     // sketch re-runs (clearThree only touches objectMap-managed objects).
     this.externalObjects = /* @__PURE__ */ new Map();
     this.resizeObserver = null;
+    this.drawListeners = /* @__PURE__ */ new Set();
     this.gScene = gScene;
     this.container = container;
     this.config = { ...DEFAULTS5, ...config };
@@ -25892,6 +26060,7 @@ var ThreeRenderer = class {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
     if (cfg.showGrid && cfg.gridStyle === "fading") {
@@ -26169,6 +26338,15 @@ var ThreeRenderer = class {
     this._needsRender = false;
     this.rig.updateGizmo();
     this.marks.drawCallouts();
+    for (const cb of this.drawListeners) cb();
+  }
+  /**
+   * Run `cb` after every frame is drawn, for an overlay that follows the camera (notes,
+   * labels of your own): the camera and the view are current then. Returns the unsubscribe.
+   */
+  onDraw(cb) {
+    this.drawListeners.add(cb);
+    return () => this.drawListeners.delete(cb);
   }
   /**
    * Ask for a draw on the next `renderIfNeeded()`. Scene events, the camera API,
@@ -26260,6 +26438,7 @@ var ThreeRenderer = class {
     this.clearThree();
     this.marks.dispose();
     this.ao.dispose();
+    this.shadingBar?.dispose();
     this.fadingGrid?.dispose();
     this.pointer.dispose();
     this.lighting.dispose();
@@ -26310,16 +26489,21 @@ var ThreeRenderer = class {
    */
   setSunDirection(direction, distance = 50) {
     this.lighting.setSunDirection(direction, distance);
+    this.shadingBar?.paint();
   }
   /**
-   * Lamps: a warm point light at each point (in the content's axes), in both lighting modes,
-   * without shadows (a point light's shadow is six renders, per lamp). One per room at
-   * pendant height carries an interior at dusk. Each takes a `colour` (default warm white
-   * 0xffd2a0), an `intensity` in candela (default 4) and a `distance` it reaches (m, default
-   * 8). Replaces the lamps there were; `[]` removes them.
+   * A named sun, as the shading bar's sun button sets it: `"morning"` (low in the east),
+   * `"noon"` (high in the south) or `"sunset"` (just above the horizon in the west). It
+   * switches to Studio and lets the light follow the sun (`setDaylight`), so a sunset is warm
+   * with a dusk sky. Moving the sun any other way clears it (`sunPreset` is then null).
    */
-  setLamps(lamps) {
-    this.lighting.setLamps(lamps);
+  setSunPreset(name) {
+    this.lighting.sunPreset(name);
+    this.shadingBar?.paint();
+  }
+  /** The sun preset last set (`setSunPreset`), or null once the sun was moved another way. */
+  get sunPreset() {
+    return this.lighting.currentSunPreset;
   }
   /**
    * Let Studio's light follow the sun: with it on, the sun's colour and strength, the sky,
@@ -26330,6 +26514,7 @@ var ThreeRenderer = class {
    */
   setDaylight(on) {
     this.lighting.setDaylight(on);
+    this.shadingBar?.paint();
   }
   /** Whether Studio's light follows the sun (`setDaylight`). */
   get daylight() {
@@ -26342,8 +26527,9 @@ var ThreeRenderer = class {
   /**
    * Ambient occlusion: darken where surfaces meet and close in (corners, reveals, under
    * decks and steps), with three's GTAO multiplied over the drawn frame, so tone mapping,
-   * background, grid and the section stay as they are; it follows the section. Perspective
-   * views only: the orthographic drawing views go without. `true`, `false`, or
+   * background, grid and the section stay as they are; it follows the section. Solid mode
+   * in perspective only: hidden line stays black and white, and the orthographic drawing
+   * views go without. `true`, `false`, or
    * `{ radius, intensity }`: how far it reaches (m, default 0.6) and how dark (0..1, 0.85).
    */
   setAmbientOcclusion(on) {
@@ -27895,7 +28081,7 @@ function sceneSummary(scene, renderer, describe) {
   let shown2 = 0;
   for (const o of scene.all()) {
     if (!renderer.isObjectShown(o.id)) continue;
-    const b = renderer.objectBounds(o.id);
+    const b = renderer.objectBounds(o.id) ?? (o.type === "light" && o.position ? { min: o.position, max: o.position } : null);
     if (!b) continue;
     shown2++;
     const d = describe(o.id);
@@ -27958,7 +28144,7 @@ function snapshotWithOverlays(renderer, wrap) {
   return out.toDataURL("image/png");
 }
 async function plainBundle(opts) {
-  const markup = {
+  const markup2 = {
     format: "tekto-markup/1",
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
     sketch: { title: opts.title, url: location.href },
@@ -27969,7 +28155,7 @@ async function plainBundle(opts) {
     marks: [],
     files: { view: "view.png", clean: "clean.png" }
   };
-  const bundle = { markup, viewPng: opts.png, cleanPng: opts.png };
+  const bundle = { markup: markup2, viewPng: opts.png, cleanPng: opts.png };
   if (opts.save !== false) bundle.dir = await saveBundle(bundle, opts.label ?? slug(opts.title));
   return bundle;
 }
@@ -28057,6 +28243,7 @@ var MarkupOverlay = class {
         this.redraw();
       }),
       mk("Save", "Save view.png + markup.json (\u2318S)", () => void this.save()),
+      ...host.keep ? [mk("Keep as notes", "Keep the marks as notes with the model: saved, undoable, shared", () => this.keepNotes())] : [],
       this.status
     );
     vp.appendChild(this.bar);
@@ -28139,6 +28326,44 @@ var MarkupOverlay = class {
   undo() {
     this.marks.pop();
     this.redraw();
+  }
+  /** Each mark as a note: its strokes laid on the model (or the ground), its text, the
+   *  records it touched and this view. */
+  keepNotes() {
+    if (!this.host.keep) return;
+    if (!this.marks.length) {
+      this.setStatus("Draw a mark first");
+      return;
+    }
+    const r = this.canvas.getBoundingClientRect();
+    const onModel = (p) => this.host.hitAt(r.left + p[0], r.top + p[1])?.point ?? this.host.groundAt(r.left + p[0], r.top + p[1]);
+    const cam = this.host.context().camera ?? {};
+    const instruction = this.noteBox.value.trim();
+    const notes = [];
+    for (const m of this.marks) {
+      const strokes = m.strokes.map((s) => (s.length === 1 ? s : resample(s, 6, 60)).map(onModel).filter((p) => !!p).map((p) => round32(p))).filter((s) => s.length > 0);
+      if (!strokes.length) continue;
+      const w = m.resolved?.world ?? {};
+      const at = w.at ?? w.centroid ?? w.from ?? strokes[0][0];
+      notes.push({
+        text: m.note || instruction,
+        ...this.host.author ? { author: this.host.author } : {},
+        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+        pin: [at[0], at[1], at[2]],
+        strokes,
+        keys: [...new Set((m.resolved?.hits ?? []).map((h) => h.key).filter((k) => !!k))],
+        view: { position: cam.position ?? [0, 0, 10], target: cam.target ?? [0, 0, 0], ...cam.projection ? { projection: cam.projection } : {} }
+      });
+    }
+    if (!notes.length) {
+      this.setStatus("The marks lie on nothing to keep them on");
+      return;
+    }
+    this.host.keep(notes);
+    this.marks = [];
+    this.noteBox.value = "";
+    this.redraw();
+    this.setStatus(`Kept ${notes.length} note${notes.length > 1 ? "s" : ""}`);
   }
   /** A small input at the mark's badge; Enter keeps it, Escape leaves the mark without a note. */
   askNote(mark) {
@@ -28255,7 +28480,7 @@ var MarkupOverlay = class {
       const note = opts.note ?? "";
       const viewPng = await this.composite(cleanPng, note);
       const vp = this.host.viewport;
-      const markup = {
+      const markup2 = {
         format: "tekto-markup/1",
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
         sketch: { title: this.host.title, url: location.href },
@@ -28276,7 +28501,7 @@ var MarkupOverlay = class {
         })),
         files: { view: "view.png", clean: "clean.png" }
       };
-      const bundle = { markup, viewPng, cleanPng };
+      const bundle = { markup: markup2, viewPng, cleanPng };
       if (opts.save !== false) bundle.dir = await saveBundle(bundle, opts.label ?? slug(this.host.title));
       return bundle;
     } finally {
@@ -28483,6 +28708,28 @@ function bounds(ps) {
 }
 function round32(p) {
   return [p.x, p.y, p.z].map((v) => +v.toFixed(4));
+}
+function markup(renderer, scene, opts = {}) {
+  const viewport = opts.host ?? renderer.canvasEl.parentElement;
+  if (!viewport) throw new Error("markup: the renderer's canvas is not in the page yet (or pass opts.host)");
+  if (getComputedStyle(viewport).position === "static") viewport.style.position = "relative";
+  const describe = (id) => describeSceneObject(scene, id);
+  const overlay = new MarkupOverlay({
+    viewport,
+    title: opts.title ?? "app",
+    hitAt: (x, y) => renderer.hitAt(x, y),
+    groundAt: (x, y) => renderer.groundAt(x, y),
+    snapshotPng: () => snapshotWithOverlays(renderer, viewport),
+    describe,
+    context: () => ({ ...sceneSummary(scene, renderer, describe), ...opts.context?.() ?? {} }),
+    setTracking: () => {
+    },
+    ...opts.notes ? { keep: (ns) => {
+      opts.notes.keep(ns);
+    } } : {},
+    ...opts.author ? { author: opts.author } : {}
+  });
+  return { capture: (o) => overlay.capture(o), dispose: () => overlay.dispose() };
 }
 
 // src/sketch/Sketch.ts
@@ -28708,7 +28955,8 @@ var SketchInstance = class {
       cameraPosition: this.config.camera ?? (zUp ? [8, -10, 6] : [5, 6, 8]),
       cameraTarget: this.config.target ?? [0, 0, 0],
       up: this.config.up ?? "y",
-      navGizmo: this.config.navGizmo ?? false
+      navGizmo: this.config.navGizmo ?? false,
+      shadingBar: this.config.shadingBar ?? false
     });
   }
   // ── Input Wiring ──
@@ -29111,6 +29359,9 @@ var SketchInstance = class {
       },
       circle(cx, cy, cz, radius) {
         return shapeHandle(self.scene, self.scene.addCircle(new Vec3(cx, cy, cz), radius));
+      },
+      light(position, spec, style) {
+        return self.scene.addLight(position, spec, style).id;
       },
       // ── Algorithms ──
       algo: Algo,
@@ -30024,6 +30275,210 @@ function buildSun(renderer, t) {
   return wrap;
 }
 
+// src/sketch/Notes.ts
+var INK2 = "#ffb020";
+var NotesLayer = class {
+  constructor(renderer, doc, opts = {}) {
+    this.renderer = renderer;
+    this.doc = doc;
+    this.canvas = document.createElement("canvas");
+    this.pinLayer = document.createElement("div");
+    this.pins = /* @__PURE__ */ new Map();
+    this.card = null;
+    this.openId = null;
+    this.shown = true;
+    this.offs = [];
+    this.collection = opts.collection ?? "notes";
+    const host = opts.host ?? renderer.canvasEl.parentElement;
+    if (!host) throw new Error("notesLayer: the renderer's canvas is not in the page yet (or pass opts.host)");
+    if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    this.host = host;
+    this.canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:15;";
+    this.canvas.dataset.tektoNotes = "";
+    this.canvas.dataset.tektoOverlay = "";
+    this.ctx = this.canvas.getContext("2d");
+    this.pinLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:16;";
+    host.append(this.canvas, this.pinLayer);
+    this.offs.push(renderer.onDraw(() => this.draw()));
+    this.offs.push(doc.onChange((changes) => {
+      if (!changes.some((c) => c.collection === this.collection)) return;
+      if (this.openId && !doc.has(this.collection, this.openId)) this.closeCard();
+      renderer.requestRender();
+    }));
+    renderer.requestRender();
+  }
+  /** The notes, oldest first, with their ids: the order of their numbers. */
+  list() {
+    return this.doc.all(this.collection).slice().sort((a, b) => a[1].createdAt.localeCompare(b[1].createdAt));
+  }
+  /** Keep a note: one undo step. Returns its id. */
+  add(note) {
+    return this.doc.add(this.collection, note, { label: "Add note" });
+  }
+  /** Keep several notes as one undo step ("Keep as notes"). Returns their ids. */
+  keep(notes) {
+    return this.doc.transact(notes.length > 1 ? "Add notes" : "Add note", () => notes.map((n) => this.doc.add(this.collection, n)));
+  }
+  remove(id) {
+    this.doc.remove(this.collection, id, { label: "Delete note" });
+  }
+  /** Back to the view the note was drawn from. */
+  goTo(id) {
+    const n = this.doc.get(this.collection, id);
+    if (!n) return;
+    if (n.view.projection) this.renderer.setProjection(n.view.projection);
+    this.renderer.setCameraPosition(n.view.position[0], n.view.position[1], n.view.position[2]);
+    this.renderer.lookAt(n.view.target[0], n.view.target[1], n.view.target[2]);
+  }
+  /** Show or hide the notes (they stay in the document). */
+  setVisible(on) {
+    this.shown = on;
+    if (!on) this.closeCard();
+    this.renderer.requestRender();
+  }
+  get visible() {
+    return this.shown;
+  }
+  dispose() {
+    for (const off of this.offs) off();
+    this.closeCard();
+    this.canvas.remove();
+    this.pinLayer.remove();
+  }
+  // ── Drawing, after each frame ──
+  draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.host.clientWidth, h = this.host.clientHeight;
+    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
+      this.canvas.width = Math.round(w * dpr);
+      this.canvas.height = Math.round(h * dpr);
+    }
+    const g = this.ctx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    const notes = this.shown ? this.list() : [];
+    const seen = /* @__PURE__ */ new Set();
+    const c = this.renderer.canvasEl.getBoundingClientRect(), hb = this.host.getBoundingClientRect();
+    const ox = c.left - hb.left, oy = c.top - hb.top;
+    const at = (p) => {
+      const q = this.renderer.worldToScreen(new Vec3(p[0], p[1], p[2]));
+      return { x: q.x + ox, y: q.y + oy, visible: q.visible };
+    };
+    if (notes.length) {
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.lineCap = "round";
+      g.lineJoin = "round";
+      const project = at;
+      for (const [width, colour] of [[6, "rgba(10,12,18,.55)"], [2.5, INK2]]) {
+        g.strokeStyle = colour;
+        g.fillStyle = colour;
+        g.lineWidth = width;
+        for (const [, n] of notes) for (const s of n.strokes) {
+          if (s.length === 1) {
+            const q = project(s[0]);
+            if (q.visible) {
+              g.beginPath();
+              g.arc(q.x, q.y, width, 0, Math.PI * 2);
+              g.fill();
+            }
+            continue;
+          }
+          g.beginPath();
+          let down2 = false;
+          for (const p of s) {
+            const q = project(p);
+            if (!q.visible) {
+              down2 = false;
+              continue;
+            }
+            if (down2) g.lineTo(q.x, q.y);
+            else g.moveTo(q.x, q.y);
+            down2 = true;
+          }
+          g.stroke();
+        }
+      }
+    }
+    notes.forEach(([id, n], i) => {
+      seen.add(id);
+      const q = at(n.pin);
+      const pin = this.pins.get(id) ?? this.makePin(id);
+      pin.textContent = String(i + 1);
+      pin.title = n.text || "(no text)";
+      pin.style.display = q.visible ? "flex" : "none";
+      pin.style.left = `${q.x - 11}px`;
+      pin.style.top = `${q.y - 11}px`;
+      if (this.openId === id && this.card) this.placeCard(q.x, q.y);
+    });
+    for (const [id, pin] of this.pins) if (!seen.has(id)) {
+      pin.remove();
+      this.pins.delete(id);
+    }
+  }
+  makePin(id) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.note = id;
+    b.setAttribute("aria-label", "Note");
+    b.style.cssText = `position:absolute;width:22px;height:22px;border-radius:50%;border:2px solid #fff;background:${INK2};color:#14161e;font:700 11px/1 system-ui,sans-serif;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;pointer-events:auto;box-shadow:0 1px 4px rgba(0,0,0,.45);`;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.openId === id ? this.closeCard() : this.openCard(id);
+    });
+    this.pinLayer.appendChild(b);
+    this.pins.set(id, b);
+    return b;
+  }
+  // ── The open note ──
+  openCard(id) {
+    this.closeCard();
+    const n = this.doc.get(this.collection, id);
+    if (!n) return;
+    this.openId = id;
+    const card = this.card = document.createElement("div");
+    card.dataset.noteCard = id;
+    card.style.cssText = "position:absolute;z-index:17;width:230px;padding:10px 12px;border-radius:8px;pointer-events:auto;background:#11131a;border:1px solid rgba(255,255,255,.12);box-shadow:0 6px 18px rgba(0,0,0,.45);color:#e8ebf0;font:12px/1.45 system-ui,sans-serif;";
+    const text = document.createElement("div");
+    text.textContent = n.text || "(no text)";
+    text.style.cssText = "white-space:pre-wrap;margin-bottom:6px;";
+    const meta = document.createElement("div");
+    const when = new Date(n.createdAt);
+    meta.textContent = [n.author, isNaN(when.getTime()) ? "" : when.toLocaleString(), n.keys.length ? n.keys.join(", ") : ""].filter(Boolean).join(" \xB7 ");
+    meta.style.cssText = "color:rgba(232,235,240,.55);font-size:10.5px;margin-bottom:8px;";
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:6px;";
+    const btn = (label, run) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.style.cssText = "font:11px system-ui,sans-serif;padding:3px 9px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,.18);background:transparent;color:#e8ebf0;";
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        run();
+      });
+      return b;
+    };
+    row.append(btn("Go to view", () => this.goTo(id)), btn("Delete", () => this.remove(id)), btn("Close", () => this.closeCard()));
+    card.append(text, meta, row);
+    this.pinLayer.appendChild(card);
+    this.renderer.requestRender();
+  }
+  placeCard(x, y) {
+    const card = this.card;
+    const w = this.host.clientWidth;
+    card.style.left = `${Math.min(Math.max(8, x + 16), w - 246)}px`;
+    card.style.top = `${Math.max(8, y - 12)}px`;
+  }
+  closeCard() {
+    this.card?.remove();
+    this.card = null;
+    this.openId = null;
+  }
+};
+function notesLayer(renderer, doc, opts = {}) {
+  return new NotesLayer(renderer, doc, opts);
+}
+
 // src/sketch/AppShell.ts
 function appShell(config) {
   const t = getTheme(config.theme);
@@ -30092,6 +30547,7 @@ function appShell(config) {
     // `up: "y"` if you're showing the Y-up built-in primitives (box/cylinder/sphere).
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
+    shadingBar: config.shadingBar ?? false,
     ...config.renderer
   });
   const commands = new Commands();
@@ -30099,6 +30555,8 @@ function appShell(config) {
   const unbindKeys = commands.bindKeys();
   const toolbar = config.topBar === false ? null : viewerToolbar(scene, renderer, { ...config.topBar === true || config.topBar === void 0 ? {} : config.topBar, theme: t });
   if (toolbar) header.appendChild(toolbar.el);
+  const notesCfg = config.notes ? "doc" in config.notes ? config.notes : { doc: config.notes } : null;
+  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, { collection: notesCfg.collection, host: vpWrap }) : null;
   let buildFn = null;
   let displayFn = null;
   params.onChange((key) => {
@@ -30136,6 +30594,7 @@ function appShell(config) {
     renderer,
     panel,
     commands,
+    notes,
     onAnimate(fn) {
       animateFn = fn;
     },
@@ -30163,10 +30622,11 @@ function appShell(config) {
     },
     dispose() {
       disposed = true;
-      markup?.dispose();
+      markup2?.dispose();
       bridge.dispose();
       unbindKeys();
       toolbar?.dispose();
+      notes?.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
@@ -30182,7 +30642,7 @@ function appShell(config) {
     commands: commands.list(),
     errors: bridge.errors()
   });
-  const markup = config.markup === false ? null : new MarkupOverlay({
+  const markup2 = config.markup === false ? null : new MarkupOverlay({
     viewport: vpWrap,
     title: config.title ?? "app",
     hitAt: (x, y) => renderer.hitAt(x, y),
@@ -30191,14 +30651,18 @@ function appShell(config) {
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => {
-    }
+    },
+    ...notes ? { keep: (ns) => {
+      notes.keep(ns);
+    } } : {},
+    ...notesCfg && "author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}
   });
   const bridge = installAgentBridge({
     owner: instance,
     commands,
     harness: "appShell",
     store: params,
-    snapshot: (opts) => markup ? markup.capture(opts) : plainBundle({
+    snapshot: (opts) => markup2 ? markup2.capture(opts) : plainBundle({
       ...opts,
       title: config.title ?? "app",
       harness: "appShell",
@@ -30745,6 +31209,7 @@ var Sketch2DInstance = class {
   MeshTransform,
   NavGizmo,
   NoFitPolygon,
+  NotesLayer,
   NurbsCurve,
   NurbsSurface,
   OBB2D,
@@ -30879,11 +31344,13 @@ var Sketch2DInstance = class {
   lightBalance,
   lineClipPolygon,
   localAdapter,
+  markup,
   memoryAdapter,
   modeBackground,
   nearestAxis,
   neighboursOf,
   noise,
+  notesLayer,
   orbitFor,
   orthoFrustum,
   perpVisibility,
