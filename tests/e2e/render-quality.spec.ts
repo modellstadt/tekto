@@ -408,3 +408,17 @@ test("without units the section is relative to the content: a share, read as a p
   // The Y-up scene's other vertical cut is Z.
   await expect(bar.getByRole("button", { name: /^A cut across Z/ })).toBeVisible();
 });
+
+test("the shading bar's AO toggle drives ambient occlusion, and follows it set in code", async ({ page }) => {
+  await page.goto("/testbench.html?page=site-editor");                // shadingBar: true
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  const bar = page.locator("[data-tekto-shading-bar]");
+  const ao = bar.getByRole("button", { name: /^Ambient occlusion/ });
+  const on = () => page.evaluate(() => (window as any).__tekto.owner.renderer.ambientOcclusion);
+  expect(await on()).toBe(false);
+  await ao.click();
+  expect(await on()).toBe(true);
+  await expect(ao).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setAmbientOcclusion(false));
+  await expect(ao).toHaveAttribute("aria-pressed", "false");
+});
