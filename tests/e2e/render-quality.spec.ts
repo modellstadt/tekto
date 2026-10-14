@@ -319,3 +319,38 @@ test("the shading bar: render style, lighting and the sun's presets as icons in 
   await expect(bar.getByRole("button", { name: "Hidden line" })).toHaveAttribute("aria-pressed", "true");
   expect((await state()).preset).toBeNull();
 });
+
+test("the shading bar's section: axis, a slider in metres, flip and off, following a cut set in code", async ({ page }) => {
+  await page.goto("/testbench.html?page=site-editor");                // shadingBar: true
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  const bar = page.locator("[data-tekto-shading-bar]");
+  const section = () => page.evaluate(() => (window as any).__tekto.owner.renderer.section);
+  const block = await page.evaluate(() => { const { doc } = (window as any).siteEditor; return doc.get("blocks", doc.ids("blocks")[0]); });
+
+  await bar.getByRole("button", { name: /^Section/ }).click();
+  await bar.getByRole("button", { name: /^Plan/ }).click();
+  expect(await section()).toEqual({ axis: "z", coordinate: block.h / 2 });          // the middle of the content
+  await expect(bar.getByRole("button", { name: /^Section/ })).toHaveAttribute("aria-pressed", "true");
+
+  // The slider is in metres over the content's height; moving it moves the cut and shows its plane.
+  const slider = bar.getByLabel("Section position");
+  expect(await slider.evaluate((el: HTMLInputElement) => [Number(el.min), Number(el.max)])).toEqual([0, block.h]);
+  await slider.evaluate((el: HTMLInputElement) => { el.value = "1.5"; el.dispatchEvent(new Event("input")); });
+  await expect.poll(async () => (await section())?.coordinate).toBeCloseTo(1.5, 5);
+  await expect(bar).toContainText("1.50 m");
+  expect(await page.evaluate(() => {
+    let frames = 0;
+    (window as any).__tekto.owner.renderer.threeScene.traverse((o: any) => { if (o.isLineLoop) frames++; });
+    return frames;
+  })).toBe(1);
+
+  await bar.getByRole("button", { name: "Keep the other side" }).click();
+  expect(await section()).toMatchObject({ axis: "z", coordinate: 1.5, flip: true });
+  await bar.getByRole("button", { name: /^No section/ }).click();
+  expect(await section()).toBeNull();
+
+  // A cut set in code shows in the bar.
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setSection({ axis: "x", coordinate: 0.5 }));
+  await expect(bar.getByRole("button", { name: /^A cut across X/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(bar).toContainText("0.50 m");
+});

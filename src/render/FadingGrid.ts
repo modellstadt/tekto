@@ -17,6 +17,8 @@ export class FadingGrid {
     const material = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
+      // Behind whatever lies on the ground: a section's poché floor, a slab at z = 0.
+      polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 8,
       defines: zUp ? { Z_UP: 1 } : {},
       uniforms: {
         // A plain vector of sRGB components, not a Color: a ShaderMaterial writes its colour
