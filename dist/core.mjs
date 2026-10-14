@@ -135,7 +135,7 @@ import {
   selectOnClick,
   shareSelection,
   supabaseAdapter
-} from "./chunk-DQHOH3WF.mjs";
+} from "./chunk-FUIXAYCP.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -152,17 +152,16 @@ import {
   pickPrim,
   polygonIntersection,
   setClipSnap,
-  stampName,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-QA7NH7ES.mjs";
+} from "./chunk-ZNLNS4HM.mjs";
 import {
   Mesh,
   Plane,
   Scene,
   SunPosition,
   Triangle
-} from "./chunk-FAHEMNTI.mjs";
+} from "./chunk-4FLH7OLY.mjs";
 import {
   AABB,
   HMath,
@@ -174,8 +173,9 @@ import {
   Vec4,
   VecMath,
   closestPointOnSegment,
-  segmentSegmentClosest
-} from "./chunk-VTSIDLJ7.mjs";
+  segmentSegmentClosest,
+  stampName
+} from "./chunk-EKKTPIOR.mjs";
 export {
   AABB,
   Algo,

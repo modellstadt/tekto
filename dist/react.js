@@ -3284,6 +3284,24 @@ function ViewerToolbar({ scene, renderer, options, theme, className, style }) {
 // src/react/Markup.tsx
 var import_react3 = require("react");
 
+// src/render/snapshot.ts
+function snapshotWithOverlays(renderer, wrap) {
+  const base = renderer.snapshotPng();
+  const shown = [...wrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
+  if (!shown.length) return base;
+  const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
+  const out = document.createElement("canvas");
+  out.width = src.width;
+  out.height = src.height;
+  const g = out.getContext("2d");
+  g.drawImage(src, 0, 0);
+  for (const c of shown) {
+    const r = c.getBoundingClientRect();
+    g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
+  }
+  return out.toDataURL("image/png");
+}
+
 // src/sketch/AgentBridge.ts
 function describeSceneObject(scene, id, src) {
   const o = scene.get(id);
@@ -3345,22 +3363,6 @@ function sceneSummary(scene, renderer, describe) {
       ...shown <= 150 ? { objects } : {}
     }
   };
-}
-function snapshotWithOverlays(renderer, wrap) {
-  const base = renderer.snapshotPng();
-  const shown = [...wrap.querySelectorAll("canvas[data-tekto-overlay]")].filter((c) => c.getClientRects().length > 0);
-  if (!shown.length) return base;
-  const src = renderer.canvasEl, r0 = src.getBoundingClientRect(), k = src.width / Math.max(1, r0.width);
-  const out = document.createElement("canvas");
-  out.width = src.width;
-  out.height = src.height;
-  const g = out.getContext("2d");
-  g.drawImage(src, 0, 0);
-  for (const c of shown) {
-    const r = c.getBoundingClientRect();
-    g.drawImage(c, (r.left - r0.left) * k, (r.top - r0.top) * k, r.width * k, r.height * k);
-  }
-  return out.toDataURL("image/png");
 }
 var ENDPOINT = "/__tekto/markup";
 function slug(s) {
