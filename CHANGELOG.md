@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.9.1 — 2026-10-14
+
+The section in the shading bar: Off / Plan / X / Y, a slider in metres with a frame showing the plane, flip, and a chip per storey that cuts its plan above the floor.
+
 - **Section levels**: `renderer.setSectionLevels([{ name, elevation }], { cutHeight })` gives
   the shading bar's section a chip per storey, cutting its plan `cutHeight` above the floor
   (default 1.2 m, where walls, doors and windows read); the plan slider shows the levels as

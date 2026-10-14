@@ -772,6 +772,18 @@ declare class ThreeRenderer {
      * opaque surfaces get it: through a translucent one the inside would show uncut too.
      */
     setSection(section: SectionRequest | null): void;
+    /**
+     * The storeys, for the shading bar's section: a chip each that cuts its plan `cutHeight`
+     * above its floor (default 1.2 m, where walls, doors and windows read), ticks on the plan
+     * slider, and the slider snapping to them. Call it when the app knows its levels (after an
+     * IFC loads, a storey is added); `[]` clears them. Elevations in the content's units.
+     */
+    setSectionLevels(levels: readonly {
+        name: string;
+        elevation: number;
+    }[], opts?: {
+        cutHeight?: number;
+    }): void;
     /** The section in force, or null. */
     get section(): SectionRequest | null;
     /** Paint the cut this colour; null follows the render mode (dark, pale in ghost). */
