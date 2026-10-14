@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.9.5 — 2026-10-14
+
+Drawings as PDF: `writePdf2D` writes the same 2D content as `writeDxf2D` as a vector PDF at a true scale.
+
 - **`writePdf2D`**: a 2D drawing as a vector PDF at a true scale — the same content as
   `writeDxf2D` (polylines, lines, circles, arcs, texts, solids, line types) on one page sized
   to the drawing, with an optional title and scale bar; colours darkened for white paper by

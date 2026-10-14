@@ -1,4 +1,4 @@
-import { M as Mesh, V as Vec3, r as Vec2, A as AABB } from './Scene-BHniJuab.js';
+import { M as Mesh, V as Vec3, r as Vec2, A as AABB } from './Scene-BHniJuab.mjs';
 
 /**
  * Tekto HMath — Scalar math utilities.
@@ -842,6 +842,8 @@ interface DxfLayerDef {
     color?: number;
     /** R12 line type for the layer: "CONTINUOUS" (default), "DASHED", "HIDDEN", "DOTTED" or "CENTER". */
     lineType?: string;
+    /** True colour (CSS hex) for writers that have it — `writePdf2D`; DXF R12 writes `color`. */
+    rgb?: string;
 }
 /** A polyline in world space (Z-up); emitted as a DXF 3D POLYLINE. */
 interface Dxf3DPolyline {
@@ -903,10 +905,12 @@ interface Dxf2DPoint {
     y: number;
 }
 /** What a 2D entity may set beyond its layer: an ACI colour (1 red … 7 white/black) and an R12
- *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. */
+ *  line type ("DASHED", "HIDDEN", "DOTTED", "CENTER"); unset, it follows its layer. `rgb`: a true
+ *  colour (CSS hex) for writers that have it — `writePdf2D` prefers it over `color`; DXF R12 ignores it. */
 interface Dxf2DLook {
     color?: number;
     linetype?: "DASHED" | "HIDDEN" | "DOTTED" | "CENTER";
+    rgb?: string;
 }
 /** A polyline in the drawing plane for `writeDxf2D`; emitted as an R12 2D POLYLINE (`closed` shuts the ring). */
 interface Dxf2DPolyline extends Dxf2DLook {
@@ -931,6 +935,7 @@ interface Dxf2DSolid {
     layer: string;
     points: Dxf2DPoint[];
     color?: number;
+    rgb?: string;
 }
 /** CCW arc, angles in degrees; a full sweep is written as a CIRCLE (AutoCAD drops a 0→360 ARC). */
 interface Dxf2DArc extends Dxf2DLook {
@@ -948,6 +953,7 @@ interface Dxf2DText {
     height: number;
     rotationDeg?: number;
     color?: number;
+    rgb?: string;
     /** Which point of the text `at` is: horizontally (default left) and vertically (default baseline). */
     align?: "left" | "center" | "right";
     valign?: "baseline" | "bottom" | "middle" | "top";
