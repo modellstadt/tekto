@@ -134,8 +134,9 @@ import {
   reverse,
   selectOnClick,
   shareSelection,
-  supabaseAdapter
-} from "./chunk-7MB5NZPJ.mjs";
+  supabaseAdapter,
+  writePdf2D
+} from "./chunk-IX3YNGZP.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -154,14 +155,14 @@ import {
   setClipSnap,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-ZNLNS4HM.mjs";
+} from "./chunk-BESWYJWB.mjs";
 import {
   Mesh,
   Plane,
   Scene,
   SunPosition,
   Triangle
-} from "./chunk-4FLH7OLY.mjs";
+} from "./chunk-Z6BOOQ26.mjs";
 import {
   AABB,
   HMath,
@@ -175,7 +176,7 @@ import {
   closestPointOnSegment,
   segmentSegmentClosest,
   stampName
-} from "./chunk-EKKTPIOR.mjs";
+} from "./chunk-QLUI3675.mjs";
 export {
   AABB,
   Algo,
@@ -346,5 +347,6 @@ export {
   stampName,
   supabaseAdapter,
   writeDxf2D,
-  writeDxf3D
+  writeDxf3D,
+  writePdf2D
 };

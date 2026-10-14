@@ -3,7 +3,7 @@ import {
   Vec2,
   Vec3,
   VecMath
-} from "./chunk-EKKTPIOR.mjs";
+} from "./chunk-QLUI3675.mjs";
 
 // src/core/math/noise.ts
 var P = [
@@ -2354,6 +2354,7 @@ export {
   _writeR12Prologue,
   writeDxf3D,
   writeDxf2D,
+  ACI,
   aciFromHex,
   DASH_PATTERNS,
   SheetView,

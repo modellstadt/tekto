@@ -429,7 +429,8 @@ var MIME = {
   csv: "text/csv",
   txt: "text/plain",
   png: "image/png",
-  stl: "model/stl"
+  stl: "model/stl",
+  pdf: "application/pdf"
 };
 function download(data, fileName, opts = {}) {
   const name = opts.stamp ? stampName(fileName) : fileName;

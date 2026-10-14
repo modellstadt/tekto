@@ -6,7 +6,7 @@ import {
   ensureSliderStyle,
   fitSheet,
   sketch2d
-} from "./chunk-NG5LMW5V.mjs";
+} from "./chunk-7HKE2KJ6.mjs";
 import {
   Algo,
   ArcCurve,
@@ -143,8 +143,9 @@ import {
   reverse,
   selectOnClick,
   shareSelection,
-  supabaseAdapter
-} from "./chunk-7MB5NZPJ.mjs";
+  supabaseAdapter,
+  writePdf2D
+} from "./chunk-IX3YNGZP.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -166,7 +167,7 @@ import {
   setClipSnap,
   writeDxf2D,
   writeDxf3D
-} from "./chunk-ZNLNS4HM.mjs";
+} from "./chunk-BESWYJWB.mjs";
 import {
   MarkupOverlay,
   VIEW_MODE_ICON_CORNERS,
@@ -175,7 +176,7 @@ import {
   viewModeIconShapes,
   viewModeIconSvg,
   viewerToolbar
-} from "./chunk-UK4TXUDY.mjs";
+} from "./chunk-GWINOG4X.mjs";
 import {
   addOverlay,
   describeSceneObject,
@@ -185,14 +186,14 @@ import {
   plainBundle,
   sceneSummary,
   snapshotWithOverlays
-} from "./chunk-R3QZS3QQ.mjs";
+} from "./chunk-FPI463DX.mjs";
 import {
   Mesh,
   Plane,
   Scene,
   SunPosition,
   Triangle
-} from "./chunk-4FLH7OLY.mjs";
+} from "./chunk-Z6BOOQ26.mjs";
 import {
   AABB,
   HMath,
@@ -207,7 +208,7 @@ import {
   download,
   segmentSegmentClosest,
   stampName
-} from "./chunk-EKKTPIOR.mjs";
+} from "./chunk-QLUI3675.mjs";
 
 // src/io/IdBufferHiddenLine.ts
 import * as THREE from "three";
@@ -8789,5 +8790,6 @@ export {
   viewModeIconSvg,
   viewerToolbar,
   writeDxf2D,
-  writeDxf3D
+  writeDxf3D,
+  writePdf2D
 };
