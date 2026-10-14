@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Section levels**: `renderer.setSectionLevels([{ name, elevation }], { cutHeight })` gives
+  the shading bar's section a chip per storey, cutting its plan `cutHeight` above the floor
+  (default 1.2 m, where walls, doors and windows read); the plan slider shows the levels as
+  ticks and snaps to a storey's cut height near it. The Site Editor has levels every 3 m.
 - **The section in the shading bar**: a cut icon opens Off / Plan / X / Y, a slider over the
   content's extent in metres, and "keep the other side". While the slider moves, a thin
   frame shows where the plane is; the icon lights while a cut is on, set from anywhere. The

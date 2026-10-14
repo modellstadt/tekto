@@ -44,6 +44,12 @@ export type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "botto
 export class ShadingBar {
   private root = document.createElement("div");
   private openPop: HTMLDivElement | null = null;
+  // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
+  private levels: { name: string; elevation: number }[] = [];
+  private cutHeight = 1.2;
+  private levelRow = document.createElement("div");
+  private levelPaints: (() => void)[] = [];
+  private setCut: ((axis: "x" | "y" | "z" | null, coordinate?: number) => void) | null = null;
   private paints: (() => void)[] = [];
   private off: () => void;
 
@@ -137,6 +143,9 @@ export class ShadingBar {
     const sep = document.createElement("div");
     sep.style.cssText = "width:1px;height:16px;margin:0 3px;background:rgba(255,255,255,.14);";
     row.appendChild(sep);
+    this.setCut = (axis, coordinate) => set(axis, coordinate);
+    this.levelRow.style.cssText = "display:none;flex-wrap:wrap;gap:2px;max-width:220px;";
+    this.paints.push(() => { for (const p of this.levelPaints) p(); });
     this.button(SHADING_ICONS.flip, "Keep the other side", () => !!this.marks.section?.flip,
       () => { const sec = this.marks.section; if (sec) set(sec.axis, this.marks.sectionCoordinate() ?? undefined, !sec.flip); }, row);
 
@@ -151,13 +160,28 @@ export class ShadingBar {
     slider.style.cssText = "width:150px;--tekto-track:rgba(255,255,255,.18);--tekto-thumb:#e8ebf0;";
     const value = document.createElement("span");
     value.style.cssText = "min-width:52px;text-align:right;color:rgba(232,235,240,.8);font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;";
-    line.append(slider, value);
-    pop.appendChild(line);
+    // The levels as ticks under the slider (plan cuts only).
+    const track = document.createElement("div");
+    track.style.cssText = "position:relative;width:150px;height:16px;display:flex;align-items:center;";
+    const ticks = document.createElement("div");
+    ticks.style.cssText = "position:absolute;left:3px;right:3px;bottom:-3px;height:4px;pointer-events:none;";
+    track.append(slider, ticks);
+    line.append(track, value);
+    pop.append(this.levelRow, line);
+    const planAxis = this.core.isZUp ? "z" : "y";
+    /** Where a plan cut snaps: each storey's floor plus the cut height. */
+    const planCuts = () => this.levels.map((l) => l.elevation + this.cutHeight);
 
     // Moving it re-cuts every object: at most once a frame; the plane shows while it moves.
     let pending: number | null = null, frame = 0, hide = 0;
     slider.addEventListener("input", () => {
       pending = Number(slider.value);
+      // Near a storey's plan height: snap to it.
+      if (this.marks.section?.axis === planAxis && this.levels.length) {
+        const span = Number(slider.max) - Number(slider.min);
+        const near = planCuts().reduce((best, c) => Math.abs(c - pending!) < Math.abs(best - pending!) ? c : best, Infinity);
+        if (Math.abs(near - pending) < span * 0.02) { pending = near; slider.value = String(near); }
+      }
       value.textContent = `${pending.toFixed(2)} m`;
       this.marks.showSectionPlane(true);
       clearTimeout(hide);
@@ -167,6 +191,7 @@ export class ShadingBar {
         if (sec && pending !== null) {
           const { at: _share, ...rest } = sec;                         // a coordinate now, not a share
           this.marks.setSection({ ...rest, coordinate: pending });
+          this.paint();                                                  // a storey's chip lights when it lands on one
         }
         this.marks.showSectionPlane(true);
       });
@@ -190,10 +215,41 @@ export class ShadingBar {
       } else {
         value.textContent = "—";
       }
+      ticks.replaceChildren();
+      if (sec && r && sec.axis === planAxis && r[1] > r[0]) {
+        for (const l of this.levels) {
+          const f = (l.elevation - r[0]) / (r[1] - r[0]);
+          if (f < -1e-9 || f > 1 + 1e-9) continue;
+          const t = document.createElement("div");
+          t.dataset.level = l.name;
+          t.style.cssText = `position:absolute;left:${(f * 100).toFixed(2)}%;width:1px;height:4px;background:rgba(232,235,240,.6);`;
+          ticks.appendChild(t);
+        }
+      }
     });
   }
 
-  private button(icon: string, title: string, on: () => boolean, run: () => void, parent: HTMLElement = this.root): HTMLButtonElement {
+  /** The storeys: a chip each in the section popover, cutting its plan `cutHeight` above the floor. */
+  setLevels(levels: readonly { name: string; elevation: number }[], cutHeight: number): void {
+    this.levels = [...levels].sort((a, b) => a.elevation - b.elevation);
+    this.cutHeight = cutHeight;
+    this.levelRow.replaceChildren();
+    this.levelPaints = [];
+    this.levelRow.style.display = this.levels.length ? "flex" : "none";
+    const planAxis = this.core.isZUp ? "z" : "y";
+    for (const l of this.levels) {
+      const at = l.elevation + cutHeight;
+      const b = this.button(`<span style="font:600 10px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${escapeHtml(l.name)}</span>`,
+        `Plan of ${l.name}: cut ${cutHeight} m above ${l.elevation} m`,
+        () => this.marks.section?.axis === planAxis && Math.abs((this.marks.sectionCoordinate() ?? NaN) - at) < 1e-6,
+        () => this.setCut?.(planAxis, at), this.levelRow, this.levelPaints);
+      b.style.width = "auto";
+      b.style.padding = "0 8px";
+    }
+    this.paint();
+  }
+
+  private button(icon: string, title: string, on: () => boolean, run: () => void, parent: HTMLElement = this.root, paints = this.paints): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
@@ -210,7 +266,7 @@ export class ShadingBar {
     b.onmouseenter = () => { if (!on()) b.style.color = "#fff"; };
     b.onmouseleave = paint;
     b.onclick = () => { run(); this.paint(); };
-    this.paints.push(paint);
+    paints.push(paint);
     parent.appendChild(b);
     return b;
   }
@@ -226,4 +282,8 @@ export class ShadingBar {
     this.marks.showSectionPlane(false);
     this.root.remove();
   }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
