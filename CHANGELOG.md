@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **✎ Markup in any app**: `markup(renderer, scene, { title, context })` mounts the Markup
+  button and overlay that `sketch()` and `appShell()` have over a renderer an app built
+  itself, and `tekto/react`'s `<Markup scene renderer />` does the same while mounted. Marks
+  resolve to the objects and record keys under them; Save writes view.png, clean.png and
+  markup.json. New playground page **Custom Viewer**: an app with its own UI, composed of
+  the viewer toolbar, the shading bar, the axis widget and Markup.
 - Ambient occlusion applies in Solid only: a hidden-line drawing stays black and white, and
   wireframe and ghost go without (7DHouse saw grey shading in hidden line).
 - **Lights are scene objects**: `scene.addLight(position, { kind: "point" | "spot",

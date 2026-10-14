@@ -14,7 +14,7 @@ const PAGES = [
   "particles", "camera", "gizmo",
   "app-shell", "site-editor", "drawing-sheet", "sketch-drawing",
   "pointer-2d",
-  "timber", "framed-wall", "framed-floor", "dxf-test", "dxf-3d",
+  "timber", "framed-wall", "framed-floor", "custom-viewer", "dxf-test", "dxf-3d",
 ] as const;
 
 /** Console errors and uncaught exceptions seen since the call. */
