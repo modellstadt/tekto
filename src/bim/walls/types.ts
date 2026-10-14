@@ -28,6 +28,7 @@
 import type { Mesh } from "../../core/geometry/mesh/Mesh";
 import type { Wall, WallSystem } from "../../core/geometry/walls";
 import type { RibbonEndTrim } from "../../core/geometry/ExtrudedRibbon";
+import { newBuffers, finishMesh } from "../../core/geometry/ExtrudedRibbon";
 import type { JointStyle } from "../../core/geometry/RibbonJoint";
 
 // ─── Property map ────────────────────────────────────────────────────
@@ -302,8 +303,11 @@ export class WallType {
  * - `layers` is populated when the wall type defines layered materials.
  *   Empty for purely-framed walls.
  * - `envelopeMesh` is the whole-wall envelope (single mesh from the
- *   underlying `ExtrudedRibbon`). Always present; useful for quick
- *   rendering and for monolithic walls as the primary mesh.
+ *   underlying `ExtrudedRibbon`), trimmed at its joints when it comes from
+ *   `WallSystem.realize()` (or a `WallContext` with trims), so the walls of a
+ *   system meet at their corners as `WallSystem.buildMesh()` draws them.
+ *   Always present; useful for quick rendering and for monolithic walls as
+ *   the primary mesh.
  * - `properties` is the merged Pset (wall instance overrides type defaults).
  */
 export interface RealizedWall {
@@ -327,7 +331,7 @@ export interface RealizedWall {
  */
 export function realize(wall: Wall, ctx?: WallContext): RealizedWall {
   const type = wall.type;
-  const envelopeMesh = wall.toMesh();
+  const envelopeMesh = ctx?.startTrim || ctx?.endTrim ? trimmedEnvelope(wall, ctx) : wall.toMesh();
   const parts = type?.construction ? type.construction(wall, ctx) : [];
   const layers = type?.layers ?? [];
   const properties: PropertyMap = { ...(type?.properties ?? {}), ...(wall.properties ?? {}) };
@@ -340,6 +344,14 @@ export function realize(wall: Wall, ctx?: WallContext): RealizedWall {
  * via the underlying `RibbonSystem`. Use this instead of looping over
  * walls + calling `realize(wall)` when you want junction-aware framing.
  */
+/** A wall's envelope cut at its joints: what `WallSystem.buildMesh()` draws for it. */
+function trimmedEnvelope(wall: Wall, ctx: WallContext): Mesh {
+  wall.syncOpeningsToRibbon();
+  const buf = newBuffers();
+  wall.ribbon.buildInto(buf, ctx.startTrim ?? null, ctx.endTrim ?? null);
+  return finishMesh(buf);
+}
+
 export function realizeSystem(system: WallSystem): RealizedWall[] {
   const trims = system.ribbons.computeTrims();
   const out: RealizedWall[] = [];

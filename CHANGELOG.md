@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fix: a realized wall's envelope meets its neighbours at the corners.**
+  `WallSystem.realize()` gave each wall `envelopeMesh = wall.toMesh()`, untrimmed, so at
+  every joint the envelopes stopped at the axes: a notch outside each corner, an overlap
+  inside. Now each is cut at its joints, as `WallSystem.buildMesh()` draws them (7DHouse's
+  massing model). A wall realized on its own is unchanged.
+
 - **A window to the slab**: in `HolzrahmenBau` and `BalloonFrame`, an opening whose head
   reaches the top plate (`headHeight ≥ height − top plates`) gets no header and no cripples
   above it; before, the header ran up through the top plate. The load over it is carried
