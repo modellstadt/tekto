@@ -20,7 +20,7 @@ export interface RendererCore {
   readonly externalObjects: Map<string, THREE.Object3D>;
   /** OrbitControls, when enabled. */
   readonly controls?: OrbitControls;
-  readonly config: { backgroundColor: number };
+  readonly config: { backgroundColor: number; units: string | null };
   readonly camera: THREE.PerspectiveCamera;
   readonly activeCamera: THREE.Camera;
   requestRender(): void;

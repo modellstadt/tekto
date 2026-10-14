@@ -34,6 +34,7 @@ export default function (container: HTMLElement) {
     navGizmo: true,
     // No top bar here: the render style, lighting and sun as icons in the view instead.
     shadingBar: true,
+    units: "m",                 // a site in metres: the section reads in metres
     // Notes that live with the model: ✎ Markup → "Keep as notes" keeps marks in the doc's
     // `notes` collection (saved, undoable, shared), pinned in the view.
     notes: doc,

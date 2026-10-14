@@ -382,3 +382,29 @@ test("section levels: a chip per storey cuts its plan above the floor; ticks; th
     catch (e) { return String(e); }
   })).toMatch(/non-finite elevation/);
 });
+
+test("without units the section is relative to the content: a share, read as a percentage", async ({ page }) => {
+  await page.goto("/testbench.html?page=mesh-factory");               // a sketch(): Y-up, no units
+  await page.waitForFunction(() => (window as any).__tekto?.harness === "sketch", null, { timeout: 15_000 });
+  const bar = page.locator("[data-tekto-shading-bar]");
+  const section = () => page.evaluate(() => (window as any).__tekto.owner.renderer.section);
+  await bar.getByRole("button", { name: /^Section/ }).click();
+  await bar.getByRole("button", { name: /^Plan: a horizontal cut/ }).click();
+  expect(await section()).toEqual({ axis: "y", at: 0.5 });
+  await expect(bar).toContainText("50 %");
+  await expect(bar).not.toContainText(" m");
+
+  // The slider moves the share; flipping keeps it.
+  await bar.getByLabel("Section position").evaluate((el: HTMLInputElement) => {
+    el.value = String(Number(el.min) + 0.35 * (Number(el.max) - Number(el.min)));
+    el.dispatchEvent(new Event("input"));
+  });
+  await expect.poll(async () => (await section())?.at).toBeCloseTo(0.35, 6);
+  expect((await section()).coordinate).toBeUndefined();
+  await expect(bar).toContainText("35 %");
+  await bar.getByRole("button", { name: "Keep the other side" }).click();
+  expect(await section()).toMatchObject({ axis: "y", flip: true });
+  expect((await section()).at).toBeCloseTo(0.35, 6);
+  // The Y-up scene's other vertical cut is Z.
+  await expect(bar.getByRole("button", { name: /^A cut across Z/ })).toBeVisible();
+});

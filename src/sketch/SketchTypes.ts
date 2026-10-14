@@ -60,6 +60,9 @@ export interface SketchConfig {
   /** The shading bar in the view's top-left corner: icons for the render style, the lighting
    *  and the sun (morning, noon, sunset). Default `false`. */
   shadingBar?: boolean;
+  /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset (default):
+   *  relative to the content's extent. */
+  units?: string;
 }
 
 // ─── Export / Import registrations (top-bar shell menus) ─────────────

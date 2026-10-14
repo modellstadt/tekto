@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`units`** (renderer, `sketch()`, `appShell()`): the scene's unit as a label (`"m"`,
+  `"mm"`, `"ft"`). Without it (the default) the shading bar's section is relative to the
+  content: the cut is a share of its extent (`at`, kept as the content changes) and reads
+  `35 %`; with it, the cut is a coordinate and reads `7.35 m`. Metres only where an app
+  declares them (the Site Editor and Framed Floor do). In 0.9.1 the section always read
+  metres.
 ## 0.9.1 — 2026-10-14
 
 The section in the shading bar: Off / Plan / X / Y, a slider in metres with a frame showing the plane, flip, and a chip per storey that cuts its plan above the floor.

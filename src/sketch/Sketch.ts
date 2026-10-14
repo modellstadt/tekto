@@ -364,6 +364,7 @@ export class SketchInstance {
       up: this.config.up ?? "y",
       navGizmo: this.config.navGizmo ?? false,
       shadingBar: this.config.shadingBar ?? false,
+      units: this.config.units ?? null,
     });
   }
 
