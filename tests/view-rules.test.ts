@@ -11,7 +11,7 @@ import * as THREE from "three";
 import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
-  orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection, calloutSamples, occludes,
+  orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection, calloutSamples, occludes, rayTargets, cameraKey,
   groundGrid, gridLineColour, daylight, sunDirection, SUN_PRESETS,
 } from "../src/render/viewRules";
 
@@ -351,5 +351,23 @@ describe("sun presets", () => {
       expect(Math.hypot(d.x, d.y, d.z)).toBeCloseTo(1, 9);
       expect(Math.asin(d.z) * 180 / Math.PI).toBeCloseTo(SUN_PRESETS[n].altitude, 9);
     }
+  });
+});
+
+describe("callout checks on a large model", () => {
+  it("keys a still camera the same whatever the sign of its noise", () => {
+    expect(cameraKey([1e-13, 2], [1])).toBe(cameraKey([-1e-13, 2], [1]));
+    expect(cameraKey([0.5])).not.toBe(cameraKey([0.500002]));
+  });
+
+  it("casts at surfaces only: no crease lines, no wire overlay", () => {
+    const group = new THREE.Group();
+    const surface = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial());
+    const overlay = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial({ wireframe: true }));
+    const creases = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial());
+    group.add(surface, overlay, creases);
+    const hidden = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial());
+    hidden.visible = false;
+    expect(rayTargets([group, hidden])).toEqual([surface]);
   });
 });

@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fix: callouts on a large model fill the margins.** On BuildGraph's 446-element IFC with
+  every element labelled, 4 labels showed and the rest never did: the visibility check
+  restarted every few seconds and got through one element per frame.
+  - The camera key printed an element at zero as `"0.000000"` or `"-0.000000"` by the sign
+    of its noise, so a still camera "moved" and restarted the check (`cameraKey`).
+  - Rays tested every child of every object: crease lines, which three.js picks within a
+    whole unit of the ray, and the solid wire overlay, the same triangles again. They test
+    the surfaces now, gathered once per check (`rayTargets`), three times cheaper.
+
 ## 0.9.5 — 2026-10-14
 
 Drawings as PDF: `writePdf2D` writes the same 2D content as `writeDxf2D` as a vector PDF at a true scale.
