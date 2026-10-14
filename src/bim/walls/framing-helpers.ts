@@ -453,6 +453,12 @@ export interface HeaderSillConfig {
  * plus below-sill cripples for one opening. Shared by the NA balloon-frame and
  * DE Holzrahmenbau builders, which differ only in the edge-stud strategy
  * (handled by their callers) and the labels/margins captured in `cfg`.
+ *
+ * An opening whose head reaches the top plate (`headHeight` within a
+ * millimetre of `height − top plates`, or above) gets no header and no
+ * cripples above it: there is no room for them, and the load over it is
+ * carried by something above the wall, an upstand beam (Überzug) in a parapet
+ * or the wall of the storey above acting as a beam. A window "to the slab".
  */
 export function addHeaderSillCripples(
   parts: WallPart[], wall: Wall, opening: WallOpening,
@@ -472,11 +478,13 @@ export function addHeaderSillCripples(
   const wallH = wall.height;
   const isDoor = opening.sillHeight <= 0.001;
 
-  // Header (across-wall = stud depth; depth scales with width).
-  const headerDepth = headerDepthFor(opening.width);
+  // Header (across-wall = stud depth; depth scales with width), unless the
+  // opening runs up to the top plate: then something above the wall carries it.
+  const toPlate    = opening.headHeight >= wallH - topAll - 0.001;
+  const headerDepth = toPlate ? 0 : headerDepthFor(opening.width);
   const headerZ    = baseZ + opening.headHeight;
   const headerCl   = subCenterline(cl, uL - cfg.headerMargin, uR + cfg.headerMargin);
-  if (headerCl.length >= 2 && polylineLength(headerCl) > 1e-3) {
+  if (!toPlate && headerCl.length >= 2 && polylineLength(headerCl) > 1e-3) {
     parts.push(makeBeam(
       `${cfg.headerLabel} (op ${idx})`, "header", headerCl,
       headerZ, headerDepth, stud.h, material,
