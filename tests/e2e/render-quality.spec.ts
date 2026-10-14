@@ -391,8 +391,8 @@ test("without units the section is relative to the content: a share, read as a p
   await bar.getByRole("button", { name: /^Section/ }).click();
   await bar.getByRole("button", { name: /^Plan: a horizontal cut/ }).click();
   expect(await section()).toEqual({ axis: "y", at: 0.5 });
-  await expect(bar).toContainText("50 %");
-  await expect(bar).not.toContainText(" m");
+  const readout = () => bar.getByLabel("Section position").evaluate((el) => el.parentElement!.parentElement!.lastElementChild!.textContent);
+  expect(await readout()).toBe("50 %");                                 // a share, not metres
 
   // The slider moves the share; flipping keeps it.
   await bar.getByLabel("Section position").evaluate((el: HTMLInputElement) => {
@@ -421,4 +421,47 @@ test("the shading bar's AO toggle drives ambient occlusion, and follows it set i
   await expect(ao).toHaveAttribute("aria-pressed", "true");
   await page.evaluate(() => (window as any).__tekto.owner.renderer.setAmbientOcclusion(false));
   await expect(ao).toHaveAttribute("aria-pressed", "false");
+});
+
+test("the shading bar's overlays, Frame and Snapshot", async ({ page }) => {
+  await page.goto("/testbench.html?page=site-editor");                // shadingBar, notes
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  const bar = page.locator("[data-tekto-shading-bar]");
+  const r = () => page.evaluate(() => {
+    const rr = (window as any).__tekto.owner.renderer;
+    let wire = 0, wireOn = 0;
+    rr.threeScene.traverse((o: any) => { if (o.userData.wireOverlay) { wire++; if (o.visible) wireOn++; } });
+    return { overlays: rr.overlays, grid: rr.fadingGrid?.mesh.visible, wire, wireOn };
+  });
+  expect(Object.keys((await r()).overlays)).toEqual(["grid", "axes", "wireframe", "labels", "notes"]);
+
+  await bar.getByRole("button", { name: /^Overlays/ }).click();
+  await bar.getByRole("button", { name: /^Grid: show/ }).click();
+  await bar.getByRole("button", { name: /^Wireframe: show/ }).click();
+  const off = await r();
+  expect(off.overlays).toMatchObject({ grid: false, wireframe: false, axes: true, notes: true });
+  expect(off.grid).toBe(false);
+  expect(off.wire).toBeGreaterThan(0);
+  expect(off.wireOn).toBe(0);
+  await expect(bar.getByRole("button", { name: /^Grid: show/ })).toHaveAttribute("aria-pressed", "false");
+  // Switched in code, the popover follows; a block added now is built without its wireframe.
+  await page.evaluate(() => {
+    (window as any).__tekto.owner.renderer.setOverlays({ grid: true });
+    const { doc } = (window as any).siteEditor;
+    doc.add("blocks", { x: 20, y: 0, w: 4, d: 3, h: 6 });
+  });
+  await expect(bar.getByRole("button", { name: /^Grid: show/ })).toHaveAttribute("aria-pressed", "true");
+  expect((await r()).wireOn).toBe(0);
+  expect(await page.evaluate(() => {
+    try { (window as any).__tekto.owner.renderer.setOverlays({ nope: true }); return "no error"; } catch (e) { return String(e); }
+  })).toMatch(/no overlay "nope"/);
+
+  // Frame: the selection, or everything.
+  await page.evaluate(() => { const { doc, selection } = (window as any).siteEditor; selection.select([`blocks/${doc.ids("blocks")[1]}`]); });
+  await bar.getByRole("button", { name: /^Frame/ }).click();
+  await expect.poll(() => page.evaluate(() => Math.round((window as any).__tekto.owner.renderer.controls.target.x))).toBe(20);
+
+  // Snapshot: a PNG download.
+  const [dl] = await Promise.all([page.waitForEvent("download"), bar.getByRole("button", { name: /^Snapshot/ }).click()]);
+  expect(dl.suggestedFilename()).toMatch(/^view-\d{8}-\d{4}\.png$/);
 });

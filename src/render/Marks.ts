@@ -77,6 +77,17 @@ export class Marks {
 
   private highlightIds: readonly string[] | null = null;
 
+  /** The selection as highlighted (scene ids), empty when none. */
+  get highlighted(): readonly string[] { return this.highlightIds ?? []; }
+
+  private calloutsShown = true;
+
+  /** Show or hide the callout labels (they keep working while hidden). */
+  setCalloutsVisible(on: boolean): void {
+    this.calloutsShown = on;
+    this.callouts?.setVisible(on);
+  }
+
   setSelectionHighlight(ids: string | readonly string[] | null): void {
     this.core.requestRender();
     this.highlightIds = ids === null ? null : typeof ids === "string" ? [ids] : [...ids];
@@ -302,6 +313,7 @@ export class Marks {
       onPick: (id) => this.calloutHandlers.onPick?.(id),
       onHover: (id) => this.calloutHandlers.onHover?.(id),
     });
+    this.callouts.setVisible(this.calloutsShown);
     this.callouts.setItems(items);
     // Keep the last answer for what is still there, so a relabel doesn't blank the margins
     // while the new one is worked out.
