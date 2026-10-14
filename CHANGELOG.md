@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Overlays, Frame and Snapshot in the shading bar**, as in Blender's viewport header.
+  `renderer.setOverlays({ grid, axes, wireframe, labels })` (and `renderer.overlays`) shows
+  or hides what is drawn over the model; `registerOverlay(name, apply)` adds an app's own,
+  and a notes layer registers "notes". The bar's overlays popover lists them all.
+  `renderer.frame()` frames the selection, or everything when nothing is selected;
+  `renderer.saveSnapshot()` saves the view as a PNG with its notes and drawings.
 ## 0.9.2 — 2026-10-14
 
 Units are the app's to declare (the section reads relative to the content by default, metres where an app says so), and ambient occlusion in the shading bar.

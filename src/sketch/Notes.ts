@@ -39,6 +39,8 @@ export interface NotesRenderer {
   worldToScreen(world: Vec3): { x: number; y: number; visible: boolean };
   onDraw(cb: () => void): () => void;
   requestRender(): void;
+  /** When the renderer has it, the notes join its overlays ("notes") and the shading bar's popover. */
+  registerOverlay?(name: string, apply: (on: boolean) => void, on?: boolean): () => void;
   setProjection(projection: "perspective" | "orthographic"): void;
   setCameraPosition(x: number, y: number, z: number): void;
   lookAt(x: number, y: number, z: number): void;
@@ -72,6 +74,7 @@ export class NotesLayer {
     this.pinLayer.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:16;";
     host.append(this.canvas, this.pinLayer);
     this.offs.push(renderer.onDraw(() => this.draw()));
+    if (renderer.registerOverlay) this.offs.push(renderer.registerOverlay("notes", (on) => this.setVisible(on), this.shown));
     this.offs.push(doc.onChange((changes) => {
       if (!changes.some((c) => c.collection === this.collection)) return;
       if (this.openId && !doc.has(this.collection, this.openId)) this.closeCard();

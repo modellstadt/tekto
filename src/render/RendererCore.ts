@@ -21,6 +21,8 @@ export interface RendererCore {
   /** OrbitControls, when enabled. */
   readonly controls?: OrbitControls;
   readonly config: { backgroundColor: number; units: string | null };
+  /** Whether a built-in overlay ("grid", "axes", "wireframe", "labels") is on. */
+  overlay(name: string): boolean;
   readonly camera: THREE.PerspectiveCamera;
   readonly activeCamera: THREE.Camera;
   requestRender(): void;

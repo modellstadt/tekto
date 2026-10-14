@@ -27,6 +27,10 @@ import { Pointer, type GizmoMode, type PickInfo } from "./Pointer";
 import { Marks } from "./Marks";
 import { FadingGrid } from "./FadingGrid";
 import { ShadingBar, type ShadingBarCorner } from "./ShadingBar";
+import { downloadSnapshot } from "./snapshot";
+
+/** The overlays a renderer has itself (an app can register more, such as notes). */
+type BuiltInOverlay = "grid" | "axes" | "wireframe" | "labels";
 import type { SunPreset } from "./viewRules";
 import { AmbientOcclusion, type AmbientOcclusionOptions } from "./AmbientOcclusion";
 import { shown } from "./viewRules";
@@ -128,6 +132,8 @@ export class ThreeRenderer {
   private gridHelper: THREE.Object3D | null = null;
   private fadingGrid: FadingGrid | null = null;
   private shadingBar: ShadingBar | null = null;
+  private overlayState: Record<BuiltInOverlay, boolean> = { grid: true, axes: true, wireframe: true, labels: true };
+  private overlayExtra = new Map<string, { apply(on: boolean): void; on: boolean }>();
   private ao: AmbientOcclusion;
   private gridDirty = true;
   private axesHelper: THREE.Object3D | null = null;
@@ -180,6 +186,7 @@ export class ThreeRenderer {
     this.core = {
       gScene, threeScene: this.threeScene, renderer: this.renderer, container, isZUp: this.isZUp,
       objectMap: this.objectMap, externalObjects: this.externalObjects, config: this.config, camera: this.camera,
+      overlay: (name: string) => this.overlayState[name as BuiltInOverlay] ?? true,
       get controls() { return self.controls; },
       get activeCamera() { return self.rig.activeCamera; },
       requestRender: () => this.requestRender(),
@@ -190,7 +197,7 @@ export class ThreeRenderer {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -439,14 +446,71 @@ export class ThreeRenderer {
    */
   setHelpersVisible(visible: boolean): void {
     this.hideHelpers = !visible;
-    if (this.gridHelper) this.gridHelper.visible = visible;
-    if (this.axesHelper) this.axesHelper.visible = visible;
+    if (this.gridHelper) this.gridHelper.visible = visible && this.overlayState.grid;
+    if (this.axesHelper) this.axesHelper.visible = visible && this.overlayState.axes;
     this.threeScene.traverse((o) => {
       if (this._isHelper(o.userData?.objType)) {
         o.visible = visible ? (o.userData.styleVisible ?? true) : false;
       }
     });
     this.requestRender();
+  }
+
+  /**
+   * What is drawn over the model besides it, each on or off: `grid`, `axes`, `wireframe`
+   * (the faint triangles on solid surfaces), `labels` (callouts), and any overlay an app
+   * registered (`registerOverlay`; a notes layer registers "notes"). The shading bar's
+   * overlays popover lists them. An unknown name fails loudly.
+   */
+  setOverlays(overlays: Record<string, boolean>): void {
+    for (const [name, on] of Object.entries(overlays)) {
+      if (name in this.overlayState) this.overlayState[name as BuiltInOverlay] = on;
+      else if (this.overlayExtra.has(name)) { const o = this.overlayExtra.get(name)!; o.on = on; o.apply(on); }
+      else throw new Error(`setOverlays: no overlay "${name}" (there are ${Object.keys(this.overlays).join(", ")})`);
+    }
+    const o = this.overlayState;
+    if (this.gridHelper) this.gridHelper.visible = o.grid && !this.hideHelpers;
+    if (this.axesHelper) this.axesHelper.visible = o.axes && !this.hideHelpers;
+    this.threeScene.traverse((t) => { if (t.userData.wireOverlay) t.visible = o.wireframe; });
+    this.marks.setCalloutsVisible(o.labels);
+    this.shadingBar?.paint();
+    this.requestRender();
+  }
+
+  /** The overlays there are and whether each is on (see `setOverlays`). */
+  get overlays(): Record<string, boolean> {
+    const out: Record<string, boolean> = {};
+    if (this.gridHelper) out.grid = this.overlayState.grid;
+    if (this.axesHelper) out.axes = this.overlayState.axes;
+    out.wireframe = this.overlayState.wireframe;
+    out.labels = this.overlayState.labels;
+    for (const [name, o] of this.overlayExtra) out[name] = o.on;
+    return out;
+  }
+
+  /**
+   * Add an overlay of the app's own to `overlays` and the shading bar's popover: `apply(on)`
+   * shows or hides it. Returns the unregister.
+   */
+  registerOverlay(name: string, apply: (on: boolean) => void, on = true): () => void {
+    if (name in this.overlayState) throw new Error(`registerOverlay: "${name}" is a built-in overlay`);
+    this.overlayExtra.set(name, { apply, on });
+    this.shadingBar?.paint();
+    return () => { this.overlayExtra.delete(name); this.shadingBar?.paint(); };
+  }
+
+  /** Frame the selection (the highlighted objects), or everything when nothing is selected:
+   *  Blender's Frame Selected / Home. Animated. */
+  frame(): void {
+    const sel = this.marks.highlighted.filter((id) => this.objectMap.has(id));
+    const ids = sel.length ? sel : [...this.objectMap.keys()].filter((id) => this.isObjectShown(id));
+    if (ids.length) this.rig.fitTo(ids, sel.length ? {} : { margin: 1.3 });
+  }
+
+  /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named
+   *  `fileName` with a date-time stamp. */
+  saveSnapshot(fileName = "view.png"): void {
+    downloadSnapshot(this, this.container.parentElement ?? this.container, fileName);
   }
 
   // ── Get Three.js object for a scene ID ──

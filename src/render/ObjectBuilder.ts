@@ -446,7 +446,10 @@ export class ObjectBuilder {
         const subtleWire = new THREE.MeshBasicMaterial({
           color: 0xffffff, wireframe: true, opacity: 0.04, transparent: true,
         });
-        group.add(new THREE.Mesh(geo.clone(), subtleWire));
+        const wire = new THREE.Mesh(geo.clone(), subtleWire);
+        wire.userData.wireOverlay = true;                    // the "wireframe" overlay switches it
+        wire.visible = this.core.overlay("wireframe");
+        group.add(wire);
       }
     }
 

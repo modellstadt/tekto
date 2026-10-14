@@ -32,6 +32,12 @@ export const SHADING_ICONS = {
   sunset: HORIZON("M9 6.5l3 3 3-3"),
   // Ambient occlusion: two faces meeting, darkened into the corner.
   ao: svg(`<path d="M5 4v15h15"/><path d="M5 9.5v9.5h9.5A9.5 9.5 0 0 0 5 9.5z" fill="currentColor" fill-opacity="0.5" stroke="none"/>`),
+  // Overlays: two overlapping rings, as Blender draws it.
+  overlays: svg(`<circle cx="9.5" cy="12" r="5.5"/><circle cx="14.5" cy="12" r="5.5"/>`),
+  // Frame: the corners of a view around a dot.
+  frame: svg(`<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>`),
+  // Snapshot: a camera.
+  snapshot: svg(`<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/>`),
   // A box with a slice through it.
   section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
   flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`),
@@ -40,6 +46,16 @@ export const SHADING_ICONS = {
 const MODES: [RenderMode, string][] = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hidden line"], ["ghost", "Ghost"]];
 const LIGHTS: [LightingMode, string][] = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
 const SUNS: [SunPreset, string][] = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
+
+/** What the bar asks of its renderer beyond the parts: overlays, framing, a snapshot. */
+export interface ShadingBarHost {
+  readonly overlays: Record<string, boolean>;
+  setOverlays(overlays: Record<string, boolean>): void;
+  frame(): void;
+  saveSnapshot(fileName?: string): void;
+}
+
+const OVERLAY_LABELS: Record<string, string> = { grid: "Grid", axes: "Axes", wireframe: "Wireframe", labels: "Labels", notes: "Notes" };
 
 /** Corner of the view the bar sits in. */
 export type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -52,11 +68,13 @@ export class ShadingBar {
   private cutHeight = 1.2;
   private levelRow = document.createElement("div");
   private levelPaints: (() => void)[] = [];
+  private overlayPaints: (() => void)[] = [];
   private setCut: ((axis: "x" | "y" | "z" | null, coordinate?: number) => void) | null = null;
   private paints: (() => void)[] = [];
   private off: () => void;
 
-  constructor(private core: RendererCore, private lighting: Lighting, private marks: Marks, private ao: AmbientOcclusion, corner: ShadingBarCorner = "top-left") {
+  constructor(private core: RendererCore, private lighting: Lighting, private marks: Marks, private ao: AmbientOcclusion,
+    private view: ShadingBarHost, corner: ShadingBarCorner = "top-left") {
     const host = core.container;
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
     const [v, h] = [corner.startsWith("top") ? "top" : "bottom", corner.endsWith("left") ? "left" : "right"];
@@ -90,6 +108,44 @@ export class ShadingBar {
     cutPop.style.gap = "6px";
     this.button(SHADING_ICONS.section, "Section: cut the model", () => this.openPop === cutPop || !!this.marks.section, () => this.toggle(cutPop));
     this.sectionControls(cutPop);
+    this.separator();
+
+    // Overlays: a switch each for what is drawn over the model (and any the app registered).
+    const overlayPop = this.popover(v, h);
+    overlayPop.style.flexDirection = "column";
+    overlayPop.style.minWidth = "120px";
+    this.button(SHADING_ICONS.overlays, "Overlays: grid, axes, wireframe, labels, notes", () => this.openPop === overlayPop, () => this.toggle(overlayPop));
+    let listed = "";
+    this.paints.push(() => {
+      const names = Object.keys(this.view.overlays);
+      if (names.join() === listed) return;                          // rebuilt only when the list changes
+      listed = names.join();
+      overlayPop.replaceChildren();
+      this.overlayPaints = [];
+      for (const name of names) {
+        const label = OVERLAY_LABELS[name] ?? name[0].toUpperCase() + name.slice(1);
+        const b = this.button(`<span style="width:14px;font:600 11px/1 system-ui,sans-serif">${"✓"}</span>`
+          + `<span style="font:500 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${escapeHtml(label)}</span>`,
+          `${label}: show or hide`, () => false,                     // a checklist: a tick, not a filled button
+          () => this.view.setOverlays({ [name]: !(this.view.overlays[name] ?? false) }), overlayPop, this.overlayPaints);
+        b.style.width = "auto";
+        b.style.justifyContent = "flex-start";
+        b.style.gap = "6px";
+        b.style.padding = "0 10px 0 6px";
+        const tick = b.firstElementChild as HTMLElement;
+        this.overlayPaints.push(() => {
+          const on = !!this.view.overlays[name];
+          tick.style.visibility = on ? "visible" : "hidden";
+          b.style.color = on ? "#e8ebf0" : "rgba(232,235,240,.5)";
+          b.setAttribute("aria-pressed", String(on));
+        });
+      }
+    });
+    this.paints.push(() => { for (const p of this.overlayPaints) p(); });
+
+    // Frame the selection or everything; save the view.
+    this.button(SHADING_ICONS.frame, "Frame: the selection, or everything", () => false, () => this.view.frame());
+    this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
     host.appendChild(this.root);
 
     // Follow the state wherever it is changed.
