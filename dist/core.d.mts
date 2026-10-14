@@ -2531,8 +2531,11 @@ declare class WallType {
  * - `layers` is populated when the wall type defines layered materials.
  *   Empty for purely-framed walls.
  * - `envelopeMesh` is the whole-wall envelope (single mesh from the
- *   underlying `ExtrudedRibbon`). Always present; useful for quick
- *   rendering and for monolithic walls as the primary mesh.
+ *   underlying `ExtrudedRibbon`), trimmed at its joints when it comes from
+ *   `WallSystem.realize()` (or a `WallContext` with trims), so the walls of a
+ *   system meet at their corners as `WallSystem.buildMesh()` draws them.
+ *   Always present; useful for quick rendering and for monolithic walls as
+ *   the primary mesh.
  * - `properties` is the merged Pset (wall instance overrides type defaults).
  */
 interface RealizedWall {

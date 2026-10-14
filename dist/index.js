@@ -17723,11 +17723,17 @@ var WallType = class {
 };
 function realize(wall, ctx) {
   const type = wall.type;
-  const envelopeMesh = wall.toMesh();
+  const envelopeMesh = ctx?.startTrim || ctx?.endTrim ? trimmedEnvelope(wall, ctx) : wall.toMesh();
   const parts = type?.construction ? type.construction(wall, ctx) : [];
   const layers = type?.layers ?? [];
   const properties = { ...type?.properties ?? {}, ...wall.properties ?? {} };
   return { wall, parts, layers, envelopeMesh, properties };
+}
+function trimmedEnvelope(wall, ctx) {
+  wall.syncOpeningsToRibbon();
+  const buf = newBuffers();
+  wall.ribbon.buildInto(buf, ctx.startTrim ?? null, ctx.endTrim ?? null);
+  return finishMesh(buf);
 }
 function realizeSystem(system) {
   const trims = system.ribbons.computeTrims();
@@ -18283,10 +18289,11 @@ function addHeaderSillCripples(parts, wall, opening, uL, uR, idx, studProfile, p
   const topAll = plateVerticalH * topPlateCount;
   const wallH = wall.height;
   const isDoor = opening.sillHeight <= 1e-3;
-  const headerDepth = headerDepthFor(opening.width);
+  const toPlate = opening.headHeight >= wallH - topAll - 1e-3;
+  const headerDepth = toPlate ? 0 : headerDepthFor(opening.width);
   const headerZ = baseZ + opening.headHeight;
   const headerCl = subCenterline(cl, uL - cfg.headerMargin, uR + cfg.headerMargin);
-  if (headerCl.length >= 2 && polylineLength(headerCl) > 1e-3) {
+  if (!toPlate && headerCl.length >= 2 && polylineLength(headerCl) > 1e-3) {
     parts.push(makeBeam(
       `${cfg.headerLabel} (op ${idx})`,
       "header",

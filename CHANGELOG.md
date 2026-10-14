@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.9.4 — 2026-10-14
+
+Two wall fixes from 7DHouse: a window to the slab gets no header through the top plate, and the walls of a system meet at their corners when realized one by one.
+
 - **Fix: a realized wall's envelope meets its neighbours at the corners.**
   `WallSystem.realize()` gave each wall `envelopeMesh = wall.toMesh()`, untrimmed, so at
   every joint the envelopes stopped at the axes: a notch outside each corner, an overlap
