@@ -85,6 +85,9 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   /** The shading bar in a viewport corner (`true` = top left): icons for the render style, the
    *  lighting and the sun (morning, noon, sunset). Default `false`. */
   shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset: relative to
+   *  the content's extent. */
+  units?: string;
 }
 
 // ─── App Shell instance ──────────────────────
@@ -244,6 +247,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
     shadingBar: config.shadingBar ?? false,
+    units: config.units ?? null,
     ...config.renderer,
   });
 

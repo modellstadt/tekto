@@ -43,6 +43,7 @@ export default function (container: HTMLElement) {
     topBar: true,
     navGizmo: true,
     shadingBar: true,
+    units: "m",
     camera: [7.5, -5, 7.5],
     target: [3, 2.25, 2.8],
     params: {

@@ -129,27 +129,40 @@ export class ShadingBar {
       const b = this.core.contentBox();
       return b.isEmpty() ? null : [b.min[axis], b.max[axis]];
     };
-    const set = (axis: "x" | "y" | "z" | null, coordinate?: number, flip = this.marks.section?.flip ?? false) => {
+    // In the scene's units a cut is a coordinate; without them, a share of the content (`at`),
+    // which stays where it is relative to the content as the content changes.
+    const units = this.core.config.units;
+    type Where = { coordinate: number } | { at: number };
+    const here = (): Where | undefined => {
+      const sec = this.marks.section;
+      return !sec ? undefined : sec.coordinate !== undefined ? { coordinate: sec.coordinate } : { at: sec.at ?? 0.5 };
+    };
+    const set = (axis: "x" | "y" | "z" | null, where?: Where, flip = this.marks.section?.flip ?? false) => {
       if (!axis) { this.marks.setSection(null); this.paint(); return; }
       const r = range(axis);
-      this.marks.setSection({ axis, coordinate: coordinate ?? (r ? (r[0] + r[1]) / 2 : 0), ...(flip ? { flip } : {}) });
+      const w: Where = where ?? (units ? { coordinate: r ? (r[0] + r[1]) / 2 : 0 } : { at: 0.5 });
+      this.marks.setSection({ axis, ...w, ...(flip ? { flip } : {}) });
       this.paint();
     };
+    /** The readout: the coordinate in the scene's units, or its share of the content. */
+    const show = (c: number, r: [number, number]) => units
+      ? `${c.toFixed(2)} ${units}`
+      : `${Math.round(((c - r[0]) / Math.max(r[1] - r[0], 1e-12)) * 100)} %`;
     for (const [label, axis, title] of axes) {
       const b = this.button(`<span style="font:600 10px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${label}</span>`,
-        title, () => (this.marks.section?.axis ?? null) === axis, () => set(axis, axis === this.marks.section?.axis ? this.marks.sectionCoordinate() ?? undefined : undefined), row);
+        title, () => (this.marks.section?.axis ?? null) === axis, () => set(axis, axis === this.marks.section?.axis ? here() : undefined), row);
       b.style.width = label.length > 1 ? "36px" : "26px";
     }
     const sep = document.createElement("div");
     sep.style.cssText = "width:1px;height:16px;margin:0 3px;background:rgba(255,255,255,.14);";
     row.appendChild(sep);
-    this.setCut = (axis, coordinate) => set(axis, coordinate);
+    this.setCut = (axis, coordinate) => set(axis, coordinate === undefined ? undefined : { coordinate });
     this.levelRow.style.cssText = "display:none;flex-wrap:wrap;gap:2px;max-width:220px;";
     this.paints.push(() => { for (const p of this.levelPaints) p(); });
     this.button(SHADING_ICONS.flip, "Keep the other side", () => !!this.marks.section?.flip,
-      () => { const sec = this.marks.section; if (sec) set(sec.axis, this.marks.sectionCoordinate() ?? undefined, !sec.flip); }, row);
+      () => { const sec = this.marks.section; if (sec) set(sec.axis, here(), !sec.flip); }, row);
 
-    // Where: a slider over the content's extent along the axis, in metres.
+    // Where: a slider over the content's extent along the axis (in scene coordinates).
     ensureSliderStyle(document);
     const line = document.createElement("div");
     line.style.cssText = "display:flex;gap:8px;align-items:center;padding:2px 4px 4px;";
@@ -182,15 +195,16 @@ export class ShadingBar {
         const near = planCuts().reduce((best, c) => Math.abs(c - pending!) < Math.abs(best - pending!) ? c : best, Infinity);
         if (Math.abs(near - pending) < span * 0.02) { pending = near; slider.value = String(near); }
       }
-      value.textContent = `${pending.toFixed(2)} m`;
+      value.textContent = show(pending, [Number(slider.min), Number(slider.max)]);
       this.marks.showSectionPlane(true);
       clearTimeout(hide);
       if (!frame) frame = requestAnimationFrame(() => {
         frame = 0;
         const sec = this.marks.section;
         if (sec && pending !== null) {
-          const { at: _share, ...rest } = sec;                         // a coordinate now, not a share
-          this.marks.setSection({ ...rest, coordinate: pending });
+          const { at: _share, coordinate: _c, ...rest } = sec;
+          const lo = Number(slider.min), hi = Number(slider.max);
+          this.marks.setSection(units || hi <= lo ? { ...rest, coordinate: pending } : { ...rest, at: (pending - lo) / (hi - lo) });
           this.paint();                                                  // a storey's chip lights when it lands on one
         }
         this.marks.showSectionPlane(true);
@@ -211,7 +225,7 @@ export class ShadingBar {
         slider.step = String(Math.max((r[1] - r[0]) / 500, 1e-4));
         const c = this.marks.sectionCoordinate() ?? r[0];
         if (document.activeElement !== slider) slider.value = String(c);
-        value.textContent = `${c.toFixed(2)} m`;
+        value.textContent = show(c, r);
       } else {
         value.textContent = "—";
       }

@@ -63,6 +63,13 @@ export interface ThreeRendererConfig {
    *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
    *  viewport header. The renderer draws it, so an app only switches it on. */
   shadingBar: boolean | ShadingBarCorner;
+  /**
+   * The scene's unit, as a label (`"m"`, `"mm"`, `"ft"`): readouts such as the shading bar's
+   * section show coordinates in it, and a cut stays at its coordinate. Unset (null, the
+   * default): readouts are relative to the content's extent (`35 %`), and a cut stays at its
+   * share of the content as the content changes. An app that knows its units says so.
+   */
+  units: string | null;
 }
 
 // Style keys that never change the three.js object: layer is metadata, WebGL
@@ -86,6 +93,7 @@ const DEFAULTS: ThreeRendererConfig = {
   up: "y",
   navGizmo: false,
   shadingBar: false,
+  units: null,
 };
 
 /** How long a frame may spend building crease lines before it draws. */
