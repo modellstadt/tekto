@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`flatLighting: "plain"`** (renderer config): Flat lighting under a white sky, bright enough
+  that a face toward the sky shows its own colour, which is the balance the old `Viewport`
+  drew with (`lightBalance("shaded", false)`). For an app whose colours are a key beside the
+  model: BuildGraph's evidence colours rendered at about a third of their brightness under
+  the default, and a colour that does not match its legend states something false. The
+  default stays `"sketch"` (the dim blue sky tuned for a dark page); Studio is unaffected.
+  `flatLights(style)` is the rule.
+
 ## 0.9.5 — 2026-10-14
 
 Drawings as PDF: `writePdf2D` writes the same 2D content as `writeDxf2D` as a vector PDF at a true scale.

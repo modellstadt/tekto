@@ -3,6 +3,7 @@
  * share: the scene on both sides, the canvas, the camera in use, and a few questions only
  * the whole renderer can answer. Internal — apps use ThreeRenderer.
  */
+import type { FlatLighting } from "./viewRules";
 import type * as THREE from "three";
 // @ts-ignore — OrbitControls typings vary across Three.js versions
 import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -20,7 +21,7 @@ export interface RendererCore {
   readonly externalObjects: Map<string, THREE.Object3D>;
   /** OrbitControls, when enabled. */
   readonly controls?: OrbitControls;
-  readonly config: { backgroundColor: number; units: string | null };
+  readonly config: { backgroundColor: number; units: string | null; flatLighting: FlatLighting };
   /** Whether a built-in overlay ("grid", "axes", "wireframe", "labels") is on. */
   overlay(name: string): boolean;
   readonly camera: THREE.PerspectiveCamera;
