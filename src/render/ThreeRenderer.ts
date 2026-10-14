@@ -684,8 +684,9 @@ export class ThreeRenderer {
   /**
    * Ambient occlusion: darken where surfaces meet and close in (corners, reveals, under
    * decks and steps), with three's GTAO multiplied over the drawn frame, so tone mapping,
-   * background, grid and the section stay as they are; it follows the section. Perspective
-   * views only: the orthographic drawing views go without. `true`, `false`, or
+   * background, grid and the section stay as they are; it follows the section. Solid mode
+   * in perspective only: hidden line stays black and white, and the orthographic drawing
+   * views go without. `true`, `false`, or
    * `{ radius, intensity }`: how far it reaches (m, default 0.6) and how dark (0..1, 0.85).
    */
   setAmbientOcclusion(on: boolean | AmbientOcclusionOptions): void { this.ao.set(on); }
