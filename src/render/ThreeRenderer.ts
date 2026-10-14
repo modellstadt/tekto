@@ -500,6 +500,18 @@ export class ThreeRenderer {
     this._needsRender = false;
     this.rig.updateGizmo();
     this.marks.drawCallouts();
+    for (const cb of this.drawListeners) cb();
+  }
+
+  private drawListeners = new Set<() => void>();
+
+  /**
+   * Run `cb` after every frame is drawn, for an overlay that follows the camera (notes,
+   * labels of your own): the camera and the view are current then. Returns the unsubscribe.
+   */
+  onDraw(cb: () => void): () => void {
+    this.drawListeners.add(cb);
+    return () => this.drawListeners.delete(cb);
   }
 
   /**

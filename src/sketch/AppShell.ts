@@ -45,6 +45,8 @@ import { getTheme, Theme } from "../gui/theme";
 import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
 import { Commands, viewCommands } from "../gui/Commands";
 import { viewerToolbar, type TopBarOptions } from "./ViewerToolbar";
+import { NotesLayer, type Note } from "./Notes";
+import type { Doc } from "../collab/Doc";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
 
 // ─── Config ──────────────────────────────────
@@ -72,6 +74,10 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   topBar?: boolean | TopBarOptions;
   /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
   markup?: boolean;
+  /** Notes that live with the model: the doc whose `notes` collection keeps them (or
+   *  `{ doc, collection, author }`). Markup then offers "Keep as notes", and the notes are
+   *  drawn over the view with a pin each (`app.notes`). */
+  notes?: Doc<any> | { doc: Doc<any>; collection?: string; author?: string };
   /** The axis widget in a viewport corner (`true` = bottom right): click an axis for a plan
    *  or an elevation, toggle persp/ortho under it. Default `false` — an app may have its own
    *  panels in that corner. */
@@ -95,6 +101,8 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
    *  typing in a field); agents list and run them through `window.__tekto`. The view commands
    *  (`view.top`, `view.fitAll`, …) are there from the start, without keys. */
   commands: Commands;
+  /** The notes layer when `notes` was given: show, hide, go to, keep. */
+  notes: NotesLayer | null;
 
   /**
    * Register an animation callback, called every frame with dt in seconds. While one is set
@@ -249,6 +257,10 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     : viewerToolbar(scene, renderer, { ...(config.topBar === true || config.topBar === undefined ? {} : config.topBar), theme: t });
   if (toolbar) header.appendChild(toolbar.el);
 
+  // ── Notes that live with the model (a Doc collection), drawn over the view ──
+  const notesCfg = config.notes ? ("doc" in config.notes ? config.notes : { doc: config.notes }) : null;
+  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, { collection: notesCfg.collection, host: vpWrap }) : null;
+
   // ── Build / display passes ──
   // Two-tier invalidation: params flagged `display: true` only re-run the
   // display pass (restyle); everything else re-runs build then display.
@@ -299,6 +311,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     renderer,
     panel,
     commands,
+    notes,
 
     onAnimate(fn) { animateFn = fn; },
 
@@ -324,6 +337,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       bridge.dispose();
       unbindKeys();
       toolbar?.dispose();
+      notes?.dispose();
       panel.dispose();
       renderer.dispose();
       config.container.removeChild(root);
@@ -352,6 +366,8 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => { /* retained scenes aren't re-run: objects carry their record key instead */ },
+    ...(notes ? { keep: (ns: Note[]) => { notes.keep(ns); } } : {}),
+    ...(notesCfg && "author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}),
   });
 
   const bridge = installAgentBridge({

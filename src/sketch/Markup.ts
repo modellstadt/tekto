@@ -21,6 +21,7 @@
  */
 import type { Vec3 } from "../core/math/vectors";
 import type { Scene } from "../scene/Scene";
+import type { Note, NotesLayer } from "./Notes";
 import { saveBundle, slug, describeSceneObject, sceneSummary, snapshotWithOverlays } from "./AgentBridge";
 
 type Pt = [number, number];
@@ -39,6 +40,10 @@ export interface MarkupHost {
   /** Record creation sites for objects (costs a stack trace per object, so only while needed). */
   setTracking(on: boolean): void;
   title: string;
+  /** Keep marks as notes with the model; with it the bar offers "Keep as notes". */
+  keep?(notes: Note[]): void;
+  /** Who is drawing, written into a kept note. */
+  author?: string;
 }
 
 /** A scene object as a mark or snapshot names it: id, type, layer, label, pick tag, colour, the source line that created it, and its document `key`. */
@@ -147,6 +152,7 @@ export class MarkupOverlay {
       mk("Undo", "Remove last mark (⌘Z)", () => this.undo()),
       mk("Clear", "Remove all marks", () => { this.marks = []; this.redraw(); }),
       mk("Save", "Save view.png + markup.json (⌘S)", () => void this.save()),
+      ...(host.keep ? [mk("Keep as notes", "Keep the marks as notes with the model: saved, undoable, shared", () => this.keepNotes())] : []),
       this.status,
     );
     vp.appendChild(this.bar);
@@ -224,6 +230,41 @@ export class MarkupOverlay {
   }
 
   private undo() { this.marks.pop(); this.redraw(); }
+
+  /** Each mark as a note: its strokes laid on the model (or the ground), its text, the
+   *  records it touched and this view. */
+  private keepNotes() {
+    if (!this.host.keep) return;
+    if (!this.marks.length) { this.setStatus("Draw a mark first"); return; }
+    const r = this.canvas.getBoundingClientRect();
+    const onModel = (p: Pt) => this.host.hitAt(r.left + p[0], r.top + p[1])?.point ?? this.host.groundAt(r.left + p[0], r.top + p[1]);
+    const cam = (this.host.context().camera ?? {}) as { position?: number[]; target?: number[]; projection?: "perspective" | "orthographic" };
+    const instruction = this.noteBox.value.trim();
+    const notes: Note[] = [];
+    for (const m of this.marks) {
+      const strokes = m.strokes
+        .map((s) => (s.length === 1 ? s : resample(s, 6, 60)).map(onModel).filter((p): p is Vec3 => !!p).map((p) => round3(p) as [number, number, number]))
+        .filter((s) => s.length > 0);
+      if (!strokes.length) continue;                                 // drawn over nothing: nowhere to keep it
+      const w = m.resolved?.world ?? {};
+      const at = (w.at ?? w.centroid ?? w.from ?? strokes[0][0]) as number[];
+      notes.push({
+        text: m.note || instruction,
+        ...(this.host.author ? { author: this.host.author } : {}),
+        createdAt: new Date().toISOString(),
+        pin: [at[0], at[1], at[2]],
+        strokes,
+        keys: [...new Set((m.resolved?.hits ?? []).map((h) => h.key).filter((k): k is string => !!k))],
+        view: { position: cam.position ?? [0, 0, 10], target: cam.target ?? [0, 0, 0], ...(cam.projection ? { projection: cam.projection } : {}) },
+      });
+    }
+    if (!notes.length) { this.setStatus("The marks lie on nothing to keep them on"); return; }
+    this.host.keep(notes);
+    this.marks = [];
+    this.noteBox.value = "";
+    this.redraw();
+    this.setStatus(`Kept ${notes.length} note${notes.length > 1 ? "s" : ""}`);
+  }
 
   /** A small input at the mark's badge; Enter keeps it, Escape leaves the mark without a note. */
   private askNote(mark: Mark) {
@@ -586,7 +627,13 @@ export interface MarkupRenderer {
 export function markup(
   renderer: MarkupRenderer,
   scene: Scene,
-  opts: { title?: string; context?: () => Record<string, unknown>; host?: HTMLElement } = {},
+  opts: {
+    title?: string; context?: () => Record<string, unknown>; host?: HTMLElement;
+    /** Offer "Keep as notes", keeping marks in this layer's document. */
+    notes?: NotesLayer;
+    /** Who is drawing, written into kept notes. */
+    author?: string;
+  } = {},
 ): { capture(opts?: MarkupCaptureOptions): Promise<MarkupBundle>; dispose(): void } {
   const viewport = opts.host ?? renderer.canvasEl.parentElement;
   if (!viewport) throw new Error("markup: the renderer's canvas is not in the page yet (or pass opts.host)");
@@ -601,6 +648,8 @@ export function markup(
     describe,
     context: () => ({ ...sceneSummary(scene, renderer, describe), ...(opts.context?.() ?? {}) }),
     setTracking: () => { /* objects carry their record key; no creation sites to track */ },
+    ...(opts.notes ? { keep: (ns: Note[]) => { opts.notes!.keep(ns); } } : {}),
+    ...(opts.author ? { author: opts.author } : {}),
   });
   return { capture: (o) => overlay.capture(o), dispose: () => overlay.dispose() };
 }
