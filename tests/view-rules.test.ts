@@ -12,7 +12,7 @@ import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection, calloutSamples, occludes,
-  groundGrid, gridLineColour, daylight,
+  groundGrid, gridLineColour, daylight, sunDirection, SUN_PRESETS,
 } from "../src/render/viewRules";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
@@ -337,5 +337,19 @@ describe("daylight", () => {
     expect(daylight(-20).sunIntensity).toBe(0);
     const evening = daylight(10).sun;
     expect((evening >> 16) & 255).toBeGreaterThan(evening & 255);      // warm: more red than blue
+  });
+});
+
+describe("sun presets", () => {
+  it("put the sun where the names say: east in the morning, south at noon, west at sunset", () => {
+    const at = (n: "morning" | "noon" | "sunset") => sunDirection(SUN_PRESETS[n].azimuth, SUN_PRESETS[n].altitude);
+    expect(at("morning").x).toBeGreaterThan(0.9);                    // +X is east
+    expect(at("noon").y).toBeLessThan(-0.5);                         // south of the zenith (−Y)
+    expect(at("sunset").x).toBeLessThan(-0.9);                       // west
+    for (const n of ["morning", "noon", "sunset"] as const) {
+      const d = at(n);
+      expect(Math.hypot(d.x, d.y, d.z)).toBeCloseTo(1, 9);
+      expect(Math.asin(d.z) * 180 / Math.PI).toBeCloseTo(SUN_PRESETS[n].altitude, 9);
+    }
   });
 });

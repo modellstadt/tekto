@@ -32,6 +32,8 @@ export default function (container: HTMLElement) {
     container,
     topBar: false,
     navGizmo: true,
+    // No top bar here: the render style, lighting and sun as icons in the view instead.
+    shadingBar: true,
     // A site wants a sense of scale: a ground ruled in metres that fades out, fitted to the blocks.
     renderer: { gridStyle: "fading" },
     camera: [34, -40, 34],

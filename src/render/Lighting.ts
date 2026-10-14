@@ -4,10 +4,10 @@
  * mapping, a shadow catcher), plus the environment map, fog and exposure.
  */
 import * as THREE from "three";
-import type { Vec3 } from "../core/math/vectors";
+import { Vec3 } from "../core/math/vectors";
 import type { LightingMode } from "../scene/Scene";
 import type { RendererCore } from "./RendererCore";
-import { daylight } from "./viewRules";
+import { daylight, sunDirection, SUN_PRESETS, type SunPreset } from "./viewRules";
 
 export class Lighting {
   ambientLight: THREE.AmbientLight;
@@ -125,6 +125,7 @@ export class Lighting {
   }
 
   setSunDirection(direction: Vec3, distance = 50): void {
+    this.currentSunPreset = null;
     const x = direction.x;
     const y = this.core.isZUp ? direction.y :  direction.z;
     const z = this.core.isZUp ? direction.z : -direction.y;
@@ -152,6 +153,9 @@ export class Lighting {
     // needs more.
     const lift = Math.max(this.sunAltitude(), 0) * Math.PI / 180;
     this.dirLight.shadow.normalBias = r * 0.002 * (Math.sin(lift) >= 0.5 ? 1 : 0.5 / Math.max(Math.sin(lift), 0.1));
+    // A low sun's long shadows show the shadow map's texels as steps along their edges:
+    // soften them more the lower it is (three r180+ PCF; the default sun keeps radius 1).
+    this.dirLight.shadow.radius = Math.sin(lift) >= 0.5 ? 1 : 1 + 3 * (1 - Math.sin(lift) / 0.5);
     this._applyDaylight();
     const sc = this.dirLight.shadow.camera;
     sc.left = -r * 1.2; sc.right = r * 1.2; sc.top = r * 1.2; sc.bottom = -r * 1.2;
@@ -165,6 +169,20 @@ export class Lighting {
   sunAltitude(): number {
     const up = this.core.isZUp ? this.sunDir.z : this.sunDir.y;
     return Math.asin(Math.max(-1, Math.min(1, up))) * 180 / Math.PI;
+  }
+
+  /** The last preset `sunPreset` set, until the sun is moved another way. */
+  currentSunPreset: SunPreset | null = null;
+
+  /** A named sun: Studio, the light following the sun, the sun where the preset puts it. */
+  sunPreset(name: SunPreset): void {
+    const p = SUN_PRESETS[name];
+    if (!p) throw new Error(`sunPreset: unknown preset "${name}" (morning, noon or sunset)`);
+    this.core.gScene.setLightingMode("studio");
+    this.setDaylight(true);
+    const d = sunDirection(p.azimuth, p.altitude);
+    this.setSunDirection(new Vec3(d.x, d.y, d.z));
+    this.currentSunPreset = name;
   }
 
   setDaylight(on: boolean): void {
