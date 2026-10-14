@@ -328,7 +328,7 @@ test("the shading bar's section: axis, a slider in metres, flip and off, followi
   const block = await page.evaluate(() => { const { doc } = (window as any).siteEditor; return doc.get("blocks", doc.ids("blocks")[0]); });
 
   await bar.getByRole("button", { name: /^Section/ }).click();
-  await bar.getByRole("button", { name: /^Plan/ }).click();
+  await bar.getByRole("button", { name: /^Plan: a horizontal cut/ }).click();
   expect(await section()).toEqual({ axis: "z", coordinate: block.h / 2 });          // the middle of the content
   await expect(bar.getByRole("button", { name: /^Section/ })).toHaveAttribute("aria-pressed", "true");
 
@@ -353,4 +353,32 @@ test("the shading bar's section: axis, a slider in metres, flip and off, followi
   await page.evaluate(() => (window as any).__tekto.owner.renderer.setSection({ axis: "x", coordinate: 0.5 }));
   await expect(bar.getByRole("button", { name: /^A cut across X/ })).toHaveAttribute("aria-pressed", "true");
   await expect(bar).toContainText("0.50 m");
+});
+
+test("section levels: a chip per storey cuts its plan above the floor; ticks; the slider snaps", async ({ page }) => {
+  await page.goto("/testbench.html?page=site-editor");                // levels every 3 m (L0…L5)
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  await page.evaluate(() => {                                         // a 12 m block: storeys L0–L4 within it
+    const { doc } = (window as any).siteEditor;
+    doc.update("blocks", doc.ids("blocks")[0], { h: 12 });
+  });
+  const bar = page.locator("[data-tekto-shading-bar]");
+  const section = () => page.evaluate(() => (window as any).__tekto.owner.renderer.section);
+  await bar.getByRole("button", { name: /^Section/ }).click();
+  await bar.getByRole("button", { name: /^Plan of L1/ }).click();
+  expect(await section()).toEqual({ axis: "z", coordinate: 3 + 1.2 });
+  await expect(bar.getByRole("button", { name: /^Plan of L1/ })).toHaveAttribute("aria-pressed", "true");
+  expect(await bar.locator("[data-level]").count()).toBe(5);                         // 0, 3, 6, 9, 12 m
+
+  // Near a storey's plan height the slider snaps to it.
+  await bar.getByLabel("Section position").evaluate((el: HTMLInputElement) => { el.value = "7.35"; el.dispatchEvent(new Event("input")); });
+  await expect.poll(async () => (await section())?.coordinate).toBeCloseTo(7.2, 9);
+  await expect(bar.getByRole("button", { name: /^Plan of L2/ })).toHaveAttribute("aria-pressed", "true");
+
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setSectionLevels([]));
+  expect(await bar.getByRole("button", { name: /^Plan of/ }).count()).toBe(0);
+  expect(await page.evaluate(() => {
+    try { (window as any).__tekto.owner.renderer.setSectionLevels([{ name: "x", elevation: NaN }]); return "no error"; }
+    catch (e) { return String(e); }
+  })).toMatch(/non-finite elevation/);
 });

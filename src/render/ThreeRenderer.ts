@@ -923,6 +923,21 @@ export class ThreeRenderer {
    */
   setSection(section: SectionRequest | null): void { this.marks.setSection(section); this.shadingBar?.paint(); }
 
+  /**
+   * The storeys, for the shading bar's section: a chip each that cuts its plan `cutHeight`
+   * above its floor (default 1.2 m, where walls, doors and windows read), ticks on the plan
+   * slider, and the slider snapping to them. Call it when the app knows its levels (after an
+   * IFC loads, a storey is added); `[]` clears them. Elevations in the content's units.
+   */
+  setSectionLevels(levels: readonly { name: string; elevation: number }[], opts: { cutHeight?: number } = {}): void {
+    for (const l of levels) {
+      if (!Number.isFinite(l.elevation)) throw new Error(`setSectionLevels: level "${l.name}" has a non-finite elevation (${l.elevation})`);
+    }
+    const cutHeight = opts.cutHeight ?? 1.2;
+    if (!Number.isFinite(cutHeight)) throw new Error(`setSectionLevels: cutHeight must be finite, got ${opts.cutHeight}`);
+    this.shadingBar?.setLevels(levels, cutHeight);
+  }
+
   /** The section in force, or null. */
   get section(): SectionRequest | null { return this.marks.section; }
 

@@ -67,6 +67,8 @@ export default function (container: HTMLElement) {
     m.translate(b.x, b.y, b.h / 2);
     app.scene.addMesh(m, { color: "#cfd8dc", label: `block ${id}`, layer: "blocks" });
   });
+  // Storeys every 3 m: the shading bar's section gets a chip each (a plan cut 1.2 m above).
+  app.renderer.setSectionLevels(Array.from({ length: 6 }, (_, i) => ({ name: `L${i}`, elevation: i * 3 })));
   const stopSelecting = selectOnClick(app.renderer, app.scene, selection);
   // Who has what selected: this window's selection goes out, the others' are outlined here.
   const stopSharing = shareSelection(selection, doc.store, app.renderer, app.scene);
