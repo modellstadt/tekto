@@ -315,6 +315,21 @@ export function daylight(altitudeDeg: number): Daylight {
   return { ...DAYLIGHT[DAYLIGHT.length - 1][1] };
 }
 
+/** A named sun for the shading bar: where it stands, as azimuth (degrees clockwise from
+ *  north) and altitude (degrees above the horizon). */
+export type SunPreset = "morning" | "noon" | "sunset";
+export const SUN_PRESETS: Record<SunPreset, { azimuth: number; altitude: number }> = {
+  morning: { azimuth: 100, altitude: 15 },     // low in the east-south-east
+  noon: { azimuth: 180, altitude: 55 },        // high in the south
+  sunset: { azimuth: 275, altitude: 4 },       // just above the horizon in the west
+};
+
+/** The direction toward the sun (+X east, +Y north, +Z up, the `SunPosition` convention). */
+export function sunDirection(azimuthDeg: number, altitudeDeg: number): { x: number; y: number; z: number } {
+  const az = azimuthDeg * Math.PI / 180, alt = altitudeDeg * Math.PI / 180;
+  return { x: Math.sin(az) * Math.cos(alt), y: Math.cos(az) * Math.cos(alt), z: Math.sin(alt) };
+}
+
 /** Is this object drawn: itself and every parent visible? (The raycaster ignores it.) */
 export function shown(o: THREE.Object3D | null): boolean {
   for (; o; o = o.parent) if (!o.visible) return false;

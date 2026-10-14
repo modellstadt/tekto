@@ -273,3 +273,32 @@ test("setSky lights and backs the scene with an image, stood upright in Z-up; nu
   expect(plain.env).toBe(false);
   expect(plain.top).toEqual([0x0a, 0x0b, 0x14]);
 });
+
+test("the shading bar: render style, lighting and the sun's presets as icons in the view, following code", async ({ page }) => {
+  await page.goto("/testbench.html?page=site-editor");                // shadingBar: true
+  await page.waitForFunction(() => (window as any).siteEditor?.doc.count("blocks") >= 1, null, { timeout: 15_000 });
+  const bar = page.locator("[data-tekto-shading-bar]");
+  const state = () => page.evaluate(() => {
+    const o = (window as any).__tekto.owner;
+    return { mode: o.scene.renderMode, light: o.scene.lightingMode, preset: o.renderer.sunPreset, daylight: o.renderer.daylight };
+  });
+  await bar.getByRole("button", { name: "Ghost" }).click();
+  expect((await state()).mode).toBe("ghost");
+  await expect(bar.getByRole("button", { name: "Ghost" })).toHaveAttribute("aria-pressed", "true");
+
+  // Sunset: Studio, the light following the sun, the sun low in the west.
+  await bar.getByRole("button", { name: /^Sun/ }).click();
+  await bar.getByRole("button", { name: /^Sunset/ }).click();
+  expect(await state()).toMatchObject({ light: "studio", preset: "sunset", daylight: true });
+  expect(await page.evaluate(() => Math.round((window as any).__tekto.owner.renderer.sunAltitude))).toBe(4);
+  await expect(bar.getByRole("button", { name: /^Studio/ })).toHaveAttribute("aria-pressed", "true");
+
+  // Changed in code, the bar follows; moving the sun another way clears the preset.
+  await page.evaluate(() => {
+    const o = (window as any).__tekto.owner;
+    o.scene.setRenderMode("hiddenline");
+    o.renderer.setSunDirection({ x: 0, y: -1, z: 1 });
+  });
+  await expect(bar.getByRole("button", { name: "Hidden line" })).toHaveAttribute("aria-pressed", "true");
+  expect((await state()).preset).toBeNull();
+});

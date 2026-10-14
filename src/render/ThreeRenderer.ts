@@ -26,6 +26,8 @@ import { CameraRig } from "./CameraRig";
 import { Pointer, type GizmoMode, type PickInfo } from "./Pointer";
 import { Marks } from "./Marks";
 import { FadingGrid } from "./FadingGrid";
+import { ShadingBar, type ShadingBarCorner } from "./ShadingBar";
+import type { SunPreset } from "./viewRules";
 import { AmbientOcclusion, type AmbientOcclusionOptions } from "./AmbientOcclusion";
 import { shown } from "./viewRules";
 
@@ -57,6 +59,10 @@ export interface ThreeRendererConfig {
   /** The axis widget in a corner (`true` = bottom right): click an axis for a plan or an
    *  elevation, drag it to orbit, double-click to square up, toggle persp/ortho under it. */
   navGizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  /** The shading bar in a corner of the view (`true` = top left): minimal icons for the
+   *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
+   *  viewport header. The renderer draws it, so an app only switches it on. */
+  shadingBar: boolean | ShadingBarCorner;
 }
 
 // Style keys that never change the three.js object: layer is metadata, WebGL
@@ -79,6 +85,7 @@ const DEFAULTS: ThreeRendererConfig = {
   fov: 55,
   up: "y",
   navGizmo: false,
+  shadingBar: false,
 };
 
 /** How long a frame may spend building crease lines before it draws. */
@@ -112,6 +119,7 @@ export class ThreeRenderer {
   private hideHelpers = false;
   private gridHelper: THREE.Object3D | null = null;
   private fadingGrid: FadingGrid | null = null;
+  private shadingBar: ShadingBar | null = null;
   private ao: AmbientOcclusion;
   private gridDirty = true;
   private axesHelper: THREE.Object3D | null = null;
@@ -174,6 +182,7 @@ export class ThreeRenderer {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -588,6 +597,7 @@ export class ThreeRenderer {
     this.clearThree();
     this.marks.dispose();
     this.ao.dispose();
+    this.shadingBar?.dispose();
     this.fadingGrid?.dispose();
     this.pointer.dispose();
     this.lighting.dispose();
@@ -643,7 +653,18 @@ export class ThreeRenderer {
    * and a 100 m site both get sharp, complete shadows. `distance` is how far back the
    * light sits at least (m).
    */
-  setSunDirection(direction: Vec3, distance = 50): void { this.lighting.setSunDirection(direction, distance); }
+  setSunDirection(direction: Vec3, distance = 50): void { this.lighting.setSunDirection(direction, distance); this.shadingBar?.paint(); }
+
+  /**
+   * A named sun, as the shading bar's sun button sets it: `"morning"` (low in the east),
+   * `"noon"` (high in the south) or `"sunset"` (just above the horizon in the west). It
+   * switches to Studio and lets the light follow the sun (`setDaylight`), so a sunset is warm
+   * with a dusk sky. Moving the sun any other way clears it (`sunPreset` is then null).
+   */
+  setSunPreset(name: SunPreset): void { this.lighting.sunPreset(name); this.shadingBar?.paint(); }
+
+  /** The sun preset last set (`setSunPreset`), or null once the sun was moved another way. */
+  get sunPreset(): SunPreset | null { return this.lighting.currentSunPreset; }
 
   /**
    * Lamps: a warm point light at each point (in the content's axes), in both lighting modes,
@@ -661,7 +682,7 @@ export class ThreeRenderer {
    * hour: noon as Studio is, a warm low sun, a blue dusk, night. Flat lighting is unchanged.
    * Off by default.
    */
-  setDaylight(on: boolean): void { this.lighting.setDaylight(on); }
+  setDaylight(on: boolean): void { this.lighting.setDaylight(on); this.shadingBar?.paint(); }
 
   /** Whether Studio's light follows the sun (`setDaylight`). */
   get daylight(): boolean { return this.lighting.daylightOn; }

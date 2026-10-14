@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The shading bar**, `shadingBar: true` on a renderer, `sketch()` or `appShell()`: minimal
+  icons in a corner of the 3D view (top left by default), as Blender has in its viewport
+  header. The render style (solid, wireframe, hidden line, ghost), the lighting (Flat,
+  Studio) and the sun (Morning, Noon, Sunset). The renderer draws it, so an app needs no room
+  for it; it follows changes made in code. `renderer.setSunPreset("sunset")` sets a named
+  sun (Studio, light following the sun). A low sun's shadows are softer (no stepped edges).
 ## 0.8.3 — 2026-10-14
 
 The viewer 7DHouse asked for (#66): ambient occlusion, Studio light that follows the hour, a sky in one call, lamps, an inside camera, and the shell's top bar as one element any app (React included) mounts. With two fixes 7DHouse found in 0.8.2: poché through thin uncut parts, and a three r180+ deprecation warning.

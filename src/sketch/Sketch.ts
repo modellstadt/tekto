@@ -363,6 +363,7 @@ export class SketchInstance {
       cameraTarget: this.config.target ?? [0, 0, 0],
       up: this.config.up ?? "y",
       navGizmo: this.config.navGizmo ?? false,
+      shadingBar: this.config.shadingBar ?? false,
     });
   }
 

@@ -76,6 +76,9 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
    *  or an elevation, toggle persp/ortho under it. Default `false` — an app may have its own
    *  panels in that corner. */
   navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  /** The shading bar in a viewport corner (`true` = top left): icons for the render style, the
+   *  lighting and the sun (morning, noon, sunset). Default `false`. */
+  shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 }
 
 // ─── App Shell instance ──────────────────────
@@ -232,6 +235,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     // `up: "y"` if you're showing the Y-up built-in primitives (box/cylinder/sphere).
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
+    shadingBar: config.shadingBar ?? false,
     ...config.renderer,
   });
 

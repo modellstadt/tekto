@@ -42,6 +42,7 @@ export default function (container: HTMLElement) {
     container,
     topBar: true,
     navGizmo: true,
+    shadingBar: true,
     camera: [7.5, -5, 7.5],
     target: [3, 2.25, 2.8],
     params: {
