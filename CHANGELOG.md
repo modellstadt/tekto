@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **A window to the slab**: in `HolzrahmenBau` and `BalloonFrame`, an opening whose head
+  reaches the top plate (`headHeight ≥ height − top plates`) gets no header and no cripples
+  above it; before, the header ran up through the top plate. The load over it is carried
+  above the wall, by an upstand beam (Überzug) in a parapet or by the storey above. From
+  7DHouse, whose windows go up to the slab where a parapet or a solid wall above can carry it.
+
 ## 0.9.3 — 2026-10-14
 
 Overlays, Frame and Snapshot in the shading bar, as in Blender's viewport header.
