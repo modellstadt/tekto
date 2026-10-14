@@ -1,4 +1,4 @@
-import { sketch, writeDxf2D } from "../src";
+import { sketch, writeDxf2D, writePdf2D, type Dxf2DContent } from "../src";
 
 sketch((lab) => {
   // ── GUI Controls ──
@@ -33,15 +33,17 @@ sketch((lab) => {
     .rotateX(lab.time * speed.value * 0.5)
     .translate(3, 1, 0);
 
-  // ── Export: shows as "Export ▾" in this sketch's header ──
+  // ── Export: shows as "Export ▾" in this sketch's header — one plan, as DXF and as PDF ──
+  const plan = (): Dxf2DContent => ({
+    polylines: [{ layer: "terrain", points: [{ x: -4, y: -4 }, { x: 4, y: -4 }, { x: 4, y: 4 }, { x: -4, y: 4 }], closed: true, rgb: baseColor.value }],
+    circles: [{ layer: "objects", center: { x: 0, y: 0 }, radius: 0.5 + n * 0.5 }],
+    texts: [{ layer: "text", at: { x: -4, y: -4.6 }, text: "Tekto Playground — plan", height: 0.3 }],
+  });
+  lab.registerExport({ name: "Plan (DXF)", fileName: "playground-plan.dxf", handler: () => writeDxf2D(plan(), { scale: 1000 }) });
   lab.registerExport({
-    name: "Plan (DXF)",
-    fileName: "playground-plan.dxf",
-    handler: () => writeDxf2D({
-      polylines: [{ layer: "terrain", points: [{ x: -4, y: -4 }, { x: 4, y: -4 }, { x: 4, y: 4 }, { x: -4, y: 4 }], closed: true }],
-      circles: [{ layer: "objects", center: { x: 0, y: 0 }, radius: 0.5 + n * 0.5 }],
-      texts: [{ layer: "text", at: { x: -4, y: -4.6 }, text: "Tekto Playground — plan", height: 0.3 }],
-    }, { scale: 1000 }),
+    name: "Plan (PDF, 1:50)",
+    fileName: "playground-plan.pdf",
+    handler: () => new Blob([writePdf2D(plan(), { scale: 50, title: "Tekto Playground — plan" }) as BlobPart], { type: "application/pdf" }),
   });
 
   // ── Random points ──
