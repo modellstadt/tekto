@@ -1236,6 +1236,7 @@ var SheetCanvas = class {
 };
 
 export {
+  ensureSliderStyle,
   ControlPanel,
   sketch2d,
   Sketch2DInstance,

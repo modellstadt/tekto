@@ -25370,6 +25370,7 @@ var Marks = class {
     this.presenceMats = /* @__PURE__ */ new Map();
     this.highlightIds = null;
     this.outlineMat = null;
+    this.sectionFrame = null;
     this.outlineGroup.renderOrder = 999;
     core.threeScene.add(this.outlineGroup);
   }
@@ -25510,6 +25511,41 @@ var Marks = class {
   }
   get section() {
     return this.sectionReq;
+  }
+  /** Where the cut lies along its axis: its coordinate, or its `at` share of the content. */
+  sectionCoordinate() {
+    const req = this.sectionReq;
+    if (!req) return null;
+    if (req.coordinate !== void 0) return req.coordinate;
+    const box = this.core.contentBox();
+    return box.isEmpty() ? 0 : THREE9.MathUtils.lerp(box.min[req.axis], box.max[req.axis], req.at ?? 0.5);
+  }
+  /** Show the cut as a thin frame around the content, while it is being moved. */
+  showSectionPlane(on) {
+    if (this.sectionFrame) {
+      this.sectionFrame.removeFromParent();
+      this.sectionFrame.geometry.dispose();
+      this.sectionFrame.material.dispose();
+      this.sectionFrame = null;
+    }
+    const req = this.sectionReq, c = this.sectionCoordinate(), box = this.core.contentBox();
+    if (on && req && c !== null && !box.isEmpty()) {
+      const pad = box.getSize(new THREE9.Vector3()).multiplyScalar(0.06);
+      const lo = box.min.clone().sub(pad), hi = box.max.clone().add(pad);
+      const [u, v] = req.axis === "x" ? ["y", "z"] : req.axis === "y" ? ["x", "z"] : ["x", "y"];
+      const corner = (a, b) => {
+        const p = new THREE9.Vector3();
+        p[req.axis] = c;
+        p[u] = a;
+        p[v] = b;
+        return p;
+      };
+      const geo = new THREE9.BufferGeometry().setFromPoints([corner(lo[u], lo[v]), corner(hi[u], lo[v]), corner(hi[u], hi[v]), corner(lo[u], hi[v])]);
+      this.sectionFrame = new THREE9.LineLoop(geo, new THREE9.LineBasicMaterial({ color: 16777215, transparent: true, opacity: 0.75, depthTest: false }));
+      this.sectionFrame.renderOrder = 1e3;
+      this.core.threeScene.add(this.sectionFrame);
+    }
+    this.core.requestRender();
   }
   setSectionColour(colour) {
     this.sectionColour = colour === null ? null : new THREE9.Color(colour).getHex();
@@ -25724,6 +25760,10 @@ var FadingGrid = class {
     const material = new THREE10.ShaderMaterial({
       transparent: true,
       depthWrite: false,
+      // Behind whatever lies on the ground: a section's poché floor, a slab at z = 0.
+      polygonOffset: true,
+      polygonOffsetFactor: 4,
+      polygonOffsetUnits: 8,
       defines: zUp ? { Z_UP: 1 } : {},
       uniforms: {
         // A plain vector of sRGB components, not a Color: a ShaderMaterial writes its colour
@@ -25804,17 +25844,27 @@ var SHADING_ICONS = {
   studio: svg(`<circle cx="12" cy="12" r="8"/><path d="M20 12a8 8 0 0 1-8 8a10 10 0 0 0 8-8z" fill="currentColor" fill-opacity="0.55" stroke="none"/><circle cx="9" cy="9" r="1.7" fill="currentColor" stroke="none"/>`),
   noon: svg(`<circle cx="12" cy="12" r="4"/><path d="${RAYS}"/>`),
   morning: HORIZON("M9 5.5 12 2.5l3 3"),
-  sunset: HORIZON("M9 6.5l3 3 3-3")
+  sunset: HORIZON("M9 6.5l3 3 3-3"),
+  // A box with a slice through it.
+  section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
+  flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`)
 };
 var MODES = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hidden line"], ["ghost", "Ghost"]];
 var LIGHTS = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
 var SUNS = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
 var ShadingBar = class {
-  constructor(core, lighting, corner = "top-left") {
+  constructor(core, lighting, marks, corner = "top-left") {
     this.core = core;
     this.lighting = lighting;
+    this.marks = marks;
     this.root = document.createElement("div");
-    this.pop = document.createElement("div");
+    this.openPop = null;
+    // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
+    this.levels = [];
+    this.cutHeight = 1.2;
+    this.levelRow = document.createElement("div");
+    this.levelPaints = [];
+    this.setCut = null;
     this.paints = [];
     const host = core.container;
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
@@ -25826,11 +25876,11 @@ var ShadingBar = class {
     this.separator();
     for (const [mode, label] of LIGHTS) this.button(SHADING_ICONS[mode], label, () => scene.lightingMode === mode, () => scene.setLightingMode(mode));
     this.separator();
-    const sun = this.button(SHADING_ICONS.noon, "Sun: morning, noon, sunset", () => this.pop.style.display === "flex", () => this.togglePop());
+    const sunPop = this.popover(v, h);
+    const sun = this.button(SHADING_ICONS.noon, "Sun: morning, noon, sunset", () => this.openPop === sunPop, () => this.toggle(sunPop));
     this.paints.push(() => {
       sun.innerHTML = SHADING_ICONS[this.lighting.currentSunPreset ?? "noon"];
     });
-    this.pop.style.cssText = `position:absolute;${v === "top" ? "top" : "bottom"}:calc(100% + 6px);${h}:0;display:none;gap:2px;padding:4px;border-radius:7px;background:rgba(16,18,26,.92);border:1px solid rgba(255,255,255,.08);box-shadow:0 4px 14px rgba(0,0,0,.4);`;
     for (const [preset, label] of SUNS) {
       const b = this.button(
         `${SHADING_ICONS[preset]}<span style="font:500 9.5px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${label}</span>`,
@@ -25838,16 +25888,20 @@ var ShadingBar = class {
         () => this.lighting.currentSunPreset === preset,
         () => {
           this.lighting.sunPreset(preset);
-          this.togglePop(false);
+          this.toggle(null);
         },
-        this.pop
+        sunPop
       );
       b.style.width = "54px";
       b.style.height = "42px";
       b.style.flexDirection = "column";
       b.style.gap = "4px";
     }
-    this.root.appendChild(this.pop);
+    const cutPop = this.popover(v, h);
+    cutPop.style.flexDirection = "column";
+    cutPop.style.gap = "6px";
+    this.button(SHADING_ICONS.section, "Section: cut the model", () => this.openPop === cutPop || !!this.marks.section, () => this.toggle(cutPop));
+    this.sectionControls(cutPop);
     host.appendChild(this.root);
     this.off = scene.on((e) => {
       if (e.type === "scene:renderMode" || e.type === "scene:lightingMode") this.paint();
@@ -25858,11 +25912,177 @@ var ShadingBar = class {
   paint() {
     for (const p of this.paints) p();
   }
-  togglePop(open = this.pop.style.display !== "flex") {
-    this.pop.style.display = open ? "flex" : "none";
+  /** A popover under the bar (above it when the bar sits at the bottom). */
+  popover(v, h) {
+    const pop = document.createElement("div");
+    pop.style.cssText = `position:absolute;${v === "top" ? "top" : "bottom"}:calc(100% + 6px);${h}:0;display:none;gap:2px;padding:4px;border-radius:7px;background:rgba(16,18,26,.92);border:1px solid rgba(255,255,255,.08);box-shadow:0 4px 14px rgba(0,0,0,.4);`;
+    this.root.appendChild(pop);
+    return pop;
+  }
+  /** Open one popover (closing the other), or close it if it is open; null closes. */
+  toggle(pop) {
+    const next = pop && this.openPop !== pop ? pop : null;
+    if (this.openPop) this.openPop.style.display = "none";
+    if (next) next.style.display = "flex";
+    this.openPop = next;
     this.paint();
   }
-  button(icon, title, on, run, parent = this.root) {
+  /** The section popover's controls, kept in step with the cut however it was set. */
+  sectionControls(pop) {
+    const up = this.core.isZUp ? "z" : "y";
+    const axes = [
+      ["Off", null, "No section"],
+      ["Plan", up, "Plan: a horizontal cut"],
+      ["X", "x", "A cut across X"],
+      ...this.core.isZUp ? [["Y", "y", "A cut across Y"]] : [["Z", "z", "A cut across Z"]]
+    ];
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:2px;align-items:center;";
+    pop.appendChild(row);
+    const range = (axis) => {
+      const b = this.core.contentBox();
+      return b.isEmpty() ? null : [b.min[axis], b.max[axis]];
+    };
+    const set = (axis, coordinate, flip = this.marks.section?.flip ?? false) => {
+      if (!axis) {
+        this.marks.setSection(null);
+        this.paint();
+        return;
+      }
+      const r = range(axis);
+      this.marks.setSection({ axis, coordinate: coordinate ?? (r ? (r[0] + r[1]) / 2 : 0), ...flip ? { flip } : {} });
+      this.paint();
+    };
+    for (const [label, axis, title] of axes) {
+      const b = this.button(
+        `<span style="font:600 10px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${label}</span>`,
+        title,
+        () => (this.marks.section?.axis ?? null) === axis,
+        () => set(axis, axis === this.marks.section?.axis ? this.marks.sectionCoordinate() ?? void 0 : void 0),
+        row
+      );
+      b.style.width = label.length > 1 ? "36px" : "26px";
+    }
+    const sep = document.createElement("div");
+    sep.style.cssText = "width:1px;height:16px;margin:0 3px;background:rgba(255,255,255,.14);";
+    row.appendChild(sep);
+    this.setCut = (axis, coordinate) => set(axis, coordinate);
+    this.levelRow.style.cssText = "display:none;flex-wrap:wrap;gap:2px;max-width:220px;";
+    this.paints.push(() => {
+      for (const p of this.levelPaints) p();
+    });
+    this.button(
+      SHADING_ICONS.flip,
+      "Keep the other side",
+      () => !!this.marks.section?.flip,
+      () => {
+        const sec = this.marks.section;
+        if (sec) set(sec.axis, this.marks.sectionCoordinate() ?? void 0, !sec.flip);
+      },
+      row
+    );
+    ensureSliderStyle(document);
+    const line = document.createElement("div");
+    line.style.cssText = "display:flex;gap:8px;align-items:center;padding:2px 4px 4px;";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.className = "tekto-slider";
+    slider.setAttribute("aria-label", "Section position");
+    slider.style.cssText = "width:150px;--tekto-track:rgba(255,255,255,.18);--tekto-thumb:#e8ebf0;";
+    const value = document.createElement("span");
+    value.style.cssText = "min-width:52px;text-align:right;color:rgba(232,235,240,.8);font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;";
+    const track = document.createElement("div");
+    track.style.cssText = "position:relative;width:150px;height:16px;display:flex;align-items:center;";
+    const ticks = document.createElement("div");
+    ticks.style.cssText = "position:absolute;left:3px;right:3px;bottom:-3px;height:4px;pointer-events:none;";
+    track.append(slider, ticks);
+    line.append(track, value);
+    pop.append(this.levelRow, line);
+    const planAxis = this.core.isZUp ? "z" : "y";
+    const planCuts = () => this.levels.map((l) => l.elevation + this.cutHeight);
+    let pending = null, frame = 0, hide = 0;
+    slider.addEventListener("input", () => {
+      pending = Number(slider.value);
+      if (this.marks.section?.axis === planAxis && this.levels.length) {
+        const span = Number(slider.max) - Number(slider.min);
+        const near = planCuts().reduce((best, c) => Math.abs(c - pending) < Math.abs(best - pending) ? c : best, Infinity);
+        if (Math.abs(near - pending) < span * 0.02) {
+          pending = near;
+          slider.value = String(near);
+        }
+      }
+      value.textContent = `${pending.toFixed(2)} m`;
+      this.marks.showSectionPlane(true);
+      clearTimeout(hide);
+      if (!frame) frame = requestAnimationFrame(() => {
+        frame = 0;
+        const sec = this.marks.section;
+        if (sec && pending !== null) {
+          const { at: _share, ...rest } = sec;
+          this.marks.setSection({ ...rest, coordinate: pending });
+          this.paint();
+        }
+        this.marks.showSectionPlane(true);
+      });
+    });
+    const settle = () => {
+      clearTimeout(hide);
+      hide = window.setTimeout(() => this.marks.showSectionPlane(false), 600);
+    };
+    slider.addEventListener("change", settle);
+    slider.addEventListener("pointerup", settle);
+    this.paints.push(() => {
+      const sec = this.marks.section;
+      const r = sec ? range(sec.axis) : null;
+      line.style.opacity = sec && r ? "1" : "0.35";
+      slider.disabled = !(sec && r);
+      if (sec && r) {
+        slider.min = String(r[0]);
+        slider.max = String(r[1]);
+        slider.step = String(Math.max((r[1] - r[0]) / 500, 1e-4));
+        const c = this.marks.sectionCoordinate() ?? r[0];
+        if (document.activeElement !== slider) slider.value = String(c);
+        value.textContent = `${c.toFixed(2)} m`;
+      } else {
+        value.textContent = "\u2014";
+      }
+      ticks.replaceChildren();
+      if (sec && r && sec.axis === planAxis && r[1] > r[0]) {
+        for (const l of this.levels) {
+          const f2 = (l.elevation - r[0]) / (r[1] - r[0]);
+          if (f2 < -1e-9 || f2 > 1 + 1e-9) continue;
+          const t = document.createElement("div");
+          t.dataset.level = l.name;
+          t.style.cssText = `position:absolute;left:${(f2 * 100).toFixed(2)}%;width:1px;height:4px;background:rgba(232,235,240,.6);`;
+          ticks.appendChild(t);
+        }
+      }
+    });
+  }
+  /** The storeys: a chip each in the section popover, cutting its plan `cutHeight` above the floor. */
+  setLevels(levels, cutHeight) {
+    this.levels = [...levels].sort((a, b) => a.elevation - b.elevation);
+    this.cutHeight = cutHeight;
+    this.levelRow.replaceChildren();
+    this.levelPaints = [];
+    this.levelRow.style.display = this.levels.length ? "flex" : "none";
+    const planAxis = this.core.isZUp ? "z" : "y";
+    for (const l of this.levels) {
+      const at = l.elevation + cutHeight;
+      const b = this.button(
+        `<span style="font:600 10px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${escapeHtml(l.name)}</span>`,
+        `Plan of ${l.name}: cut ${cutHeight} m above ${l.elevation} m`,
+        () => this.marks.section?.axis === planAxis && Math.abs((this.marks.sectionCoordinate() ?? NaN) - at) < 1e-6,
+        () => this.setCut?.(planAxis, at),
+        this.levelRow,
+        this.levelPaints
+      );
+      b.style.width = "auto";
+      b.style.padding = "0 8px";
+    }
+    this.paint();
+  }
+  button(icon, title, on, run, parent = this.root, paints = this.paints) {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
@@ -25883,7 +26103,7 @@ var ShadingBar = class {
       run();
       this.paint();
     };
-    this.paints.push(paint);
+    paints.push(paint);
     parent.appendChild(b);
     return b;
   }
@@ -25894,9 +26114,13 @@ var ShadingBar = class {
   }
   dispose() {
     this.off();
+    this.marks.showSectionPlane(false);
     this.root.remove();
   }
 };
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
 
 // src/render/AmbientOcclusion.ts
 var THREE11 = __toESM(require("three"));
@@ -26060,7 +26284,7 @@ var ThreeRenderer = class {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
     if (cfg.showGrid && cfg.gridStyle === "fading") {
@@ -26782,6 +27006,21 @@ var ThreeRenderer = class {
    */
   setSection(section) {
     this.marks.setSection(section);
+    this.shadingBar?.paint();
+  }
+  /**
+   * The storeys, for the shading bar's section: a chip each that cuts its plan `cutHeight`
+   * above its floor (default 1.2 m, where walls, doors and windows read), ticks on the plan
+   * slider, and the slider snapping to them. Call it when the app knows its levels (after an
+   * IFC loads, a storey is added); `[]` clears them. Elevations in the content's units.
+   */
+  setSectionLevels(levels, opts = {}) {
+    for (const l of levels) {
+      if (!Number.isFinite(l.elevation)) throw new Error(`setSectionLevels: level "${l.name}" has a non-finite elevation (${l.elevation})`);
+    }
+    const cutHeight = opts.cutHeight ?? 1.2;
+    if (!Number.isFinite(cutHeight)) throw new Error(`setSectionLevels: cutHeight must be finite, got ${opts.cutHeight}`);
+    this.shadingBar?.setLevels(levels, cutHeight);
   }
   /** The section in force, or null. */
   get section() {
