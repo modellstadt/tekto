@@ -33,6 +33,7 @@ import type { Slab, SlabType, SlabContext } from "../bim/slabs/types";
 import type { OpeningType, DoorOperation, WindowPartitioning } from "../bim/openings";
 import type { Space } from "../bim/spaces";
 import type { Stair, StairType, StairFlight, StairShape } from "../bim/stairs";
+import type { Roof, RoofKind } from "../bim/roofs";
 
 // ─── Options ─────────────────────────────────────────────────────────
 
@@ -608,14 +609,26 @@ export class IfcWriter {
    *   const deck = ifc.addSlab(roofSlab, { predefinedType: "ROOF", storey: top });
    *   const rafters = rafterParts.map((p) => ifc.addMember(0, p));
    *   ifc.addRoof([deck, ...rafters], { storey: top, predefinedType: "GABLE_ROOF" });
+   *
+   * Pass a `Roof` instead of refs and the writer makes the parts: one `IfcSlab`
+   * .ROOF. per roof plane (tessellated, its build-up), gathered under the
+   * `IfcRoof` (name and predefined type from the roof unless given), and
+   * `Pset_RoofCommon` from its properties. With `gableThickness`, its gables
+   * (`roof.gables(gableThickness)`) are written as tessellated, external
+   * `IfcWall`s contained in the same storey — walls, not roof parts.
+   *
+   *   ifc.addRoof(roof, { storey: top, gableThickness: 0.3 });
    */
-  addRoof(parts: readonly number[], opts: {
+  addRoof(parts: readonly number[] | Roof, opts: {
     name?: string;
     storey?: number;
     predefinedType?: "FLAT_ROOF" | "SHED_ROOF" | "GABLE_ROOF" | "HIP_ROOF" | "HIPPED_GABLE_ROOF"
       | "GAMBREL_ROOF" | "MANSARD_ROOF" | "BARREL_ROOF" | "RAINBOW_ROOF" | "BUTTERFLY_ROOF"
       | "PAVILION_ROOF" | "DOME_ROOF" | "FREEFORM" | "NOTDEFINED";
+    /** A `Roof` only: the thickness of the walls under its gables; leave out to write no gable walls. */
+    gableThickness?: number;
   } = {}): number {
+    if (!isRefList(parts)) return this.addRoofElement(parts, opts);
     const storey = this.resolveStorey(opts.storey);
     if (parts.length === 0) throw new Error("IfcWriter.addRoof: a roof needs at least one part (a ref from addSlab or addMember).");
     for (const p of parts) {
@@ -634,6 +647,35 @@ export class IfcWriter {
     this.addEntity(
       `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${roofRef},(${parts.map((r) => `#${r}`).join(",")}))`,
     );
+    return roofRef;
+  }
+
+  /** `addRoof(roof)`: each roof plane as an `IfcSlab` .ROOF. part, then the gables as walls beside the roof. */
+  private addRoofElement(roof: Roof, opts: NonNullable<Parameters<IfcWriter["addRoof"]>[1]>): number {
+    const storey = this.resolveStorey(opts.storey);
+    const slabs = roof.planes().map((plane) => {
+      // World coordinates, as in addMember: placed relative to the building, so no storey elevation is added.
+      const shape = this.writeTriangulatedShape(plane.mesh.positions, plane.mesh.indices);
+      const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.buildingPlacementRef},#${this.worldPlacementRef})`);
+      const slabRef = this.addEntity(
+        `IFCSLAB(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(plane.name)},$,$,#${placement},#${shape},$,.ROOF.)`,
+      );
+      this.slabRefs.push(slabRef);
+      this.partRefs.add(slabRef);
+      return slabRef;
+    });
+    const roofRef = this.addRoof(slabs, {
+      name: opts.name ?? roof.name,
+      storey,
+      predefinedType: opts.predefinedType ?? IFC_ROOF_TYPE[roof.kind],
+    });
+    if (Object.keys(roof.properties).length > 0) this.writePset(roofRef, "Pset_RoofCommon", roof.properties);
+    if (opts.gableThickness !== undefined) {
+      for (const gable of roof.gables(opts.gableThickness)) {
+        const wallRef = this.addMember(0, { name: gable.name, role: "gable", mesh: gable.mesh, ifcType: "IfcWall" }, { storey });
+        this.writePset(wallRef, "Pset_WallCommon", { IsExternal: true });
+      }
+    }
     return roofRef;
   }
 
@@ -724,7 +766,7 @@ export class IfcWriter {
    * from a flat positions array and 0-based triangle indices. Returns the
    * IfcProductDefinitionShape ref.
    */
-  private writeTriangulatedShape(positions: number[], indices: number[]): number {
+  private writeTriangulatedShape(positions: ArrayLike<number>, indices: ArrayLike<number>): number {
     const coords: string[] = [];
     for (let i = 0; i < positions.length; i += 3) {
       coords.push(`(${ifcReal(positions[i])},${ifcReal(positions[i + 1])},${ifcReal(positions[i + 2])})`);
@@ -1272,6 +1314,16 @@ function ifcReal(n: number): string {
   if (!Number.isFinite(n)) return "0.";
   const s = n.toString();
   return s.includes(".") || s.includes("e") || s.includes("E") ? s : `${s}.`;
+}
+
+/** `IfcRoofTypeEnum` for each `Roof` kind. */
+const IFC_ROOF_TYPE: Record<RoofKind, "FLAT_ROOF" | "SHED_ROOF" | "GABLE_ROOF" | "HIP_ROOF"> = {
+  flat: "FLAT_ROOF", shed: "SHED_ROOF", gable: "GABLE_ROOF", hip: "HIP_ROOF",
+};
+
+/** Which form of `addRoof`: refs of parts already written, or a `Roof`. */
+function isRefList(parts: readonly number[] | Roof): parts is readonly number[] {
+  return Array.isArray(parts);
 }
 
 function round3(n: number): number {

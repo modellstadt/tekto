@@ -6,6 +6,7 @@ import { Slab, SlabType, SolidSlabConstruction } from "../src/bim/slabs";
 import { OpeningType } from "../src/bim/openings";
 import { Space, boundingWalls } from "../src/bim/spaces";
 import { Stair, StairType } from "../src/bim/stairs";
+import { Roof } from "../src/bim/roofs";
 import { IfcWriter, standardPropertyName } from "../src/io/IfcWriter";
 import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 
@@ -335,6 +336,35 @@ describe("IfcWriter — roofs and loose elements", () => {
     expect(() => w.addRoof([])).toThrow(/at least one part/);
     expect(() => w.addRoof([w.getDefaultStorey()])).toThrow(/not a slab or member/);
     expect(() => w.addMember(0, { name: "x", role: "x", mesh: MeshFactory.box(1, 1, 1) }, { storey: 99999 })).toThrow(/unknown storey ref/);
+  });
+
+  it("addRoof(roof) writes an IfcRoof gathering a ROOF slab per plane, and the gables as walls of the storey", () => {
+    const w = new IfcWriter({});
+    const top = w.addStorey({ name: "Attic", elevation: 6 });
+    const roof = new Roof({
+      kind: "gable", name: "Main roof", pitch: 40, eavesElevation: 6, thickness: 0.3,
+      footprint: [new Vec2(0, 0), new Vec2(10, 0), new Vec2(10, 8), new Vec2(0, 8)], properties: { fireRating: "REI30" },
+    });
+    const roofRef = w.addRoof(roof, { storey: top, gableThickness: 0.3 });
+    const out = w.save();
+    expect(out).toMatch(new RegExp(`#${roofRef}=IFCROOF\\('[^']+',#\\d+,'Main roof',\\$,\\$,#\\d+,\\$,\\$,\\.GABLE_ROOF\\.\\);`));
+    const slabs = [...out.matchAll(/#(\d+)=IFCSLAB\([^;]*'Main roof plane \d'[^;]*,#\d+,\$,\.ROOF\.\);/g)].map(m => Number(m[1]));
+    expect(slabs).toHaveLength(2);
+    expect(out).toMatch(new RegExp(`=IFCRELAGGREGATES\\([^;]*,#${roofRef},\\(${slabs.map(s => `#${s}`).join(",")}\\)\\);`));
+    expect(countLines(out, /=IFCTRIANGULATEDFACESET\(/)).toBe(4);   // two slabs, two gables
+    const walls = [...out.matchAll(/#(\d+)=IFCWALL\('[^']+',#\d+,'Main roof gable \d',\$,'gable',/g)].map(m => Number(m[1]));
+    expect(walls).toHaveLength(2);
+    expect(containedIn(out, top)).toEqual([roofRef, ...walls]);
+    expect(out).toMatch(/IFCPROPERTYSET\('[^']+',#\d+,'Pset_RoofCommon'/);
+    expect(out).toContain("IFCPROPERTYSINGLEVALUE('FireRating',$,IFCTEXT('REI30'),$)");
+    expect(out).toContain("IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$)");
+    // a hip roof has four planes and no gables, with or without a gable thickness
+    const hip = new IfcWriter({});
+    hip.addRoof(new Roof({ ...roof, kind: "hip" }), { gableThickness: 0.3 });
+    const hipOut = hip.save();
+    expect(hipOut).toContain(".HIP_ROOF.");
+    expect(countLines(hipOut, /=IFCSLAB\(.*\.ROOF\.\);/)).toBe(4);
+    expect(countLines(hipOut, /=IFCWALL\(/)).toBe(0);
   });
 });
 
