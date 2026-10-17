@@ -38,7 +38,7 @@ Use `tekto/core` for scripts and checks (`node check.mjs` with `import { MeshFac
 ### Start here
 
 <!-- start-here: copied into llms.txt by tools/gen-llms.mjs; bare `Names` must be exports (CI checks) -->
-About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Files:** `Sheet` (drawings), `writeDxf2D`, `writePdf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
+About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Buildings:** records (`BUILDING_SCHEMA`) built by `realizeBuilding` / `bindBuilding`. **Files:** `Sheet` (drawings), `writeDxf2D`, `writePdf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
 
 | To … | use | not |
 |---|---|---|
@@ -283,6 +283,24 @@ writer.addSlab(roof,       { storey: first,  predefinedType: "ROOF"  });
 ```
 
 Each storey gets its own `IfcRelContainedInSpatialStructure` at save time; the building → storeys aggregation is emitted automatically.
+
+### A building as data
+
+A whole building can also be plain JSON records, which a `Doc` stores (saved, undone, shared) and a person, script or agent writes: `storeys`, `walls`, `openings`, `slabs` and `spaces`, referencing each other by id. `BUILDING_SCHEMA` is the JSON Schema of each collection, so it validates input and serves as an agent tool's input schema. Wall, slab and opening `type`s name entries of `BuildingTypes`; the default ones (`defaultBuildingTypes()`) are Holzrahmenbau walls, joisted floors and a concrete ground slab.
+
+```ts
+const building = realizeBuilding({
+  storeys:  { eg: { name: "Ground floor", elevation: 0, height: 2.9 } },
+  slabs:    { base: { storey: "eg", boundary: [[0, 0], [10, 0], [10, 8], [0, 8]], type: "ground" } },
+  walls:    { s: { storey: "eg", path: [[0, 0], [10, 0]] }, e: { storey: "eg", path: [[10, 0], [10, 8]] } },
+  openings: { door: { wall: "s", kind: "door", at: 3, width: 1 } },   // `at`: centre, metres along the wall
+  spaces:   { hall: { storey: "eg", name: "Hall", boundary: [[0, 0], [6, 0], [6, 4.5], [0, 4.5]], use: "hall" } },
+});
+building.check();   // [{ severity, code, message, keys: ["walls/e"] }] — what is wrong, by record
+building.toIfc();   // storeys, framed walls with openings, slabs with joists, spaces
+```
+
+Walls stand on their storey's elevation and run up to the underside of the floor above unless they give a `height`. `validateBuilding` checks records against the schema, references and type names; `check()` adds what the built geometry shows (openings past a wall's end, overlapping or above it; wall ends that meet no other wall; storeys that don't stack; rooms that overlap). In an app, `bindBuilding(doc, scene)` rebuilds and redraws the building whenever its records change, each object keyed by its record (`"walls/s"`), so selection, Markup and callouts name records. The House page ([playground/pages/house.ts](playground/pages/house.ts)) is the example.
 
 ## Testbench shell pattern
 
@@ -672,7 +690,7 @@ Or use IDE autocomplete on the import line — every export is typed, and the co
 - **Meshes**: `Mesh` (the one class: id-based editing, connectivity, typed arrays), `MeshFactory` (primitives + extrude + revolve + loft + pipe + subdivide), `MeshTransform`, `MeshSubdivide`, `MeshCleanup`, `MeshAnalysis`.
 - **Curves + surfaces**: `LineCurve`, `ArcCurve`, `HelixCurve`, `NurbsCurve`, `CubicBezierCurve`, `NurbsSurface`.
 - **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `PolygonBool` (boolean ops with holes), `NoFitPolygon` (Minkowski / NFP / inner-fit for nesting), `perpVisibility` (collimated edge-visibility polygons), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
-- **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.
+- **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`. A building as data: `realizeBuilding` / `bindBuilding` build plain records (`BUILDING_SCHEMA`: storeys, walls, openings, slabs, spaces) into those elements, `Building.check()` reports issues by record; `checkRecord` validates any record against a JSON Schema.
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
 - **Rendering**: `ThreeRenderer` — the one 3D renderer under `sketch()` and `appShell()`: render modes (solid / wireframe / hidden line / ghost) with creases built a frame at a time, `setSection` (a cut with poché), `setView` (plans and elevations; orthographic + hidden line + `front` is an elevation) and the `navGizmo` axis widget, `fitTo`, `setCallouts` (labels in the margins with leaders), `setSelectionStyle("outline")`, `onHover`, `gridStyle: "fading"` (a ground ruled in metres for the content's size, fading out), `shadingBar` (icons in the view for render style, lighting, a morning / noon / sunset sun the section (a slider relative to the content, or in the scene's `units`), overlays (`setOverlays`), Frame and Snapshot), a Studio sun framed to the content, and a teardown that releases the WebGL context. Its rules are plain functions (`viewDirection`, `sectionPlane`, `fitRadius`, …). A model from elsewhere (IFC, a cut list) goes in as `scene.addMesh(new Mesh(positions, indices), { color })` and gets all of it. Lights are scene objects too: `scene.addLight(position, { kind: "point" | "spot", … })`.
 - **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views of meshes), `Sheet` (a drawing at a scale: views placed on the sheet — plan, elevations projected from 3D, details — with lines, arcs, fills, text, dimensions, leaders and level marks; `toSVG` and `toDXF` export the same primitives; on screen `SheetCanvas` — pan, zoom, pick by `key`, highlight — or `drawSheet` into any canvas; over a 3D app in `app.overlay()` or a sketch's `lab.overlay()` — see the *Sketch + drawing* page), `writeDxf2D` (raw drawings: polylines, lines, circles, arcs, text, solids, line types; `scale: 1000` → mm), `writePdf2D` (the same content as a vector PDF at a true scale, `scale: 50` → 1:50, one page sized to the drawing, title + scale bar), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — all emit AutoCAD-safe R12), `download` / `stampName` (save a file from the browser — a `sketch()` lists `lab.registerExport` items in its Export menu), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).

@@ -6,6 +6,17 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **A building as data**: `realizeBuilding(data)` builds storeys, walls, openings, slabs and
+  spaces from plain JSON records that reference each other by id: the walls of a storey as one
+  `WallSystem` (Holzrahmenbau by default), standing on the storey and running up to the floor
+  above; slabs with stair wells; spaces. `building.check()` reports what is wrong by record key
+  (openings past a wall's end, overlapping or above it; free wall ends; storeys that don't stack;
+  rooms that overlap); `building.toIfc()` writes it. `bindBuilding(doc, scene)` keeps a scene in
+  step with a `Doc` holding the records, each object keyed by its record. `BUILDING_SCHEMA` is
+  the JSON Schema of each collection, `defaultBuildingTypes()` the wall, slab and opening types
+  records name. New playground page: House.
+- **`checkRecord(value, schema)`**: checks a record against a JSON Schema (the part tekto uses:
+  types, required, unknown properties, enums, ranges, array sizes) and names each bad value.
 - **Fix: a polyline wall's IFC segments are each a whole wall.** `IfcWriter` writes a wall
   with more than two centreline points as one `IfcWallStandardCase` per segment, but only
   the first was typed and had the material layers, every opening voided the first, and
