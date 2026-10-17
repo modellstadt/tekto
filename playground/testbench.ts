@@ -108,6 +108,7 @@ const GROUPS: PageGroup[] = [
     { slug: "timber",   label: "Timber + IFC", load: () => import("./pages/timber") },
     { slug: "framed-wall", label: "Framed Wall (modes, cut, views)", load: () => import("./pages/framed-wall") },
     { slug: "framed-floor", label: "Framed Floor (stair + well, IFC)", load: () => import("./pages/framed-floor") },
+    { slug: "house", label: "House (building as data)", load: () => import("./pages/house") },
     { slug: "custom-viewer", label: "Custom Viewer (your own UI)", load: () => import("./pages/custom-viewer") },
     { slug: "dxf-test", label: "DXF Test",     load: () => import("./pages/dxf-test") },
     { slug: "dxf-3d",   label: "DXF 3D Writer", load: () => import("./pages/dxf-3d") },

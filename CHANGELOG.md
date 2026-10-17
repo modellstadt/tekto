@@ -25,6 +25,48 @@ before 1.0, breaking changes bump the minor version. See
   give both.
 - **Fix: a straight stair's IFC type is `.STRAIGHT_RUN_STAIR.`**; the writer wrote
   `.STRAIGHT_RUN.`, which `IfcStairTypeEnum` does not have.
+- **An agent in the open app**: `agentDoc(doc, { schema, check })` shares an app's document
+  with agents. `window.__tekto.doc` lists collections and their schema, returns records, and
+  applies a patch (`{ set, update, remove }` by `"collection/id"`) as one undo step — rejected
+  whole, with the reasons by record, when a record breaks the schema — answered with the app's
+  issues. `tekto/markup-vite` relays the same calls into the open tab from outside
+  (`POST /__tekto/agent/call`), and **`tools/mcp.mjs`** is an MCP server over them (no
+  dependencies): `claude mcp add tekto -- node node_modules/tekto/tools/mcp.mjs`. The House
+  page shares its building. `applyPatch(doc, patch, { schema, label })` is the rule, in `tekto/core`.
+
+- **A building as data**: `realizeBuilding(data)` builds storeys, walls, openings, slabs and
+  spaces from plain JSON records that reference each other by id: the walls of a storey as one
+  `WallSystem` (Holzrahmenbau by default), standing on the storey and running up to the floor
+  above; slabs with stair wells; spaces. `building.check()` reports what is wrong by record key
+  (openings past a wall's end, overlapping or above it; free wall ends; storeys that don't stack;
+  rooms that overlap); `building.toIfc()` writes it. `bindBuilding(doc, scene)` keeps a scene in
+  step with a `Doc` holding the records, each object keyed by its record. `BUILDING_SCHEMA` is
+  the JSON Schema of each collection, `defaultBuildingTypes()` the wall, slab and opening types
+  records name. New playground page: House.
+- **`checkRecord(value, schema)`**: checks a record against a JSON Schema (the part tekto uses:
+  types, required, unknown properties, enums, ranges, array sizes) and names each bad value.
+- **Fix: a polyline wall's IFC segments are each a whole wall.** `IfcWriter` writes a wall
+  with more than two centreline points as one `IfcWallStandardCase` per segment, but only
+  the first was typed and had the material layers, every opening voided the first, and
+  every framed member was aggregated under it. Now every segment is typed and layered, an
+  opening voids the segment its `centerlinePosition` falls on, a member goes under the
+  segment it stands on, and a joint relates the segment at the joint. For a wall of two
+  points none of this changes anything.
+
+- **Fix: mitred corners are mitred in the IFC export.** Only butt joints were trimmed: at
+  a mitred L the two walls' boxes stopped at the axes (a notch outside the corner, an
+  overlap inside), and so did each corner of a polyline wall. A mitred end is now an
+  `IfcArbitraryClosedProfileDef` with the footprint the 3D mesh has, cut by the joint's own
+  trim lines (and the stem of a mitred T stops at the through wall's face).
+
+- **Fix: a wall's `uValue` is written as `ThermalTransmittance`**, as `PropertyMap`
+  documents; it was written as `uValue`, which no reader of `Pset_WallCommon` (or
+  `Pset_WindowCommon`, `Pset_DoorCommon`, `Pset_SlabCommon`) looks for.
+
+- **Fix: a wall's custom properties go in their own set.** Every key went into
+  `Pset_WallCommon`; now only the standard ones do, and the rest go in a set named after
+  the wall type (`Tekto_Wall` without one), as src/bim/walls/README.md says — on the
+  occurrence and on the `IfcWallType`.
 
 ## 0.9.5 — 2026-10-14
 
