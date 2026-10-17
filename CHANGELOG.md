@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **An agent in the open app**: `agentDoc(doc, { schema, check })` shares an app's document
+  with agents. `window.__tekto.doc` lists collections and their schema, returns records, and
+  applies a patch (`{ set, update, remove }` by `"collection/id"`) as one undo step — rejected
+  whole, with the reasons by record, when a record breaks the schema — answered with the app's
+  issues. `tekto/markup-vite` relays the same calls into the open tab from outside
+  (`POST /__tekto/agent/call`), and **`tools/mcp.mjs`** is an MCP server over them (no
+  dependencies): `claude mcp add tekto -- node node_modules/tekto/tools/mcp.mjs`. The House
+  page shares its building. `applyPatch(doc, patch, { schema, label })` is the rule, in `tekto/core`.
+
 - **A building as data**: `realizeBuilding(data)` builds storeys, walls, openings, slabs and
   spaces from plain JSON records that reference each other by id: the walls of a storey as one
   `WallSystem` (Holzrahmenbau by default), standing on the storey and running up to the floor
