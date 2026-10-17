@@ -13,6 +13,82 @@ before 1.0, breaking changes bump the minor version. See
   `OpeningType` options: `frame` (section) and `offset` (across the wall). `IfcWriter` writes
   the fill as the IfcWindow's / IfcDoor's body (tessellated) where it wrote the opening's box;
   `new IfcWriter({ openingFills: false })` keeps the box. The Framed Wall page shows the window.
+- **`Roof`**: a roof element for a house — `flat` (any polygon footprint), `shed`, `gable` or
+  `hip` (a rectangular footprint, whose first edge is an eave), from plain data: footprint
+  (the outside face of the walls), pitch in degrees, `eavesElevation` (the top of the walls),
+  `overhang` / `gableOverhang`, build-up `thickness`, name and properties; `JSON.stringify(roof)`
+  is the record that builds it again. `planes()` gives each plane's top surface as a 3D polygon
+  with its area, normal and slab (a closed `Mesh`, cut plumb at eaves, verges, ridge and hips);
+  `toMesh()` the whole build-up; `ridge()` / `ridgeHeight()` the top of the roof; and
+  `gables(wallThickness)` the wall infill above the end walls (triangles under a gable; under a
+  shed a right triangle each side and a strip over the high side; none under flat or hip), each
+  a closed mesh with its centreline in plan. Bad input throws an error that names it. The
+  *Roofs* playground page shows the four kinds.
+- **`IfcWriter.addRoof(roof, { storey, gableThickness })`** also takes a `Roof`: an `IfcRoof`
+  (FLAT_ / SHED_ / GABLE_ / HIP_ROOF) gathering one tessellated `IfcSlab` .ROOF. per plane,
+  `Pset_RoofCommon` from its properties, and with `gableThickness` its gables as tessellated,
+  external `IfcWall`s of the same storey. `addRoof(parts, …)` is unchanged.
+- **Stairs with a landing**: `Stair` builds the shape it names (`shape`, default the type's,
+  else `"straight_run"`): `"two_straight_run"` (two flights in line), `"quarter_turn"` (L) and
+  `"half_turn"` (U), each with a landing after riser `landingAfter` (default half the risers),
+  turning `turn` `"left"` or `"right"`, `landingDepth` long (default the width) and
+  `landingThickness` thick, a U's flights `gap` apart (default 0.1 m). `landing()` gives the
+  landing as a `Slab`, `footprint()` the plan outline, and `slabOpening(floor, { clearance })`
+  the `SlabOpening` the floor above needs: over every tread with less than 2 m of headroom under
+  that floor, laid out in its opening frame. `IfcWriter.addStair` gathers the landing under the
+  `IfcStair` as an `IfcSlab` LANDING beside the flights, and puts the type's material on every
+  part. A bad input throws naming it: a rise ≤ 0, a quarter-turn landing shallower than the
+  flight is wide, a `landingAfter` that leaves a flight without a riser. Playground: **Framed
+  Floor** has a stair under the floor, and its well is the stair's `slabOpening`.
+- **Breaking: a flight draws `risers − 1` treads**, as its `treads` count said. A straight
+  `Stair` drew one step per riser, the last level with the floor above, where that floor's slab
+  is; now its last riser meets the slab's edge, so the run is one going shorter. To migrate,
+  end the floor above (or its stair well) at the last riser: `footprint()` and `slabOpening()`
+  give both.
+- **Fix: a straight stair's IFC type is `.STRAIGHT_RUN_STAIR.`**; the writer wrote
+  `.STRAIGHT_RUN.`, which `IfcStairTypeEnum` does not have.
+- **An agent in the open app**: `agentDoc(doc, { schema, check })` shares an app's document
+  with agents. `window.__tekto.doc` lists collections and their schema, returns records, and
+  applies a patch (`{ set, update, remove }` by `"collection/id"`) as one undo step — rejected
+  whole, with the reasons by record, when a record breaks the schema — answered with the app's
+  issues. `tekto/markup-vite` relays the same calls into the open tab from outside
+  (`POST /__tekto/agent/call`), and **`tools/mcp.mjs`** is an MCP server over them (no
+  dependencies): `claude mcp add tekto -- node node_modules/tekto/tools/mcp.mjs`. The House
+  page shares its building. `applyPatch(doc, patch, { schema, label })` is the rule, in `tekto/core`.
+
+- **A building as data**: `realizeBuilding(data)` builds storeys, walls, openings, slabs and
+  spaces from plain JSON records that reference each other by id: the walls of a storey as one
+  `WallSystem` (Holzrahmenbau by default), standing on the storey and running up to the floor
+  above; slabs with stair wells; spaces. `building.check()` reports what is wrong by record key
+  (openings past a wall's end, overlapping or above it; free wall ends; storeys that don't stack;
+  rooms that overlap); `building.toIfc()` writes it. `bindBuilding(doc, scene)` keeps a scene in
+  step with a `Doc` holding the records, each object keyed by its record. `BUILDING_SCHEMA` is
+  the JSON Schema of each collection, `defaultBuildingTypes()` the wall, slab and opening types
+  records name. New playground page: House.
+- **`checkRecord(value, schema)`**: checks a record against a JSON Schema (the part tekto uses:
+  types, required, unknown properties, enums, ranges, array sizes) and names each bad value.
+- **Fix: a polyline wall's IFC segments are each a whole wall.** `IfcWriter` writes a wall
+  with more than two centreline points as one `IfcWallStandardCase` per segment, but only
+  the first was typed and had the material layers, every opening voided the first, and
+  every framed member was aggregated under it. Now every segment is typed and layered, an
+  opening voids the segment its `centerlinePosition` falls on, a member goes under the
+  segment it stands on, and a joint relates the segment at the joint. For a wall of two
+  points none of this changes anything.
+
+- **Fix: mitred corners are mitred in the IFC export.** Only butt joints were trimmed: at
+  a mitred L the two walls' boxes stopped at the axes (a notch outside the corner, an
+  overlap inside), and so did each corner of a polyline wall. A mitred end is now an
+  `IfcArbitraryClosedProfileDef` with the footprint the 3D mesh has, cut by the joint's own
+  trim lines (and the stem of a mitred T stops at the through wall's face).
+
+- **Fix: a wall's `uValue` is written as `ThermalTransmittance`**, as `PropertyMap`
+  documents; it was written as `uValue`, which no reader of `Pset_WallCommon` (or
+  `Pset_WindowCommon`, `Pset_DoorCommon`, `Pset_SlabCommon`) looks for.
+
+- **Fix: a wall's custom properties go in their own set.** Every key went into
+  `Pset_WallCommon`; now only the standard ones do, and the rest go in a set named after
+  the wall type (`Tekto_Wall` without one), as src/bim/walls/README.md says — on the
+  occurrence and on the `IfcWallType`.
 
 ## 0.9.5 — 2026-10-14
 

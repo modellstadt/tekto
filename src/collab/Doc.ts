@@ -20,6 +20,7 @@
  */
 import { SharedStore, memoryAdapter, type CollabAdapter, type SharedRecord, type CollabUser, type CollabEvents, type Presence } from "./SharedStore";
 import type { Scene } from "../scene/Scene";
+import { checkRecord, type RecordSchema } from "./recordSchema";
 
 /** What a collection's records look like: collection name → record type. */
 export type DocSchema = Record<string, object>;
@@ -381,6 +382,95 @@ export function localAdapter(opts: { prefix?: string; storage?: Pick<Storage, "g
     broadcast() { /* one user */ },
     async user() { return user; },
   };
+}
+
+// ── applyPatch: edits as data ─────────────────────────────────────────────────────
+
+/**
+ * Edits to a document as data: what an agent (or a script, or another app) sends. Records
+ * are named `"collection/id"`. `set` adds a record or replaces it whole, `update` merges
+ * fields into one that exists, `remove` deletes.
+ */
+export interface DocPatch {
+  set?: Record<string, object>;
+  update?: Record<string, object>;
+  remove?: string[];
+}
+
+/** What `applyPatch` did: everything, or (`ok: false`) nothing, and why. */
+export interface PatchResult {
+  ok: boolean;
+  /** Why nothing was applied, by record: a schema issue, a missing record, a bad key. */
+  rejected: { key: string; message: string }[];
+  /** The records set, updated and removed. */
+  changed: { set: string[]; updated: string[]; removed: string[] };
+  /** The undo step it made ("Undo <label>"), when it changed something. */
+  undo?: string;
+}
+
+/**
+ * Apply a `DocPatch` as one undo step, or not at all. Every record is checked first: its key
+ * (`"collection/id"`), that an updated or removed record exists, and — when `schema` has the
+ * collection — the record (for an update, the record as it would be) against its
+ * `RecordSchema`. A collection the schema does not list is rejected when a schema is given.
+ *
+ *   applyPatch(doc, { set: { "walls/w9": { storey: "eg", path: [[0, 0], [4, 0]] } }, remove: ["openings/o2"] },
+ *              { schema: BUILDING_SCHEMA, label: "Agent: add a wall" });
+ */
+export function applyPatch<S extends DocSchema>(
+  doc: Doc<S>,
+  patch: DocPatch,
+  opts: { schema?: Partial<Record<string, RecordSchema>>; label?: string } = {},
+): PatchResult {
+  const rejected: { key: string; message: string }[] = [];
+  const changed = { set: [] as string[], updated: [] as string[], removed: [] as string[] };
+  const split = (key: string): [string, string] | null => {
+    const at = key.indexOf(SEP);
+    if (at <= 0 || at === key.length - 1) { rejected.push({ key, message: `a record is named "collection${SEP}id", got "${key}"` }); return null; }
+    const c = key.slice(0, at);
+    if (opts.schema && !opts.schema[c]) {
+      rejected.push({ key, message: `"${c}" is not a collection here (collections: ${Object.keys(opts.schema).join(", ")})` });
+      return null;
+    }
+    return [c, key.slice(at + 1)];
+  };
+  const checkValue = (key: string, c: string, value: unknown) => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) { rejected.push({ key, message: "a record is a JSON object" }); return; }
+    const schema = opts.schema?.[c];
+    if (schema) for (const i of checkRecord(value, schema)) rejected.push({ key, message: `${i.path}: ${i.message}` });
+  };
+  const plan: (() => void)[] = [];
+  const get = (c: string, id: string) => doc.get(c as keyof S & string, id) as object | undefined;
+  for (const [key, value] of Object.entries(patch.set ?? {})) {
+    const k = split(key);
+    if (!k) continue;
+    checkValue(key, k[0], value);
+    plan.push(() => {
+      const [c, id] = k as [keyof S & string, string];
+      if (doc.has(c, id)) doc.update(c, id, () => value as S[typeof c]); else doc.add(c, value as S[typeof c], { id });
+      changed.set.push(key);
+    });
+  }
+  for (const [key, change] of Object.entries(patch.update ?? {})) {
+    const k = split(key);
+    if (!k) continue;
+    const cur = get(k[0], k[1]);
+    if (cur === undefined) { rejected.push({ key, message: "does not exist (use set to add it)" }); continue; }
+    if (change === null || typeof change !== "object" || Array.isArray(change)) { rejected.push({ key, message: "an update is a JSON object of fields" }); continue; }
+    checkValue(key, k[0], { ...cur, ...change });
+    plan.push(() => { doc.update(k[0] as keyof S & string, k[1], change as Partial<S[keyof S & string]>); changed.updated.push(key); });
+  }
+  for (const key of patch.remove ?? []) {
+    const k = split(key);
+    if (!k) continue;
+    if (get(k[0], k[1]) === undefined) { rejected.push({ key, message: "does not exist" }); continue; }
+    plan.push(() => { doc.remove(k[0] as keyof S & string, k[1]); changed.removed.push(key); });
+  }
+  if (rejected.length) return { ok: false, rejected, changed };
+  if (!plan.length) return { ok: true, rejected, changed };
+  const n = plan.length;
+  doc.transact(opts.label ?? `Apply ${n} change${n === 1 ? "" : "s"}`, () => { for (const step of plan) step(); });
+  return { ok: true, rejected, changed, undo: doc.undoLabel() };
 }
 
 // ── bindScene: document → scene, by record ─────────────────────────────────────
