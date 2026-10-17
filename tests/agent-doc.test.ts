@@ -108,7 +108,7 @@ describe("tools/mcp.mjs", () => {
     ]);
     expect(init.result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "tekto" } });
     expect(list.result.tools.map((t: any) => t.name)).toEqual([
-      "tekto_info", "tekto_records", "tekto_apply", "tekto_check", "tekto_snapshot", "tekto_undo", "tekto_set_params", "tekto_run_command", "tekto_camera",
+      "tekto_info", "tekto_records", "tekto_apply", "tekto_check", "tekto_snapshot", "tekto_undo", "tekto_set_params", "tekto_run_command", "tekto_section", "tekto_camera",
     ]);
     expect(JSON.parse(apply.result.content[0].text)).toMatchObject({ ok: true, changed: { set: ["walls/a"] } });
     expect(calls.find((c) => c.op === "apply")).toEqual({ op: "apply", args: { patch: { set: { "walls/a": { storey: "eg", path: [[0, 0], [1, 0]] } } }, label: "Agent" } });

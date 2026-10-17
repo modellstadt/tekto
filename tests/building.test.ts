@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  realizeBuilding, validateBuilding, bindBuilding, BUILDING_SCHEMA, type BuildingData, type BuildingRecords,
+  realizeBuilding, validateBuilding, bindBuilding, buildingSchema, BUILDING_SCHEMA, type BuildingData, type BuildingRecords,
 } from "../src/bim/building";
 import { checkRecord } from "../src/collab/recordSchema";
 import { Doc } from "../src/collab/Doc";
@@ -32,6 +32,8 @@ function house(): BuildingData {
       entry: { wall: "s", kind: "door", at: 3, width: 1 }, w1: { wall: "s", kind: "window", at: 8, width: 1.6 },
       w2: { wall: "e", kind: "window", at: 4, width: 2 }, d1: { wall: "p1", kind: "door", at: 2, width: 0.9 },
       w3: { wall: "s2", kind: "window", at: 7.5, width: 1.2 },
+      d2: { wall: "p2", kind: "door", at: 3, width: 0.9 }, w4: { wall: "w", kind: "window", at: 2, width: 1.2 },
+      d3: { wall: "q1", kind: "door", at: 2, width: 0.9 },
     },
     spaces: {
       hall: { storey: "eg", name: "Hall", boundary: rect(0, 0, 6, 4.5), use: "hall" },
@@ -76,7 +78,7 @@ describe("realizeBuilding", () => {
   it("builds every record of a sound house, and finds nothing wrong with it", () => {
     expect(b.check()).toEqual([]);
     expect(b.storeys.map((s) => [s.id, s.walls.size, s.openings.size, s.slabs.size, s.spaces.size])).toEqual([
-      ["eg", 6, 4, 1, 3], ["og", 6, 1, 2, 1],
+      ["eg", 6, 6, 1, 3], ["og", 6, 2, 2, 1],
     ]);
     expect(b.areas().total).toBeCloseTo(27 + 21 + 32 + 20, 6);
     expect(b.levels()).toEqual([{ name: "Ground floor", elevation: 0 }, { name: "Upper floor", elevation: 2.9 }]);
@@ -119,6 +121,26 @@ describe("realizeBuilding", () => {
     ]));
   });
 
+  it("asks for a way into every room, and daylight in the ones people stay in", () => {
+    const data = house();
+    delete data.openings!.d3;                                     // the upper bedroom's only door
+    delete data.openings!.w4;                                     // the study's only window
+    const codes = realizeBuilding(data).check().map((i) => `${i.code} ${i.keys.join(" ")}`);
+    expect(codes).toEqual(["space-no-window spaces/study"]);       // one room upstairs needs no door to reach it
+    data.spaces!.bath = { storey: "og", name: "Bath", boundary: rect(0, 0, 5, 4), use: "bath" };
+    expect(realizeBuilding(data).check().map((i) => `${i.code} ${i.keys.join(" ")}`)).toEqual([
+      "space-no-window spaces/study", "space-no-door spaces/bed", "space-no-door spaces/bath",
+    ]);
+  });
+
+  it("names the types a record may take in the schema", () => {
+    const wallType = buildingSchema().walls.properties!.type;
+    expect(wallType.enum).toEqual(["exterior", "interior", "solid"]);
+    expect(wallType.description).toMatch(/"interior": Partition, timber frame, 0\.13 m thick/);
+    expect(checkRecord({ storey: "eg", path: [[0, 0], [1, 0]], type: "brick" }, buildingSchema().walls)[0].message)
+      .toBe('expected one of "exterior", "interior", "solid", got "brick"');
+  });
+
   it("leaves out what cannot be built and says why", () => {
     const data = house();
     data.slabs!.floor.openings = [{ x: 20, y: 20, width: 1, depth: 1 }];
@@ -133,8 +155,8 @@ describe("realizeBuilding", () => {
     const count = (t: string) => (ifc.match(new RegExp(`=${t}\\(`, "g")) ?? []).length;
     expect(count("IFCBUILDINGSTOREY")).toBe(2);
     expect(count("IFCWALLSTANDARDCASE")).toBe(12);
-    expect(count("IFCDOOR")).toBe(2);
-    expect(count("IFCWINDOW")).toBe(3);
+    expect(count("IFCDOOR")).toBe(4);
+    expect(count("IFCWINDOW")).toBe(4);
     expect(count("IFCSLAB")).toBe(3);
     expect(count("IFCSPACE")).toBe(4);
   });

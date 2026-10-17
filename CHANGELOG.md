@@ -12,7 +12,12 @@ before 1.0, breaking changes bump the minor version. See
   `stair-step` (2 risers + going outside 590–650 mm, risers over 200 mm) and `stair-well` (a well
   that leaves the floor). `bindBuilding` draws doors and windows with their fill (`openingFill`),
   the roof and the stair; `toIfc()` writes them. The House example has a gable roof and a
-  half-turn stair.
+  half-turn stair; an **Empty site** button (or `&empty`) starts a house from nothing.
+- **Agents choose types and check rooms**: `buildingSchema(types)` is the schema with each
+  record's `type` listed (`enum`) and described (thicknesses), so a wrong name is rejected with
+  the right ones; the descriptions say how ids, room outlines and stairs work. Checks add
+  `space-no-door` and `space-no-window` (living, kitchen, dining, bedroom, office, study). An
+  agent can cut the view (`__tekto.section`, relay `section`, MCP `tekto_section`).
 
 - **An agent in the open app**: `agentDoc(doc, { schema, check })` shares an app's document
   with agents. `window.__tekto.doc` lists collections and their schema, returns records, and

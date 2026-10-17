@@ -11,11 +11,12 @@
  *   undo / redo   every edit, including a whole house written at once, is one step
  *   agentDoc      an agent reads and edits the records (`__tekto.doc`, or from outside through
  *                 the dev server: `tools/mcp.mjs`), each patch one undo step, answered with the issues
+ *   ?empty        start on an empty site (the Empty site button does the same, undoably)
  *   ?shared=1     the records go through the dev server (`.tekto/collab/house.json`), shared by
  *                 every window that opens the page with it
  */
 import {
-  appShell, Doc, bindBuilding, agentDoc, BUILDING_SCHEMA, Selection, selectOnClick, localAdapter, devServerAdapter, download,
+  appShell, Doc, bindBuilding, agentDoc, buildingSchema, Selection, selectOnClick, localAdapter, devServerAdapter, download,
   type BuildingData, type BuildingRecords, type BuildingIssue, type DocJSON,
 } from "../../src";
 
@@ -79,7 +80,8 @@ const EXAMPLE: BuildingData = {
 };
 
 export default function (container: HTMLElement) {
-  const shared = new URLSearchParams(location.search).get("shared");
+  const query = new URLSearchParams(location.search);
+  const shared = query.get("shared");
   const doc = new Doc<BuildingRecords>({ name: "house", adapter: shared ? devServerAdapter() : localAdapter() });
   const selection = new Selection();
 
@@ -99,6 +101,7 @@ export default function (container: HTMLElement) {
       undo: { type: "button", label: "Undo", action: () => doc.undo() },
       redo: { type: "button", label: "Redo", action: () => doc.redo() },
       reset: { type: "button", label: "Example house", action: () => load(EXAMPLE, "Example house") },
+      empty: { type: "button", label: "Empty site", action: () => load({}, "Clear the site") },
       ifc: { type: "button", label: "Export IFC", action: () => download(house.building.toIfc({ projectName: "House" }), "house.ifc", { stamp: true }) },
       save: { type: "button", label: "Save JSON", action: () => download(JSON.stringify(doc.toJSON(), null, 2), "house.json", { stamp: true }) },
       open: { type: "button", label: "Open JSON", action: () => openJson() },
@@ -106,7 +109,7 @@ export default function (container: HTMLElement) {
     groups: {
       Show: ["framing", "issues"],
       History: ["undo", "redo"],
-      File: ["reset", "ifc", "save", "open"],
+      File: ["reset", "empty", "ifc", "save", "open"],
     },
   });
 
@@ -127,7 +130,7 @@ export default function (container: HTMLElement) {
   const stopSelecting = selectOnClick(app.renderer, app.scene, selection);
   selection.onChange(status);
   // Agents edit the same records: checked against the schema, one undo step, answered with the issues.
-  const stopAgent = agentDoc(doc, { schema: BUILDING_SCHEMA, check: () => house.issues });
+  const stopAgent = agentDoc(doc, { schema: buildingSchema(), check: () => house.issues });
 
   /** Each issue as a callout on the records it concerns: red for an error, amber for a warning. */
   function showIssues(issues: BuildingIssue[]) {
@@ -186,9 +189,12 @@ export default function (container: HTMLElement) {
   }
   doc.onHistory(status);
 
-  // The example house in an empty document, once the stored one has loaded.
+  // The example house in an empty document, once the stored one has loaded (`?empty`: a bare site).
   void doc.ready.then(() => {
-    if (doc.count("storeys") === 0) {
+    if (query.has("empty")) {
+      load({}, "Clear the site");
+      doc.clearHistory();
+    } else if (doc.count("storeys") === 0) {
       load(EXAMPLE, "Example house");
       doc.clearHistory();
     }

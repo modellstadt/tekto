@@ -48,6 +48,8 @@ export interface AgentBridgeHost {
   snapshot(opts?: MarkupCaptureOptions): Promise<MarkupBundle>;
   /** 3D harnesses only. */
   camera?(pos: number[], target?: number[]): void;
+  /** 3D harnesses only: cut the view (a plan at `coordinate` on "z", …), or `null` to stop. */
+  section?(section: { axis: "x" | "y" | "z"; at?: number; coordinate?: number; flip?: boolean } | null): void;
   /** The app's commands, listed and run by id for agents. */
   commands?: Commands;
 }
@@ -98,6 +100,7 @@ export function installAgentBridge(host: AgentBridgeHost): AgentBridge {
       return r;
     },
     ...(host.camera ? { camera: host.camera } : {}),
+    ...(host.section ? { section: host.section } : {}),
     // What the app can do — undo, delete, the views … — by id, as a person would by key.
     commands: () => host.commands?.list() ?? [],
     run: (id: string) => host.commands ? host.commands.run(id) : Promise.resolve(false),
@@ -238,12 +241,16 @@ async function runRelayed(op: string, args: Record<string, unknown>): Promise<un
       if (!t.camera) throw new Error("this app has no 3D camera");
       t.camera(args.position as number[], args.target as number[] | undefined);
       return { ok: true };
+    case "section":
+      if (!t.section) throw new Error("this app has no 3D view to cut");
+      t.section(args.axis ? { axis: args.axis, at: args.at, coordinate: args.coordinate, flip: args.flip } : null);
+      return { ok: true };
     case "snapshot": {
       const b = await t.snapshot({ note: args.note as string | undefined, save: args.save === true, label: "agent" }) as MarkupBundle;
       const m = b.markup as unknown as Record<string, unknown>;
       return { viewPng: b.viewPng, camera: m.camera ?? null, scene: m.scene ?? null, logs: m.logs ?? [], errors: m.errors ?? [] };
     }
-    default: throw new Error(`unknown call "${op}" (info, records, apply, check, undo, redo, setParams, run, camera, snapshot)`);
+    default: throw new Error(`unknown call "${op}" (info, records, apply, check, undo, redo, setParams, run, camera, section, snapshot)`);
   }
 }
 

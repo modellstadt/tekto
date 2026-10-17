@@ -195,9 +195,9 @@ const POINT: RecordSchema = { type: "array", items: { type: "number" }, minItems
 const LENGTH = (description: string): RecordSchema => ({ type: "number", exclusiveMinimum: 0, description });
 
 /**
- * The JSON Schema of each building collection: what `validateBuilding` checks and what an
- * agent's tool takes as input. References between records (`storey`, `wall`) and type names
- * are checked by `validateBuilding`, not by the schema.
+ * The JSON Schema of each building collection, for the default types: what `validateBuilding`
+ * checks and what an agent's tool takes as input. References between records (`storey`,
+ * `wall`) are checked by `validateBuilding`. `buildingSchema(types)` gives it for other types.
  */
 export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
   storeys: {
@@ -213,7 +213,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["storey", "path"],
     description: "A wall along a centreline on a storey.",
     properties: {
-      storey: { type: "string", description: "The storey's id" },
+      storey: { type: "string", description: "The storey's id: \"eg\" for \"storeys/eg\"" },
       path: { type: "array", items: POINT, minItems: 2, description: "Centreline points [x, y]; a closed loop repeats its first point" },
       type: { type: "string", description: "Wall type name, default \"exterior\"" },
       thickness: LENGTH("Overrides the type's thickness (m)"),
@@ -225,7 +225,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["wall", "kind", "at", "width"],
     description: "A door or window in a wall.",
     properties: {
-      wall: { type: "string", description: "The wall's id" },
+      wall: { type: "string", description: "The wall's id: \"s\" for \"walls/s\"" },
       kind: { type: "string", enum: ["door", "window"] },
       at: { type: "number", minimum: 0, description: "Centre: distance along the wall's path from its first point (m)" },
       width: LENGTH("Width (m)"),
@@ -239,7 +239,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["storey", "boundary"],
     description: "A slab: a storey's floor (top at its elevation) or its top (a flat roof).",
     properties: {
-      storey: { type: "string", description: "The storey's id" },
+      storey: { type: "string", description: "The storey's id: \"eg\" for \"storeys/eg\"" },
       boundary: { type: "array", items: POINT, minItems: 3, description: "Footprint points [x, y], not repeating the first" },
       level: { type: "string", enum: ["floor", "top"], description: "\"floor\" (default) or \"top\" (a flat roof)" },
       type: { type: "string", description: "Slab type name, default \"floor\"" },
@@ -261,9 +261,9 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["storey", "name", "boundary"],
     description: "A room on a storey.",
     properties: {
-      storey: { type: "string", description: "The storey's id" },
+      storey: { type: "string", description: "The storey's id: \"eg\" for \"storeys/eg\"" },
       name: { type: "string" },
-      boundary: { type: "array", items: POINT, minItems: 3, description: "Floor outline [x, y], not repeating the first" },
+      boundary: { type: "array", items: POINT, minItems: 3, description: "Floor outline [x, y], not repeating the first; along the wall centrelines is fine (its area is reported as drawn). A door or window counts for the room when it sits on this outline" },
       use: { type: "string", description: "living, kitchen, bedroom, bath, hall, …" },
     },
   },
@@ -286,7 +286,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
   },
   stairs: {
     type: "object", additionalProperties: false, required: ["storey", "at"],
-    description: "A stair from a storey's floor up to the next storey's floor; it cuts its well in the floor above.",
+    description: "A stair from a storey's floor up to the next storey's floor, which it cuts its well in (over every tread with less than 2 m headroom). Risers: the storey height in equal risers near `riser`; a flight of n risers is (n − 1) × `going` long. An L or U has its landing after half the risers (rounded up), `landingDepth` long; an L turns 90° towards `turn` after it, a U comes back alongside the first flight, `gap` apart, towards `turn`, and arrives near where the first flight started.",
     properties: {
       storey: { type: "string", description: "The storey it starts on" },
       at: { ...POINT, description: "Centre of the first flight's width at its first riser [x, y]" },
@@ -303,6 +303,25 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     },
   },
 };
+
+/**
+ * `BUILDING_SCHEMA` for these types: each record's `type` lists the names it may take, and its
+ * description says what each one is (wall and slab thicknesses), so whoever writes records can
+ * choose without guessing.
+ *
+ *   agentDoc(doc, { schema: buildingSchema(types), check: () => house.issues });
+ */
+export function buildingSchema(types: BuildingTypes = defaultBuildingTypes()): Record<BuildingCollection, RecordSchema> {
+  const schema = JSON.parse(JSON.stringify(BUILDING_SCHEMA)) as Record<BuildingCollection, RecordSchema>;
+  const list = <T>(entries: Record<string, T>, say: (t: T) => string) => Object.entries(entries).map(([n, t]) => `"${n}": ${say(t)}`).join("; ");
+  const typed = (c: BuildingCollection, names: string[], description: string) => {
+    schema[c].properties!.type = { type: "string", enum: names, description };
+  };
+  typed("walls", Object.keys(types.walls), `Wall type, default "exterior" — ${list(types.walls, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
+  typed("slabs", Object.keys(types.slabs), `Slab type, default "floor" — ${list(types.slabs, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
+  typed("openings", Object.keys(types.openings), `Opening type, default the kind — ${list(types.openings, (t) => `${t.name} (${t.kind})`)}`);
+  return schema;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -648,7 +667,8 @@ export class Building {
    * What is wrong with the building, by record: the `issues` (validation, records that could
    * not be built) and the checks — openings that leave their wall, overlap or reach above it;
    * wall ends that meet no other wall; storeys that do not stack; a storey without a floor;
-   * rooms that are tiny or overlap. An empty list: nothing found.
+   * rooms that are tiny or overlap, have no door, or (living, kitchen, dining, bedroom, office,
+   * study) no window; uncomfortable stairs and wells that leave the floor. An empty list: nothing found.
    */
   check(): BuildingIssue[] {
     const out = [...this.issues];
@@ -723,6 +743,19 @@ export class Building {
       for (const [id, sp] of spaces) {
         if (sp.area() < 2) warn("space-small", `spaces/${id} "${sp.name}" is ${fmt(sp.area())} m².`, keyOf("spaces", id));
       }
+      // A way in, and daylight where people stay: a door, and for a habitable room a window, on its outline.
+      const onOutline = (sp: Space, kind: "door" | "window") => [...s.walls.values()].some((wall) => wall.openings.some((o) => {
+        if ((o.type ? o.type.kind === "door" : o.isDoor) !== (kind === "door")) return false;
+        return distanceToPolyline(pointOnWall(wall, o.centerlinePosition), Polygon2D.closeRing(sp.boundary)) <= wall.thickness / 2 + 0.05;
+      }));
+      for (const [id, sp] of spaces) {
+        if (spaces.length > 1 && !onOutline(sp, "door")) {
+          warn("space-no-door", `spaces/${id} "${sp.name}" has no door on its outline: no way in.`, keyOf("spaces", id));
+        }
+        if (HABITABLE.has((sp.function ?? "").toLowerCase()) && !onOutline(sp, "window")) {
+          warn("space-no-window", `spaces/${id} "${sp.name}" (${sp.function}) has no window on its outline.`, keyOf("spaces", id));
+        }
+      }
       for (let i = 0; i < spaces.length; i++) {
         for (let j = i + 1; j < spaces.length; j++) {
           const a = PolygonBool.fromRing(Polygon2D.openRing(spaces[i][1].boundary));
@@ -775,6 +808,21 @@ export class Building {
     }
     return ifc.save();
   }
+}
+
+/** Rooms people stay in, which want daylight (`space-no-window`). */
+const HABITABLE = new Set(["living", "kitchen", "dining", "bedroom", "office", "study"]);
+
+/** The point at arc length `m` along a wall's centreline. */
+function pointOnWall(wall: Wall, m: number): Vec2 {
+  const cl = wall.centerline;
+  let run = 0;
+  for (let i = 1; i < cl.length; i++) {
+    const len = cl[i].distTo(cl[i - 1]);
+    if (m <= run + len || i === cl.length - 1) return cl[i - 1].lerp(cl[i], len > 1e-12 ? Math.max(0, Math.min(1, (m - run) / len)) : 0);
+    run += len;
+  }
+  return cl[0];
 }
 
 /** Distance from a point to a polyline. */

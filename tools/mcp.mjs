@@ -112,6 +112,12 @@ const TOOLS = [
     run: async (a) => [text(await relay("run", { id: a.id }))],
   },
   {
+    name: "tekto_section",
+    description: "Cut the 3D view, to see inside before a snapshot: a plan is axis \"z\" at a height (`coordinate`, metres, e.g. 1.2 above a storey's floor), an elevation cut is \"x\" or \"y\"; `flip` keeps the other side. No axis: remove the cut. Views (top, front, orthographic) are commands: tekto_run_command.",
+    inputSchema: { type: "object", properties: { axis: { type: "string", enum: ["x", "y", "z"] }, coordinate: { type: "number" }, at: { type: "number", description: "0–1 across the model instead of a coordinate" }, flip: { type: "boolean" } } },
+    run: async (a) => [text(await relay("section", { axis: a.axis, coordinate: a.coordinate, at: a.at, flip: a.flip }))],
+  },
+  {
     name: "tekto_camera",
     description: "Move the app's 3D camera: position [x, y, z] and the point it looks at, in the scene's coordinates (metres, Z up in building apps).",
     inputSchema: { type: "object", required: ["position"], properties: { position: POINT3, target: POINT3 } },
