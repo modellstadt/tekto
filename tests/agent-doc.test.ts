@@ -2,10 +2,8 @@
  * Edits as data (`applyPatch`) and the MCP server that carries them from an agent to the
  * open page (`tools/mcp.mjs`, here against a stand-in for the dev server's relay).
  */
-import { describe, it, expect, afterAll } from "vitest";
-import { spawn } from "node:child_process";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
+import { describe, it, expect } from "vitest";
+import { mcpSession } from "./helpers/mcp-session.mjs";
 import { Doc, applyPatch } from "../src/collab/Doc";
 import { BUILDING_SCHEMA, type BuildingRecords } from "../src/bim/building";
 
@@ -58,46 +56,8 @@ describe("applyPatch", () => {
 });
 
 describe("tools/mcp.mjs", () => {
-  const calls: { op: string; args: Record<string, unknown> }[] = [];
-  const relay = http.createServer((req, res) => {
-    let body = "";
-    req.on("data", (c) => { body += c; });
-    req.on("end", () => {
-      const { op, args } = JSON.parse(body);
-      calls.push({ op, args });
-      res.setHeader("content-type", "application/json");
-      if (op === "apply") return res.end(JSON.stringify({ result: { ok: true, changed: { set: Object.keys(args.patch.set ?? {}) }, issues: [] } }));
-      if (op === "snapshot") return res.end(JSON.stringify({ result: { viewPng: "data:image/png;base64,iVBORw0K", scene: { shownObjects: 3 }, logs: [], errors: [] } }));
-      res.statusCode = 503;
-      res.end(JSON.stringify({ error: "No tekto page is open on this dev server: open the app in a browser first." }));
-    });
-  });
-  afterAll(() => relay.close());
-
-  async function session(messages: object[]): Promise<any[]> {
-    await new Promise<void>((r) => (relay.listening ? r() : relay.listen(0, "127.0.0.1", () => r())));
-    const port = (relay.address() as AddressInfo).port;
-    const child = spawn(process.execPath, ["tools/mcp.mjs"], { env: { ...process.env, TEKTO_URL: `http://127.0.0.1:${port}` } });
-    const replies: any[] = [];
-    let buf = "";
-    const want = messages.filter((m: any) => m.id !== undefined).length;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { child.kill(); reject(new Error(`timed out with ${replies.length}/${want} replies`)); }, 10000);
-      child.stdout.on("data", (d) => {
-        buf += d;
-        let i;
-        while ((i = buf.indexOf("\n")) >= 0) {
-          replies.push(JSON.parse(buf.slice(0, i)));
-          buf = buf.slice(i + 1);
-          if (replies.length === want) { clearTimeout(timer); child.kill(); resolve(replies.sort((a, b) => a.id - b.id)); }
-        }
-      });
-      for (const m of messages) child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...m })}\n`);
-    });
-  }
-
   it("speaks MCP: initialize, tools/list, tools/call through the relay", async () => {
-    const [init, list, apply, info, snap, unknown] = await session([
+    const { replies, calls } = await mcpSession([
       { id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } },
       { method: "notifications/initialized" },
       { id: 2, method: "tools/list" },
@@ -105,15 +65,20 @@ describe("tools/mcp.mjs", () => {
       { id: 4, method: "tools/call", params: { name: "tekto_info", arguments: {} } },
       { id: 5, method: "tools/call", params: { name: "tekto_snapshot", arguments: {} } },
       { id: 6, method: "tools/call", params: { name: "tekto_fly", arguments: {} } },
-    ]);
+    ], (op, args) => {
+      if (op === "apply") return { result: { ok: true, changed: { set: Object.keys(args.patch.set ?? {}) }, issues: [] } };
+      if (op === "snapshot") return { result: { viewPng: "data:image/png;base64,iVBORw0K", scene: { shownObjects: 3 }, logs: [], errors: [] } };
+      return { status: 503, error: "No tekto page is open on this dev server: open the app in a browser first." };
+    });
+    const [init, list, apply, info, snap, unknown] = replies;
     expect(init.result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "tekto" } });
-    expect(list.result.tools.map((t: any) => t.name)).toEqual([
+    expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual([
       "tekto_info", "tekto_records", "tekto_apply", "tekto_check", "tekto_snapshot", "tekto_undo", "tekto_set_params", "tekto_run_command", "tekto_camera",
     ]);
     expect(JSON.parse(apply.result.content[0].text)).toMatchObject({ ok: true, changed: { set: ["walls/a"] } });
     expect(calls.find((c) => c.op === "apply")).toEqual({ op: "apply", args: { patch: { set: { "walls/a": { storey: "eg", path: [[0, 0], [1, 0]] } } }, label: "Agent" } });
     expect(info.result).toEqual({ content: [{ type: "text", text: "No tekto page is open on this dev server: open the app in a browser first." }], isError: true });
     expect(snap.result.content[0]).toEqual({ type: "image", data: "iVBORw0K", mimeType: "image/png" });
-    expect(unknown.error.message).toContain('Unknown tool "tekto_fly"');
+    expect(unknown.error!.message).toContain('Unknown tool "tekto_fly"');
   });
 });
