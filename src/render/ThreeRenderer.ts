@@ -13,7 +13,6 @@
  *   Marks          selection (tint or outline), section cuts, callouts
  */
 
-import type { FlatLighting } from "./viewRules";
 import * as THREE from "three";
 // @ts-ignore — OrbitControls typings vary across Three.js versions
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -32,7 +31,7 @@ import { downloadSnapshot } from "./snapshot";
 
 /** The overlays a renderer has itself (an app can register more, such as notes). */
 type BuiltInOverlay = "grid" | "axes" | "wireframe" | "labels";
-import type { SunPreset } from "./viewRules";
+import type { FlatLighting, SunPreset } from "./viewRules";
 import { AmbientOcclusion, type AmbientOcclusionOptions } from "./AmbientOcclusion";
 import { shown } from "./viewRules";
 

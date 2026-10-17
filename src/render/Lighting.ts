@@ -210,9 +210,7 @@ export class Lighting {
 
   /** Back to the plain balance of the current mode. */
   private _resetDaylight(): void {
-    this.dirLight.color.setHex(0xffffff);
-    this.hemiLight.color.setHex(0x4466aa);
-    this.hemiLight.groundColor.setHex(0x332211);
+    this.dirLight.color.setHex(0xffffff);              // the sky's colours come back with applyMode
     if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE.Color(this.core.config.backgroundColor);
     this.applyMode(this.currentLighting);
   }

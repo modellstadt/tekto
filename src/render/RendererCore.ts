@@ -3,11 +3,11 @@
  * share: the scene on both sides, the canvas, the camera in use, and a few questions only
  * the whole renderer can answer. Internal — apps use ThreeRenderer.
  */
-import type { FlatLighting } from "./viewRules";
 import type * as THREE from "three";
 // @ts-ignore — OrbitControls typings vary across Three.js versions
 import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Scene as GScene } from "../scene/Scene";
+import type { FlatLighting } from "./viewRules";
 
 export interface RendererCore {
   readonly gScene: GScene;
