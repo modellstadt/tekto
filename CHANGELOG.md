@@ -6,6 +6,13 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Doors and windows are filled**: `openingFill(wall, opening)` builds what fills a wall
+  opening from its `OpeningType` — a window's frame with mullions or a transom by its
+  partitioning and a pane in each panel, a door's frame and one leaf (two for a double door) —
+  or returns the parts an app made itself (`WallOpening.fill`, e.g. a supplier's window). New
+  `OpeningType` options: `frame` (section) and `offset` (across the wall). `IfcWriter` writes
+  the fill as the IfcWindow's / IfcDoor's body (tessellated) where it wrote the opening's box;
+  `new IfcWriter({ openingFills: false })` keeps the box. The Framed Wall page shows the window.
 - **`Roof`**: a roof element for a house — `flat` (any polygon footprint), `shed`, `gable` or
   `hip` (a rectangular footprint, whose first edge is an eave), from plain data: footprint
   (the outside face of the walls), pitch in degrees, `eavesElevation` (the top of the walls),

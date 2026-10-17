@@ -160,9 +160,9 @@ export type {
   JoistOrientationOptions, JoistedSlabOptions,
 } from "./bim/slabs";
 
-// Openings (door / window types), Spaces (rooms), Stairs, Roofs.
-export { OpeningType } from "./bim/openings";
-export type { OpeningTypeOptions, DoorOperation, WindowPartitioning } from "./bim/openings";
+// Openings (door / window types and their fill), Spaces (rooms), Stairs, Roofs.
+export { OpeningType, openingFill } from "./bim/openings";
+export type { OpeningTypeOptions, DoorOperation, WindowPartitioning, OpeningFillPart } from "./bim/openings";
 export { Space, boundingWalls } from "./bim/spaces";
 export type { SpaceOptions } from "./bim/spaces";
 export { Stair, StairType } from "./bim/stairs";

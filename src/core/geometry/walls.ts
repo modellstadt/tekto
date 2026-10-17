@@ -20,7 +20,7 @@ import { RibbonSystem } from "./RibbonSystem";
 import type { WallType, PropertyMap, RealizedWall } from "../../bim/walls/types";
 import { realizeSystem } from "../../bim/walls/types";
 import { WallJoint } from "../../bim/walls/joints";
-import type { OpeningType } from "../../bim/openings";
+import type { OpeningType, OpeningFillPart } from "../../bim/openings";
 
 // ─── Wall openings (doors / windows) ────────────────────────────────
 
@@ -62,6 +62,11 @@ export class WallOpening {
   type?: OpeningType;
   /** Instance-level Pset overrides, merged on top of `type.properties`. */
   properties?: PropertyMap;
+  /**
+   * What fills the opening, made by the app (e.g. a supplier's window), in world coordinates.
+   * Unset: `openingFill` builds a frame, glass or leaves from the type.
+   */
+  fill?: OpeningFillPart[];
 
   constructor(centerlinePosition: number, width = 0.9, sillHeight = 0, headHeight = 2.1, name?: string) {
     this.centerlinePosition = centerlinePosition;
