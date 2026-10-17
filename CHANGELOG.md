@@ -6,6 +6,21 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`Roof`**: a roof element for a house — `flat` (any polygon footprint), `shed`, `gable` or
+  `hip` (a rectangular footprint, whose first edge is an eave), from plain data: footprint
+  (the outside face of the walls), pitch in degrees, `eavesElevation` (the top of the walls),
+  `overhang` / `gableOverhang`, build-up `thickness`, name and properties; `JSON.stringify(roof)`
+  is the record that builds it again. `planes()` gives each plane's top surface as a 3D polygon
+  with its area, normal and slab (a closed `Mesh`, cut plumb at eaves, verges, ridge and hips);
+  `toMesh()` the whole build-up; `ridge()` / `ridgeHeight()` the top of the roof; and
+  `gables(wallThickness)` the wall infill above the end walls (triangles under a gable; under a
+  shed a right triangle each side and a strip over the high side; none under flat or hip), each
+  a closed mesh with its centreline in plan. Bad input throws an error that names it. The
+  *Roofs* playground page shows the four kinds.
+- **`IfcWriter.addRoof(roof, { storey, gableThickness })`** also takes a `Roof`: an `IfcRoof`
+  (FLAT_ / SHED_ / GABLE_ / HIP_ROOF) gathering one tessellated `IfcSlab` .ROOF. per plane,
+  `Pset_RoofCommon` from its properties, and with `gableThickness` its gables as tessellated,
+  external `IfcWall`s of the same storey. `addRoof(parts, …)` is unchanged.
 - **Stairs with a landing**: `Stair` builds the shape it names (`shape`, default the type's,
   else `"straight_run"`): `"two_straight_run"` (two flights in line), `"quarter_turn"` (L) and
   `"half_turn"` (U), each with a landing after riser `landingAfter` (default half the risers),

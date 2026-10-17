@@ -6,6 +6,7 @@ import { IfcWriter } from "../src/io/IfcWriter";
 import { IfcModel } from "../src/io/IfcModel";
 import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 import { Slab, SlabOpening } from "../src/bim/slabs";
+import { Roof } from "../src/bim/roofs";
 
 /**
  * Reading an element's properties back out of a file.
@@ -159,5 +160,25 @@ describe("IfcWriter slab openings, read back by web-ifc", () => {
       top += Math.abs((p[b] - p[a]) * (p[c + 2] - p[a + 2]) - (p[c] - p[a]) * (p[b + 2] - p[a + 2])) / 2;
     }
     expect(top).toBeCloseTo(20 - 1 * 2.5, 3);
+  });
+});
+
+describe("IfcWriter roofs, read back by web-ifc", () => {
+  it("a gable roof comes back as its two roof slabs and two gable walls, at their heights", async () => {
+    const roof = new Roof({
+      kind: "gable", pitch: 40, eavesElevation: 6, thickness: 0.3,
+      footprint: [new Vec2(0, 0), new Vec2(10, 0), new Vec2(10, 8), new Vec2(0, 8)],
+    });
+    const w = new IfcWriter({});
+    w.addRoof(roof, { storey: w.addStorey({ name: "Attic", elevation: 6 }), gableThickness: 0.3 });
+    const model = await IfcModel.parse(w.saveBytes().buffer as ArrayBuffer, { wasmPath: "", tree: false, recenter: false, relations: false, properties: false });
+    // web-ifc hands geometry back Y-up: heights are y.
+    const tops = (cls: RegExp) => model.elements.filter((e) => cls.test(e.ifcClass)).map((e) => {
+      let hi = -Infinity;
+      for (let i = 1; i < e.mesh.positions.length; i += 3) hi = Math.max(hi, e.mesh.positions[i]);
+      return hi.toFixed(4);
+    });
+    expect(tops(/Slab/i)).toEqual(Array(2).fill(roof.ridgeHeight().toFixed(4)));
+    expect(tops(/Wall/i)).toEqual(Array(2).fill((6 + roof.gables(0.3)[0].height).toFixed(4)));
   });
 });
