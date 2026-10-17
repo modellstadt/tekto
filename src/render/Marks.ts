@@ -355,7 +355,6 @@ export class Marks {
     const pending = this.calloutPending;
     if (!pending) return;
     const cam = this.core.activeCamera;
-
     const ray = new THREE.Raycaster();
     const eye = cam.getWorldPosition(new THREE.Vector3());
     const view = cam.getWorldDirection(new THREE.Vector3());
