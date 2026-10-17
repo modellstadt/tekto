@@ -38,7 +38,7 @@ Use `tekto/core` for scripts and checks (`node check.mjs` with `import { MeshFac
 ### Start here
 
 <!-- start-here: copied into llms.txt by tools/gen-llms.mjs; bare `Names` must be exports (CI checks) -->
-About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Files:** `Sheet` (drawings), `writeDxf2D`, `writePdf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
+About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Buildings:** records (`BUILDING_SCHEMA`) built by `realizeBuilding` / `bindBuilding`. **Files:** `Sheet` (drawings), `writeDxf2D`, `writePdf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
 
 | To … | use | not |
 |---|---|---|
@@ -261,7 +261,10 @@ A small BIM layer for timber-frame architectural experiments.
 
 - **Walls** ([src/bim/walls/](src/bim/walls/)) — `WallType` ↔ `Wall` instances; constructions for solid CLT, Balloon-frame, and Holzrahmenbau; first-class joints (`WallJoint`) with butt / mitered styles and through-wall corner extension.
 - **Slabs** ([src/bim/slabs/](src/bim/slabs/)) — same shape as walls: `SlabType` ↔ `Slab`, with `SolidSlabConstruction` and `JoistedSlab(opts)` (timber-joist + rim joist + sheathing + ceiling + configurable `edgeOffset` and `bearingGap`). Joist orientation is picked from the supporting walls via `chooseJoistDirection`.
-- **IFC4 export** ([src/io/IfcWriter.ts](src/io/IfcWriter.ts)) — writes STEP-21 directly (no `web-ifc` dependency). Covers wall types, material layers, openings, framed members, joints, and **multi-storey** buildings.
+- **Roofs** ([src/bim/roofs.ts](src/bim/roofs.ts)) — `Roof`: flat (any footprint), shed, gable or hip (rectangular footprint; the first edge is an eave) from plain data — pitch, eaves elevation, overhangs, build-up. `planes()` (top surfaces + slab meshes), `toMesh()`, `ridge()` / `ridgeHeight()`, and `gables(wallThickness)`: the infill above the end walls, since walls have one height. The *Roofs* playground page shows all four.
+- **Stairs** ([src/bim/stairs.ts](src/bim/stairs.ts)) — `StairType` ↔ `Stair`: a straight run, two runs in line, a quarter turn (L) or a half turn (U), the last three with a landing (`landing()`, a `Slab`). `footprint()` is its plan outline and `slabOpening(floor)` the `SlabOpening` the floor above needs, over every tread with less than 2 m of headroom. `IfcWriter.addStair` writes an `IfcStair` gathering its `IfcStairFlight`s and the `IfcSlab` LANDING. The *Framed Floor* page puts one under a joisted floor.
+- **Doors and windows** ([src/bim/openings.ts](src/bim/openings.ts)) — `OpeningType` (door / window, operation, partitioning, frame) on a `WallOpening`; `openingFill(wall, opening)` builds its frame, glass and leaves (or takes the app's own parts, `opening.fill`).
+- **IFC4 export** ([src/io/IfcWriter.ts](src/io/IfcWriter.ts)) — writes STEP-21 directly (no `web-ifc` dependency). Covers wall types, material layers, openings (doors and windows with their frame, glass and leaves), framed members, joints, roofs (`addRoof(roof)`: an `IfcRoof` of roof slabs, gables as walls), and **multi-storey** buildings.
 - **Solar / shadow studies** ([src/core/solar/SunPosition.ts](src/core/solar/SunPosition.ts)) — Michalsky-style sun-position algorithm (~0.01° accuracy 1950–2050). Date + lat/lon → altitude / azimuth / unit direction vector in Z-up scene coords.
 
 The Timber demo ([playground/pages/timber/](playground/pages/timber/)) is the canonical example — drag the corners, toggle constructions, pick a wall or slab to edit it inline, set the Storeys slider to stack the room, then click *Export ▾ → IFC* in the top bar.
@@ -284,6 +287,24 @@ writer.addSlab(roof,       { storey: first,  predefinedType: "ROOF"  });
 
 Each storey gets its own `IfcRelContainedInSpatialStructure` at save time; the building → storeys aggregation is emitted automatically.
 
+### A building as data
+
+A whole building can also be plain JSON records, which a `Doc` stores (saved, undone, shared) and a person, script or agent writes: `storeys`, `walls`, `openings`, `slabs`, `spaces`, `roofs` and `stairs`, referencing each other by id. A roof's eaves sit on its storey's walls; a stair climbs its storey's height and cuts its well in the floor above. `BUILDING_SCHEMA` is the JSON Schema of each collection, so it validates input and serves as an agent tool's input schema. Wall, slab and opening `type`s name entries of `BuildingTypes`; the default ones (`defaultBuildingTypes()`) are Holzrahmenbau walls, joisted floors and a concrete ground slab.
+
+```ts
+const building = realizeBuilding({
+  storeys:  { eg: { name: "Ground floor", elevation: 0, height: 2.9 } },
+  slabs:    { base: { storey: "eg", boundary: [[0, 0], [10, 0], [10, 8], [0, 8]], type: "ground" } },
+  walls:    { s: { storey: "eg", path: [[0, 0], [10, 0]] }, e: { storey: "eg", path: [[10, 0], [10, 8]] } },
+  openings: { door: { wall: "s", kind: "door", at: 3, width: 1 } },   // `at`: centre, metres along the wall
+  spaces:   { hall: { storey: "eg", name: "Hall", boundary: [[0, 0], [6, 0], [6, 4.5], [0, 4.5]], use: "hall" } },
+});
+building.check();   // [{ severity, code, message, keys: ["walls/e"] }] — what is wrong, by record
+building.toIfc();   // storeys, framed walls with openings, slabs with joists, spaces
+```
+
+Walls stand on their storey's elevation and run up to the underside of the floor above unless they give a `height`. `validateBuilding` checks records against the schema, references and type names; `check()` adds what the built geometry shows (openings past a wall's end, overlapping or above it; wall ends that meet no other wall; storeys that don't stack; rooms that overlap). In an app, `bindBuilding(doc, scene)` rebuilds and redraws the building whenever its records change, each object keyed by its record (`"walls/s"`), so selection, Markup and callouts name records. The House page ([playground/pages/house.ts](playground/pages/house.ts)) is the example.
+
 ## Testbench shell pattern
 
 The playground's testbench ([playground/testbench.html](playground/testbench.html) + [.ts](playground/testbench.ts)) is also a *template* for custom apps. Three reusable pieces:
@@ -302,6 +323,8 @@ Two presets, switchable from the top bar's *Light* dropdown (persisted in `local
 |---|---|---|---|---|
 | **Flat** (default) | `MeshPhongMaterial`, 3 cheap lights | none | linear | Inspection, fast iteration, large mesh counts |
 | **Studio** | `MeshStandardMaterial` (PBR) | PCF-soft, 2048² map, 30 m frustum | ACES filmic + sRGB | Renderings, daylight studies, architecture demos |
+
+Flat is tuned for a dark page: a dim blue sky, so colours read darker and cooler. An app whose colours are a key beside the model sets `flatLighting: "plain"` on the renderer (`appShell({ renderer: { flatLighting: "plain" } })`): a white sky under which a face turned to it shows its own colour.
 
 The sun direction is driven from the top-bar Sun popover (`SunPosition.compute({ date, latitude, longitude })` → `SketchInstance.setSunDirection(direction)`). Inside a sketch, `lab.setSunDirection(dir)` lets the sketch override per-frame (animated daily cycles, etc.).
 
@@ -457,6 +480,29 @@ export default { plugins: [tektoMarkup()] };
 ```
 
 Without the plugin, Save downloads the three files instead. Turn the button off with `sketch(fn, { markup: false })`.
+
+### An agent in the open app
+
+`snap` opens its own headless page. To have an agent work in the tab a person has open — the person watching, every edit one undo step for them — the app shares its document and the agent connects through the dev server:
+
+```ts
+// In the app: the records an agent may edit, their schema, and what the app's check says.
+agentDoc(doc, { schema: BUILDING_SCHEMA, check: () => house.issues });
+```
+
+`window.__tekto.doc` then lists the collections and their schema, returns the records, and `apply`s a patch — `{ set, update, remove }` by `"collection/id"` — as one undo step: checked against the schema first (a record that breaks it rejects the whole patch, with the reasons), answered with the app's issues after. With `tekto/markup-vite` in the dev server, the same calls reach the page from outside through `POST /__tekto/agent/call` (the newest tab to connect takes them; automated browsers stay out unless the URL has `agent-relay`). `tools/mcp.mjs` is an MCP server over those calls, so Claude Code (or any MCP client) gets them as tools: `tekto_info`, `tekto_records`, `tekto_apply`, `tekto_check`, `tekto_snapshot` (an image of the view), `tekto_undo`, `tekto_set_params`, `tekto_run_command`, `tekto_section` (cut a plan to look inside), `tekto_camera`.
+
+```sh
+claude mcp add tekto -- node node_modules/tekto/tools/mcp.mjs     # TEKTO_URL=http://localhost:5174 for another port
+```
+
+The House page ([playground/pages/house.ts](playground/pages/house.ts)) shares its building this way (`agentDoc(doc, { schema: buildingSchema(), check: () => house.issues })`). To have Claude build a house from a brief:
+
+1. `npm run playground`, open the House page, press **Empty site** (or open it with `&empty`).
+2. `claude mcp add tekto -- node tools/mcp.mjs` (with `TEKTO_URL` if the playground is not on port 5173), then in Claude Code: *"Build me a compact two-storey timber family house, about 140 m²: open living and kitchen facing south, a study, three bedrooms, a gable roof."*
+3. Claude reads the schema (`tekto_info`), writes the house in one patch (`tekto_apply` — one undo step for you), fixes what the checks report, and looks at it (`tekto_snapshot`, `tekto_section`). Every edit stays yours to undo, save as JSON or export as IFC.
+
+Tested with a fresh agent and only that brief: a 144 m² house in two patches, with doors, windows, a U stair to the landing and a gable roof.
 
 ## Shared editing — several people (and agents) on one model
 
@@ -672,11 +718,11 @@ Or use IDE autocomplete on the import line — every export is typed, and the co
 - **Meshes**: `Mesh` (the one class: id-based editing, connectivity, typed arrays), `MeshFactory` (primitives + extrude + revolve + loft + pipe + subdivide), `MeshTransform`, `MeshSubdivide`, `MeshCleanup`, `MeshAnalysis`.
 - **Curves + surfaces**: `LineCurve`, `ArcCurve`, `HelixCurve`, `NurbsCurve`, `CubicBezierCurve`, `NurbsSurface`.
 - **Algorithms**: `Algo` (convex hull, triangulation, point-in-polygon, …), `PolygonBool` (boolean ops with holes), `NoFitPolygon` (Minkowski / NFP / inner-fit for nesting), `perpVisibility` (collimated edge-visibility polygons), `Curvature` (Taubin), `StreamlineTracer`, `BspTree` (CSG), `PlanarGraph` (DCEL), `Delaunay2D`.
-- **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `IfcWriter`.
+- **BIM**: `WallType`, `Wall`, `WallSystem`, `BalloonFrame`, `HolzrahmenBau`, `WallJoint`, `SlabType`, `Slab`, `JoistedSlab`, `StairType`, `Stair` (straight, L, U with a landing; `footprint`, `slabOpening`), `Roof`, `IfcWriter`. A building as data: `realizeBuilding` / `bindBuilding` build plain records (`BUILDING_SCHEMA`: storeys, walls, openings, slabs, spaces) into those elements, `Building.check()` reports issues by record; `checkRecord` validates any record against a JSON Schema.
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
-- **Rendering**: `ThreeRenderer` — the one 3D renderer under `sketch()` and `appShell()`: render modes (solid / wireframe / hidden line / ghost) with creases built a frame at a time, `setSection` (a cut with poché), `setView` (plans and elevations; orthographic + hidden line + `front` is an elevation) and the `navGizmo` axis widget, `fitTo`, `setCallouts` (labels in the margins with leaders), `setSelectionStyle("outline")`, `onHover`, `gridStyle: "fading"` (a ground ruled in metres for the content's size, fading out), `shadingBar` (icons in the view for render style, lighting, a morning / noon / sunset sun the section (a slider relative to the content, or in the scene's `units`), overlays (`setOverlays`), Frame and Snapshot), a Studio sun framed to the content, and a teardown that releases the WebGL context. Its rules are plain functions (`viewDirection`, `sectionPlane`, `fitRadius`, …). A model from elsewhere (IFC, a cut list) goes in as `scene.addMesh(new Mesh(positions, indices), { color })` and gets all of it. Lights are scene objects too: `scene.addLight(position, { kind: "point" | "spot", … })`.
+- **Rendering**: `ThreeRenderer` — the one 3D renderer under `sketch()` and `appShell()`: render modes (solid / wireframe / hidden line / ghost) with creases built a frame at a time, `setSection` (a cut with poché), `setView` (plans and elevations; orthographic + hidden line + `front` is an elevation) and the `navGizmo` axis widget, `fitTo`, `setCallouts` (labels in the margins with leaders), `setSelectionStyle("outline")`, `onHover`, `gridStyle: "fading"` (a ground ruled in metres for the content's size, fading out), `shadingBar` (icons in the view for render style, lighting, a morning / noon / sunset sun the section (a slider relative to the content, or in the scene's `units`), overlays (`setOverlays`), Frame and Snapshot), a Studio sun framed to the content, Flat lighting in true colours (`flatLighting: "plain"`) for a model whose colours are a key, and a teardown that releases the WebGL context. Its rules are plain functions (`viewDirection`, `sectionPlane`, `fitRadius`, …). A model from elsewhere (IFC, a cut list) goes in as `scene.addMesh(new Mesh(positions, indices), { color })` and gets all of it. Lights are scene objects too: `scene.addLight(position, { kind: "point" | "spot", … })`.
 - **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views of meshes), `Sheet` (a drawing at a scale: views placed on the sheet — plan, elevations projected from 3D, details — with lines, arcs, fills, text, dimensions, leaders and level marks; `toSVG` and `toDXF` export the same primitives; on screen `SheetCanvas` — pan, zoom, pick by `key`, highlight — or `drawSheet` into any canvas; over a 3D app in `app.overlay()` or a sketch's `lab.overlay()` — see the *Sketch + drawing* page), `writeDxf2D` (raw drawings: polylines, lines, circles, arcs, text, solids, line types; `scale: 1000` → mm), `writePdf2D` (the same content as a vector PDF at a true scale, `scale: 50` → 1:50, one page sized to the drawing, title + scale bar), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — all emit AutoCAD-safe R12), `download` / `stampName` (save a file from the browser — a `sketch()` lists `lab.registerExport` items in its Export menu), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
-- **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use). Types `MarkupBundle` / `MarkupCaptureOptions` / `MarkupObjectRef` / `MarkKind` for the [Markup](#markup--instructions-for-an-ai-drawn-on-the-view) capture; `markup(renderer, scene)` mounts Markup in an app with its own UI (React: `<Markup />`); `notesLayer(renderer, doc)` keeps sketched notes with the model in a `Doc` collection, pinned in the view (`appShell({ notes: doc })`).
+- **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use). Types `MarkupBundle` / `MarkupCaptureOptions` / `MarkupObjectRef` / `MarkKind` for the [Markup](#markup--instructions-for-an-ai-drawn-on-the-view) capture; `markup(renderer, scene)` mounts Markup in an app with its own UI (React: `<Markup />`); `agentDoc(doc, { schema, check })` shares an app's document with agents (`__tekto.doc`; from outside through `tekto/markup-vite` and the MCP server `tools/mcp.mjs`); `notesLayer(renderer, doc)` keeps sketched notes with the model in a `Doc` collection, pinned in the view (`appShell({ notes: doc })`).
 - **Shared editing**: `SharedStore` (keyed records, last write wins, presence, broadcasts), `memoryAdapter` / `devServerAdapter` / `supabaseAdapter`, `PresenceBar`, `collabColor` — see [Shared editing](#shared-editing--several-people-and-agents-on-one-model).
 - **App Shell**: `appShell` — persistent-panel apps (panel built once, animation-friendly) with a built-in top bar (Flat/Studio lighting, render mode with an icon per mode, Persp/Iso camera, Cut and Sun popovers — each can be switched off).
 - **React** (from `tekto/react`): `AccordionColumn` — a column of collapsible sections, one of which takes the leftover height and scrolls; headers stay visible with their own summary, open sections drag taller, and the arrangement persists. The shape every inspector ends up with. `ViewModeIcon` — a render mode's icon as a component.

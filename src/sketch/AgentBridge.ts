@@ -7,9 +7,16 @@
  * snapshot — the same bundle a person saves with ✎ Markup: `view.png`, `clean.png` and
  * `markup.json`, which now also carries what the app logged and every error the page hit.
  *
+ * An app that keeps a `Doc` shares it with `agentDoc(doc, { schema, check })`: then
+ * `__tekto.doc` reads the records and applies patches as one undo step, and with the markup
+ * dev-server plugin (`tekto/markup-vite`) every call here also reaches this tab from outside,
+ * through `POST /__tekto/agent/call` — what `tools/mcp.mjs` gives an agent as tools.
+ *
  * No three.js here (`sketch2d` and `tekto/2d` use it): the 3D harnesses pass in what the
  * renderer knows through small structural interfaces.
  */
+import { applyPatch, type Doc, type DocPatch, type PatchResult } from "../collab/Doc";
+import type { RecordSchema } from "../collab/recordSchema";
 import type { ParamStore, ParamDef } from "../gui/Params";
 import type { Scene } from "../scene/Scene";
 import type { MarkupBundle, MarkupCaptureOptions, MarkupObjectRef } from "./Markup";
@@ -41,6 +48,8 @@ export interface AgentBridgeHost {
   snapshot(opts?: MarkupCaptureOptions): Promise<MarkupBundle>;
   /** 3D harnesses only. */
   camera?(pos: number[], target?: number[]): void;
+  /** 3D harnesses only: cut the view (a plan at `coordinate` on "z", …), or `null` to stop. */
+  section?(section: { axis: "x" | "y" | "z"; at?: number; coordinate?: number; flip?: boolean } | null): void;
   /** The app's commands, listed and run by id for agents. */
   commands?: Commands;
 }
@@ -91,10 +100,14 @@ export function installAgentBridge(host: AgentBridgeHost): AgentBridge {
       return r;
     },
     ...(host.camera ? { camera: host.camera } : {}),
+    ...(host.section ? { section: host.section } : {}),
     // What the app can do — undo, delete, the views … — by id, as a person would by key.
     commands: () => host.commands?.list() ?? [],
     run: (id: string) => host.commands ? host.commands.run(id) : Promise.resolve(false),
+    // The document the app shares (`agentDoc`), or undefined.
+    get doc() { return sharedDoc ?? undefined; },
   };
+  connectRelay();
 
   return {
     errors: () => [...errors],
@@ -105,6 +118,140 @@ export function installAgentBridge(host: AgentBridgeHost): AgentBridge {
       if ((window as any).__tekto?.owner === host.owner) delete (window as any).__tekto;
     },
   };
+}
+
+// ── A shared document ──────────────────────────────────────────────────────────
+
+/** Something an app's check found: how bad, what, and on which records (`"walls/w3"`). */
+export interface AgentIssue {
+  severity: "error" | "warning";
+  code?: string;
+  message: string;
+  keys?: string[];
+}
+
+/** What an app shares with agents through `agentDoc`. */
+export interface AgentDocOptions {
+  /** Each collection's JSON Schema: a patch with a record that breaks it is rejected whole. */
+  schema?: Record<string, RecordSchema>;
+  /** What is wrong now, e.g. `() => house.issues`; asked after every patch. */
+  check?: () => readonly AgentIssue[];
+}
+
+/** `__tekto.doc`: the document an app shares, as an agent reads and edits it. */
+export interface AgentDocApi {
+  readonly name: string;
+  /** Collection → number of records. */
+  collections(): Record<string, number>;
+  /** The schema the app gave, or null. */
+  schema(): Record<string, RecordSchema> | null;
+  /** Collection → id → record; one collection, or all. */
+  records(collection?: string): Record<string, Record<string, unknown>>;
+  /** Apply a patch as one undo step (or nothing, with the reasons), then run the app's check. */
+  apply(patch: DocPatch, label?: string): Promise<PatchResult & { issues: AgentIssue[] }>;
+  /** The app's check, once the document's changes have been drawn. */
+  check(): Promise<AgentIssue[]>;
+  undo(): boolean;
+  redo(): boolean;
+}
+
+let sharedDoc: AgentDocApi | null = null;
+
+/** After the app has reacted to a change (its bindings rebuild in a microtask or on the next turn). */
+const settled = () => new Promise<void>((r) => setTimeout(r, 0));
+
+/**
+ * Share a document with agents: `window.__tekto.doc` reads its records and applies patches
+ * (`{ set, update, remove }` by `"collection/id"`) as one undo step — checked against
+ * `schema` first, answered with `check()`'s issues after. With `tekto/markup-vite` in the dev
+ * server, the same calls reach this tab from outside (`tools/mcp.mjs`). Returns a function
+ * that stops sharing. One document per page: the last call wins.
+ *
+ *   agentDoc(doc, { schema: BUILDING_SCHEMA, check: () => house.issues });
+ */
+export function agentDoc(doc: Doc<any>, opts: AgentDocOptions = {}): () => void {
+  const collections = () => doc.toJSON().collections;
+  const api: AgentDocApi = {
+    name: doc.name,
+    collections: () => Object.fromEntries(Object.entries(collections()).map(([c, rows]) => [c, Object.keys(rows).length])),
+    schema: () => opts.schema ?? null,
+    records: (collection) => {
+      const all = collections() as Record<string, Record<string, Record<string, unknown>>>;
+      return collection ? { [collection]: all[collection] ?? {} } : all;
+    },
+    apply: async (patch, label) => {
+      const result = applyPatch(doc, patch, { schema: opts.schema, label: label ?? "Agent edit" });
+      await settled();
+      return { ...result, issues: [...(opts.check?.() ?? [])] };
+    },
+    check: async () => { await settled(); return [...(opts.check?.() ?? [])]; },
+    undo: () => doc.undo(),
+    redo: () => doc.redo(),
+  };
+  sharedDoc = api;
+  return () => { if (sharedDoc === api) sharedDoc = null; };
+}
+
+// ── The relay: calls from outside the page, through the dev server ──────────────
+
+let relay: EventSource | null = null;
+
+/**
+ * Listen for calls the dev server relays (`tekto/markup-vite` marks the page with
+ * `<meta name="tekto-agent-relay">`). Browsers driven by automation (snap, tests) stay out
+ * unless the URL asks with `agent-relay`, so a headless snapshot never takes the calls meant
+ * for the tab a person has open.
+ */
+function connectRelay(): void {
+  if (relay || typeof document === "undefined" || typeof EventSource === "undefined") return;
+  const base = document.querySelector<HTMLMetaElement>('meta[name="tekto-agent-relay"]')?.content;
+  if (!base) return;
+  if (navigator.webdriver && !/[?&]agent-relay\b/.test(location.search)) return;
+  relay = new EventSource(`${base}/events?title=${encodeURIComponent(document.title)}&url=${encodeURIComponent(location.href)}`);
+  relay.addEventListener("call", (e) => {
+    const { id, op, args } = JSON.parse((e as MessageEvent).data) as { id: string; op: string; args?: Record<string, unknown> };
+    void runRelayed(op, args ?? {}).then(
+      (result) => ({ id, result }),
+      (err) => ({ id, error: err instanceof Error ? err.message : String(err) }),
+    ).then((body) => fetch(`${base}/result`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }))
+      .catch(() => { /* the dev server went away; the caller times out */ });
+  });
+}
+
+/** One relayed call, run against this page's `__tekto`. */
+async function runRelayed(op: string, args: Record<string, unknown>): Promise<unknown> {
+  const t = (window as any).__tekto;
+  if (!t) throw new Error("this page has no tekto app (no window.__tekto)");
+  const doc: AgentDocApi | undefined = t.doc;
+  const needDoc = () => { if (!doc) throw new Error("this app shares no document (agentDoc)"); return doc; };
+  switch (op) {
+    case "info": return {
+      title: document.title, url: location.href, harness: t.harness,
+      doc: doc ? { name: doc.name, collections: doc.collections(), schema: doc.schema() } : null,
+      controls: t.schema(), commands: t.commands(), errors: t.errors(),
+    };
+    case "records": return needDoc().records(args.collection as string | undefined);
+    case "apply": return needDoc().apply(args.patch as DocPatch, args.label as string | undefined);
+    case "check": return needDoc().check();
+    case "undo": return { undone: needDoc().undo() };
+    case "redo": return { redone: needDoc().redo() };
+    case "setParams": return t.setParams(args.params ?? {});
+    case "run": return { ran: await t.run(String(args.id)) };
+    case "camera":
+      if (!t.camera) throw new Error("this app has no 3D camera");
+      t.camera(args.position as number[], args.target as number[] | undefined);
+      return { ok: true };
+    case "section":
+      if (!t.section) throw new Error("this app has no 3D view to cut");
+      t.section(args.axis ? { axis: args.axis, at: args.at, coordinate: args.coordinate, flip: args.flip } : null);
+      return { ok: true };
+    case "snapshot": {
+      const b = await t.snapshot({ note: args.note as string | undefined, save: args.save === true, label: "agent" }) as MarkupBundle;
+      const m = b.markup as unknown as Record<string, unknown>;
+      return { viewPng: b.viewPng, camera: m.camera ?? null, scene: m.scene ?? null, logs: m.logs ?? [], errors: m.errors ?? [] };
+    }
+    default: throw new Error(`unknown call "${op}" (info, records, apply, check, undo, redo, setParams, run, camera, section, snapshot)`);
+  }
 }
 
 /** Every control: the name `setParams` takes, its type, range, options, default and value. */

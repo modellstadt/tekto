@@ -12,7 +12,7 @@ import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection, calloutSamples, occludes, rayTargets, cameraKey,
-  groundGrid, gridLineColour, daylight, sunDirection, SUN_PRESETS,
+  groundGrid, gridLineColour, daylight, sunDirection, SUN_PRESETS, flatLights,
 } from "../src/render/viewRules";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
@@ -369,5 +369,24 @@ describe("callout checks on a large model", () => {
     const hidden = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshBasicMaterial());
     hidden.visible = false;
     expect(rayTargets([group, hidden])).toEqual([surface]);
+  });
+});
+
+describe("flat lights", () => {
+  // a face toward the sky, lit by the default sun at (8, 10, 15) in a Z-up scene
+  const cos = 15 / Math.hypot(8, 10, 15);
+  const share = (l: ReturnType<typeof flatLights>) => (l.ambient + l.sky + l.sun * cos) / Math.PI;
+
+  it("plain shows a face toward the sky in its own colour, under a white sky", () => {
+    const plain = flatLights("plain");
+    expect(share(plain)).toBeGreaterThan(0.95);
+    expect(share(plain)).toBeLessThan(1.15);
+    expect(plain.skyColour).toBe(0xffffff);
+  });
+
+  it("sketch keeps the dim cool balance the sketches were tuned with", () => {
+    const sketch = flatLights("sketch");
+    expect(sketch).toMatchObject({ ambient: 0.5, sky: 0.4, skyColour: 0x4466aa, sun: 0.7 });
+    expect(share(sketch)).toBeLessThan(0.5);
   });
 });

@@ -112,6 +112,30 @@ export function surfaceAppearance(mode: ViewMode, base: number): Appearance {
   return { colour: base, opacity: 1, depthWrite: true, polygonOffset: false };
 }
 
+/** How Flat lighting balances its lights; see `flatLights`. */
+export type FlatLighting = "sketch" | "plain";
+
+/**
+ * Flat lighting's lights, as intensities and colours.
+ *
+ * `"sketch"`, the default, is a blue sky over a brown ground, dim, for a dark
+ * page: forms read, colours go darker and cooler. `"plain"` is the balance the
+ * old Viewport drew with, `lightBalance("shaded", false)` under a white sky: a
+ * face turned to the sky shows its own colour, so a model whose colours are a
+ * key (a legend beside it) can be read against the key. Lights divide by pi
+ * in three.js since r155, so a face toward the sky gets about
+ * (ambient + sky + sun * cos) / pi of its colour.
+ */
+export function flatLights(style: FlatLighting): {
+  ambient: number; sky: number; skyColour: number; groundColour: number; sun: number;
+} {
+  if (style === "plain") {
+    const { sky, sun } = lightBalance("shaded", false);
+    return { ambient: 0, sky, skyColour: 0xffffff, groundColour: 0x8899aa, sun };
+  }
+  return { ambient: 0.5, sky: 0.4, skyColour: 0x4466aa, groundColour: 0x332211, sun: 0.7 };
+}
+
 /**
  * Sun and sky intensity for a mode.
  *

@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { Vec3 } from "../core/math/vectors";
 import type { LightingMode } from "../scene/Scene";
 import type { RendererCore } from "./RendererCore";
-import { daylight, sunDirection, SUN_PRESETS, type SunPreset } from "./viewRules";
+import { daylight, flatLights, sunDirection, SUN_PRESETS, type SunPreset } from "./viewRules";
 
 export class Lighting {
   ambientLight: THREE.AmbientLight;
@@ -210,9 +210,7 @@ export class Lighting {
 
   /** Back to the plain balance of the current mode. */
   private _resetDaylight(): void {
-    this.dirLight.color.setHex(0xffffff);
-    this.hemiLight.color.setHex(0x4466aa);
-    this.hemiLight.groundColor.setHex(0x332211);
+    this.dirLight.color.setHex(0xffffff);              // the sky's colours come back with applyMode
     if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE.Color(this.core.config.backgroundColor);
     this.applyMode(this.currentLighting);
   }
@@ -236,6 +234,10 @@ export class Lighting {
 
     // ── Lights: rebalance so Studio reads more like a sunlit scene ─
     if (studio) {
+      // Studio's own sky, whatever Flat was given (daylight retints it after this)
+      const sketch = flatLights("sketch");
+      this.hemiLight.color.setHex(sketch.skyColour);
+      this.hemiLight.groundColor.setHex(sketch.groundColour);
       this.ambientLight.intensity = 0.35;
       this.hemiLight.intensity    = 0.30;
       this.dirLight.intensity     = 2.8;
@@ -245,15 +247,17 @@ export class Lighting {
       // The shadow camera is framed to the content on the next draw (fitSun).
       this.sunDirty = true;
     } else {
-      this.ambientLight.intensity = 0.50;
-      this.hemiLight.intensity    = 0.40;
-      this.dirLight.intensity     = 0.70;
+      // the app's balance: dim and cool for a dark sketch, or plain colours (flatLights)
+      const flat = flatLights(this.core.config.flatLighting);
+      this.ambientLight.intensity = flat.ambient;
+      this.hemiLight.intensity    = flat.sky;
+      this.hemiLight.color.setHex(flat.skyColour);
+      this.hemiLight.groundColor.setHex(flat.groundColour);
+      this.dirLight.intensity     = flat.sun;
       this.dirLight.castShadow    = false;
       // Daylight is Studio's: flat draws in the plain colours.
       if (this.daylightOn) {
         this.dirLight.color.setHex(0xffffff);
-        this.hemiLight.color.setHex(0x4466aa);
-        this.hemiLight.groundColor.setHex(0x332211);
         if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE.Color(this.core.config.backgroundColor);
       }
     }

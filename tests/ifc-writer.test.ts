@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { Vec2, Vec3 } from "../src/core/math/vectors";
 import { Wall, WallOpening, WallSystem } from "../src/core/geometry/walls";
-import { WallType, SolidConstruction } from "../src/bim/walls";
+import { WallType, SolidConstruction, BalloonFrame } from "../src/bim/walls";
 import { Slab, SlabType, SolidSlabConstruction } from "../src/bim/slabs";
 import { OpeningType } from "../src/bim/openings";
 import { Space, boundingWalls } from "../src/bim/spaces";
 import { Stair, StairType } from "../src/bim/stairs";
+import { Roof } from "../src/bim/roofs";
 import { IfcWriter, standardPropertyName } from "../src/io/IfcWriter";
 import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 
@@ -233,7 +234,7 @@ describe("IfcWriter — stairs", () => {
     expect(countLines(out, /=IFCSTAIRFLIGHT\(/)).toBe(1);
     expect(countLines(out, /=IFCSTAIRTYPE\(/)).toBe(1);
     expect(countLines(out, /=IFCTRIANGULATEDFACESET\(/)).toBe(1);
-    expect(out.includes(".STRAIGHT_RUN.")).toBe(true);
+    expect(out.includes(".STRAIGHT_RUN_STAIR.")).toBe(true);
     expect(out.includes("'Pset_StairCommon'")).toBe(true);
     // Contained in storey + aggregates the flight.
     expect(countLines(out, /=IFCRELCONTAINEDINSPATIALSTRUCTURE\(/)).toBe(1);
@@ -336,6 +337,35 @@ describe("IfcWriter — roofs and loose elements", () => {
     expect(() => w.addRoof([w.getDefaultStorey()])).toThrow(/not a slab or member/);
     expect(() => w.addMember(0, { name: "x", role: "x", mesh: MeshFactory.box(1, 1, 1) }, { storey: 99999 })).toThrow(/unknown storey ref/);
   });
+
+  it("addRoof(roof) writes an IfcRoof gathering a ROOF slab per plane, and the gables as walls of the storey", () => {
+    const w = new IfcWriter({});
+    const top = w.addStorey({ name: "Attic", elevation: 6 });
+    const roof = new Roof({
+      kind: "gable", name: "Main roof", pitch: 40, eavesElevation: 6, thickness: 0.3,
+      footprint: [new Vec2(0, 0), new Vec2(10, 0), new Vec2(10, 8), new Vec2(0, 8)], properties: { fireRating: "REI30" },
+    });
+    const roofRef = w.addRoof(roof, { storey: top, gableThickness: 0.3 });
+    const out = w.save();
+    expect(out).toMatch(new RegExp(`#${roofRef}=IFCROOF\\('[^']+',#\\d+,'Main roof',\\$,\\$,#\\d+,\\$,\\$,\\.GABLE_ROOF\\.\\);`));
+    const slabs = [...out.matchAll(/#(\d+)=IFCSLAB\([^;]*'Main roof plane \d'[^;]*,#\d+,\$,\.ROOF\.\);/g)].map(m => Number(m[1]));
+    expect(slabs).toHaveLength(2);
+    expect(out).toMatch(new RegExp(`=IFCRELAGGREGATES\\([^;]*,#${roofRef},\\(${slabs.map(s => `#${s}`).join(",")}\\)\\);`));
+    expect(countLines(out, /=IFCTRIANGULATEDFACESET\(/)).toBe(4);   // two slabs, two gables
+    const walls = [...out.matchAll(/#(\d+)=IFCWALL\('[^']+',#\d+,'Main roof gable \d',\$,'gable',/g)].map(m => Number(m[1]));
+    expect(walls).toHaveLength(2);
+    expect(containedIn(out, top)).toEqual([roofRef, ...walls]);
+    expect(out).toMatch(/IFCPROPERTYSET\('[^']+',#\d+,'Pset_RoofCommon'/);
+    expect(out).toContain("IFCPROPERTYSINGLEVALUE('FireRating',$,IFCTEXT('REI30'),$)");
+    expect(out).toContain("IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$)");
+    // a hip roof has four planes and no gables, with or without a gable thickness
+    const hip = new IfcWriter({});
+    hip.addRoof(new Roof({ ...roof, kind: "hip" }), { gableThickness: 0.3 });
+    const hipOut = hip.save();
+    expect(hipOut).toContain(".HIP_ROOF.");
+    expect(countLines(hipOut, /=IFCSLAB\(.*\.ROOF\.\);/)).toBe(4);
+    expect(countLines(hipOut, /=IFCWALL\(/)).toBe(0);
+  });
 });
 
 describe("standard property sets carry standard property names", () => {
@@ -370,5 +400,157 @@ describe("standard property sets carry standard property names", () => {
     expect(ifc).toContain("'LoadBearing'");
     // and not the spelling that nothing reads
     expect(ifc).not.toContain("'isExternal'");
+  });
+});
+
+/** Line id → entity text, without the `#id=` and the `;`. */
+function entities(ifc: string): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const l of ifc.split("\n")) { const m = /^#(\d+)=(.*);$/.exec(l); if (m) out.set(Number(m[1]), m[2]); }
+  return out;
+}
+const refsIn = (arg: string) => [...arg.matchAll(/#(\d+)/g)].map(m => Number(m[1]));
+/** From entity `id`, follow the first reference in argument `i`, for each `i` in turn. */
+const follow = (E: Map<number, string>, id: number, ...args: number[]) =>
+  args.reduce((ref, i) => refsIn(stepArgs(E.get(ref)!)[i])[0], id);
+const idOf = (E: Map<number, string>, entity: string, name: string) =>
+  [...E].find(([, t]) => t.startsWith(entity + "(") && stepArgs(t)[2] === `'${name}'`)![0];
+const withEntity = (E: Map<number, string>, entity: string) => [...E].filter(([, t]) => t.startsWith(entity + "("));
+
+describe("IfcWriter — polyline walls", () => {
+  // 4 m along x, 3 m up y, 4 m along x again: one IfcWallStandardCase each.
+  function threeSegmentWall() {
+    const type = new WallType({
+      name: "Framed", construction: BalloonFrame({ studSpacing: 0.6 }),
+      layers: [{ material: "OSB", thickness: 0.015 }], properties: { loadBearing: true },
+    });
+    const wall = new Wall({
+      centerline: [new Vec2(0, 0), new Vec2(4, 0), new Vec2(4, 3), new Vec2(8, 3)],
+      thickness: 0.2, height: 2.5, name: "P", type,
+    });
+    wall.openings.push(WallOpening.window(9, 1.2, 0.9, 2.1));     // 4 + 3 + 2: on the third segment
+    const w = new IfcWriter({});
+    w.addWallSystem(new WallSystem([wall]));
+    const E = entities(w.save());
+    return { E, segments: ["P_1", "P_2", "P_3"].map(n => idOf(E, "IFCWALLSTANDARDCASE", n)) };
+  }
+
+  it("a window on the third segment voids the third segment", () => {
+    const { E, segments } = threeSegmentWall();
+    const voids = withEntity(E, "IFCRELVOIDSELEMENT");
+    expect(voids).toHaveLength(1);
+    expect(refsIn(stepArgs(voids[0][1])[4])).toEqual([segments[2]]);
+  });
+
+  it("every segment has its type and its material layers", () => {
+    const { E, segments } = threeSegmentWall();
+    const typed = withEntity(E, "IFCRELDEFINESBYTYPE");
+    expect(typed).toHaveLength(1);
+    expect(refsIn(stepArgs(typed[0][1])[4])).toEqual(segments);
+    const layered = withEntity(E, "IFCRELASSOCIATESMATERIAL")
+      .filter(([, t]) => E.get(refsIn(stepArgs(t)[5])[0])!.startsWith("IFCMATERIALLAYERSETUSAGE("));
+    expect(layered.flatMap(([, t]) => refsIn(stepArgs(t)[4]))).toEqual(segments);
+  });
+
+  it("framed members aggregate under the segment they stand on", () => {
+    const { E, segments } = threeSegmentWall();
+    const wholes = withEntity(E, "IFCRELAGGREGATES").map(([, t]) => refsIn(stepArgs(t)[4])[0]);
+    expect(wholes.filter(w => segments.includes(w)).sort()).toEqual([...segments].sort());
+    // the plan y of every point of every member aggregated under `segment`
+    const ys = (segment: number) => withEntity(E, "IFCRELAGGREGATES")
+      .filter(([, t]) => refsIn(stepArgs(t)[4])[0] === segment)
+      .flatMap(([, t]) => refsIn(stepArgs(t)[5]))
+      .flatMap(member => [...E.get(follow(E, member, 6, 2, 3, 0))!.matchAll(/\(([^(),]+),([^(),]+),([^(),]+)\)/g)].map(m => Number(m[2])));
+    // the first segment runs along y = 0, the third along y = 3 (a plate round the corners goes to the second)
+    expect(Math.max(...ys(segments[0]))).toBeLessThan(0.2);
+    expect(Math.min(...ys(segments[2]))).toBeGreaterThan(2.8);
+  });
+
+  it("each end at a polyline corner is mitred, as the mesh is", () => {
+    const { E, segments } = threeSegmentWall();
+    // Representation → its shape representation → the extruded solid → its profile
+    const profiles = segments.map(s => E.get(follow(E, s, 6, 2, 3, 0))!);
+    for (const p of profiles) expect(p).toMatch(/^IFCARBITRARYCLOSEDPROFILEDEF\(/);
+  });
+});
+
+describe("IfcWriter — mitred corners", () => {
+  /** A wall's footprint in its own placement: the profile's points (x along the wall, y to its left). */
+  const footprint = (E: Map<number, string>, wall: number) => {
+    const profile = follow(E, wall, 6, 2, 3, 0);
+    expect(E.get(profile)).toMatch(/^IFCARBITRARYCLOSEDPROFILEDEF\(/);
+    return refsIn(stepArgs(E.get(follow(E, profile, 2))!)[0])
+      .map(p => /\(\((.*)\)\)/.exec(E.get(p)!)![1].split(",").map(Number));
+  };
+
+  it("cuts both walls of a mitred L to the bisector, and leaves a lone wall a rectangle", () => {
+    const w = new IfcWriter({});
+    w.addWallSystem(new WallSystem([
+      new Wall({ centerline: [new Vec2(0, 0), new Vec2(4, 0)], thickness: 0.2, height: 2.5, name: "A" }),
+      new Wall({ centerline: [new Vec2(4, 0), new Vec2(4, 3)], thickness: 0.2, height: 2.5, name: "B" }),
+    ]));
+    w.addWall(new Wall({ centerline: [new Vec2(0, 10), new Vec2(4, 10)], thickness: 0.2, height: 2.5, name: "Lone" }));
+    const E = entities(w.save());
+    // A turns left into B: its right face runs on to the outer corner, its left face stops at the inner one
+    const a = footprint(E, idOf(E, "IFCWALLSTANDARDCASE", "A"));
+    const expected = [[0, -0.1], [4.1, -0.1], [3.9, 0.1], [0, 0.1], [0, -0.1]];
+    a.forEach(([x, y], i) => { expect(x).toBeCloseTo(expected[i][0], 9); expect(y).toBeCloseTo(expected[i][1], 9); });
+    // B starts at the same mitre: its right face from the outer corner, its left from the inner
+    const b = footprint(E, idOf(E, "IFCWALLSTANDARDCASE", "B"));
+    expect(b[0][0]).toBeCloseTo(-0.1, 9);
+    expect(b[3][0]).toBeCloseTo(0.1, 9);
+    expect(E.get(follow(E, idOf(E, "IFCWALLSTANDARDCASE", "Lone"), 6, 2, 3, 0))).toMatch(/^IFCRECTANGLEPROFILEDEF\(/);
+  });
+});
+
+describe("IfcWriter — wall property sets", () => {
+  /** Every property set's name → the names of the properties in it (sets of one name merged). */
+  const sets = (ifc: string) => {
+    const E = entities(ifc);
+    const out = new Map<string, string[]>();
+    for (const [, t] of withEntity(E, "IFCPROPERTYSET")) {
+      const args = stepArgs(t);
+      const name = args[2].slice(1, -1);
+      const props = refsIn(args[4]).map(p => stepArgs(E.get(p)!)[0].slice(1, -1));
+      out.set(name, [...(out.get(name) ?? []), ...props]);
+    }
+    return out;
+  };
+
+  it("writes uValue as ThermalTransmittance in Pset_WallCommon", () => {
+    expect(standardPropertyName("Pset_WallCommon", "uValue")).toBe("ThermalTransmittance");
+    const type = new WallType({ name: "Ext", construction: SolidConstruction, properties: { uValue: 0.18, isExternal: true } });
+    const w = new IfcWriter({});
+    w.addWall(new Wall({ centerline: [new Vec2(0, 0), new Vec2(4, 0)], thickness: 0.3, height: 2.8, name: "S", type }));
+    const out = w.save();
+    expect(sets(out).get("Pset_WallCommon")).toContain("ThermalTransmittance");
+    expect(out).toContain("'ThermalTransmittance',$,IFCREAL(0.18)");
+    expect(out).not.toContain("'uValue'");
+  });
+
+  it("puts a custom key in a set named after the wall type, not in Pset_WallCommon", () => {
+    const type = new WallType({
+      name: "Ext 2x4", construction: SolidConstruction,
+      properties: { loadBearing: true, supplier: "Holzbau AG" },
+    });
+    const w = new IfcWriter({});
+    w.addWall(new Wall({
+      centerline: [new Vec2(0, 0), new Vec2(4, 0)], thickness: 0.3, height: 2.8, name: "S", type,
+      properties: { fireRating: "REI60", constructionPhase: "Phase 2" },
+    }));
+    w.addWall(new Wall({
+      centerline: [new Vec2(0, 5), new Vec2(4, 5)], thickness: 0.3, height: 2.8, name: "Untyped",
+      properties: { constructionPhase: "Phase 3" },
+    }));
+    const out = w.save();
+    const s = sets(out);
+    expect(s.get("Pset_WallCommon")).toEqual(expect.arrayContaining(["LoadBearing", "FireRating"]));
+    expect(s.get("Pset_WallCommon")).not.toContain("constructionPhase");
+    expect(s.get("Pset_WallCommon")).not.toContain("supplier");
+    expect(s.get("Ext 2x4")).toEqual(expect.arrayContaining(["supplier", "constructionPhase"]));
+    expect(s.get("Tekto_Wall")).toEqual(["constructionPhase"]);
+    // the type carries both of its sets
+    const typeLine = out.split("\n").find(l => l.includes("=IFCWALLTYPE("))!;
+    expect(refsIn(stepArgs(typeLine)[5])).toHaveLength(2);
   });
 });

@@ -1408,6 +1408,7 @@ export class SketchInstance {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
         if (target) this.renderer.lookAt(target[0], target[1], target[2]);
       },
+      section: (cut) => this.renderer.setSection(cut),
     });
   }
 
