@@ -261,7 +261,8 @@ A small BIM layer for timber-frame architectural experiments.
 
 - **Walls** ([src/bim/walls/](src/bim/walls/)) — `WallType` ↔ `Wall` instances; constructions for solid CLT, Balloon-frame, and Holzrahmenbau; first-class joints (`WallJoint`) with butt / mitered styles and through-wall corner extension.
 - **Slabs** ([src/bim/slabs/](src/bim/slabs/)) — same shape as walls: `SlabType` ↔ `Slab`, with `SolidSlabConstruction` and `JoistedSlab(opts)` (timber-joist + rim joist + sheathing + ceiling + configurable `edgeOffset` and `bearingGap`). Joist orientation is picked from the supporting walls via `chooseJoistDirection`.
-- **IFC4 export** ([src/io/IfcWriter.ts](src/io/IfcWriter.ts)) — writes STEP-21 directly (no `web-ifc` dependency). Covers wall types, material layers, openings, framed members, joints, and **multi-storey** buildings.
+- **Doors and windows** ([src/bim/openings.ts](src/bim/openings.ts)) — `OpeningType` (door / window, operation, partitioning, frame) on a `WallOpening`; `openingFill(wall, opening)` builds its frame, glass and leaves (or takes the app's own parts, `opening.fill`).
+- **IFC4 export** ([src/io/IfcWriter.ts](src/io/IfcWriter.ts)) — writes STEP-21 directly (no `web-ifc` dependency). Covers wall types, material layers, openings (doors and windows with their frame, glass and leaves), framed members, joints, and **multi-storey** buildings.
 - **Solar / shadow studies** ([src/core/solar/SunPosition.ts](src/core/solar/SunPosition.ts)) — Michalsky-style sun-position algorithm (~0.01° accuracy 1950–2050). Date + lat/lon → altitude / azimuth / unit direction vector in Z-up scene coords.
 
 The Timber demo ([playground/pages/timber/](playground/pages/timber/)) is the canonical example — drag the corners, toggle constructions, pick a wall or slab to edit it inline, set the Storeys slider to stack the room, then click *Export ▾ → IFC* in the top bar.

@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Doors and windows are filled**: `openingFill(wall, opening)` builds what fills a wall
+  opening from its `OpeningType` — a window's frame with mullions or a transom by its
+  partitioning and a pane in each panel, a door's frame and one leaf (two for a double door) —
+  or returns the parts an app made itself (`WallOpening.fill`, e.g. a supplier's window). New
+  `OpeningType` options: `frame` (section) and `offset` (across the wall). `IfcWriter` writes
+  the fill as the IfcWindow's / IfcDoor's body (tessellated) where it wrote the opening's box;
+  `new IfcWriter({ openingFills: false })` keeps the box. The Framed Wall page shows the window.
+
 ## 0.9.5 — 2026-10-14
 
 Drawings as PDF: `writePdf2D` writes the same 2D content as `writeDxf2D` as a vector PDF at a true scale.

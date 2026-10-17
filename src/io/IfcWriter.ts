@@ -30,7 +30,7 @@ import type { Wall, WallOpening, WallSystem } from "../core/geometry/walls";
 import type { PropertyMap, WallType, MaterialLayer } from "../bim/walls/types";
 import type { WallJoint } from "../bim/walls/joints";
 import type { Slab, SlabType, SlabContext } from "../bim/slabs/types";
-import type { OpeningType, DoorOperation, WindowPartitioning } from "../bim/openings";
+import { openingFill, type OpeningType, type DoorOperation, type WindowPartitioning } from "../bim/openings";
 import type { Space } from "../bim/spaces";
 import type { Stair, StairType, StairFlight, StairShape } from "../bim/stairs";
 
@@ -51,6 +51,11 @@ export interface IfcWriterOptions {
   applicationVersion?: string;
   /** Default: ViewDefinition [DesignTransferView_V1.0] — the round-trippable MVD. */
   viewDefinition?: string;
+  /**
+   * Write a door's or window's frame, glass and leaves as its body (`openingFill`: the app's
+   * own parts, else built from its type). `false`: the opening's box, as before. Default true.
+   */
+  openingFills?: boolean;
 }
 
 /** Options for `IfcWriter.addWallSystem`: whether to emit framed members, joint relations, openings and material layer sets (all default true). */
@@ -142,6 +147,7 @@ export class IfcWriter {
       application:        opts.application        ?? "Tekto",
       applicationVersion: opts.applicationVersion ?? "0.1",
       viewDefinition:     opts.viewDefinition     ?? "ViewDefinition [DesignTransferView_V1.0]",
+      openingFills:       opts.openingFills       ?? true,
     };
     this.bootstrap();
   }
@@ -332,8 +338,10 @@ export class IfcWriter {
     const fillOperation = type
       ? (asDoor ? ifcDoorOperation(type.operation) : ifcWindowPartitioning(type.partitioning))
       : ".NOTDEFINED.";
+    // Its body: the frame, glass and leaves in world coordinates, or the opening's box.
+    const fill = this.opts.openingFills ? this.fillShape(wall, opening) : null;
     const fillRef = this.addEntity(
-      `${fillType}(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(fillName)},$,$,#${localPlacement},#${productShape},$,${ifcReal(opHeight)},${ifcReal(opWidth)},${fillPredefined},${fillOperation},$)`,
+      `${fillType}(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(fillName)},$,$,#${fill?.placement ?? localPlacement},#${fill?.shape ?? productShape},$,${ifcReal(opHeight)},${ifcReal(opWidth)},${fillPredefined},${fillOperation},$)`,
     );
     // IfcRelFillsElement(GUID,OwnerHistory,Name,Description,RelatingOpeningElement,RelatedBuildingElement)
     this.addEntity(
@@ -382,23 +390,7 @@ export class IfcWriter {
   }, opts: { storey?: number } = {}): number {
     void _parentWallRef; // aggregation done by the caller
     const storey = opts.storey === undefined ? null : this.resolveStorey(opts.storey);
-    const mesh = part.mesh;
-    const positions = mesh.positions;
-    const indices = mesh.indices;
-
-    // IfcCartesianPointList3D
-    const coords: string[] = [];
-    for (let i = 0; i < positions.length; i += 3) {
-      coords.push(`(${ifcReal(positions[i])},${ifcReal(positions[i + 1])},${ifcReal(positions[i + 2])})`);
-    }
-    const pointListRef = this.addEntity(`IFCCARTESIANPOINTLIST3D((${coords.join(",")}))`);
-
-    // IfcTriangulatedFaceSet — IFC uses 1-based indices.
-    const tris: string[] = [];
-    for (let i = 0; i < indices.length; i += 3) {
-      tris.push(`(${indices[i] + 1},${indices[i + 1] + 1},${indices[i + 2] + 1})`);
-    }
-    const faceSet = this.addEntity(`IFCTRIANGULATEDFACESET(#${pointListRef},$,$,(${tris.join(",")}),$)`);
+    const faceSet = this.faceSet(part.mesh);
     const shapeRep = this.addEntity(
       `IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','Tessellation',(#${faceSet}))`,
     );
@@ -424,6 +416,37 @@ export class IfcWriter {
     }
 
     return memberRef;
+  }
+
+  /** A mesh as an IfcTriangulatedFaceSet over an IfcCartesianPointList3D (IFC indices are 1-based). */
+  private faceSet(mesh: import("../core/geometry/mesh/Mesh").Mesh): number {
+    const positions = mesh.positions;
+    const indices = mesh.indices;
+    const coords: string[] = [];
+    for (let i = 0; i < positions.length; i += 3) {
+      coords.push(`(${ifcReal(positions[i])},${ifcReal(positions[i + 1])},${ifcReal(positions[i + 2])})`);
+    }
+    const pointListRef = this.addEntity(`IFCCARTESIANPOINTLIST3D((${coords.join(",")}))`);
+    const tris: string[] = [];
+    for (let i = 0; i < indices.length; i += 3) {
+      tris.push(`(${indices[i] + 1},${indices[i + 1] + 1},${indices[i + 2] + 1})`);
+    }
+    return this.addEntity(`IFCTRIANGULATEDFACESET(#${pointListRef},$,$,(${tris.join(",")}),$)`);
+  }
+
+  /**
+   * A door's or window's body: its fill parts (`openingFill`) as one tessellated
+   * representation, placed relative to the building as the parts are in world coordinates.
+   * Null when there is nothing to fill.
+   */
+  private fillShape(wall: Wall, opening: WallOpening): { shape: number; placement: number } | null {
+    const parts = openingFill(wall, opening).filter((p) => p.mesh.faceCount > 0);
+    if (!parts.length) return null;
+    const items = parts.map((p) => `#${this.faceSet(p.mesh)}`).join(",");
+    const rep = this.addEntity(`IFCSHAPEREPRESENTATION(#${this.contextRef},'Body','Tessellation',(${items}))`);
+    const shape = this.addEntity(`IFCPRODUCTDEFINITIONSHAPE($,$,(#${rep}))`);
+    const placement = this.addEntity(`IFCLOCALPLACEMENT(#${this.buildingPlacementRef},#${this.worldPlacementRef})`);
+    return { shape, placement };
   }
 
   /**
