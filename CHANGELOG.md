@@ -41,6 +41,25 @@ before 1.0, breaking changes bump the minor version. See
   (FLAT_ / SHED_ / GABLE_ / HIP_ROOF) gathering one tessellated `IfcSlab` .ROOF. per plane,
   `Pset_RoofCommon` from its properties, and with `gableThickness` its gables as tessellated,
   external `IfcWall`s of the same storey. `addRoof(parts, …)` is unchanged.
+- **Stairs with a landing**: `Stair` builds the shape it names (`shape`, default the type's,
+  else `"straight_run"`): `"two_straight_run"` (two flights in line), `"quarter_turn"` (L) and
+  `"half_turn"` (U), each with a landing after riser `landingAfter` (default half the risers),
+  turning `turn` `"left"` or `"right"`, `landingDepth` long (default the width) and
+  `landingThickness` thick, a U's flights `gap` apart (default 0.1 m). `landing()` gives the
+  landing as a `Slab`, `footprint()` the plan outline, and `slabOpening(floor, { clearance })`
+  the `SlabOpening` the floor above needs: over every tread with less than 2 m of headroom under
+  that floor, laid out in its opening frame. `IfcWriter.addStair` gathers the landing under the
+  `IfcStair` as an `IfcSlab` LANDING beside the flights, and puts the type's material on every
+  part. A bad input throws naming it: a rise ≤ 0, a quarter-turn landing shallower than the
+  flight is wide, a `landingAfter` that leaves a flight without a riser. Playground: **Framed
+  Floor** has a stair under the floor, and its well is the stair's `slabOpening`.
+- **Breaking: a flight draws `risers − 1` treads**, as its `treads` count said. A straight
+  `Stair` drew one step per riser, the last level with the floor above, where that floor's slab
+  is; now its last riser meets the slab's edge, so the run is one going shorter. To migrate,
+  end the floor above (or its stair well) at the last riser: `footprint()` and `slabOpening()`
+  give both.
+- **Fix: a straight stair's IFC type is `.STRAIGHT_RUN_STAIR.`**; the writer wrote
+  `.STRAIGHT_RUN.`, which `IfcStairTypeEnum` does not have.
 
 ## 0.9.5 — 2026-10-14
 

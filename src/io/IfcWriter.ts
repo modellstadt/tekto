@@ -683,9 +683,11 @@ export class IfcWriter {
 
   /**
    * Add a stair as an `IfcStair` that aggregates one `IfcStairFlight` per
-   * computed flight. The stair is contained in its storey; flights carry the
-   * tessellated step geometry and the riser/tread metrics. A `StairType`
-   * links via `IfcRelDefinesByType`; `properties` go on `Pset_StairCommon`.
+   * computed flight and, between two flights, the landing as an `IfcSlab`
+   * LANDING. The stair is contained in its storey, its parts are not;
+   * flights carry the tessellated step geometry and the riser/tread metrics.
+   * The type's material goes on every part. A `StairType` links via
+   * `IfcRelDefinesByType`; `properties` go on `Pset_StairCommon`.
    */
   addStair(stair: Stair, opts: { storey?: number } = {}): number {
     const storey = this.resolveStorey(opts.storey);
@@ -699,18 +701,28 @@ export class IfcWriter {
     // IfcStair(GlobalId,OwnerHistory,Name,Description,ObjectType,ObjectPlacement,
     //          Representation,Tag,PredefinedType)
     const stairRef = this.addEntity(
-      `IFCSTAIR(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(stair.name)},$,$,#${stairPlacement},$,$,${ifcStairShape(stair.type?.shape ?? "straight_run")})`,
+      `IFCSTAIR(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(stair.name)},$,$,#${stairPlacement},$,$,${ifcStairShape(stair.shape)})`,
     );
     this.attachToStorey(stairRef, storey);
 
-    // Flights → IfcStairFlight, aggregated under the stair.
-    const flightRefs: number[] = [];
-    for (const flight of stair.flights()) {
-      flightRefs.push(this.writeStairFlight(flight, stair.type?.material));
+    // Flights → IfcStairFlight, the landing → IfcSlab LANDING, aggregated under the stair.
+    const partRefs = stair.flights().map((flight) => this.writeStairFlight(flight));
+    const landing = stair.landing();
+    if (landing) {
+      const landingRef = this.addSlab(landing, { predefinedType: "LANDING", includeParts: false, storey });
+      // A part of the stair: not an element of the storey, nor one addRoof may gather.
+      const contained = this.elementsByStorey.get(storey);
+      contained?.splice(contained.indexOf(landingRef), 1);
+      this.partRefs.delete(landingRef);
+      partRefs.push(landingRef);
     }
-    if (flightRefs.length > 0) {
+    this.addEntity(
+      `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${stairRef},(${partRefs.map(r => `#${r}`).join(",")}))`,
+    );
+    if (stair.type?.material) {
+      const matRef = this.ensureMaterial(stair.type.material);
       this.addEntity(
-        `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${stairRef},(${flightRefs.map(r => `#${r}`).join(",")}))`,
+        `IFCRELASSOCIATESMATERIAL(${ifcGuid()},#${this.ownerHistoryRef},$,$,(${partRefs.map(r => `#${r}`).join(",")}),#${matRef})`,
       );
     }
 
@@ -731,22 +743,16 @@ export class IfcWriter {
     return stairRef;
   }
 
-  private writeStairFlight(flight: StairFlight, material?: string): number {
-    const productShape = this.writeTriangulatedShape(flight.positions, flight.indices);
+  private writeStairFlight(flight: StairFlight): number {
+    // A flight of one riser has no tread, so no body.
+    const productShape = flight.indices.length > 0 ? `#${this.writeTriangulatedShape(flight.positions, flight.indices)}` : "$";
     const placement = this.addEntity(
       `IFCLOCALPLACEMENT(#${this.buildingPlacementRef},#${this.worldPlacementRef})`,
     );
     // IfcStairFlight(...,NumberOfRisers,NumberOfTreads,RiserHeight,TreadLength,PredefinedType)
-    const flightRef = this.addEntity(
-      `IFCSTAIRFLIGHT(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(flight.name)},$,$,#${placement},#${productShape},$,${flight.risers},${flight.treads},${ifcReal(flight.riserHeight)},${ifcReal(flight.treadDepth)},.STRAIGHT.)`,
+    return this.addEntity(
+      `IFCSTAIRFLIGHT(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(flight.name)},$,$,#${placement},${productShape},$,${flight.risers},${flight.treads},${ifcReal(flight.riserHeight)},${ifcReal(flight.treadDepth)},.STRAIGHT.)`,
     );
-    if (material) {
-      const matRef = this.ensureMaterial(material);
-      this.addEntity(
-        `IFCRELASSOCIATESMATERIAL(${ifcGuid()},#${this.ownerHistoryRef},$,$,(#${flightRef}),#${matRef})`,
-      );
-    }
-    return flightRef;
   }
 
   private ensureStairType(type: StairType): number {
@@ -1411,7 +1417,7 @@ function ifcWindowPartitioning(p: WindowPartitioning): string {
 
 function ifcStairShape(s: StairShape): string {
   switch (s) {
-    case "straight_run":      return ".STRAIGHT_RUN.";
+    case "straight_run":      return ".STRAIGHT_RUN_STAIR.";
     case "two_straight_run":  return ".TWO_STRAIGHT_RUN_STAIR.";
     case "quarter_turn":      return ".QUARTER_TURN_STAIR.";
     case "half_turn":         return ".HALF_TURN_STAIR.";
