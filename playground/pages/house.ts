@@ -8,11 +8,13 @@
  *   checks        what is wrong, as callouts on the records concerned (openings past a wall's
  *                 end, free wall ends, rooms that overlap…)
  *   undo / redo   every edit, including a whole house written at once, is one step
- *   ?shared=1     the records go through the dev server (`.tekto/collab/house.json`): an agent
- *                 that writes there edits the house in this tab
+ *   agentDoc      an agent reads and edits the records (`__tekto.doc`, or from outside through
+ *                 the dev server: `tools/mcp.mjs`), each patch one undo step, answered with the issues
+ *   ?shared=1     the records go through the dev server (`.tekto/collab/house.json`), shared by
+ *                 every window that opens the page with it
  */
 import {
-  appShell, Doc, bindBuilding, Selection, selectOnClick, localAdapter, devServerAdapter, download,
+  appShell, Doc, bindBuilding, agentDoc, BUILDING_SCHEMA, Selection, selectOnClick, localAdapter, devServerAdapter, download,
   type BuildingData, type BuildingRecords, type BuildingIssue, type DocJSON,
 } from "../../src";
 
@@ -111,6 +113,8 @@ export default function (container: HTMLElement) {
   });
   const stopSelecting = selectOnClick(app.renderer, app.scene, selection);
   selection.onChange(status);
+  // Agents edit the same records: checked against the schema, one undo step, answered with the issues.
+  const stopAgent = agentDoc(doc, { schema: BUILDING_SCHEMA, check: () => house.issues });
 
   /** Each issue as a callout on the records it concerns: red for an error, amber for a warning. */
   function showIssues(issues: BuildingIssue[]) {
@@ -184,6 +188,7 @@ export default function (container: HTMLElement) {
   return {
     dispose() {
       stopSelecting();
+      stopAgent();
       house.dispose();
       doc.dispose();
       app.dispose();

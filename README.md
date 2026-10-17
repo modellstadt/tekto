@@ -476,6 +476,23 @@ export default { plugins: [tektoMarkup()] };
 
 Without the plugin, Save downloads the three files instead. Turn the button off with `sketch(fn, { markup: false })`.
 
+### An agent in the open app
+
+`snap` opens its own headless page. To have an agent work in the tab a person has open — the person watching, every edit one undo step for them — the app shares its document and the agent connects through the dev server:
+
+```ts
+// In the app: the records an agent may edit, their schema, and what the app's check says.
+agentDoc(doc, { schema: BUILDING_SCHEMA, check: () => house.issues });
+```
+
+`window.__tekto.doc` then lists the collections and their schema, returns the records, and `apply`s a patch — `{ set, update, remove }` by `"collection/id"` — as one undo step: checked against the schema first (a record that breaks it rejects the whole patch, with the reasons), answered with the app's issues after. With `tekto/markup-vite` in the dev server, the same calls reach the page from outside through `POST /__tekto/agent/call` (the newest tab to connect takes them; automated browsers stay out unless the URL has `agent-relay`). `tools/mcp.mjs` is an MCP server over those calls, so Claude Code (or any MCP client) gets them as tools: `tekto_info`, `tekto_records`, `tekto_apply`, `tekto_check`, `tekto_snapshot` (an image of the view), `tekto_undo`, `tekto_set_params`, `tekto_run_command`, `tekto_camera`.
+
+```sh
+claude mcp add tekto -- node node_modules/tekto/tools/mcp.mjs     # TEKTO_URL=http://localhost:5174 for another port
+```
+
+The House page ([playground/pages/house.ts](playground/pages/house.ts)) shares its building this way: ask the agent for a house and watch it appear.
+
 ## Shared editing — several people (and agents) on one model
 
 `SharedStore` is a document of keyed records that everyone with the same document name edits together: a write applies locally at once, is stored by the backend and reaches the other clients live. Per key the last write wins (backend clock) — right for small teams, especially with **presence** showing who is on what. Broadcasts carry transient messages (a point while it is dragged) that are never stored.
@@ -694,7 +711,7 @@ Or use IDE autocomplete on the import line — every export is typed, and the co
 - **Solar**: `SunPosition` (date + lat/lon → altitude / azimuth / direction).
 - **Rendering**: `ThreeRenderer` — the one 3D renderer under `sketch()` and `appShell()`: render modes (solid / wireframe / hidden line / ghost) with creases built a frame at a time, `setSection` (a cut with poché), `setView` (plans and elevations; orthographic + hidden line + `front` is an elevation) and the `navGizmo` axis widget, `fitTo`, `setCallouts` (labels in the margins with leaders), `setSelectionStyle("outline")`, `onHover`, `gridStyle: "fading"` (a ground ruled in metres for the content's size, fading out), `shadingBar` (icons in the view for render style, lighting, a morning / noon / sunset sun the section (a slider relative to the content, or in the scene's `units`), overlays (`setOverlays`), Frame and Snapshot), a Studio sun framed to the content, and a teardown that releases the WebGL context. Its rules are plain functions (`viewDirection`, `sectionPlane`, `fitRadius`, …). A model from elsewhere (IFC, a cut list) goes in as `scene.addMesh(new Mesh(positions, indices), { color })` and gets all of it. Lights are scene objects too: `scene.addLight(position, { kind: "point" | "spot", … })`.
 - **IO**: `ObjFile`, `DxfExporter` (2D hidden-line views of meshes), `Sheet` (a drawing at a scale: views placed on the sheet — plan, elevations projected from 3D, details — with lines, arcs, fills, text, dimensions, leaders and level marks; `toSVG` and `toDXF` export the same primitives; on screen `SheetCanvas` — pan, zoom, pick by `key`, highlight — or `drawSheet` into any canvas; over a 3D app in `app.overlay()` or a sketch's `lab.overlay()` — see the *Sketch + drawing* page), `writeDxf2D` (raw drawings: polylines, lines, circles, arcs, text, solids, line types; `scale: 1000` → mm), `writePdf2D` (the same content as a vector PDF at a true scale, `scale: 50` → 1:50, one page sized to the drawing, title + scale bar), `writeDxf3D` (true-3D polylines/lines/points/arcs/circles in world space — all emit AutoCAD-safe R12), `download` / `stampName` (save a file from the browser — a `sketch()` lists `lab.registerExport` items in its Export menu), `IfcFile` (IFC *import* — needs `npm install web-ifc`), `IfcWriter` (IFC *export* — no extra deps).
-- **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use). Types `MarkupBundle` / `MarkupCaptureOptions` / `MarkupObjectRef` / `MarkKind` for the [Markup](#markup--instructions-for-an-ai-drawn-on-the-view) capture; `markup(renderer, scene)` mounts Markup in an app with its own UI (React: `<Markup />`); `notesLayer(renderer, doc)` keeps sketched notes with the model in a `Doc` collection, pinned in the view (`appShell({ notes: doc })`).
+- **Sketch API**: `sketch` (3D), `sketch2d` (2D canvas), `Lab` / `Lab2D` (the API surfaces you'll mostly use). Types `MarkupBundle` / `MarkupCaptureOptions` / `MarkupObjectRef` / `MarkKind` for the [Markup](#markup--instructions-for-an-ai-drawn-on-the-view) capture; `markup(renderer, scene)` mounts Markup in an app with its own UI (React: `<Markup />`); `agentDoc(doc, { schema, check })` shares an app's document with agents (`__tekto.doc`; from outside through `tekto/markup-vite` and the MCP server `tools/mcp.mjs`); `notesLayer(renderer, doc)` keeps sketched notes with the model in a `Doc` collection, pinned in the view (`appShell({ notes: doc })`).
 - **Shared editing**: `SharedStore` (keyed records, last write wins, presence, broadcasts), `memoryAdapter` / `devServerAdapter` / `supabaseAdapter`, `PresenceBar`, `collabColor` — see [Shared editing](#shared-editing--several-people-and-agents-on-one-model).
 - **App Shell**: `appShell` — persistent-panel apps (panel built once, animation-friendly) with a built-in top bar (Flat/Studio lighting, render mode with an icon per mode, Persp/Iso camera, Cut and Sun popovers — each can be switched off).
 - **React** (from `tekto/react`): `AccordionColumn` — a column of collapsible sections, one of which takes the leftover height and scrolls; headers stay visible with their own summary, open sections drag taller, and the arrangement persists. The shape every inspector ends up with. `ViewModeIcon` — a render mode's icon as a component.
