@@ -4,7 +4,7 @@
  */
 import * as THREE from "three";
 import type { SectionRequest } from "../scene/Scene";
-import { sectionPlane, sectionAppearance, calloutSamples, occludes, shown } from "./viewRules";
+import { sectionPlane, sectionAppearance, calloutSamples, occludes, shown, rayTargets, cameraKey } from "./viewRules";
 import { Callouts, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem } from "./Callouts";
 import type { RendererCore } from "./RendererCore";
 
@@ -41,7 +41,11 @@ export class Marks {
   private calloutStillSince = 0;
   /** A check in progress, a slice per frame: what is left, and how many labels each margin
    *  has found so far against what it holds. */
-  private calloutPending: { queue: string[]; skipped: string[]; left: number; right: number; capacity: number } | null = null;
+  private calloutPending: {
+    queue: string[]; skipped: string[]; left: number; right: number; capacity: number;
+    /** what the rays test, gathered once per check rather than per slice */
+    targets: THREE.Mesh[];
+  } | null = null;
   /** Callouts the last check never looked at, because the margins were full. */
   private calloutUnchecked = 0;
   private calloutRecheck = 0;
@@ -351,7 +355,6 @@ export class Marks {
     const pending = this.calloutPending;
     if (!pending) return;
     const cam = this.core.activeCamera;
-    const meshes = [...this.core.objectMap.values()].filter(t => t.visible);
     const ray = new THREE.Raycaster();
     const eye = cam.getWorldPosition(new THREE.Vector3());
     const view = cam.getWorldDirection(new THREE.Vector3());
@@ -378,7 +381,7 @@ export class Marks {
           ray.set(eye, dir.normalize());
         }
         // Surfaces only: three.js picks lines within a whole unit of the ray.
-        const hit = ray.intersectObjects(meshes, true)
+        const hit = ray.intersectObjects(pending.targets, false)
           .find(h => (h.object as THREE.Mesh).isMesh && occludes((h.object as THREE.Mesh).material) && !this.cutAway(h.point));
         let owner: THREE.Object3D | null = hit?.object ?? null;
         while (owner && !own.has(owner)) owner = owner.parent;
@@ -410,8 +413,7 @@ export class Marks {
     // moves (the labels keep the last answer and follow their anchors), and is redone once the
     // camera has been still a moment, a slice per frame.
     // Rounded: the controls recompute the camera each frame, with noise in the last digits.
-    const key = (m: THREE.Matrix4) => m.elements.map((e) => e.toFixed(6)).join();
-    const at = `${key(cam.matrixWorld)}|${key(cam.projectionMatrix)}|${w}|${h}`;
+    const at = `${cameraKey(cam.matrixWorld.elements, cam.projectionMatrix.elements)}|${w}|${h}`;
     if (at !== this.calloutCamera) {
       this.calloutCamera = at;
       this.calloutStillSince = now;
@@ -420,7 +422,10 @@ export class Marks {
     }
     if (this.calloutCheckDirty && !this.calloutPending) {
       if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
-        this.calloutPending = { queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0, capacity: marginCapacity(h) };
+        this.calloutPending = {
+          queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0,
+          capacity: marginCapacity(h), targets: rayTargets(this.core.objectMap.values()),
+        };
         this.calloutCheckDirty = false;                  // cleared as it starts: a change while it runs asks for another
       } else if (!this.calloutRecheck) {
         // Frames are drawn on demand: ask for one when the camera will have settled.
