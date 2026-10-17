@@ -6,6 +6,29 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fix: a polyline wall's IFC segments are each a whole wall.** `IfcWriter` writes a wall
+  with more than two centreline points as one `IfcWallStandardCase` per segment, but only
+  the first was typed and had the material layers, every opening voided the first, and
+  every framed member was aggregated under it. Now every segment is typed and layered, an
+  opening voids the segment its `centerlinePosition` falls on, a member goes under the
+  segment it stands on, and a joint relates the segment at the joint. For a wall of two
+  points none of this changes anything.
+
+- **Fix: mitred corners are mitred in the IFC export.** Only butt joints were trimmed: at
+  a mitred L the two walls' boxes stopped at the axes (a notch outside the corner, an
+  overlap inside), and so did each corner of a polyline wall. A mitred end is now an
+  `IfcArbitraryClosedProfileDef` with the footprint the 3D mesh has, cut by the joint's own
+  trim lines (and the stem of a mitred T stops at the through wall's face).
+
+- **Fix: a wall's `uValue` is written as `ThermalTransmittance`**, as `PropertyMap`
+  documents; it was written as `uValue`, which no reader of `Pset_WallCommon` (or
+  `Pset_WindowCommon`, `Pset_DoorCommon`, `Pset_SlabCommon`) looks for.
+
+- **Fix: a wall's custom properties go in their own set.** Every key went into
+  `Pset_WallCommon`; now only the standard ones do, and the rest go in a set named after
+  the wall type (`Tekto_Wall` without one), as src/bim/walls/README.md says — on the
+  occurrence and on the `IfcWallType`.
+
 ## 0.9.5 — 2026-10-14
 
 Drawings as PDF: `writePdf2D` writes the same 2D content as `writeDxf2D` as a vector PDF at a true scale.
