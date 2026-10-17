@@ -172,12 +172,12 @@ export type { RoofOptions, RoofKind, RoofPlane, RoofGable } from "./bim/roofs";
 // A building as data: storeys, walls, openings, slabs and spaces as plain records (a Doc's
 // collections), built into the elements above, checked by record, written as IFC.
 export {
-  Building, realizeBuilding, validateBuilding, defaultBuildingTypes, bindBuilding, BUILDING_SCHEMA, BUILDING_COLLECTIONS,
+  Building, realizeBuilding, validateBuilding, defaultBuildingTypes, bindBuilding, buildingSchema, BUILDING_SCHEMA, BUILDING_COLLECTIONS,
 } from "./bim/building";
 export type {
   BuildingRecords, BuildingData, BuildingCollection, BuildingTypes, BuildingWallType, BuildingSlabType, BuildingIssue,
   BuildingBinding, BindBuildingOptions, BuildingDetail, RealizedStorey,
-  StoreyRecord, WallRecord, OpeningRecord, SlabRecord, SlabOpeningRecord, SpaceRecord, XY,
+  StoreyRecord, WallRecord, OpeningRecord, SlabRecord, SlabOpeningRecord, SpaceRecord, RoofRecord, StairRecord, XY,
 } from "./bim/building";
 
 // Scene

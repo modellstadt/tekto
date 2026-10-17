@@ -289,7 +289,7 @@ Each storey gets its own `IfcRelContainedInSpatialStructure` at save time; the b
 
 ### A building as data
 
-A whole building can also be plain JSON records, which a `Doc` stores (saved, undone, shared) and a person, script or agent writes: `storeys`, `walls`, `openings`, `slabs` and `spaces`, referencing each other by id. `BUILDING_SCHEMA` is the JSON Schema of each collection, so it validates input and serves as an agent tool's input schema. Wall, slab and opening `type`s name entries of `BuildingTypes`; the default ones (`defaultBuildingTypes()`) are Holzrahmenbau walls, joisted floors and a concrete ground slab.
+A whole building can also be plain JSON records, which a `Doc` stores (saved, undone, shared) and a person, script or agent writes: `storeys`, `walls`, `openings`, `slabs`, `spaces`, `roofs` and `stairs`, referencing each other by id. A roof's eaves sit on its storey's walls; a stair climbs its storey's height and cuts its well in the floor above. `BUILDING_SCHEMA` is the JSON Schema of each collection, so it validates input and serves as an agent tool's input schema. Wall, slab and opening `type`s name entries of `BuildingTypes`; the default ones (`defaultBuildingTypes()`) are Holzrahmenbau walls, joisted floors and a concrete ground slab.
 
 ```ts
 const building = realizeBuilding({
@@ -488,13 +488,19 @@ Without the plugin, Save downloads the three files instead. Turn the button off 
 agentDoc(doc, { schema: BUILDING_SCHEMA, check: () => house.issues });
 ```
 
-`window.__tekto.doc` then lists the collections and their schema, returns the records, and `apply`s a patch — `{ set, update, remove }` by `"collection/id"` — as one undo step: checked against the schema first (a record that breaks it rejects the whole patch, with the reasons), answered with the app's issues after. With `tekto/markup-vite` in the dev server, the same calls reach the page from outside through `POST /__tekto/agent/call` (the newest tab to connect takes them; automated browsers stay out unless the URL has `agent-relay`). `tools/mcp.mjs` is an MCP server over those calls, so Claude Code (or any MCP client) gets them as tools: `tekto_info`, `tekto_records`, `tekto_apply`, `tekto_check`, `tekto_snapshot` (an image of the view), `tekto_undo`, `tekto_set_params`, `tekto_run_command`, `tekto_camera`.
+`window.__tekto.doc` then lists the collections and their schema, returns the records, and `apply`s a patch — `{ set, update, remove }` by `"collection/id"` — as one undo step: checked against the schema first (a record that breaks it rejects the whole patch, with the reasons), answered with the app's issues after. With `tekto/markup-vite` in the dev server, the same calls reach the page from outside through `POST /__tekto/agent/call` (the newest tab to connect takes them; automated browsers stay out unless the URL has `agent-relay`). `tools/mcp.mjs` is an MCP server over those calls, so Claude Code (or any MCP client) gets them as tools: `tekto_info`, `tekto_records`, `tekto_apply`, `tekto_check`, `tekto_snapshot` (an image of the view), `tekto_undo`, `tekto_set_params`, `tekto_run_command`, `tekto_section` (cut a plan to look inside), `tekto_camera`.
 
 ```sh
 claude mcp add tekto -- node node_modules/tekto/tools/mcp.mjs     # TEKTO_URL=http://localhost:5174 for another port
 ```
 
-The House page ([playground/pages/house.ts](playground/pages/house.ts)) shares its building this way: ask the agent for a house and watch it appear.
+The House page ([playground/pages/house.ts](playground/pages/house.ts)) shares its building this way (`agentDoc(doc, { schema: buildingSchema(), check: () => house.issues })`). To have Claude build a house from a brief:
+
+1. `npm run playground`, open the House page, press **Empty site** (or open it with `&empty`).
+2. `claude mcp add tekto -- node tools/mcp.mjs` (with `TEKTO_URL` if the playground is not on port 5173), then in Claude Code: *"Build me a compact two-storey timber family house, about 140 m²: open living and kitchen facing south, a study, three bedrooms, a gable roof."*
+3. Claude reads the schema (`tekto_info`), writes the house in one patch (`tekto_apply` — one undo step for you), fixes what the checks report, and looks at it (`tekto_snapshot`, `tekto_section`). Every edit stays yours to undo, save as JSON or export as IFC.
+
+Tested with a fresh agent and only that brief: a 144 m² house in two patches, with doors, windows, a U stair to the landing and a gable roof.
 
 ## Shared editing — several people (and agents) on one model
 

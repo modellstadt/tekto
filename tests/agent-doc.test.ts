@@ -37,13 +37,13 @@ describe("applyPatch", () => {
   it("applies nothing when one record is wrong, and says why for each", () => {
     const doc = storeyDoc();
     const r = applyPatch(doc, {
-      set: { "walls/e": { storey: "eg", path: [[5, 0], [5, 4]] }, "roofs/r": { kind: "gable" }, "openings/d": { wall: "s", kind: "gate", at: 2, width: 1 } },
+      set: { "walls/e": { storey: "eg", path: [[5, 0], [5, 4]] }, "doors/r": { kind: "gable" }, "openings/d": { wall: "s", kind: "gate", at: 2, width: 1 } },
       update: { "walls/s": { path: [[0, 0]] }, "walls/zz": { height: 2 } },
       remove: ["slabs/none", "bad-key"],
     }, { schema: BUILDING_SCHEMA });
     expect(r.ok).toBe(false);
     expect(r.rejected.map((x) => `${x.key}: ${x.message}`)).toEqual([
-      'roofs/r: "roofs" is not a collection here (collections: storeys, walls, openings, slabs, spaces)',
+      'doors/r: "doors" is not a collection here (collections: storeys, walls, openings, slabs, spaces, roofs, stairs)',
       'openings/d: kind: expected one of "door", "window", got "gate"',
       "walls/s: path: needs at least 2 items, got 1",
       "walls/zz: does not exist (use set to add it)",
@@ -73,7 +73,7 @@ describe("tools/mcp.mjs", () => {
     const [init, list, apply, info, snap, unknown] = replies;
     expect(init.result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "tekto" } });
     expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual([
-      "tekto_info", "tekto_records", "tekto_apply", "tekto_check", "tekto_snapshot", "tekto_undo", "tekto_set_params", "tekto_run_command", "tekto_camera",
+      "tekto_info", "tekto_records", "tekto_apply", "tekto_check", "tekto_snapshot", "tekto_undo", "tekto_set_params", "tekto_run_command", "tekto_section", "tekto_camera",
     ]);
     expect(JSON.parse(apply.result.content[0].text)).toMatchObject({ ok: true, changed: { set: ["walls/a"] } });
     expect(calls.find((c) => c.op === "apply")).toEqual({ op: "apply", args: { patch: { set: { "walls/a": { storey: "eg", path: [[0, 0], [1, 0]] } } }, label: "Agent" } });

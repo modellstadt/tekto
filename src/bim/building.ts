@@ -1,8 +1,8 @@
 /**
- * A building as data: storeys, walls, openings, slabs and spaces as plain JSON records that
- * reference each other by id. A person, a script or an agent writes the records (into a `Doc`,
+ * A building as data: storeys, walls, openings, slabs, spaces, roofs and stairs as plain JSON
+ * records that reference each other by id. A person, a script or an agent writes the records (into a `Doc`,
  * so they are saved, undone and shared); `realizeBuilding` turns them into the BIM elements
- * (`Wall`, `WallSystem`, `Slab`, `Space`), `check()` says what is wrong by record, `toIfc()`
+ * (`Wall`, `WallSystem`, `Slab`, `Space`, `Roof`, `Stair`), `check()` says what is wrong by record, `toIfc()`
  * writes the file, and `bindBuilding` keeps a scene in step with a document.
  *
  *   const building = realizeBuilding({
@@ -22,9 +22,7 @@ import { Vec2, Vec3 } from "../core/math/vectors";
 import { Polygon2D } from "../core/geometry/Polygon2D";
 import { PolygonBool } from "../core/geometry/PolygonBool";
 import { Wall, WallOpening, WallSystem } from "../core/geometry/walls";
-import type { Mesh } from "../core/geometry/mesh/Mesh";
-import { MeshFactory } from "../core/geometry/mesh/MeshFactory";
-import { MeshTransform } from "../core/geometry/mesh/MeshTransform";
+import { Mesh } from "../core/geometry/mesh/Mesh";
 import { WallType, type RealizedWall } from "./walls/types";
 import { HolzrahmenBau, HolzrahmenBauJointStyle, holzrahmenbauLayers } from "./walls/holzrahmenbau";
 import { SolidConstruction } from "./walls/solid";
@@ -33,7 +31,9 @@ import { JoistedSlab } from "./slabs/joisted";
 import { SolidSlabConstruction } from "./slabs/solid";
 import { joistDirectionFromBounds } from "./slabs/orientation";
 import { Space, boundingWalls } from "./spaces";
-import { OpeningType } from "./openings";
+import { OpeningType, openingFill } from "./openings";
+import { Roof } from "./roofs";
+import { Stair, StairType } from "./stairs";
 import { IfcWriter } from "../io/IfcWriter";
 import { checkRecord, type RecordSchema } from "../collab/recordSchema";
 import type { Doc } from "../collab/Doc";
@@ -123,6 +123,54 @@ export interface SpaceRecord {
   use?: string;
 }
 
+/** A roof on a storey's walls: its eaves sit on their top. */
+export interface RoofRecord {
+  /** The storey it covers. */
+  storey: string;
+  kind: "flat" | "shed" | "gable" | "hip";
+  /**
+   * The outside face of the walls under it. For a shed, gable or hip roof a rectangle whose
+   * first edge is an eave: a gable's ridge runs along it, a shed is low on it. A flat roof takes any outline.
+   */
+  footprint: XY[];
+  /** Degrees; default 30 (0 for flat). */
+  pitch?: number;
+  /** Past the walls at the eaves (m); default 0.5. */
+  overhang?: number;
+  /** Past the gable walls (m); default the overhang. */
+  gableOverhang?: number;
+  /** Build-up (m); default 0.3. */
+  thickness?: number;
+  name?: string;
+}
+
+/** A stair from a storey's floor to the next storey's floor. */
+export interface StairRecord {
+  /** The storey it starts on: it climbs that storey's height. */
+  storey: string;
+  /** Centre of the first flight's width at its first riser. */
+  at: XY;
+  /** Which way the first flight climbs; default [1, 0]. */
+  direction?: XY;
+  /** Default "straight_run"; "quarter_turn" (L) and "half_turn" (U) have a landing. */
+  shape?: "straight_run" | "two_straight_run" | "quarter_turn" | "half_turn";
+  /** Which way an L or U turns, seen walking up; default "left". */
+  turn?: "left" | "right";
+  /** Flight width (m); default 1.0. */
+  width?: number;
+  /** Target riser height (m); default 0.18, the actual one divides the storey height evenly. */
+  riser?: number;
+  /** Tread depth (m); default 0.27. */
+  going?: number;
+  /** Landing depth (m); default the width. */
+  landingDepth?: number;
+  /** Gap between the flights of a U (m); default 0.1. */
+  gap?: number;
+  /** Cut the well in the floor above; default true. */
+  well?: boolean;
+  name?: string;
+}
+
 /** The collections of a building and the record each holds: a `Doc` schema (`new Doc<BuildingRecords>`). */
 export type BuildingRecords = {
   storeys: StoreyRecord;
@@ -130,6 +178,8 @@ export type BuildingRecords = {
   openings: OpeningRecord;
   slabs: SlabRecord;
   spaces: SpaceRecord;
+  roofs: RoofRecord;
+  stairs: StairRecord;
 };
 
 /** A building's collection names. */
@@ -139,15 +189,15 @@ export type BuildingCollection = keyof BuildingRecords;
 export type BuildingData = { [C in BuildingCollection]?: Record<string, BuildingRecords[C]> };
 
 /** The building's collections, in the order they depend on each other. */
-export const BUILDING_COLLECTIONS: readonly BuildingCollection[] = ["storeys", "walls", "openings", "slabs", "spaces"];
+export const BUILDING_COLLECTIONS: readonly BuildingCollection[] = ["storeys", "walls", "openings", "slabs", "spaces", "roofs", "stairs"];
 
 const POINT: RecordSchema = { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in metres" };
 const LENGTH = (description: string): RecordSchema => ({ type: "number", exclusiveMinimum: 0, description });
 
 /**
- * The JSON Schema of each building collection: what `validateBuilding` checks and what an
- * agent's tool takes as input. References between records (`storey`, `wall`) and type names
- * are checked by `validateBuilding`, not by the schema.
+ * The JSON Schema of each building collection, for the default types: what `validateBuilding`
+ * checks and what an agent's tool takes as input. References between records (`storey`,
+ * `wall`) are checked by `validateBuilding`. `buildingSchema(types)` gives it for other types.
  */
 export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
   storeys: {
@@ -163,7 +213,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["storey", "path"],
     description: "A wall along a centreline on a storey.",
     properties: {
-      storey: { type: "string", description: "The storey's id" },
+      storey: { type: "string", description: "The storey's id: \"eg\" for \"storeys/eg\"" },
       path: { type: "array", items: POINT, minItems: 2, description: "Centreline points [x, y]; a closed loop repeats its first point" },
       type: { type: "string", description: "Wall type name, default \"exterior\"" },
       thickness: LENGTH("Overrides the type's thickness (m)"),
@@ -175,7 +225,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["wall", "kind", "at", "width"],
     description: "A door or window in a wall.",
     properties: {
-      wall: { type: "string", description: "The wall's id" },
+      wall: { type: "string", description: "The wall's id: \"s\" for \"walls/s\"" },
       kind: { type: "string", enum: ["door", "window"] },
       at: { type: "number", minimum: 0, description: "Centre: distance along the wall's path from its first point (m)" },
       width: LENGTH("Width (m)"),
@@ -189,7 +239,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["storey", "boundary"],
     description: "A slab: a storey's floor (top at its elevation) or its top (a flat roof).",
     properties: {
-      storey: { type: "string", description: "The storey's id" },
+      storey: { type: "string", description: "The storey's id: \"eg\" for \"storeys/eg\"" },
       boundary: { type: "array", items: POINT, minItems: 3, description: "Footprint points [x, y], not repeating the first" },
       level: { type: "string", enum: ["floor", "top"], description: "\"floor\" (default) or \"top\" (a flat roof)" },
       type: { type: "string", description: "Slab type name, default \"floor\"" },
@@ -211,13 +261,67 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
     type: "object", additionalProperties: false, required: ["storey", "name", "boundary"],
     description: "A room on a storey.",
     properties: {
-      storey: { type: "string", description: "The storey's id" },
+      storey: { type: "string", description: "The storey's id: \"eg\" for \"storeys/eg\"" },
       name: { type: "string" },
-      boundary: { type: "array", items: POINT, minItems: 3, description: "Floor outline [x, y], not repeating the first" },
+      boundary: { type: "array", items: POINT, minItems: 3, description: "Floor outline [x, y], not repeating the first; along the wall centrelines is fine (its area is reported as drawn). A door or window counts for the room when it sits on this outline" },
       use: { type: "string", description: "living, kitchen, bedroom, bath, hall, …" },
     },
   },
+  roofs: {
+    type: "object", additionalProperties: false, required: ["storey", "kind", "footprint"],
+    description: "A roof whose eaves sit on top of a storey's walls.",
+    properties: {
+      storey: { type: "string", description: "The storey it covers" },
+      kind: { type: "string", enum: ["flat", "shed", "gable", "hip"] },
+      footprint: {
+        type: "array", items: POINT, minItems: 3,
+        description: "The outside face of the walls [x, y]; for shed, gable and hip a rectangle whose first edge is an eave (a gable's ridge runs along it)",
+      },
+      pitch: { type: "number", minimum: 0, maximum: 80, description: "Degrees, default 30 (flat 0)" },
+      overhang: { type: "number", minimum: 0, description: "Past the walls at the eaves (m), default 0.5" },
+      gableOverhang: { type: "number", minimum: 0, description: "Past the gable walls (m), default the overhang" },
+      thickness: LENGTH("Build-up (m), default 0.3"),
+      name: { type: "string" },
+    },
+  },
+  stairs: {
+    type: "object", additionalProperties: false, required: ["storey", "at"],
+    description: "A stair from a storey's floor up to the next storey's floor, which it cuts its well in (over every tread with less than 2 m headroom). Risers: the storey height in equal risers near `riser`; a flight of n risers is (n − 1) × `going` long. An L or U has its landing after half the risers (rounded up), `landingDepth` long; an L turns 90° towards `turn` after it, a U comes back alongside the first flight, `gap` apart, towards `turn`, and arrives near where the first flight started.",
+    properties: {
+      storey: { type: "string", description: "The storey it starts on" },
+      at: { ...POINT, description: "Centre of the first flight's width at its first riser [x, y]" },
+      direction: { ...POINT, description: "Which way the first flight climbs, default [1, 0]" },
+      shape: { type: "string", enum: ["straight_run", "two_straight_run", "quarter_turn", "half_turn"], description: "Default straight_run; quarter_turn (L) and half_turn (U) have a landing" },
+      turn: { type: "string", enum: ["left", "right"], description: "Which way an L or U turns, seen walking up; default left" },
+      width: LENGTH("Flight width (m), default 1.0"),
+      riser: LENGTH("Target riser height (m), default 0.18"),
+      going: LENGTH("Tread depth (m), default 0.27"),
+      landingDepth: LENGTH("Landing depth (m), default the width"),
+      gap: { type: "number", minimum: 0, description: "Gap between the flights of a U (m), default 0.1" },
+      well: { type: "boolean", description: "Cut the well in the floor above, default true" },
+      name: { type: "string" },
+    },
+  },
 };
+
+/**
+ * `BUILDING_SCHEMA` for these types: each record's `type` lists the names it may take, and its
+ * description says what each one is (wall and slab thicknesses), so whoever writes records can
+ * choose without guessing.
+ *
+ *   agentDoc(doc, { schema: buildingSchema(types), check: () => house.issues });
+ */
+export function buildingSchema(types: BuildingTypes = defaultBuildingTypes()): Record<BuildingCollection, RecordSchema> {
+  const schema = JSON.parse(JSON.stringify(BUILDING_SCHEMA)) as Record<BuildingCollection, RecordSchema>;
+  const list = <T>(entries: Record<string, T>, say: (t: T) => string) => Object.entries(entries).map(([n, t]) => `"${n}": ${say(t)}`).join("; ");
+  const typed = (c: BuildingCollection, names: string[], description: string) => {
+    schema[c].properties!.type = { type: "string", enum: names, description };
+  };
+  typed("walls", Object.keys(types.walls), `Wall type, default "exterior" — ${list(types.walls, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
+  typed("slabs", Object.keys(types.slabs), `Slab type, default "floor" — ${list(types.slabs, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
+  typed("openings", Object.keys(types.openings), `Opening type, default the kind — ${list(types.openings, (t) => `${t.name} (${t.kind})`)}`);
+  return schema;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -356,8 +460,11 @@ export function validateBuilding(data: BuildingData, types: BuildingTypes = defa
         const o = rec as OpeningRecord;
         if (!(o.wall in walls)) err("unknown-wall", `${key}: wall "${o.wall}" does not exist.`, key);
         if (o.type !== undefined) known("opening", types.openings, o.type, key);
-      } else if (c === "slabs" || c === "spaces") {
-        const b = (rec as SlabRecord | SpaceRecord).boundary;
+      } else if (c === "stairs") {
+        const d = (rec as StairRecord).direction;
+        if (d && Math.hypot(d[0], d[1]) < 1e-9) err("zero-length", `${key}: direction [${d.join(", ")}] has no length.`, key);
+      } else if (c === "slabs" || c === "spaces" || c === "roofs") {
+        const b = c === "roofs" ? (rec as RoofRecord).footprint : (rec as SlabRecord | SpaceRecord).boundary;
         if (Polygon2D.area(b.map(([x, y]) => new Vec2(x, y))) < 1e-6) err("empty-outline", `${key}: the boundary encloses no area.`, key);
         if (c === "slabs" && (rec as SlabRecord).type !== undefined) known("slab", types.slabs, (rec as SlabRecord).type!, key);
       }
@@ -382,6 +489,10 @@ export interface RealizedStorey {
   slabs: Map<string, Slab>;
   /** Space id → space. */
   spaces: Map<string, Space>;
+  /** Roof id → the roof on this storey's walls. */
+  roofs: Map<string, Roof>;
+  /** Stair id → the stair up from this storey. */
+  stairs: Map<string, Stair>;
 }
 
 /** The building made from its records: elements by record id, and what could not be built. */
@@ -399,7 +510,7 @@ export class Building {
       .sort((a, b) => a[1].elevation - b[1].elevation);
     const byId = new Map<string, RealizedStorey>();
     for (const [id, record] of storeyIds) {
-      const s: RealizedStorey = { id, record, walls: new Map(), system: new WallSystem(), openings: new Map(), slabs: new Map(), spaces: new Map() };
+      const s: RealizedStorey = { id, record, walls: new Map(), system: new WallSystem(), openings: new Map(), slabs: new Map(), spaces: new Map(), roofs: new Map(), stairs: new Map() };
       this.storeys.push(s);
       byId.set(id, s);
     }
@@ -464,6 +575,48 @@ export class Building {
       }));
       if (s && space) s.spaces.set(id, space);
     }
+    for (const [id, r] of Object.entries(data.roofs ?? {})) {
+      const s = byId.get(r.storey);
+      const roof = s && build(keyOf("roofs", id), () => new Roof({
+        kind: r.kind, footprint: r.footprint.map(([x, y]) => ({ x, y })),
+        pitch: r.pitch ?? (r.kind === "flat" ? 0 : 30), eavesElevation: s.record.elevation + this.wallHeight(s),
+        overhang: r.overhang, gableOverhang: r.gableOverhang, thickness: r.thickness, name: r.name ?? id,
+      }));
+      if (s && roof) s.roofs.set(id, roof);
+    }
+    for (const [id, r] of Object.entries(data.stairs ?? {})) {
+      const s = byId.get(r.storey);
+      const key = keyOf("stairs", id);
+      const stair = s && build(key, () => {
+        const shape = r.shape ?? "straight_run";
+        const made = new Stair({
+          name: r.name ?? id, start: new Vec3(r.at[0], r.at[1], s.record.elevation),
+          direction: r.direction ? new Vec2(r.direction[0], r.direction[1]) : new Vec2(1, 0),
+          width: r.width, totalRise: s.record.height, riserHeight: r.riser, treadDepth: r.going,
+          shape, turn: r.turn, landingDepth: r.landingDepth, gap: r.gap,
+          type: new StairType({ name: shape.replace(/_/g, " "), shape }),
+        });
+        made.flights();                                     // throws for a stair that cannot be built
+        return made;
+      });
+      if (!s || !stair) continue;
+      s.stairs.set(id, stair);
+      // Its well, in the floor it arrives at.
+      if (r.well === false) continue;
+      const above = this.storeys.find((o) => Math.abs(o.record.elevation - (s.record.elevation + s.record.height)) < 1e-3);
+      for (const [sid, slab] of above?.slabs ?? []) {
+        if ((data.slabs?.[sid]?.level ?? "floor") !== "floor") continue;
+        try {
+          const well = stair.slabOpening(slab);
+          if (!well) continue;
+          slab.openings.push(well);
+          slab.openingRings();                              // throws if the well leaves the slab
+        } catch (e) {
+          slab.openings.pop();
+          this.issues.push({ severity: "error", code: "stair-well", message: `${key}: its well does not fit slabs/${sid}: ${e instanceof Error ? e.message : String(e)}`, keys: [key, keyOf("slabs", sid)] });
+        }
+      }
+    }
   }
 
   /** The storey a record is on, by the storey's id. */
@@ -501,6 +654,11 @@ export class Building {
     return s.record.height - t;
   }
 
+  /** How thick a roof's gable walls are: as the storey's thickest wall (its outside walls). */
+  gableThickness(s: RealizedStorey): number {
+    return Math.max(0.2, ...[...s.walls.values()].map((w) => w.thickness));
+  }
+
   private slabType(r: SlabRecord): BuildingSlabType {
     return this.types.slabs[r.type ?? "floor"] ?? Object.values(this.types.slabs)[0];
   }
@@ -509,7 +667,8 @@ export class Building {
    * What is wrong with the building, by record: the `issues` (validation, records that could
    * not be built) and the checks — openings that leave their wall, overlap or reach above it;
    * wall ends that meet no other wall; storeys that do not stack; a storey without a floor;
-   * rooms that are tiny or overlap. An empty list: nothing found.
+   * rooms that are tiny or overlap, have no door, or (living, kitchen, dining, bedroom, office,
+   * study) no window; uncomfortable stairs and wells that leave the floor. An empty list: nothing found.
    */
   check(): BuildingIssue[] {
     const out = [...this.issues];
@@ -571,10 +730,31 @@ export class Building {
         }
       }
 
+      // Stairs: a comfortable step (2 risers + 1 going ≈ 0.63 m).
+      for (const [id, st] of s.stairs) {
+        const r = st.actualRiser, g = st.treadDepth, step = 2 * r + g;
+        if (r > 0.2 || step < 0.59 || step > 0.65) {
+          warn("stair-step", `stairs/${id}: risers of ${fmt(r * 1000) } mm and goings of ${fmt(g * 1000)} mm make a step of ${fmt(step * 1000)} mm (comfortable: 590–650 mm, risers up to 200 mm).`, keyOf("stairs", id));
+        }
+      }
+
       // Rooms: not tiny, not on top of each other.
       const spaces = [...s.spaces];
       for (const [id, sp] of spaces) {
         if (sp.area() < 2) warn("space-small", `spaces/${id} "${sp.name}" is ${fmt(sp.area())} m².`, keyOf("spaces", id));
+      }
+      // A way in, and daylight where people stay: a door, and for a habitable room a window, on its outline.
+      const onOutline = (sp: Space, kind: "door" | "window") => [...s.walls.values()].some((wall) => wall.openings.some((o) => {
+        if ((o.type ? o.type.kind === "door" : o.isDoor) !== (kind === "door")) return false;
+        return distanceToPolyline(pointOnWall(wall, o.centerlinePosition), Polygon2D.closeRing(sp.boundary)) <= wall.thickness / 2 + 0.05;
+      }));
+      for (const [id, sp] of spaces) {
+        if (spaces.length > 1 && !onOutline(sp, "door")) {
+          warn("space-no-door", `spaces/${id} "${sp.name}" has no door on its outline: no way in.`, keyOf("spaces", id));
+        }
+        if (HABITABLE.has((sp.function ?? "").toLowerCase()) && !onOutline(sp, "window")) {
+          warn("space-no-window", `spaces/${id} "${sp.name}" (${sp.function}) has no window on its outline.`, keyOf("spaces", id));
+        }
       }
       for (let i = 0; i < spaces.length; i++) {
         for (let j = i + 1; j < spaces.length; j++) {
@@ -623,9 +803,26 @@ export class Building {
       }
       const walls = [...s.walls.values()];
       for (const sp of s.spaces.values()) ifc.addSpace(sp, { storey, boundaries: boundingWalls(sp, walls) });
+      for (const st of s.stairs.values()) ifc.addStair(st, { storey });
+      for (const roof of s.roofs.values()) ifc.addRoof(roof, { storey, gableThickness: this.gableThickness(s) });
     }
     return ifc.save();
   }
+}
+
+/** Rooms people stay in, which want daylight (`space-no-window`). */
+const HABITABLE = new Set(["living", "kitchen", "dining", "bedroom", "office", "study"]);
+
+/** The point at arc length `m` along a wall's centreline. */
+function pointOnWall(wall: Wall, m: number): Vec2 {
+  const cl = wall.centerline;
+  let run = 0;
+  for (let i = 1; i < cl.length; i++) {
+    const len = cl[i].distTo(cl[i - 1]);
+    if (m <= run + len || i === cl.length - 1) return cl[i - 1].lerp(cl[i], len > 1e-12 ? Math.max(0, Math.min(1, (m - run) / len)) : 0);
+    run += len;
+  }
+  return cl[0];
 }
 
 /** Distance from a point to a polyline. */
@@ -738,10 +935,21 @@ export function bindBuilding(doc: Doc<any>, scene: Scene, opts: BindBuildingOpti
       for (const [id, o] of s.openings) {
         const wall = [...s.walls.values()].find((w) => w.openings.includes(o));
         if (!wall) continue;
-        const pane = openingPane(wall, o);
-        if (pane) add(keyOf("openings", id), pane, o.isDoor
-          ? { color: "#9b7653", layer: "openings" }
-          : { color: "#9cc8e8", opacity: 0.45, layer: "openings" });
+        for (const part of openingFill(wall, o)) {
+          add(keyOf("openings", id), part.mesh, part.role === "glazing"
+            ? { color: "#9cc8e8", opacity: 0.45, layer: "openings" }
+            : { color: part.role === "leaf" ? "#9b7653" : "#7d5f45", layer: "openings" });
+        }
+      }
+      for (const [id, roof] of s.roofs) {
+        for (const plane of roof.planes()) add(keyOf("roofs", id), plane.mesh, { color: "#a8705a", layer: "roofs" });
+        const wallColour = types.walls.exterior?.colour ?? "#e8e2d4";
+        for (const g of roof.gables(building.gableThickness(s))) add(keyOf("roofs", id), g.mesh, { color: wallColour, layer: "walls" });
+      }
+      for (const [id, st] of s.stairs) {
+        for (const f of st.flights()) add(keyOf("stairs", id), new Mesh(f.positions, f.indices), { color: "#c9a27a", flatShading: true, layer: "stairs" });
+        const landing = st.landing();
+        if (landing) add(keyOf("stairs", id), landing.toMesh(), { color: "#c9a27a", layer: "stairs" });
       }
       for (const [id, slab] of s.slabs) {
         const rec = building.data.slabs?.[id];
@@ -793,25 +1001,4 @@ export function bindBuilding(doc: Doc<any>, scene: Scene, opts: BindBuildingOpti
       listeners.clear();
     },
   };
-}
-
-/** A door leaf or a pane of glass filling an opening, 4 cm thick, on the wall's centreline. */
-function openingPane(wall: Wall, o: WallOpening): Mesh | null {
-  const cl = wall.centerline;
-  let run = 0;
-  for (let i = 1; i < cl.length; i++) {
-    const a = cl[i - 1], seg = cl[i].sub(a), len = seg.len();
-    if (o.centerlinePosition <= run + len + 1e-9 || i === cl.length - 1) {
-      const t = Math.max(0, Math.min(len, o.centerlinePosition - run));
-      const c = a.add(seg.mul(t / Math.max(len, 1e-12)));
-      const h = o.headHeight - o.sillHeight;
-      if (!(h > 0 && o.width > 0)) return null;
-      const m = MeshFactory.box(o.width, 0.04, h);
-      MeshTransform.rotate(m, new Vec3(0, 0, 1), Math.atan2(seg.y, seg.x));
-      m.translate(c.x, c.y, wall.baseElevation + o.sillHeight + h / 2);
-      return m;
-    }
-    run += len;
-  }
-  return null;
 }
