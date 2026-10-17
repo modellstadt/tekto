@@ -140,6 +140,52 @@ describe("realizeBuilding", () => {
   });
 });
 
+describe("roofs and stairs as records", () => {
+  /** The test house with a gable roof on the upper walls (no flat roof) and a half-turn stair. */
+  function roofed(): BuildingData {
+    const data = house();
+    delete data.slabs!.roof;
+    delete data.slabs!.floor.openings;
+    data.roofs = { r: { storey: "og", kind: "gable", pitch: 35, footprint: rect(-0.125, -0.125, 10.125, 8.125) } };
+    data.stairs = { st: { storey: "eg", at: [0.6, 7.3], shape: "half_turn", turn: "right" } };
+    return data;
+  }
+
+  it("sits the roof on the walls and cuts the stair's well in the floor it reaches", () => {
+    const b = realizeBuilding(roofed());
+    expect(b.check()).toEqual([]);
+    const og = b.storey("og")!, eg = b.storey("eg")!;
+    expect(og.walls.get("s2")!.height).toBeCloseTo(2.8, 9);                    // no slab above now
+    const roof = og.roofs.get("r")!;
+    expect(roof.ridge()!.a.y).toBeCloseTo(4, 6);                               // ridge along the first (south) edge
+    expect(roof.gables(b.gableThickness(og))).toHaveLength(2);
+    const stair = eg.stairs.get("st")!;
+    expect(stair.risers).toBe(16);                                             // 2.9 m in risers near 0.18
+    const well = og.slabs.get("floor")!.openingRings()[0];
+    const xs = well.map((p) => p.x), ys = well.map((p) => p.y);
+    expect([Math.min(...xs), Math.max(...xs)].map((v) => +v.toFixed(2))).toEqual([0.6, 3.49]);
+    expect([Math.min(...ys), Math.max(...ys)].map((v) => +v.toFixed(2))).toEqual([5.7, 7.8]);
+  });
+
+  it("checks the step and reports a well outside the floor", () => {
+    const data = roofed();
+    data.stairs!.st = { storey: "eg", at: [0.6, 7.3], shape: "half_turn", turn: "right", riser: 0.22, going: 0.22 };
+    data.stairs!.out = { storey: "eg", at: [9.5, 7.6], direction: [0, 1] };   // runs out of the house
+    const issues = realizeBuilding(data).check().map((i) => `${i.severity} ${i.code} ${i.keys.join(" ")}`);
+    expect(issues).toEqual(expect.arrayContaining([
+      "warning stair-step stairs/st",
+      "error stair-well stairs/out slabs/floor",
+    ]));
+  });
+
+  it("writes the roof and the stair to IFC", () => {
+    const ifc = realizeBuilding(roofed()).toIfc({ members: false });
+    expect(ifc).toContain("=IFCROOF(");
+    expect(ifc).toContain("=IFCSTAIR(");
+    expect((ifc.match(/=IFCSTAIRFLIGHT\(/g) ?? []).length).toBe(2);
+  });
+});
+
 describe("bindBuilding", () => {
   it("draws each record under its key and rebuilds when the document changes", async () => {
     const doc = new Doc<BuildingRecords>({ name: "house-test" });

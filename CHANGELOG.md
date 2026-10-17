@@ -6,6 +6,14 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Roofs and stairs in a building's records**: `roofs` (flat, shed, gable, hip; the eaves sit
+  on the storey's walls, gable walls as thick as its outside walls) and `stairs` (straight, L, U;
+  climbing the storey's height and cutting their own well in the floor above). Checks add
+  `stair-step` (2 risers + going outside 590–650 mm, risers over 200 mm) and `stair-well` (a well
+  that leaves the floor). `bindBuilding` draws doors and windows with their fill (`openingFill`),
+  the roof and the stair; `toIfc()` writes them. The House example has a gable roof and a
+  half-turn stair.
+
 - **An agent in the open app**: `agentDoc(doc, { schema, check })` shares an app's document
   with agents. `window.__tekto.doc` lists collections and their schema, returns records, and
   applies a patch (`{ set, update, remove }` by `"collection/id"`) as one undo step — rejected

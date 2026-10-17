@@ -289,7 +289,7 @@ Each storey gets its own `IfcRelContainedInSpatialStructure` at save time; the b
 
 ### A building as data
 
-A whole building can also be plain JSON records, which a `Doc` stores (saved, undone, shared) and a person, script or agent writes: `storeys`, `walls`, `openings`, `slabs` and `spaces`, referencing each other by id. `BUILDING_SCHEMA` is the JSON Schema of each collection, so it validates input and serves as an agent tool's input schema. Wall, slab and opening `type`s name entries of `BuildingTypes`; the default ones (`defaultBuildingTypes()`) are Holzrahmenbau walls, joisted floors and a concrete ground slab.
+A whole building can also be plain JSON records, which a `Doc` stores (saved, undone, shared) and a person, script or agent writes: `storeys`, `walls`, `openings`, `slabs`, `spaces`, `roofs` and `stairs`, referencing each other by id. A roof's eaves sit on its storey's walls; a stair climbs its storey's height and cuts its well in the floor above. `BUILDING_SCHEMA` is the JSON Schema of each collection, so it validates input and serves as an agent tool's input schema. Wall, slab and opening `type`s name entries of `BuildingTypes`; the default ones (`defaultBuildingTypes()`) are Holzrahmenbau walls, joisted floors and a concrete ground slab.
 
 ```ts
 const building = realizeBuilding({

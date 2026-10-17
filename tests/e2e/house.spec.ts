@@ -17,7 +17,7 @@ test("builds the example house from its records, with nothing to report", async 
     const scene = (window as any).__tekto.owner.scene;
     return [...new Set(scene.all().map((o: any) => o.key).filter(Boolean))].length;
   });
-  expect(keys).toBe(13 + 13 + 3 + 7);                     // walls, openings, slabs, spaces
+  expect(keys).toBe(13 + 16 + 2 + 7 + 1 + 1);             // walls, openings, slabs, spaces, roof, stair
   expect(await page.evaluate(() => (window as any).house.issues.length)).toBe(0);
   await expect(page.getByText(/2 storeys · 13 walls · 160\.0 m² · no issues/)).toBeVisible();
   expect(errors).toEqual([]);
@@ -30,7 +30,7 @@ test("an agent edits it from outside: a bad patch changes nothing, a good one is
 
   const info = (await call("info")).result;
   expect(info.doc).toMatchObject({ name: "house", collections: { storeys: 2, walls: 13 } });
-  expect(Object.keys(info.doc.schema)).toEqual(["storeys", "walls", "openings", "slabs", "spaces"]);
+  expect(Object.keys(info.doc.schema)).toEqual(["storeys", "walls", "openings", "slabs", "spaces", "roofs", "stairs"]);
 
   const bad = (await call("apply", { patch: { set: { "openings/x": { wall: "e", kind: "hatch", at: 1, width: 1 } } } })).result;
   expect(bad.ok).toBe(false);

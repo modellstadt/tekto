@@ -25,10 +25,10 @@ still change — prefer the others when both would do.
   members: static fromPolygons(), static fromMesh(), toPolygons(), toMesh(), toFlatMesh(), clone(), invert(), classifyPoint(), traverseFrontToBack(), traverseBackToFront(), static union(), static subtract(), static intersect()
 - `buildCutList` (function): Roll a list of parts into a cut list keyed by (material × profile × length-bucket): a wall's (`RealizedWall.parts`), a slab's (`realizeSlab(…).parts`), or both together.
 - `Building` (class): The building made from its records: elements by record id, and what could not be built.
-  members: storeys, issues, storey(), levels(), realizedWalls(), wallHeight(), check(), areas(), toIfc()
+  members: storeys, issues, storey(), levels(), realizedWalls(), wallHeight(), gableThickness(), check(), areas(), toIfc()
 - `BUILDING_COLLECTIONS` (const): The building's collections, in the order they depend on each other.
 - `BUILDING_SCHEMA` (namespace): The JSON Schema of each building collection: what `validateBuilding` checks and what an agent's tool takes as input.
-  members: storeys, walls, openings, slabs, spaces
+  members: storeys, walls, openings, slabs, spaces, roofs, stairs
 - `Capsule2D` (class): 2D capsule (stadium): a segment of `2 × halfLength` through `center` at `angle` (radians), swept by a disk of `radius`.
   members: endpoints, totalLength, area, mass, inertia, handles, closestSegmentPoint(), distToPoint(), containsPoint(), hitTest(), clone()
 - `checkRecord` (function): Check `value` against `schema`.

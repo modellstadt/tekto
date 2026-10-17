@@ -39,13 +39,13 @@ describe("applyPatch", () => {
   it("applies nothing when one record is wrong, and says why for each", () => {
     const doc = storeyDoc();
     const r = applyPatch(doc, {
-      set: { "walls/e": { storey: "eg", path: [[5, 0], [5, 4]] }, "roofs/r": { kind: "gable" }, "openings/d": { wall: "s", kind: "gate", at: 2, width: 1 } },
+      set: { "walls/e": { storey: "eg", path: [[5, 0], [5, 4]] }, "doors/r": { kind: "gable" }, "openings/d": { wall: "s", kind: "gate", at: 2, width: 1 } },
       update: { "walls/s": { path: [[0, 0]] }, "walls/zz": { height: 2 } },
       remove: ["slabs/none", "bad-key"],
     }, { schema: BUILDING_SCHEMA });
     expect(r.ok).toBe(false);
     expect(r.rejected.map((x) => `${x.key}: ${x.message}`)).toEqual([
-      'roofs/r: "roofs" is not a collection here (collections: storeys, walls, openings, slabs, spaces)',
+      'doors/r: "doors" is not a collection here (collections: storeys, walls, openings, slabs, spaces, roofs, stairs)',
       'openings/d: kind: expected one of "door", "window", got "gate"',
       "walls/s: path: needs at least 2 items, got 1",
       "walls/zz: does not exist (use set to add it)",
