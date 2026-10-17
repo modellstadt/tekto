@@ -10,8 +10,10 @@
 //   • Project hierarchy: IfcProject → IfcSite → IfcBuilding → IfcBuildingStorey.
 //   • Owner history, units (metre + radian), 3D geometric context.
 //   • Type / Instance: IfcWallType + IfcRelDefinesByType.
-//   • Wall geometry: IfcWallStandardCase with IfcExtrudedAreaSolid
-//     (IfcRectangleProfileDef extruded along +Z).
+//   • Wall geometry: one IfcWallStandardCase per centreline segment, an
+//     IfcExtrudedAreaSolid along +Z of an IfcRectangleProfileDef, or of an
+//     IfcArbitraryClosedProfileDef where an end is mitred (a polyline
+//     corner, a mitred joint) — the footprint the 3D mesh has.
 //   • Materials: IfcMaterial + IfcMaterialLayer + IfcMaterialLayerSet +
 //     IfcMaterialLayerSetUsage + IfcRelAssociatesMaterial.
 //   • Openings: IfcOpeningElement + IfcRelVoidsElement (carve the wall);
@@ -22,10 +24,13 @@
 //   • Joints: IfcRelConnectsPathElements between adjacent walls; the
 //     `style` ("mitered" / "butt") + `throughWall` live in a custom Pset.
 //   • Property sets: IfcPropertySet + IfcRelDefinesByProperties for both
-//     types and instances (Pset_WallCommon when applicable).
+//     types and instances (Pset_WallCommon for a wall's standard keys, a
+//     set named after its type for the rest).
 
 import type { Vec2 } from "../core/math/vectors";
 import { Polygon2D } from "../core/geometry/Polygon2D";
+import { applyEndTrim, computeOffsetPoint, safeNormalize } from "../core/geometry/ExtrudedRibbon";
+import type { RibbonEndTrim } from "../core/geometry/ExtrudedRibbon";
 import type { Wall, WallOpening, WallSystem } from "../core/geometry/walls";
 import type { PropertyMap, WallType, MaterialLayer } from "../bim/walls/types";
 import type { WallJoint } from "../bim/walls/joints";
@@ -104,7 +109,7 @@ export class IfcWriter {
 
   // Tracking.
   private wallRefs: number[] = [];
-  private wallByObject = new Map<Wall, number>();
+  private segmentsByWall = new Map<Wall, number[]>(); // wall → its IfcWallStandardCase per centreline segment, in order
   private slabRefs: number[] = [];
   private slabTypeRefs = new Map<SlabType, number>();
   private slabDefinesByTypeBatches = new Map<number, number[]>();
@@ -125,6 +130,13 @@ export class IfcWriter {
    * Populated by `computeWallTrims` before `writeStraightWall` consumes it.
    */
   private wallTrimMap = new Map<Wall, { startDelta: number; endDelta: number }>();
+  /**
+   * Per-wall end cuts from the other joints (mitred L / Y / X, and the stem of
+   * a mitred T): the joint's own trim lines, the ones the 3D mesh is cut by.
+   * Populated by `computeWallTrims`; `writeStraightWall` draws such an end as
+   * an arbitrary profile.
+   */
+  private wallMitreMap = new Map<Wall, { start?: RibbonEndTrim; end?: RibbonEndTrim }>();
 
   private readonly opts: Required<IfcWriterOptions>;
 
@@ -189,10 +201,10 @@ export class IfcWriter {
     // Optionally pre-realise so we get parts + material info.
     const realised = incMembers ? system.realize() : null;
 
-    // 0. Pre-compute per-wall body trim from butt joints so the exported
-    //    geometry shows the corner detail (through extended, butting
-    //    shortened) — receiving tools don't reshape walls from
-    //    IfcRelConnectsPathElements alone.
+    // 0. Pre-compute per-wall body trim from the joints so the exported
+    //    geometry shows the corner detail (butt: through extended, butting
+    //    shortened; mitred: cut to the bisector) — receiving tools don't
+    //    reshape walls from IfcRelConnectsPathElements alone.
     this.computeWallTrims(system);
 
     const storey = this.resolveStorey(opts.storey);
@@ -205,20 +217,26 @@ export class IfcWriter {
       }
     }
 
-    // 2. Framed members per wall (aggregated).
+    // 2. Framed members per wall, aggregated under the segment each lies on
+    //    (nearest to the middle of its bounding box: a plate that runs round
+    //    a polyline corner goes to the segment nearest its middle).
     if (incMembers && realised) {
       for (const r of realised) {
-        const wallRef = this.wallByObject.get(r.wall);
-        if (wallRef == null) continue;
-        const memberRefs: number[] = [];
+        const segments = this.segmentsByWall.get(r.wall);
+        if (!segments) continue;
+        const membersBySegment = new Map<number, number[]>(); // segment ref → member refs
         for (const part of r.parts) {
           if (part.role === "monolithic") continue; // skip the envelope-as-member redundancy
-          const ref = this.addMember(wallRef, part);
-          memberRefs.push(ref);
+          const c = part.mesh.bounds().center();
+          const segmentRef = segments[nearestSegment(r.wall.centerline, c.x, c.y)];
+          const ref = this.addMember(segmentRef, part);
+          const list = membersBySegment.get(segmentRef) ?? [];
+          list.push(ref);
+          membersBySegment.set(segmentRef, list);
         }
-        if (memberRefs.length > 0) {
+        for (const [segmentRef, memberRefs] of membersBySegment) {
           this.addEntity(
-            `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${wallRef},(${memberRefs.map(r => `#${r}`).join(",")}))`,
+            `IFCRELAGGREGATES(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${segmentRef},(${memberRefs.map(r => `#${r}`).join(",")}))`,
           );
         }
       }
@@ -233,6 +251,10 @@ export class IfcWriter {
   /**
    * Add one wall — returns its IFC line id. Used internally by
    * `addWallSystem`; can also be called directly for one-off walls.
+   *
+   * A polyline wall becomes one IfcWallStandardCase per centreline segment,
+   * each typed, with its material layers and properties; the id returned is
+   * the first segment's.
    *
    * `opts.storey` selects which storey to attach the wall to. Defaults
    * to the bootstrap storey.
@@ -249,33 +271,36 @@ export class IfcWriter {
     for (let i = 0; i < cl.length - 1; i++) {
       refs.push(this.writeStraightWall(wall, cl[i], cl[i + 1], i, cl.length - 1, storey));
     }
-    const primaryRef = refs[0];
-    this.wallByObject.set(wall, primaryRef);
+    this.segmentsByWall.set(wall, refs);
     for (const r of refs) this.attachToStorey(r, storey);
 
-    // Link to a WallType + material layer set, if applicable.
+    // Link every segment to the WallType + material layer set, if applicable.
     if (wall.type) {
       const typeRef = this.ensureWallType(wall.type, opts.includeMaterials ?? true);
       const batch = this.definesByTypeBatches.get(typeRef) ?? [];
-      batch.push(primaryRef);
+      batch.push(...refs);
       this.definesByTypeBatches.set(typeRef, batch);
 
       if (opts.includeMaterials ?? true) {
         const layerSetRef = this.materialLayerSetRefs.get(wall.type);
         if (layerSetRef !== undefined) {
-          this.writeMaterialLayerSetUsage(primaryRef, layerSetRef, wall);
+          this.writeMaterialLayerSetUsage(refs, layerSetRef, wall);
         }
       }
     }
-    return primaryRef;
+    return refs[0];
   }
 
   /**
    * Add an opening (door or window) on the given wall. Emits
    * IfcOpeningElement + IfcRelVoidsElement (carving the wall) and
    * IfcDoor or IfcWindow + IfcRelFillsElement (filling the void).
+   *
+   * `wallRef` is what `addWall` returned. On a polyline wall the opening
+   * voids the segment its `centerlinePosition` falls on.
    */
   addOpening(wall: Wall, wallRef: number, opening: WallOpening, storeyRef?: number): { openingRef: number; fillRef: number } {
+    const hostRef = this.segmentsByWall.get(wall)?.[segmentAt(wall.centerline, opening.centerlinePosition)] ?? wallRef;
     const isDoor = opening.sillHeight <= 0.001;
     const opHeight = opening.headHeight - opening.sillHeight;
     const opWidth = opening.width;
@@ -316,7 +341,7 @@ export class IfcWriter {
     );
     // IfcRelVoidsElement(GUID,OwnerHistory,Name,Description,RelatingBuildingElement,RelatedOpeningElement)
     this.addEntity(
-      `IFCRELVOIDSELEMENT(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${wallRef},#${openingRef})`,
+      `IFCRELVOIDSELEMENT(${ifcGuid()},#${this.ownerHistoryRef},$,$,#${hostRef},#${openingRef})`,
     );
 
     // Door / Window — reuse the same local placement (the door/window sits
@@ -433,8 +458,11 @@ export class IfcWriter {
    */
   addJoint(joint: WallJoint): number | null {
     if (joint.walls.length < 2) return null;
-    const w0 = this.wallByObject.get(joint.walls[0]);
-    const w1 = this.wallByObject.get(joint.walls[1]);
+    // the segment of each wall that is at the joint
+    const at = joint.ribbonJoint.point;
+    const segmentAtJoint = (wall: Wall) => this.segmentsByWall.get(wall)?.[nearestSegment(wall.centerline, at.x, at.y)];
+    const w0 = segmentAtJoint(joint.walls[0]);
+    const w1 = segmentAtJoint(joint.walls[1]);
     if (w0 == null || w1 == null) return null;
 
     const through = joint.throughWall;
@@ -802,7 +830,7 @@ export class IfcWriter {
     // Space boundaries → IfcRelSpaceBoundary to each already-added wall.
     if (opts.boundaries) {
       for (const wall of opts.boundaries) {
-        const wallRef = this.wallByObject.get(wall);
+        const wallRef = this.segmentsByWall.get(wall)?.[0]; // a polyline wall: its first segment, not yet the ones along the room
         if (wallRef == null) continue; // wall not added to this writer — skip
         const ext = isExternalWall(wall) ? ".EXTERNAL." : ".INTERNAL.";
         this.addEntity(
@@ -959,15 +987,27 @@ export class IfcWriter {
    *   - Through wall, end at joint   → endDelta   positive (extend fwd)
    *   - Butting wall, start at joint → startDelta positive (shorten in)
    *   - Butting wall, end at joint   → endDelta   negative (shorten in)
-   * Mitered joints leave deltas at 0 — both walls meet at centerline.
+   * Mitered joints leave deltas at 0 and record the joint's trim lines in
+   * `wallMitreMap` instead: those ends are cut on a slant, not shortened.
    */
   private computeWallTrims(system: WallSystem): void {
     this.wallTrimMap.clear();
+    this.wallMitreMap.clear();
     for (const w of system.walls) {
       this.wallTrimMap.set(w, { startDelta: 0, endDelta: 0 });
     }
     for (const joint of system.joints) {
-      if (joint.style !== "butt") continue;
+      if (joint.style !== "butt") {
+        for (const [ribbon, t] of joint.ribbonJoint.computeTrims()) {
+          const wall = joint.walls.find(w => w.ribbon === ribbon);
+          if (!wall) continue;
+          const cut = this.wallMitreMap.get(wall) ?? {};
+          if (t.start) cut.start = t.start;
+          if (t.end) cut.end = t.end;
+          this.wallMitreMap.set(wall, cut);
+        }
+        continue;
+      }
       const through = joint.throughWall;
       if (!through) continue;
       const halfThrough = through.thickness * 0.5;
@@ -1025,12 +1065,42 @@ export class IfcWriter {
     const parentPlacementRef = frame.placement;
     const localPlacement = this.addEntity(`IFCLOCALPLACEMENT(#${parentPlacementRef},#${placementAxis})`);
 
-    const profileOrigin = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(length / 2)},0.))`);
-    const profileAxisDir = this.addEntity(`IFCDIRECTION((1.,0.))`);
-    const profileAxis = this.addEntity(`IFCAXIS2PLACEMENT2D(#${profileOrigin},#${profileAxisDir})`);
-    const profile = this.addEntity(
-      `IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profileAxis},${ifcReal(length)},${ifcReal(wall.thickness)})`,
-    );
+    // A mitred end — a corner of the polyline, or a wall end a mitred joint
+    // cuts — has its two faces end at different points along the wall: the
+    // offset points the 3D mesh uses (`computeOffsetPoint` / `applyEndTrim`).
+    const r = wall.thickness * 0.5;
+    const cl = wall.centerline;
+    const closed = wall.isClosedPolyline;
+    const cut = this.wallMitreMap.get(wall);
+    const dir = safeNormalize(p1.sub(p0));
+    const startMitre = segIndex > 0 || closed ? mitredVertex(cl, segIndex, closed, r)
+      : cut?.start ? applyEndTrim(p0, dir, r, cut.start) : null;
+    const endMitre = segIndex < segTotal - 1 || closed ? mitredVertex(cl, segIndex + 1, closed, r)
+      : cut?.end ? applyEndTrim(p1, dir, r, cut.end) : null;
+
+    let profile: number;
+    if (!startMitre && !endMitre) {
+      const profileOrigin = this.addEntity(`IFCCARTESIANPOINT((${ifcReal(length / 2)},0.))`);
+      const profileAxisDir = this.addEntity(`IFCDIRECTION((1.,0.))`);
+      const profileAxis = this.addEntity(`IFCAXIS2PLACEMENT2D(#${profileOrigin},#${profileAxisDir})`);
+      profile = this.addEntity(
+        `IFCRECTANGLEPROFILEDEF(.AREA.,$,#${profileAxis},${ifcReal(length)},${ifcReal(wall.thickness)})`,
+      );
+    } else {
+      // The footprint in the placement's frame: x along the wall, y to its left.
+      const local = (p: { x: number; y: number }): [number, number] => {
+        const dx = p.x - startX, dy = p.y - startY;
+        return [dx * ux + dy * uy, dy * ux - dx * uy];
+      };
+      const startLeft:  [number, number] = startMitre ? local(startMitre.left)  : [0, r];
+      const startRight: [number, number] = startMitre ? local(startMitre.right) : [0, -r];
+      const endLeft:    [number, number] = endMitre   ? local(endMitre.left)    : [length, r];
+      const endRight:   [number, number] = endMitre   ? local(endMitre.right)   : [length, -r];
+      const ptRefs = [startRight, endRight, endLeft, startLeft].map(([x, y]) =>
+        this.addEntity(`IFCCARTESIANPOINT((${ifcReal(x)},${ifcReal(y)}))`));
+      const polyline = this.addEntity(`IFCPOLYLINE((${[...ptRefs, ptRefs[0]].map(p => `#${p}`).join(",")}))`);
+      profile = this.addEntity(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#${polyline})`);
+    }
     const extrusion = this.addEntity(
       `IFCEXTRUDEDAREASOLID(#${profile},#${this.worldPlacementRef},#${this.dirZRef},${ifcReal(wall.height)})`,
     );
@@ -1048,13 +1118,13 @@ export class IfcWriter {
     this.wallRefs.push(wallRef);
     this.placementByWall.set(wall, localPlacement);
 
-    // Pset_WallCommon on the instance (merged type + instance props).
+    // Pset_WallCommon + the custom set on the instance (merged type + instance props).
     const mergedProps: PropertyMap = {
       ...(wall.type?.properties ?? {}),
       ...(wall.properties ?? {}),
     };
-    if (Object.keys(mergedProps).length > 0) {
-      this.writePset(wallRef, "Pset_WallCommon", mergedProps);
+    for (const [name, props] of wallPropertySets(mergedProps, wall.type)) {
+      this.writePset(wallRef, name, props);
     }
     return wallRef;
   }
@@ -1065,8 +1135,13 @@ export class IfcWriter {
     const existing = this.wallTypeRefs.get(type);
     if (existing !== undefined) return existing;
 
-    // written before the type, because the type names it
-    const psets = this.typePropertySets("Pset_WallCommon", type.properties);
+    // written before the type, because the type names them
+    const setRefs: number[] = [];
+    for (const [name, props] of wallPropertySets(type.properties, type)) {
+      const ref = this.writePsetEntity(name, props);
+      if (ref !== null) setRefs.push(ref);
+    }
+    const psets = setRefs.length > 0 ? `(${setRefs.map(r => `#${r}`).join(",")})` : "$";
     const typeRef = this.addEntity(
       `IFCWALLTYPE(${ifcGuid()},#${this.ownerHistoryRef},${ifcStr(type.name)},${ifcOpt(type.description ?? "")},$,${psets},$,$,$,.NOTDEFINED.)`,
     );
@@ -1132,7 +1207,8 @@ export class IfcWriter {
     return layerSetRef;
   }
 
-  private writeMaterialLayerSetUsage(wallRef: number, layerSetRef: number, wall: Wall): void {
+  /** One usage for all of a wall's segments: they share its thickness and axis. */
+  private writeMaterialLayerSetUsage(wallRefs: number[], layerSetRef: number, wall: Wall): void {
     // Offset = thickness / 2 puts the axis at the wall centerline (the IFC
     // convention is that LayerSetDirection is +Y and OffsetFromReferenceLine
     // is signed distance from the layer set start to the axis).
@@ -1141,7 +1217,7 @@ export class IfcWriter {
       `IFCMATERIALLAYERSETUSAGE(#${layerSetRef},.AXIS2.,.POSITIVE.,${ifcReal(offset)},$)`,
     );
     this.addEntity(
-      `IFCRELASSOCIATESMATERIAL(${ifcGuid()},#${this.ownerHistoryRef},$,$,(#${wallRef}),#${usageRef})`,
+      `IFCRELASSOCIATESMATERIAL(${ifcGuid()},#${this.ownerHistoryRef},$,$,(${wallRefs.map(r => `#${r}`).join(",")}),#${usageRef})`,
     );
   }
 
@@ -1299,6 +1375,7 @@ const IFC_PROPERTY_NAMES: Record<string, string> = {
   firerating: "FireRating",
   acousticrating: "AcousticRating",
   thermaltransmittance: "ThermalTransmittance",
+  uvalue: "ThermalTransmittance",            // the PropertyMap key (src/bim/walls/types.ts)
   compartmentation: "Compartmentation",
   extendtostructure: "ExtendToStructure",
   ispermeable: "IsPermeable",
@@ -1311,6 +1388,33 @@ const IFC_PROPERTY_NAMES: Record<string, string> = {
 export function standardPropertyName(psetName: string, key: string): string {
   if (!psetName.startsWith("Pset_")) return key;
   return IFC_PROPERTY_NAMES[key.toLowerCase()] ?? key;
+}
+
+/** The properties IFC4 defines for `Pset_WallCommon`. */
+const PSET_WALL_COMMON = new Set([
+  "Reference", "Status", "AcousticRating", "FireRating", "Combustible", "SurfaceSpreadOfFlame",
+  "ThermalTransmittance", "IsExternal", "ExtendToStructure", "LoadBearing", "Compartmentation",
+]);
+
+/** The custom set of a wall without a type. */
+const UNTYPED_WALL_SET = "Tekto_Wall";
+
+/**
+ * A wall's properties, split into the sets src/bim/walls/README.md says they
+ * go in: the standard keys in `Pset_WallCommon`, every other key in a custom
+ * set named after the wall type.
+ */
+function wallPropertySets(props: PropertyMap, type: WallType | undefined): [string, PropertyMap][] {
+  const common: PropertyMap = {};
+  const custom: PropertyMap = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (PSET_WALL_COMMON.has(standardPropertyName("Pset_WallCommon", key))) common[key] = value;
+    else custom[key] = value;
+  }
+  const sets: [string, PropertyMap][] = [];
+  if (Object.keys(common).length > 0) sets.push(["Pset_WallCommon", common]);
+  if (Object.keys(custom).length > 0) sets.push([type?.name ?? UNTYPED_WALL_SET, custom]);
+  return sets;
 }
 
 /** Read the `isExternal` flag from a wall's instance or type property set. */
@@ -1402,6 +1506,40 @@ function tangentAlongCenterline(cl: Vec2[], m: number): { x: number; y: number }
   const dy = cl[n - 1].y - cl[n - 2].y;
   const len = Math.hypot(dx, dy);
   return len > 1e-9 ? { x: dx / len, y: dy / len } : { x: 1, y: 0 };
+}
+
+/** The segment arc length `m` falls on — the one `pointAlongCenterline` reads. */
+function segmentAt(cl: Vec2[], m: number): number {
+  let acc = 0;
+  for (let i = 0; i < cl.length - 1; i++) {
+    acc += Math.hypot(cl[i + 1].x - cl[i].x, cl[i + 1].y - cl[i].y);
+    if (m <= acc) return i;
+  }
+  return cl.length - 2;
+}
+
+/** The segment nearest the plan point (x, y); the first of equally near ones. */
+function nearestSegment(cl: Vec2[], x: number, y: number): number {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < cl.length - 1; i++) {
+    const ax = cl[i].x, ay = cl[i].y;
+    const dx = cl[i + 1].x - ax, dy = cl[i + 1].y - ay;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 1e-18 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lenSq)) : 0;
+    const d = Math.hypot(x - ax - dx * t, y - ay - dy * t);
+    if (d < bestD - 1e-9) { best = i; bestD = d; }
+  }
+  return best;
+}
+
+/**
+ * The mitred offset points at centreline vertex `i` between two segments, as
+ * `ExtrudedRibbon` meshes it (a closed polyline's first and last vertex are one).
+ */
+function mitredVertex(cl: Vec2[], i: number, closed: boolean, r: number): { left: Vec2; right: Vec2 } {
+  const n = cl.length;
+  if (closed && (i === 0 || i === n - 1)) return computeOffsetPoint(cl[0], cl[n - 2], cl[1], r);
+  return computeOffsetPoint(cl[i], cl[i - 1], cl[i + 1], r);
 }
 
 function endIsAtJoint(wall: Wall, pt: Vec2): "start" | "end" | "interior" {

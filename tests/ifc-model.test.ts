@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Vec2 } from "../src/core/math/vectors";
-import { Wall } from "../src/core/geometry/walls";
+import { Wall, WallOpening, WallSystem } from "../src/core/geometry/walls";
 import { WallType, SolidConstruction } from "../src/bim/walls";
 import { IfcWriter } from "../src/io/IfcWriter";
 import { IfcModel } from "../src/io/IfcModel";
@@ -112,6 +112,33 @@ describe("IfcWriter storeys, read back by web-ifc", () => {
     expect(heights(/Wall/i)[0]).toBeCloseTo(3, 6);
     expect(heights(/Wall/i)[1]).toBeCloseTo(5.5, 6);
     expect(heights(/Member/i)[0]).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("IfcWriter wall corners, read back by web-ifc", () => {
+  it("a mitred L closes its corner, and a polyline wall's window cuts the segment it is on", async () => {
+    const w = new IfcWriter({});
+    w.addWallSystem(new WallSystem([
+      new Wall({ centerline: [new Vec2(0, 0), new Vec2(4, 0)], thickness: 0.2, height: 2.5, name: "A" }),
+      new Wall({ centerline: [new Vec2(4, 0), new Vec2(4, 3)], thickness: 0.2, height: 2.5, name: "B" }),
+    ]));
+    const poly = new Wall({ centerline: [new Vec2(0, 10), new Vec2(4, 10), new Vec2(4, 13), new Vec2(8, 13)], thickness: 0.2, height: 2.5, name: "P" });
+    poly.openings.push(WallOpening.window(9, 1.2, 0.9, 2.1));       // on the third segment
+    w.addWallSystem(new WallSystem([poly]));
+    const model = await IfcModel.parse(w.saveBytes().buffer as ArrayBuffer, { wasmPath: "", tree: false, recenter: false, relations: false, properties: false });
+    const wall = (name: string) => model.elements.find((e) => e.name === name)!.mesh;
+    // web-ifc hands geometry back Y-up: IFC's (x, y) is its (x, −z).
+    const extent = (name: string, axis: 0 | 2) => {
+      const p = wall(name).positions;
+      let lo = Infinity, hi = -Infinity;
+      for (let i = axis; i < p.length; i += 3) { lo = Math.min(lo, p[i]); hi = Math.max(hi, p[i]); }
+      return [lo, hi];
+    };
+    expect(extent("A", 0)[1]).toBeCloseTo(4.1, 6);                    // A runs on to the outer corner
+    expect(extent("B", 2)[1]).toBeCloseTo(0.1, 6);                    // and so does B: y = −0.1
+    // a box is 12 triangles; the window's hole makes more, in the third segment only
+    expect(wall("P_1").indices.length / 3).toBe(12);
+    expect(wall("P_3").indices.length / 3).toBeGreaterThan(12);
   });
 });
 

@@ -429,7 +429,7 @@ function emitQuad(buf: MeshBuffers, a: Vec3, b: Vec3, c: Vec3, d: Vec3, normal: 
  * Mitered offset points for a polyline vertex `p`, given optional neighbors.
  * Returned `left` = +half-width offset, `right` = −half-width offset.
  */
-function computeOffsetPoint(
+export function computeOffsetPoint(
   p: Vec2, prev: Vec2 | null, next: Vec2 | null, r: number,
 ): { left: Vec2; right: Vec2 } {
   if (prev === null && next === null) return { left: p, right: p };
@@ -462,7 +462,8 @@ function computeOffsetPoint(
   return { left: p.add(miter), right: p.sub(miter) };
 }
 
-function applyEndTrim(
+/** The offset points of a ribbon end cut by a joint's trim lines (IfcWriter draws its wall ends with it too). */
+export function applyEndTrim(
   endpoint: Vec2, wallDir: Vec2, r: number, trim: RibbonEndTrim,
 ): { left: Vec2; right: Vec2 } {
   const perp = new Vec2(-wallDir.y, wallDir.x);
