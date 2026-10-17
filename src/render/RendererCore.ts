@@ -7,6 +7,7 @@ import type * as THREE from "three";
 // @ts-ignore — OrbitControls typings vary across Three.js versions
 import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { Scene as GScene } from "../scene/Scene";
+import type { FlatLighting } from "./viewRules";
 
 export interface RendererCore {
   readonly gScene: GScene;
@@ -20,7 +21,7 @@ export interface RendererCore {
   readonly externalObjects: Map<string, THREE.Object3D>;
   /** OrbitControls, when enabled. */
   readonly controls?: OrbitControls;
-  readonly config: { backgroundColor: number; units: string | null };
+  readonly config: { backgroundColor: number; units: string | null; flatLighting: FlatLighting };
   /** Whether a built-in overlay ("grid", "axes", "wireframe", "labels") is on. */
   overlay(name: string): boolean;
   readonly camera: THREE.PerspectiveCamera;

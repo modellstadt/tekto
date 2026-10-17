@@ -50,9 +50,9 @@ export {
   edgeStyle, surfaceAppearance, lightBalance, modeBackground,
   groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut,
-  fitRadius, orthoFrustum, sectionPlane,
+  fitRadius, orthoFrustum, sectionPlane, flatLights,
 } from "./render/viewRules";
-export type { ViewMode, Appearance } from "./render/viewRules";
+export type { ViewMode, Appearance, FlatLighting } from "./render/viewRules";
 // The axis widget ThreeRenderer puts in a corner (`navGizmo: true`). Exported for an app
 // that wants one over a renderer of its own.
 export { NavGizmo } from "./render/NavGizmo";
