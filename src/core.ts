@@ -167,6 +167,16 @@ export { Space, boundingWalls } from "./bim/spaces";
 export type { SpaceOptions } from "./bim/spaces";
 export { Stair, StairType } from "./bim/stairs";
 export type { StairOptions, StairTypeOptions, StairFlight, StairShape } from "./bim/stairs";
+// A building as data: storeys, walls, openings, slabs and spaces as plain records (a Doc's
+// collections), built into the elements above, checked by record, written as IFC.
+export {
+  Building, realizeBuilding, validateBuilding, defaultBuildingTypes, bindBuilding, BUILDING_SCHEMA, BUILDING_COLLECTIONS,
+} from "./bim/building";
+export type {
+  BuildingRecords, BuildingData, BuildingCollection, BuildingTypes, BuildingWallType, BuildingSlabType, BuildingIssue,
+  BuildingBinding, BindBuildingOptions, BuildingDetail, RealizedStorey,
+  StoreyRecord, WallRecord, OpeningRecord, SlabRecord, SlabOpeningRecord, SpaceRecord, XY,
+} from "./bim/building";
 
 // Scene
 export { Scene } from "./scene/Scene";
@@ -200,6 +210,9 @@ export { SharedStore, collabColor, memoryAdapter, devServerAdapter, supabaseAdap
 // The document of a retained app: typed records, stable ids, undo/redo, save/open (on SharedStore).
 export { Doc, localAdapter, bindScene, Selection, selectOnClick, shareSelection } from "./collab/Doc";
 export type { DocSchema, DocChange, DocChangeSource, DocEditOptions, DocOptions, DocJSON, SceneBinding, PickingView, PresenceView } from "./collab/Doc";
+// Records checked against a JSON Schema: one schema validates, defines an agent's tool input, documents.
+export { checkRecord } from "./collab/recordSchema";
+export type { RecordSchema, SchemaIssue } from "./collab/recordSchema";
 export type {
   SharedRecord, CollabUser, Presence, CollabStatus, CollabEvents, CollabAdapter, SharedStoreOptions, SupabaseLike,
 } from "./collab/SharedStore";
