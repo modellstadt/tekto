@@ -89,7 +89,7 @@ const wall = new Wall({
 
 The IFC exporter will:
 - Map the standard keys (`fireRating`, `uValue`, `loadBearing`, `isExternal`, …) to `Pset_WallCommon`.
-- Bundle unknown keys into a custom Pset named after the wall type.
+- Bundle unknown keys into a custom Pset named after the wall type (`Tekto_Wall` for a wall without one).
 
 Walls **and** parts (`WallPart.properties`) **and** layers (`MaterialLayer.properties`) all carry their own Psets.
 
@@ -102,7 +102,7 @@ Walls **and** parts (`WallPart.properties`) **and** layers (`MaterialLayer.prope
 Three things from IFC that **don't** belong in this layer:
 
 - **Relationship-as-object**. IFC turns every relation (`IfcRelAggregates`, `IfcRelAssociatesMaterial`, `IfcRelDefinesByType`, …) into its own STEP entity. That's a serialisation artefact — in TypeScript we just hold references. The IFC exporter unrolls these into the schema at write-time.
-- **`IfcWallStandardCase` vs `IfcWall`**. IFC distinguishes "axis + perpendicular extrusion" from "any geometry" for old-viewer performance. Internally we have one [`Wall`](../../core/geometry/walls.ts) — the exporter picks the IFC subtype based on whether the centerline is a single straight segment with no curves.
+- **`IfcWallStandardCase` vs `IfcWall`**. IFC distinguishes "axis + perpendicular extrusion" from "any geometry" for old-viewer performance. Internally we have one [`Wall`](../../core/geometry/walls.ts) — the exporter writes one `IfcWallStandardCase` per straight centerline segment, each with the wall's type, layers and properties.
 - **Full material vocabulary**. `IfcMaterial`, `IfcMaterialProfile`, `IfcMaterialProfileSet`, `IfcMaterialProfileSetUsage` — five classes to say "a stud has a 2×4 cross-section." We use `{ material: "SPF", profile: { w: 0.038, h: 0.089 } }` and let the exporter expand.
 
 ---
