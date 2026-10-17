@@ -87,6 +87,10 @@ export type { PresenceBarOptions } from "./collab/PresenceBar";
 // Markup overlay types (the overlay itself is mounted by sketch(); see sketch/Markup.ts)
 export type { MarkupBundle, MarkupCaptureOptions, MarkupObjectRef, MarkKind, MarkupRenderer } from "./sketch/Markup";
 export { markup } from "./sketch/Markup";
+// Share an app's document with agents: `window.__tekto.doc`, and through the dev server's relay
+// (tekto/markup-vite) from outside the page — `tools/mcp.mjs` gives an agent these as tools.
+export { agentDoc } from "./sketch/AgentBridge";
+export type { AgentDocOptions, AgentDocApi, AgentIssue } from "./sketch/AgentBridge";
 // Notes that live with the model: sketched notes kept in a Doc collection, drawn over the view.
 export { notesLayer, NotesLayer } from "./sketch/Notes";
 export type { Note, NotesRenderer } from "./sketch/Notes";

@@ -11,10 +11,11 @@
  *   axis widget  click an axis for a plan or an elevation, toggle persp/ortho under it
  *   click        selects a member (outlined, its colour kept); Frame selection zooms to it
  *   callouts     one per kind of member, in the margins, hidden ones left out
+ *   window       its frame and glass from `openingFill`, as the IFC export writes them
  */
 import {
   appShell, Selection, selectOnClick, Vec2, Wall, WallOpening, WallType, HolzrahmenBau,
-  holzrahmenbauLayers, realize, type CalloutItem, type WallPart,
+  holzrahmenbauLayers, realize, openingFill, type CalloutItem, type WallPart, type OpeningFillPart,
 } from "../../src";
 
 /** Colour by framing role, the way a cut list groups them. */
@@ -25,7 +26,7 @@ const ROLE_COLOUR: Record<string, string> = {
 };
 const HEIGHT = 2.7, LENGTH = 5;
 
-function buildWall(spacing: number, depth: number, windowWidth: number): WallPart[] {
+function buildWall(spacing: number, depth: number, windowWidth: number): { parts: WallPart[]; fill: OpeningFillPart[] } {
   const layers = holzrahmenbauLayers({ insulation: { material: "Mineralwolle", thickness: depth } });
   const type = new WallType({
     name: `Holzrahmenbau ${Math.round(depth * 1000)} mm`,
@@ -43,7 +44,7 @@ function buildWall(spacing: number, depth: number, windowWidth: number): WallPar
   });
   wall.openings.push(WallOpening.window(LENGTH / 2, windowWidth, 0.9, 2.2));
   wall.syncOpeningsToRibbon();
-  return realize(wall).parts.filter(p => p.mesh.positions.length);
+  return { parts: realize(wall).parts.filter(p => p.mesh.positions.length), fill: openingFill(wall, wall.openings[0]) };
 }
 
 export default function (container: HTMLElement) {
@@ -76,11 +77,16 @@ export default function (container: HTMLElement) {
   // Each member is a record: `members/<i>`. The selection, callouts and Frame name it.
   app.onBuild(() => {
     app.scene.clear();
-    parts = buildWall(app.params.get("spacing"), app.params.get("depth"), app.params.get("window"));
+    const built = buildWall(app.params.get("spacing"), app.params.get("depth"), app.params.get("window"));
+    parts = built.parts;
     parts.forEach((part, i) => app.scene.withKey(`members/${i}`, () => {
       const role = String(part.role);
       app.scene.addMesh(part.mesh, { color: ROLE_COLOUR[role] ?? "#d9dde3", label: part.name, layer: role });
     }));
+    // The window: its frame and glass, as the IFC export writes them.
+    built.fill.forEach((part) => app.scene.withKey("window", () => app.scene.addMesh(part.mesh, part.role === "glazing"
+      ? { color: "#9cc8e8", opacity: 0.4, label: part.name, layer: "window" }
+      : { color: "#7d5f45", label: part.name, layer: "window" })));
   });
 
   app.onDisplay(() => {

@@ -9,6 +9,16 @@
  * into source lines ("apps/stair/main.ts:212") using the dev server's own source maps —
  * browsers don't apply source maps to Error.stack.
  *
+ * And it relays calls from outside the page into the tab a person has open, so an agent can
+ * read and edit an app's shared document (`agentDoc`), set controls, take a snapshot:
+ *
+ *   POST /__tekto/agent/call   {"op": "apply", "args": {"patch": {…}, "label": "…"}}  → {"result": …}
+ *   GET  /__tekto/agent/status                                                       → the open pages
+ *
+ * The page listens on `/__tekto/agent/events` (the plugin marks it with a meta tag) and
+ * answers on `/__tekto/agent/result`; the newest page to connect takes the calls.
+ * `tools/mcp.mjs` is an MCP server over these calls.
+ *
  * Usage (vite.config.mjs):
  *   import tektoMarkup from "tekto/markup-vite";
  *   export default { plugins: [tektoMarkup()] };
@@ -21,7 +31,12 @@ export default function tektoMarkup(opts = {}) {
   return {
     name: "tekto-markup",
     apply: "serve",
+    // Tells the page the relay is here (see AgentBridge.connectRelay): dev only, like the plugin.
+    transformIndexHtml(html) {
+      return { html, tags: [{ tag: "meta", attrs: { name: "tekto-agent-relay", content: RELAY }, injectTo: "head" }] };
+    },
     configureServer(server) {
+      server.middlewares.use(RELAY, agentRelay(server));
       server.middlewares.use("/__tekto/markup", (req, res) => {
         if (req.method !== "POST") { res.statusCode = 405; return res.end(); }
         let body = "";
@@ -49,6 +64,68 @@ export default function tektoMarkup(opts = {}) {
       });
     },
   };
+}
+
+const RELAY = "/__tekto/agent";
+
+/** The relay's routes: events (the page listens), result (the page answers), call and status (agents). */
+function agentRelay(server) {
+  const pages = [];                       // connected pages, oldest first: { res, title, url, since }
+  const waiting = new Map();              // call id → { done, timer }
+  let next = 1;
+  const json = (res, status, body) => { res.statusCode = status; res.setHeader("content-type", "application/json"); res.end(JSON.stringify(body)); };
+
+  return (req, res) => {
+    const url = new URL(req.url ?? "/", "http://x");
+    const route = url.pathname;
+    if (req.method === "GET" && route === "/events") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+      res.write(": tekto agent relay\n\n");
+      const page = { res, title: url.searchParams.get("title") ?? "", url: url.searchParams.get("url") ?? "", since: new Date().toISOString() };
+      pages.push(page);
+      const beat = setInterval(() => res.write(": beat\n\n"), 25000);
+      req.on("close", () => { clearInterval(beat); pages.splice(pages.indexOf(page), 1); });
+      return;
+    }
+    if (req.method === "GET" && route === "/status") {
+      return json(res, 200, { tekto: true, pages: pages.map(({ title, url, since }) => ({ title, url, since })) });
+    }
+    if (req.method !== "POST") return json(res, 405, { error: "GET /events, GET /status, POST /call, POST /result" });
+    readBody(req).then((text) => {
+      let body;
+      try { body = JSON.parse(text || "{}"); } catch { return json(res, 400, { error: "the body is not JSON" }); }
+      if (route === "/result") {
+        const w = waiting.get(String(body.id));
+        if (w) { clearTimeout(w.timer); waiting.delete(String(body.id)); w.done(body); }
+        return json(res, 200, { ok: true });
+      }
+      if (route === "/call") {
+        const page = pages[pages.length - 1];
+        if (!page) return json(res, 503, { error: "No tekto page is open on this dev server: open the app in a browser first." });
+        const id = String(next++);
+        const timeoutMs = Number(body.timeoutMs) > 0 ? Number(body.timeoutMs) : 30000;
+        const timer = setTimeout(() => {
+          waiting.delete(id);
+          json(res, 504, { error: `The page "${page.title}" did not answer "${body.op}" within ${timeoutMs} ms.` });
+        }, timeoutMs);
+        waiting.set(id, { timer, done: (r) => (r.error !== undefined ? json(res, 500, { error: r.error }) : json(res, 200, { result: r.result, page: page.title })) });
+        page.res.write(`event: call\ndata: ${JSON.stringify({ id, op: body.op, args: body.args ?? {} })}\n\n`);
+        server.config.logger.info(`[tekto-agent] ${body.op} → ${page.title || page.url}`);
+        return;
+      }
+      json(res, 404, { error: `no route ${route}` });
+    }, (e) => json(res, 500, { error: String(e) }));
+  };
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
 }
 
 function writeBundle(dir, markup, viewPng, cleanPng) {

@@ -6,7 +6,7 @@ tekto 0.9.5. One function becomes an interactive CAD app in the browser; people 
 
 ## Start here
 
-About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Files:** `Sheet` (drawings), `writeDxf2D`, `writePdf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
+About 30 names cover most apps. **Apps:** `sketch` (3D, rebuilt each run), `sketch2d` (2D canvas), `appShell` (retained: users build, select and save). **Geometry:** `Vec2`, `Vec3`, `Mesh`, `MeshFactory`, `MeshTransform`, `Polygon2D`, `PolygonBool`, `NurbsCurve`, `NurbsSurface`, `CurveUtils`. **Data:** `Scene`, `ParamStore`, `Doc` + `bindScene` + `Selection` (retained apps), `SharedStore`. **Buildings:** records (`BUILDING_SCHEMA`) built by `realizeBuilding` / `bindBuilding`. **Files:** `Sheet` (drawings), `writeDxf2D`, `writePdf2D`, `writeDxf3D`, `DxfExporter`, `IfcWriter`, `ObjFile`, `download`.
 
 | To … | use | not |
 |---|---|---|
@@ -33,8 +33,8 @@ Five rules that catch agents out:
 
 ## Entry points
 
-- `import … from "tekto/core"` — geometry and data — no three.js, no DOM; runs in Node, workers and tests (171 values, 152 types)
-- `import … from "tekto"` — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (224 values, 223 types)
+- `import … from "tekto/core"` — geometry and data — no three.js, no DOM; runs in Node, workers and tests (183 values, 182 types)
+- `import … from "tekto"` — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (237 values, 256 types)
 - `import … from "tekto/2d"` — sketch2d and the 2D geometry a first sketch needs — no three.js (20 values, 33 types)
 - `import … from "tekto/react"` — React components (needs react, react-dom)
 

@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { Vec2 } from "../src/core/math/vectors";
-import { Wall } from "../src/core/geometry/walls";
+import { Wall, WallOpening, WallSystem } from "../src/core/geometry/walls";
 import { WallType, SolidConstruction } from "../src/bim/walls";
 import { IfcWriter } from "../src/io/IfcWriter";
 import { IfcModel } from "../src/io/IfcModel";
 import { MeshFactory } from "../src/core/geometry/mesh/MeshFactory";
 import { Slab, SlabOpening } from "../src/bim/slabs";
+import { Roof } from "../src/bim/roofs";
 
 /**
  * Reading an element's properties back out of a file.
@@ -115,6 +116,33 @@ describe("IfcWriter storeys, read back by web-ifc", () => {
   });
 });
 
+describe("IfcWriter wall corners, read back by web-ifc", () => {
+  it("a mitred L closes its corner, and a polyline wall's window cuts the segment it is on", async () => {
+    const w = new IfcWriter({});
+    w.addWallSystem(new WallSystem([
+      new Wall({ centerline: [new Vec2(0, 0), new Vec2(4, 0)], thickness: 0.2, height: 2.5, name: "A" }),
+      new Wall({ centerline: [new Vec2(4, 0), new Vec2(4, 3)], thickness: 0.2, height: 2.5, name: "B" }),
+    ]));
+    const poly = new Wall({ centerline: [new Vec2(0, 10), new Vec2(4, 10), new Vec2(4, 13), new Vec2(8, 13)], thickness: 0.2, height: 2.5, name: "P" });
+    poly.openings.push(WallOpening.window(9, 1.2, 0.9, 2.1));       // on the third segment
+    w.addWallSystem(new WallSystem([poly]));
+    const model = await IfcModel.parse(w.saveBytes().buffer as ArrayBuffer, { wasmPath: "", tree: false, recenter: false, relations: false, properties: false });
+    const wall = (name: string) => model.elements.find((e) => e.name === name)!.mesh;
+    // web-ifc hands geometry back Y-up: IFC's (x, y) is its (x, −z).
+    const extent = (name: string, axis: 0 | 2) => {
+      const p = wall(name).positions;
+      let lo = Infinity, hi = -Infinity;
+      for (let i = axis; i < p.length; i += 3) { lo = Math.min(lo, p[i]); hi = Math.max(hi, p[i]); }
+      return [lo, hi];
+    };
+    expect(extent("A", 0)[1]).toBeCloseTo(4.1, 6);                    // A runs on to the outer corner
+    expect(extent("B", 2)[1]).toBeCloseTo(0.1, 6);                    // and so does B: y = −0.1
+    // a box is 12 triangles; the window's hole makes more, in the third segment only
+    expect(wall("P_1").indices.length / 3).toBe(12);
+    expect(wall("P_3").indices.length / 3).toBeGreaterThan(12);
+  });
+});
+
 describe("IfcWriter slab openings, read back by web-ifc", () => {
   it("the slab comes back with its stair well cut out", async () => {
     const w = new IfcWriter({});
@@ -132,5 +160,25 @@ describe("IfcWriter slab openings, read back by web-ifc", () => {
       top += Math.abs((p[b] - p[a]) * (p[c + 2] - p[a + 2]) - (p[c] - p[a]) * (p[b + 2] - p[a + 2])) / 2;
     }
     expect(top).toBeCloseTo(20 - 1 * 2.5, 3);
+  });
+});
+
+describe("IfcWriter roofs, read back by web-ifc", () => {
+  it("a gable roof comes back as its two roof slabs and two gable walls, at their heights", async () => {
+    const roof = new Roof({
+      kind: "gable", pitch: 40, eavesElevation: 6, thickness: 0.3,
+      footprint: [new Vec2(0, 0), new Vec2(10, 0), new Vec2(10, 8), new Vec2(0, 8)],
+    });
+    const w = new IfcWriter({});
+    w.addRoof(roof, { storey: w.addStorey({ name: "Attic", elevation: 6 }), gableThickness: 0.3 });
+    const model = await IfcModel.parse(w.saveBytes().buffer as ArrayBuffer, { wasmPath: "", tree: false, recenter: false, relations: false, properties: false });
+    // web-ifc hands geometry back Y-up: heights are y.
+    const tops = (cls: RegExp) => model.elements.filter((e) => cls.test(e.ifcClass)).map((e) => {
+      let hi = -Infinity;
+      for (let i = 1; i < e.mesh.positions.length; i += 3) hi = Math.max(hi, e.mesh.positions[i]);
+      return hi.toFixed(4);
+    });
+    expect(tops(/Slab/i)).toEqual(Array(2).fill(roof.ridgeHeight().toFixed(4)));
+    expect(tops(/Wall/i)).toEqual(Array(2).fill((6 + roof.gables(0.3)[0].height).toFixed(4)));
   });
 });

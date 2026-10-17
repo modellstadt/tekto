@@ -11,9 +11,11 @@ still change — prefer the others when both would do.
   members: static empty(), static fromPoints(), center(), size(), volume(), expand(), union(), containsPoint(), intersectsAABB(), toJSON()
 - `aciFromHex` (function): The nearest AutoCAD Color Index for a CSS hex colour (`#rgb` / `#rrggbb`).
 - `Algo` (namespace): `Polygon2D` and `MeshAnalysis` in one namespace (kept for older code); new code imports those two directly.
+- `applyPatch` (function): Apply a `DocPatch` as one undo step, or not at all.
 - `ArcCurve` (class): Circular arc of `radius` around `center` in the plane perpendicular to `normal`.
   members: forward, length, getTFromDistance(), getPoint(), getTangent(), getPointAtDistance()
 - `BalloonFrame` (function): Balloon-frame construction factory (North-American light-frame timber).
+- `bindBuilding` (function): Keep a scene in step with the building records of a document.
 - `bindScene` (function): Keep a scene in step with one collection of a document.
 - `BlobDetect` (namespace): Regions of a `VoxelGrid2D` above a threshold: 4-connected component labels, and their outlines as cell-coordinate loops.
   members: labelComponents2D(), traceContours2D()
@@ -22,8 +24,15 @@ still change — prefer the others when both would do.
 - `BspTree` (class): A BSP tree of convex polygons, for CSG on closed solids: build with `fromPolygons`/`fromMesh`, combine with `union`/`subtract`/`intersect` (new trees, inputs unchanged), read back with `toMesh()` (…
   members: static fromPolygons(), static fromMesh(), toPolygons(), toMesh(), toFlatMesh(), clone(), invert(), classifyPoint(), traverseFrontToBack(), traverseBackToFront(), static union(), static subtract(), static intersect()
 - `buildCutList` (function): Roll a list of parts into a cut list keyed by (material × profile × length-bucket): a wall's (`RealizedWall.parts`), a slab's (`realizeSlab(…).parts`), or both together.
+- `Building` (class): The building made from its records: elements by record id, and what could not be built.
+  members: storeys, issues, storey(), levels(), realizedWalls(), wallHeight(), gableThickness(), check(), areas(), toIfc()
+- `BUILDING_COLLECTIONS` (const): The building's collections, in the order they depend on each other.
+- `BUILDING_SCHEMA` (namespace): The JSON Schema of each building collection, for the default types: what `validateBuilding` checks and what an agent's tool takes as input.
+  members: storeys, walls, openings, slabs, spaces, roofs, stairs
+- `buildingSchema` (function): `BUILDING_SCHEMA` for these types: each record's `type` lists the names it may take, and its description says what each one is (wall and slab thicknesses), so whoever writes records can choose with…
 - `Capsule2D` (class): 2D capsule (stadium): a segment of `2 × halfLength` through `center` at `angle` (radians), swept by a disk of `radius`.
   members: endpoints, totalLength, area, mass, inertia, handles, closestSegmentPoint(), distToPoint(), containsPoint(), hitTest(), clone()
+- `checkRecord` (function): Check `value` against `schema`.
 - `chooseJoistDirection` (function): Pick a joist direction for a slab.
 - `clampedUniformKnots` (function): Build a clamped uniform knot vector with `numCtrl` control points and given degree.
 - `closestPointOnSegment` (function): Closest point to `p` on segment a→b (point first — `Intersections.closestPointOnSegment` takes it last).
@@ -42,6 +51,7 @@ still change — prefer the others when both would do.
   members: divideByCount(), divideByFixedLength(), divideByTargetLength(), cubicEval(), splitCubic(), findTForComponent(), unrollPolyline(), findUnrollX(), parallelTransportFrames(), arcFromPointTangentPoint()
 - `DASH_PATTERNS` (namespace): Dash patterns in paper mm (dash, gap, …).
   members: dashed, hidden, dotted, center
+- `defaultBuildingTypes` (function): Timber construction for a house: "exterior" (Holzrahmenbau, insulated, ~0.25 m), "interior" (a framed partition, 0.125 m) and "solid" (0.2 m) walls; "floor" (joisted, 0.26 m), "ground" (concrete, 0…
 - `Delaunay2D` (namespace): Incremental Delaunay triangulation of 2D points (at least 3), returned as a `PlanarGraph` whose CCW faces are the triangles.
   members: triangulate()
 - `devServerAdapter` (function): The Vite dev server as backend: records live in `.tekto/collab/<doc>.json` (an agent can read and edit that file — the browsers pick the change up).
@@ -115,8 +125,9 @@ still change — prefer the others when both would do.
   members: axisU, axisV, area, corners, contains(), toString()
 - `ObjFile` (namespace): Wavefront OBJ text to and from `ObjMeshData`: `parse` reads v/vt/vn/f lines and `g` groups, `serialize` writes them back; coordinates pass through unchanged (no axis swap, no unit scaling).
   members: parse(), serialize()
+- `openingFill` (function): What fills a wall opening: `opening.fill` when the app made its own, else built from the opening's type — a window's frame with mullions or a transom by its partitioning and a pane in each panel; a…
 - `OpeningType` (class): Reusable door/window type — the IFC `IfcDoorType` / `IfcWindowType` analogue.
-  members: name, kind, operation, partitioning, material, description, properties, static door(), static window()
+  members: name, kind, operation, partitioning, material, description, properties, frame, offset, static door(), static window()
 - `ParamStore` (class): The one parameter model: a schema of controls (`float`, `int`, `bool`, `select`, `color`, `string`, `vec3`, `button`) and their values, typed from the schema.
   members: get(), set(), define(), remove(), has(), keys(), getAll(), getDef(), getSchema(), onChange(), onKey(), reset(), toJSON(), loadJSON(), findKeys(), setByName(), names()
 - `perpVisibility` (function): Perpendicular-visibility region of segment a→b, with rays shot toward its LEFT side (the direction rot90ccw(b−a)).
@@ -149,6 +160,7 @@ still change — prefer the others when both would do.
 - `Ray` (class): Half-line `origin + t·direction` (t ≥ 0) with hit tests against planes, triangles, spheres and AABBs; immutable.
   members: at(), closestPointTo(), distToPoint(), intersectPlane(), intersectTriangle(), intersectSphere(), intersectAABB(), toJSON()
 - `realize` (function): Apply a wall's type to produce its realized geometry + metadata.
+- `realizeBuilding` (function): Build the BIM elements of a building from its records.
 - `realizeSlab` (function): Apply a slab's type to get its parts, layers, envelope mesh and merged Psets; without a type construction there are no parts, only the envelope.
 - `repelBodies` (function): Repel two rigid bodies if their capsule surfaces overlap.
 - `reverseContact` (function, experimental): The opposite sense, so both elements can be asked the same question.
@@ -164,6 +176,8 @@ still change — prefer the others when both would do.
   members: ribbons, joints, touchEpsilon, add(), detectJoints(), computeTrims(), findTJunctionsOnRibbon(), buildMesh(), buildInto()
 - `RigidBody2D` (class): A 2D rigid body with a `Capsule2D` shape (x, y, angle in radians), stepped per frame without a dt: apply forces at points, `integrate()`, then `constrainToBox` to bounce off walls.
   members: shape, vx, vy, va, mass, inertia, x, y, angle, position, applyForceAt(), applyForce(), integrate(), constrainToBox(), stop()
+- `Roof` (class): A roof over a house — the IFC `IfcRoof` analogue: flat, shed (mono-pitch), gable or hip, from plain data (see `RoofOptions` for how the footprint orients it).
+  members: kind, footprint, pitch, eavesElevation, overhang, gableOverhang, thickness, name, properties, planes(), toMesh(), ridge(), ridgeHeight(), gables()
 - `Scene` (class): The objects an app shows: points, segments, polylines, polygons, meshes, each with a VisualStyle (colour, opacity, layer, label …).
   members: renderMode, lightingMode, environmentEnabled, setRenderMode(), setLightingMode(), setEnvironment(), on(), withSuspendedEvents(), withKey(), byKey(), get(), has(), all(), count(), update(), setStyle(), remove(), clear(), addPoint(), addPoints(), addSegment(), addPolygon(), addPolyline(), addMesh(), addFlatMesh(), addCircle(), addLight(), addPlane(), select(), deselect(), toggleSelect(), clearSelection(), getSelection(), isSelected(), setHover(), getHover(), byType(), toMeshData(), toJSON(), static fromJSON()
 - `SdfBlend` (class, experimental): Smooth union of `a` and `b`, filleting the joint over `radius` (quadratic smooth-min; same field as `SdfSmoothUnion` with k = radius).
@@ -258,8 +272,8 @@ still change — prefer the others when both would do.
   members: bodyA, bodyB, restLength, stiffness, damping, surfA, surfB, stretch, apply()
 - `SpringSystem3D` (class, experimental): Spring-mass simulation of a `Mesh`: `initFromMesh` makes a particle per node with edge, quad-diagonal and hinge springs (optionally a second truss layer), `step(dt)` integrates in substeps, `update…
   members: pos, vel, invMass, springs, gravity, floorPlane, globalVelDamping, useGlobalStiffness, globalStiffness, globalDamping, stiffnessStrut, stiffnessShear, stiffnessHinge, maxForce, initFromMesh(), addSpring(), pin(), unpin(), step(), updateMesh()
-- `Stair` (class): A stair — the IFC `IfcStair` analogue.
-  members: name, start, direction, width, totalRise, riserHeight, treadDepth, type, properties, risers, actualRiser, flights()
+- `Stair` (class): A stair — the IFC `IfcStair` analogue: one flight, or two with a landing between them (two in line, a quarter turn, a half turn).
+  members: name, start, direction, width, totalRise, riserHeight, treadDepth, shape, turn, landingAfter, landingDepth, landingThickness, gap, type, properties, risers, actualRiser, flights(), landing(), footprint(), slabOpening()
 - `StairType` (class): Reusable stair type — the IFC `IfcStairType` analogue.
   members: name, shape, material, description, properties
 - `stampName` (function): "stair.dxf" → "stair-20261013-1542.dxf": a timestamp before the extension.
@@ -269,6 +283,7 @@ still change — prefer the others when both would do.
 - `supabaseAdapter` (function): Supabase as backend.
 - `Triangle` (class): Immutable 3D triangle a, b, c: unit `normal` (right-hand rule a→b→c), area, centroid, barycentrics and closest point.
   members: normal(), area(), centroid(), barycentric(), containsPoint(), closestPointTo(), toJSON()
+- `validateBuilding` (function): Check building records before they are built: each record against `BUILDING_SCHEMA`, every reference (`storey`, `wall`) to a record that exists, every type name to the `types`, and the geometry a s…
 - `Vec2` (class): Immutable 2D vector or point (metres; plan coordinates are x, y): fields are readonly and every op returns a new Vec2, so write `p = p.add(d)`.
   members: static zero(), static one(), static unitX(), static unitY(), static fromAngle(), static fromArray(), add(), sub(), mul(), div(), neg(), dot(), cross(), len(), lenSq(), normalize(), distTo(), distSqTo(), lerp(), angle(), angleTo(), rotate(), perp(), almostEqual(), toArray(), toVec3(), toString(), clone(), toJSON(), static fromJSON()
 - `Vec3` (class): Immutable 3D vector or point (metres): fields are readonly and every op returns a new Vec3, so write `p = p.add(d)`, never `p.x = …`.
@@ -286,7 +301,7 @@ still change — prefer the others when both would do.
 - `WallJoint` (class): BIM wrapper around a geometric `RibbonJoint`.
   members: ribbonJoint, walls, connectionType, fastenerCount, properties, style, throughWall, kind
 - `WallOpening` (class): A rectangular opening (door or window) in a wall, positioned along the wall's centerline.
-  members: centerlinePosition, width, sillHeight, headHeight, name, type, properties, isDoor, static door(), static window()
+  members: centerlinePosition, width, sillHeight, headHeight, name, type, properties, fill, isDoor, static door(), static window()
 - `WallSystem` (class): BIM-level wrapper around RibbonSystem.
   members: ribbons, walls, touchEpsilon, add(), joints, detectJoints(), buildMesh(), realize()
 - `WallType` (class): A reusable wall *type* — the IFC `IfcWallType` analogue.
@@ -295,10 +310,11 @@ still change — prefer the others when both would do.
 - `writeDxf3D` (function): Write a true-3D DXF (R12 / AC1009): 3D POLYLINEs, LINEs, POINTs, horizontal ARCs and CIRCLEs in world coordinates — unlike DxfExporter, which flattens geometry to a 2D view plane.
 - `writePdf2D` (function): Write a 2D drawing as a vector PDF at a true scale: one page, sized to the drawing plus margins, the drawing's y up.
 
-Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `BalloonFrameOptions`, `BoolParam`, `Box`, `BspNode`, `BspPolygon`, `ButtonParam`, `CltOptions`, `CollabAdapter`, `CollabEvents`, `CollabStatus`, `CollabUser`, `ColoredMeshData`, `ColorParam`, `ConnectionType`, `Contact`, `CutListItem`, `Dash`, `DimOptions`, `DocChange`, `DocChangeSource`, `DocEditOptions`, `DocJSON`, `DocOptions`, `DocSchema`, `DoorOperation`, `DrawOptions`, `Dxf2DArc`, `Dxf2DCircle`, `Dxf2DContent`, `Dxf2DLine`, `Dxf2DLook`, `Dxf2DPoint`, `Dxf2DPolyline`, `Dxf2DSolid`, `Dxf2DText`, `Dxf3DArc`, `Dxf3DCircle`, `Dxf3DContent`, `Dxf3DLine`, `Dxf3DPoint`, `Dxf3DPolyline`, `DxfLayerDef`, `ExtrudedRibbonOptions`, `FilletResult`, `FlatMeshData`, `FloatParam`, `HolzrahmenBauOptions`, `ICurve`, `IfcElementData`, `IfcModelData`, `IfcParseElementsOptions`, `IfcParseOptions`, `IfcRelations`, `IfcSpatialNode`, `IfcWriterOptions`, `IMetricCurve`, `Intersect2DResult` (experimental), `IntParam`, `ISdf`, `JointKind`, `JointParticipant`, `JointStyle`, `JointTrim`, `JoistedSlabOptions`, `JoistOrientationOptions`, `LatticeType` (experimental), `LayerPosition`, `LegacyMeshJSON`, `LevelOptions`, `LightingMode`, `LightSpec`, `LineStyle`, `MaterialLayer`, `MeshBuffers`, `MeshEdge`, `MeshFace`, `MeshJSON`, `MeshNode`, `MeshValidation`, `MicroPatternType`, `MultiPoly2`, `ObjMeshData`, `OpeningTypeOptions`, `ParamDef`, `ParamFolder`, `ParamLayout`, `ParamSchema`, `PartProfile`, `Pdf2DOptions`, `PerpSegment`, `PickingView`, `PointClassification`, `Poly2`, `Presence`, `PresenceView`, `Projection`, `PropertyMap`, `Pt`, `RealizedSlab`, `RealizedWall`, `RenderMode`, `ResolvedStyle`, `RigidBodyConfig`, `Ring2`, `SceneBinding`, `SceneEvent`, `SceneEventListener`, `SceneJSON`, `SceneObject`, `SceneObjectType`, `SectionRequest`, `SeededRandom`, `SelectParam`, `SharedRecord`, `SharedStoreOptions`, `SheetOptions`, `SheetPrim`, `SlabConstruction`, `SlabContext`, `SlabOptions`, `SlabPart`, `SlabPartRole`, `SlabTypeOptions`, `SpaceOptions`, `Spring`, `SpringConfig`, `StairFlight`, `StairOptions`, `StairShape`, `StairTypeOptions`, `StandardView`, `StreamlineOptions`, `StringParam`, `SunPositionInput`, `SunPositionResult`, `SupabaseLike`, `TextOptions`, `UpAxis`, `Vec3Param`, `VertexCurvature`, `ViewOptions`, `VisualStyle`, `WallConstruction`, `WallJointOptions`, `WallOptions`, `WallPart`, `WallPartRole`, `WindowPartitioning`
+Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `BalloonFrameOptions`, `BindBuildingOptions`, `BoolParam`, `Box`, `BspNode`, `BspPolygon`, `BuildingBinding`, `BuildingCollection`, `BuildingData`, `BuildingDetail`, `BuildingIssue`, `BuildingRecords`, `BuildingSlabType`, `BuildingTypes`, `BuildingWallType`, `ButtonParam`, `CltOptions`, `CollabAdapter`, `CollabEvents`, `CollabStatus`, `CollabUser`, `ColoredMeshData`, `ColorParam`, `ConnectionType`, `Contact`, `CutListItem`, `Dash`, `DimOptions`, `DocChange`, `DocChangeSource`, `DocEditOptions`, `DocJSON`, `DocOptions`, `DocPatch`, `DocSchema`, `DoorOperation`, `DrawOptions`, `Dxf2DArc`, `Dxf2DCircle`, `Dxf2DContent`, `Dxf2DLine`, `Dxf2DLook`, `Dxf2DPoint`, `Dxf2DPolyline`, `Dxf2DSolid`, `Dxf2DText`, `Dxf3DArc`, `Dxf3DCircle`, `Dxf3DContent`, `Dxf3DLine`, `Dxf3DPoint`, `Dxf3DPolyline`, `DxfLayerDef`, `ExtrudedRibbonOptions`, `FilletResult`, `FlatMeshData`, `FloatParam`, `HolzrahmenBauOptions`, `ICurve`, `IfcElementData`, `IfcModelData`, `IfcParseElementsOptions`, `IfcParseOptions`, `IfcRelations`, `IfcSpatialNode`, `IfcWriterOptions`, `IMetricCurve`, `Intersect2DResult` (experimental), `IntParam`, `ISdf`, `JointKind`, `JointParticipant`, `JointStyle`, `JointTrim`, `JoistedSlabOptions`, `JoistOrientationOptions`, `LatticeType` (experimental), `LayerPosition`, `LegacyMeshJSON`, `LevelOptions`, `LightingMode`, `LightSpec`, `LineStyle`, `MaterialLayer`, `MeshBuffers`, `MeshEdge`, `MeshFace`, `MeshJSON`, `MeshNode`, `MeshValidation`, `MicroPatternType`, `MultiPoly2`, `ObjMeshData`, `OpeningFillPart`, `OpeningRecord`, `OpeningTypeOptions`, `ParamDef`, `ParamFolder`, `ParamLayout`, `ParamSchema`, `PartProfile`, `PatchResult`, `Pdf2DOptions`, `PerpSegment`, `PickingView`, `PointClassification`, `Poly2`, `Presence`, `PresenceView`, `Projection`, `PropertyMap`, `Pt`, `RealizedSlab`, `RealizedStorey`, `RealizedWall`, `RecordSchema`, `RenderMode`, `ResolvedStyle`, `RigidBodyConfig`, `Ring2`, `RoofGable`, `RoofKind`, `RoofOptions`, `RoofPlane`, `RoofRecord`, `SceneBinding`, `SceneEvent`, `SceneEventListener`, `SceneJSON`, `SceneObject`, `SceneObjectType`, `SchemaIssue`, `SectionRequest`, `SeededRandom`, `SelectParam`, `SharedRecord`, `SharedStoreOptions`, `SheetOptions`, `SheetPrim`, `SlabConstruction`, `SlabContext`, `SlabOpeningRecord`, `SlabOptions`, `SlabPart`, `SlabPartRole`, `SlabRecord`, `SlabTypeOptions`, `SpaceOptions`, `SpaceRecord`, `Spring`, `SpringConfig`, `StairFlight`, `StairOpeningOptions`, `StairOptions`, `StairRecord`, `StairShape`, `StairTypeOptions`, `StandardView`, `StoreyRecord`, `StreamlineOptions`, `StringParam`, `SunPositionInput`, `SunPositionResult`, `SupabaseLike`, `TextOptions`, `UpAxis`, `Vec3Param`, `VertexCurvature`, `ViewOptions`, `VisualStyle`, `WallConstruction`, `WallJointOptions`, `WallOptions`, `WallPart`, `WallPartRole`, `WallRecord`, `WindowPartitioning`, `XY`
 
 ## tekto — everything in tekto/core plus the browser layer: renderers, panels, sketch(), appShell() (below: the browser layer only)
 
+- `agentDoc` (function): Share a document with agents: `window.__tekto.doc` reads its records and applies patches (`{ set, update, remove }` by `"collection/id"`) as one undo step — checked against `schema` first, answered…
 - `appShell` (function): A persistent app ("retained" model): params declared once as a schema, geometry built in `onBuild`, restyled in `onDisplay`, objects added to a `Scene` the app owns and keeps.
 - `Callouts` (class): The DOM layer: labels, leaders, and clicks.
   members: setItems(), setLabelWidth(), objectsOf(), ids, update(), setVisible(), dispose()
@@ -366,7 +382,7 @@ Types: `AddWallSystemOptions`, `Adjacency`, `AdjacencyOptions`, `Axis`, `Balloon
 - `viewModeIconShapes` (function): What to draw for a render mode, back to front.
 - `viewModeIconSvg` (function): A render mode's icon as SVG markup, for a DOM app: `button.innerHTML = viewModeIconSvg("ghost")`.
 
-Types: `AmbientOcclusionOptions`, `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `CalloutItem`, `Command`, `CommandInfo`, `ControlItem`, `ControlPanelConfig`, `CustomRow`, `DrawFn`, `DrawSheetOptions`, `DxfEdgeOptions`, `DxfMeshOptions`, `DxfSegment`, `DxfView`, `DxfWorkerRequest`, `DxfWriteOptions`, `ExportRegistration`, `ExtraTab`, `FlatLighting`, `IconShape`, `IdBufferOptions`, `ImportRegistration`, `Lab`, `Lab2D`, `LayerMap`, `LayerNode`, `LayerState`, `LayoutOptions`, `LineHandle`, `MarkKind`, `MarkupBundle`, `MarkupCaptureOptions`, `MarkupObjectRef`, `MarkupRenderer`, `MeshHandle`, `NavGizmoOptions`, `Note`, `NotesRenderer`, `PanelButton`, `PickInfo`, `Placement`, `Pointer2D`, `PointerFn`, `PointHandle`, `PresenceBarOptions`, `ProjectedSegment`, `Reactive`, `SelectOpts`, `ShadingBarCorner`, `ShapeHandle`, `ShapeMode`, `SheetCanvasOptions`, `SheetTransform`, `Sketch2DConfig`, `Sketch2DFn`, `SketchConfig`, `SliderOpts`, `SunPreset`, `SVGOptions`, `SVGRendererConfig`, `Theme`, `ThreeRendererConfig`, `TopBarOptions`, `ViewControl`, `ViewMode`, `VisibilityOptions`, `VisibilityResult`, `VisibilityView`
+Types: `AgentDocApi`, `AgentDocOptions`, `AgentIssue`, `AmbientOcclusionOptions`, `AnimateFn`, `Appearance`, `AppShellConfig`, `AppShellInstance`, `CalloutItem`, `Command`, `CommandInfo`, `ControlItem`, `ControlPanelConfig`, `CustomRow`, `DrawFn`, `DrawSheetOptions`, `DxfEdgeOptions`, `DxfMeshOptions`, `DxfSegment`, `DxfView`, `DxfWorkerRequest`, `DxfWriteOptions`, `ExportRegistration`, `ExtraTab`, `FlatLighting`, `IconShape`, `IdBufferOptions`, `ImportRegistration`, `Lab`, `Lab2D`, `LayerMap`, `LayerNode`, `LayerState`, `LayoutOptions`, `LineHandle`, `MarkKind`, `MarkupBundle`, `MarkupCaptureOptions`, `MarkupObjectRef`, `MarkupRenderer`, `MeshHandle`, `NavGizmoOptions`, `Note`, `NotesRenderer`, `PanelButton`, `PickInfo`, `Placement`, `Pointer2D`, `PointerFn`, `PointHandle`, `PresenceBarOptions`, `ProjectedSegment`, `Reactive`, `SelectOpts`, `ShadingBarCorner`, `ShapeHandle`, `ShapeMode`, `SheetCanvasOptions`, `SheetTransform`, `Sketch2DConfig`, `Sketch2DFn`, `SketchConfig`, `SliderOpts`, `SunPreset`, `SVGOptions`, `SVGRendererConfig`, `Theme`, `ThreeRendererConfig`, `TopBarOptions`, `ViewControl`, `ViewMode`, `VisibilityOptions`, `VisibilityResult`, `VisibilityView`
 
 ## tekto/2d — sketch2d and the 2D geometry a first sketch needs — no three.js
 
