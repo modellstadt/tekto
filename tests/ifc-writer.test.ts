@@ -233,7 +233,7 @@ describe("IfcWriter — stairs", () => {
     expect(countLines(out, /=IFCSTAIRFLIGHT\(/)).toBe(1);
     expect(countLines(out, /=IFCSTAIRTYPE\(/)).toBe(1);
     expect(countLines(out, /=IFCTRIANGULATEDFACESET\(/)).toBe(1);
-    expect(out.includes(".STRAIGHT_RUN.")).toBe(true);
+    expect(out.includes(".STRAIGHT_RUN_STAIR.")).toBe(true);
     expect(out.includes("'Pset_StairCommon'")).toBe(true);
     // Contained in storey + aggregates the flight.
     expect(countLines(out, /=IFCRELCONTAINEDINSPATIALSTRUCTURE\(/)).toBe(1);

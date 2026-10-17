@@ -166,7 +166,7 @@ export type { OpeningTypeOptions, DoorOperation, WindowPartitioning } from "./bi
 export { Space, boundingWalls } from "./bim/spaces";
 export type { SpaceOptions } from "./bim/spaces";
 export { Stair, StairType } from "./bim/stairs";
-export type { StairOptions, StairTypeOptions, StairFlight, StairShape } from "./bim/stairs";
+export type { StairOptions, StairTypeOptions, StairFlight, StairShape, StairOpeningOptions } from "./bim/stairs";
 
 // Scene
 export { Scene } from "./scene/Scene";
