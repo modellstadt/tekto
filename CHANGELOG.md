@@ -6,6 +6,18 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Colour ramps and a legend**: `ColorRamp` (in `tekto/core`) colours analysis values by the
+  job the colour does — `sequential()` for magnitude (one blue, light → dark; the near-zero end
+  recedes into the background, so on tekto's dark view low is the dark step), `diverging()` for
+  polarity (blue and red arms of equal steps on the same lightness, meeting at a neutral grey),
+  `categorical()` for identity (8 colours in a fixed order; past 8, fold into "other"). No
+  rainbow; dark and light are each their own validated steps (`"dark"` is the default). Stops are
+  interpolated in OKLab; `colors(values, range)` gives per-node RGBA for `Mesh.setColors` in the
+  linear light the renderer reads, so the view shows the legend's colours. `colorLegend` draws
+  the key — a bar with round-number ticks, or labelled swatches — in theme ink, over a corner of
+  the view (in snapshots and ✎ Markup) or in a panel row. Lit faces darken their colour: the
+  renderer config `flatLighting: "plain"` keeps them true to the legend. New page *Colour
+  Ramps*; *Voxel Grid 2D*'s Blur scene uses the sequential ramp in place of its own rainbow.
 - **Fix: callouts on a large model fill the margins.** On BuildGraph's 446-element IFC with
   every element labelled, 4 labels showed and the rest never did: the visibility check
   restarted every few seconds and got through one element per frame.

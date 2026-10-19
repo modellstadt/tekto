@@ -15,6 +15,9 @@ export { VecMath } from "./core/math/VecMath";
 export { noise } from "./core/math/noise";
 export { createRandom } from "./core/math/random";
 export type { SeededRandom } from "./core/math/random";
+// Colour scales for analysis values (sequential, diverging, categorical), interpolated in OKLab.
+export { ColorRamp } from "./core/math/ColorRamp";
+export type { RGB } from "./core/math/ColorRamp";
 
 // Geometry Primitives (new canonical locations)
 export { Ray } from "./core/geometry/Ray";
