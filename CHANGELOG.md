@@ -6,6 +6,11 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The status line folds away**: the info box `app.status(…)` shows over an `appShell`'s view
+  has a button that folds it to an ⓘ in the corner (its text in the tooltip) and back; the
+  choice is remembered per app. `appShell({ statusCollapsed: true })` starts folded. The box
+  still lets clicks through to the view.
+
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells
