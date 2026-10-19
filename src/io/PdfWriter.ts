@@ -46,7 +46,8 @@ const pdfString = (s: string) => "(" + [...s.replace(/[\r\n]+/g, " ")].map(ch =>
   return "?";
 }).join("") + ")";
 
-const parseHex = (hex: string): [number, number, number] | null => {
+/** CSS hex (`#rgb` / `#rrggbb`) → [r, g, b] in 0..1, or null; the OBJ writer's MTL reads colours with it too. */
+export const parseHex = (hex: string): [number, number, number] | null => {
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return null;
   const h = m[1].length === 3 ? m[1].split("").map(c => c + c).join("") : m[1];

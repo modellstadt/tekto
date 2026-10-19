@@ -104,7 +104,7 @@ export type { RigidBodyConfig, SpringConfig } from "./core/physics/RigidBody2D";
 
 // IO
 export { ObjFile } from "./io";
-export type { MeshData as ObjMeshData } from "./io";
+export type { MeshData as ObjMeshData, ObjMaterial } from "./io";
 export { writeDxf3D, writeDxf2D, aciFromHex } from "./io/DxfWriter";
 export { writePdf2D } from "./io/PdfWriter";
 export type { Pdf2DOptions } from "./io/PdfWriter";
