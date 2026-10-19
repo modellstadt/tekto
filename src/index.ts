@@ -30,6 +30,9 @@ export type { Command, CommandInfo, ViewControl } from "./gui/Commands";
 // A cube per render mode, drawn the way the mode draws: for a mode switch.
 export { viewModeIconShapes, viewModeIconSvg, VIEW_MODE_ICON_SVG, VIEW_MODE_ICON_CORNERS } from "./gui/viewModeIcons";
 export type { IconShape } from "./gui/viewModeIcons";
+// The legend of a ColorRamp or of categories: over the 3D view (in snapshots) or in a panel row.
+export { colorLegend } from "./gui/ColorLegend";
+export type { ColorLegend, ColorLegendOptions } from "./gui/ColorLegend";
 export { ControlPanel } from "./gui/ControlPanel";
 export type {
   ControlItem, PanelButton, CustomRow, ExtraTab, ControlPanelConfig,

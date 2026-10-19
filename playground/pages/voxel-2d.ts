@@ -5,6 +5,7 @@
 import {
   sketch, SketchInstance, Vec2,
   VoxelGrid2D, DistanceTransform, FloodFill, BlobDetect, PixelView, Polygon2D,
+  ColorRamp,
 } from "../../src";
 import type { FlatMeshData } from "../../src/scene/Scene";
 
@@ -16,16 +17,6 @@ const PALETTE = [
   [0.90, 0.50, 0.20, 1], [0.50, 0.90, 0.30, 1], [0.40, 0.30, 0.90, 1],
   [0.90, 0.40, 0.60, 1],
 ];
-
-function heatmap(t: number): [number, number, number, number] {
-  t = Math.max(0, Math.min(1, t));
-  let r: number, g: number, b: number;
-  if (t < 0.25)      { const s = t / 0.25; r = 0; g = s; b = 1; }
-  else if (t < 0.5)  { const s = (t - 0.25) / 0.25; r = 0; g = 1; b = 1 - s; }
-  else if (t < 0.75) { const s = (t - 0.5) / 0.25; r = s; g = 1; b = 0; }
-  else               { const s = (t - 0.75) / 0.25; r = 1; g = 1 - s; b = 0; }
-  return [r, g, b, 1];
-}
 
 // ── Build colored grid mesh ──
 
@@ -168,12 +159,11 @@ function blurScene(resolution: number, blurRadius: number, seed: number) {
 
   if (blurRadius > 0) grid.blur(blurRadius);
 
-  const { min: rMin, max: rMax } = grid.getRange();
-  const range = rMax - rMin || 1;
-
-  return buildGridMesh(grid, (val) => {
-    const t = (val - rMin) / range;
-    return heatmap(t);
+  // Magnitude: the library's sequential ramp (one blue; its low end recedes into the dark view).
+  const colors = ColorRamp.sequential().colors(grid.values);
+  return buildGridMesh(grid, (_val, x, y) => {
+    const i = (x * grid.ny + y) * 4;
+    return [colors[i], colors[i + 1], colors[i + 2], 1];
   });
 }
 

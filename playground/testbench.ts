@@ -73,6 +73,7 @@ const GROUPS: PageGroup[] = [
     { slug: "lines-points", label: "Lines & Points", load: () => import("./pages/lines-points") },
     { slug: "shape-modes",  label: "Shape Modes",    load: () => import("./pages/shape-modes") },
     { slug: "colors",       label: "Colors",         load: () => import("./pages/colors") },
+    { slug: "color-ramps",  label: "Colour Ramps",   load: () => import("./pages/color-ramps") },
   ]},
   { name: "Geometry", pages: [
     { slug: "mesh-factory",   label: "MeshFactory",     load: () => import("./pages/mesh-factory") },
