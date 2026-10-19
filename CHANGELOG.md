@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fix: a `Mesh` with node colours is drawn in them.** `scene.addMesh` / `lab.mesh` ignored
+  `Mesh.setColors` and drew the style colour; only `addFlatMesh` drew node colours. Now both do.
+  A mesh without node colours draws as before.
 - **Space types: a room's use carries its colour and what it needs.** `BuildingTypes.spaces`
   maps a lower-cased `SpaceRecord.use` to a `BuildingSpaceType`: the `colour` `bindBuilding`
   draws the room in, `daylight` (it wants a window on its outline, else `space-no-window`) and
