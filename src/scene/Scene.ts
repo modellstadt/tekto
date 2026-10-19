@@ -10,7 +10,7 @@
 
 import { Vec3 } from "../core/math/vectors";
 import { Mesh } from "../core/geometry/mesh/Mesh";
-import type { MeshData } from "../io";
+import { colorMaterial, type MeshData, type ObjMaterial } from "../io";
 import type { MeshData as RenderMeshData } from "../core/geometry/mesh/Mesh";
 
 // ─── Scene Object ────────────────────────────
@@ -490,15 +490,35 @@ export class Scene {
 
   // ── Export ──
 
-  /** Merges all visible mesh geometry into a single MeshData for OBJ export. */
-  toMeshData(): MeshData {
+  /**
+   * The visible mesh geometry (meshes, flat meshes, segments with a `tubeRadius`; not
+   * `noExport`) merged into one `ObjMeshData` for `ObjFile.serialize`. Without options the
+   * faces come in object order, ungrouped.
+   *
+   * `groupBy` keeps the objects apart in the OBJ as `g` groups, for Rhino or Cinema 4D:
+   * - `"object"`: one group per object, named by its `key` (the record it shows; objects of
+   *   one record share the name) or else its id (`"mesh_3"`);
+   * - `"layer"`: one group per `style.layer` (`"default"` without one), each layer's faces one
+   *   contiguous block, layers in the order they first appear.
+   *
+   * Each group's `material` is named by its colour, `c_rrggbb` (`_a45` appended below full
+   * opacity), and `materials` lists them for `ObjFile.serializeMtl`. A layer whose objects
+   * differ in colour is split into consecutive runs of the same name, one per material — what
+   * `usemtl` does within an OBJ group.
+   *
+   *   const data = scene.toMeshData({ groupBy: "layer" });
+   *   download(ObjFile.serializeMtl(data.materials!), "model.mtl");
+   *   download(ObjFile.serialize(data, { mtllib: "model.mtl" }), "model.obj");
+   */
+  toMeshData(options: { groupBy?: "object" | "layer" } = {}): MeshData {
     const positions: Vec3[] = [];
     const normals: Vec3[] = [];
-    const faces: number[][] = [];
+    const parts: { obj: SceneObject; faces: number[][] }[] = [];
 
     for (const obj of this.objects.values()) {
       if (!obj.style.visible) continue;
       if (obj.style.noExport) continue;
+      const faces: number[][] = [];
 
       if (obj.mesh) {
         // Mesh: remap node IDs → sequential indices
@@ -528,9 +548,40 @@ export class Scene {
         // Segment with tubeRadius → generate cylinder mesh
         Scene._addTubeMesh(positions, normals, faces, obj.start, obj.end, obj.style.tubeRadius, 6);
       }
+      if (faces.length > 0) parts.push({ obj, faces });
     }
 
-    return { positions, normals, uvs: [], faces };
+    const { groupBy } = options;
+    if (!groupBy) return { positions, normals, uvs: [], faces: parts.flatMap(p => p.faces) };
+
+    // One run per object, or per layer and colour with each layer's runs together.
+    type Run = { name: string; material: ObjMaterial; faces: number[][] };
+    let runs: Run[] = parts.map(({ obj, faces }) => ({
+      name: groupBy === "layer" ? (obj.style.layer || "default") : (obj.key ?? obj.id),
+      material: colorMaterial(obj.style.color, obj.style.opacity),
+      faces,
+    }));
+    if (groupBy === "layer") {
+      const layers = new Map<string, Map<string, Run>>();
+      for (const run of runs) {
+        const layer = layers.get(run.name) ?? new Map<string, Run>();
+        layers.set(run.name, layer);
+        const same = layer.get(run.material.name);
+        if (same) for (const face of run.faces) same.faces.push(face);
+        else layer.set(run.material.name, { ...run, faces: [...run.faces] });
+      }
+      runs = [...layers.values()].flatMap(layer => [...layer.values()]);
+    }
+
+    const faces: number[][] = [];
+    const groups: NonNullable<MeshData["groups"]> = [];
+    const materials = new Map<string, ObjMaterial>();
+    for (const run of runs) {
+      groups.push({ name: run.name, faceStart: faces.length, faceCount: run.faces.length, material: run.material.name });
+      for (const face of run.faces) faces.push(face);
+      if (!materials.has(run.material.name)) materials.set(run.material.name, run.material);
+    }
+    return { positions, normals, uvs: [], faces, groups, materials: [...materials.values()] };
   }
 
   /** Generate a cylinder tube mesh between two points. */
