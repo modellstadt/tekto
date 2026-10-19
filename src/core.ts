@@ -104,7 +104,7 @@ export type { RigidBodyConfig, SpringConfig } from "./core/physics/RigidBody2D";
 
 // IO
 export { ObjFile } from "./io";
-export type { MeshData as ObjMeshData } from "./io";
+export type { MeshData as ObjMeshData, ObjMaterial } from "./io";
 export { writeDxf3D, writeDxf2D, aciFromHex } from "./io/DxfWriter";
 export { writePdf2D } from "./io/PdfWriter";
 export type { Pdf2DOptions } from "./io/PdfWriter";
@@ -175,7 +175,7 @@ export {
   Building, realizeBuilding, validateBuilding, defaultBuildingTypes, bindBuilding, buildingSchema, BUILDING_SCHEMA, BUILDING_COLLECTIONS,
 } from "./bim/building";
 export type {
-  BuildingRecords, BuildingData, BuildingCollection, BuildingTypes, BuildingWallType, BuildingSlabType, BuildingIssue,
+  BuildingRecords, BuildingData, BuildingCollection, BuildingTypes, BuildingWallType, BuildingSlabType, BuildingSpaceType, BuildingIssue,
   BuildingBinding, BindBuildingOptions, BuildingDetail, RealizedStorey,
   StoreyRecord, WallRecord, OpeningRecord, SlabRecord, SlabOpeningRecord, SpaceRecord, RoofRecord, StairRecord, XY,
 } from "./bim/building";

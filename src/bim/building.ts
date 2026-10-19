@@ -119,7 +119,10 @@ export interface SpaceRecord {
   name: string;
   /** Floor outline, three or more points (not repeating the first). */
   boundary: XY[];
-  /** What the room is for: "living", "kitchen", "bedroom", "bath", "hall" … */
+  /**
+   * What the room is for: "living", "kitchen", "bedroom", "bath", "hall" … Lower-cased, it names
+   * a space type of the `BuildingTypes` (its colour, whether it needs daylight or a door); any other use is fine too.
+   */
   use?: string;
 }
 
@@ -307,7 +310,8 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
 /**
  * `BUILDING_SCHEMA` for these types: each record's `type` lists the names it may take, and its
  * description says what each one is (wall and slab thicknesses), so whoever writes records can
- * choose without guessing.
+ * choose without guessing. A space's `use` stays free text; its description lists the known
+ * uses and what each needs (a window, no door).
  *
  *   agentDoc(doc, { schema: buildingSchema(types), check: () => house.issues });
  */
@@ -320,6 +324,15 @@ export function buildingSchema(types: BuildingTypes = defaultBuildingTypes()): R
   typed("walls", Object.keys(types.walls), `Wall type, default "exterior" — ${list(types.walls, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
   typed("slabs", Object.keys(types.slabs), `Slab type, default "floor" — ${list(types.slabs, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
   typed("openings", Object.keys(types.openings), `Opening type, default the kind — ${list(types.openings, (t) => `${t.name} (${t.kind})`)}`);
+  const uses = Object.entries(spaceTypes(types)).map(([n, t]) => {
+    const needs = [t.daylight ? "window" : "", t.door === false ? "no door" : ""].filter(Boolean).join(", ");
+    return needs ? `"${n}" (${needs})` : `"${n}"`;
+  });
+  schema.spaces.properties!.use = {
+    type: "string",
+    description: "What the room is for, any text. A room needs a door on its outline when its storey has other rooms, and a window when its use wants daylight."
+      + (uses.length ? ` Known uses: ${uses.join(", ")}` : ""),
+  };
   return schema;
 }
 
@@ -330,18 +343,38 @@ export interface BuildingWallType { type: WallType; thickness: number; colour?: 
 /** A slab type a record can name, with its thickness. */
 export interface BuildingSlabType { type: SlabType; thickness: number; colour?: string }
 
-/** The types building records name: wall, slab and opening types by name. */
+/** A room use a space record names (`SpaceRecord.use`): the colour it is drawn in and what the room needs. */
+export interface BuildingSpaceType {
+  /** The colour `bindBuilding` draws the room's floor in. */
+  colour?: string;
+  /** The room wants daylight: a window on its outline (else `space-no-window`). Default false. */
+  daylight?: boolean;
+  /**
+   * The room needs a door on its outline when its storey has other rooms (else `space-no-door`).
+   * False for a room you walk into without one, e.g. an open-plan office cell. Default true.
+   */
+  door?: boolean;
+}
+
+/** The types building records name: wall, slab and opening types by name, and room uses. */
 export interface BuildingTypes {
   walls: Record<string, BuildingWallType>;
   slabs: Record<string, BuildingSlabType>;
   openings: Record<string, OpeningType>;
+  /**
+   * Room uses by the lower-cased `SpaceRecord.use`; a use not listed is drawn in a neutral
+   * colour, needs a door and no window. Default `defaultBuildingTypes().spaces`; to add uses,
+   * spread those: `{ ...defaultBuildingTypes().spaces, canteen: { colour: "#e8a07a", daylight: true } }`.
+   */
+  spaces?: Record<string, BuildingSpaceType>;
 }
 
 /**
  * Timber construction for a house: "exterior" (Holzrahmenbau, insulated, ~0.25 m),
  * "interior" (a framed partition, 0.125 m) and "solid" (0.2 m) walls; "floor" (joisted,
- * 0.26 m), "ground" (concrete, 0.25 m) and "roof" (joisted flat roof, 0.3 m) slabs; and a
- * "door" and a "window".
+ * 0.26 m), "ground" (concrete, 0.25 m) and "roof" (joisted flat roof, 0.3 m) slabs; a
+ * "door" and a "window"; and the rooms of a house, each with its colour, the ones people
+ * stay in (living, kitchen, dining, bedroom, office, study) wanting daylight.
  */
 export function defaultBuildingTypes(): BuildingTypes {
   const exteriorLayers = holzrahmenbauLayers({ insulation: { material: "Mineralwolle", thickness: 0.140 } });
@@ -399,7 +432,23 @@ export function defaultBuildingTypes(): BuildingTypes {
       door: new OpeningType({ name: "Door", kind: "door", operation: "single_swing_left" }),
       window: new OpeningType({ name: "Window", kind: "window", partitioning: "single_panel" }),
     },
+    spaces: defaultSpaceTypes(),
   };
+}
+
+/** The rooms of a house: rooms people stay in want daylight. */
+function defaultSpaceTypes(): Record<string, BuildingSpaceType> {
+  return {
+    living: { colour: "#f2c46d", daylight: true }, kitchen: { colour: "#f29e6d", daylight: true }, dining: { colour: "#f2b36d", daylight: true },
+    bedroom: { colour: "#8fb8e8", daylight: true }, bath: { colour: "#7fd0d0" }, wc: { colour: "#7fd0d0" },
+    hall: { colour: "#c8c8c8" }, corridor: { colour: "#c8c8c8" }, office: { colour: "#a7d39a", daylight: true }, study: { colour: "#a7d39a", daylight: true },
+    storage: { colour: "#bdb2a6" }, utility: { colour: "#bdb2a6" },
+  };
+}
+
+/** The room uses of these types (the defaults when they name none). */
+function spaceTypes(types: BuildingTypes): Record<string, BuildingSpaceType> {
+  return types.spaces ?? defaultSpaceTypes();
 }
 
 // ── Issues ────────────────────────────────────────────────────────────────────
@@ -667,11 +716,13 @@ export class Building {
    * What is wrong with the building, by record: the `issues` (validation, records that could
    * not be built) and the checks — openings that leave their wall, overlap or reach above it;
    * wall ends that meet no other wall; storeys that do not stack; a storey without a floor;
-   * rooms that are tiny or overlap, have no door, or (living, kitchen, dining, bedroom, office,
-   * study) no window; uncomfortable stairs and wells that leave the floor. An empty list: nothing found.
+   * rooms that are tiny or overlap, have no door (unless their space type needs none), or no
+   * window where their space type wants daylight (by default living, kitchen, dining, bedroom,
+   * office, study); uncomfortable stairs and wells that leave the floor. An empty list: nothing found.
    */
   check(): BuildingIssue[] {
     const out = [...this.issues];
+    const uses = spaceTypes(this.types);
     const warn = (code: string, message: string, ...keys: string[]) => out.push({ severity: "warning", code, message, keys });
     const error = (code: string, message: string, ...keys: string[]) => out.push({ severity: "error", code, message, keys });
 
@@ -753,7 +804,7 @@ export class Building {
       }
       // Each room's box: only what reaches it can be on the room's outline or overlap it.
       const roomBoxes = spaces.map(([, sp]) => boxAround(sp.boundary));
-      // A way in, and daylight where people stay: a door, and for a habitable room a window, on its outline.
+      // A way in, and daylight where people stay: a door, and a window where its use wants daylight, on its outline.
       const openings = [...s.walls.values()].flatMap((wall) => wall.openings.map((o) => ({
         door: o.type ? o.type.kind === "door" : o.isDoor,
         at: pointOnWall(wall, o.centerlinePosition),
@@ -766,10 +817,11 @@ export class Building {
         return room.openings.some((o) => o.door === (kind === "door") && distanceToPolyline(o.at, room.outline) <= o.reach);
       };
       for (const [id, sp] of spaces) {
-        if (spaces.length > 1 && !onOutline(sp, "door")) {
+        const type = uses[(sp.function ?? "").toLowerCase()];
+        if (spaces.length > 1 && (type?.door ?? true) && !onOutline(sp, "door")) {
           warn("space-no-door", `spaces/${id} "${sp.name}" has no door on its outline: no way in.`, keyOf("spaces", id));
         }
-        if (HABITABLE.has((sp.function ?? "").toLowerCase()) && !onOutline(sp, "window")) {
+        if (type?.daylight && !onOutline(sp, "window")) {
           warn("space-no-window", `spaces/${id} "${sp.name}" (${sp.function}) has no window on its outline.`, keyOf("spaces", id));
         }
       }
@@ -828,9 +880,6 @@ export class Building {
     return ifc.save();
   }
 }
-
-/** Rooms people stay in, which want daylight (`space-no-window`). */
-const HABITABLE = new Set(["living", "kitchen", "dining", "bedroom", "office", "study"]);
 
 /** The point at arc length `m` along a wall's centreline. */
 function pointOnWall(wall: Wall, m: number): Vec2 {
@@ -945,11 +994,6 @@ export interface BuildingBinding {
   dispose(): void;
 }
 
-const SPACE_COLOURS: Record<string, string> = {
-  living: "#f2c46d", kitchen: "#f29e6d", dining: "#f2b36d", bedroom: "#8fb8e8", bath: "#7fd0d0", wc: "#7fd0d0",
-  hall: "#c8c8c8", corridor: "#c8c8c8", office: "#a7d39a", study: "#a7d39a", storage: "#bdb2a6", utility: "#bdb2a6",
-};
-
 /**
  * Keep a scene in step with the building records of a document. Every change to a building
  * collection rebuilds the building (a storey's walls trim at their joints, so one wall's edit
@@ -963,6 +1007,7 @@ const SPACE_COLOURS: Record<string, string> = {
  */
 export function bindBuilding(doc: Doc<any>, scene: Scene, opts: BindBuildingOptions = {}): BuildingBinding {
   const types = opts.types ?? defaultBuildingTypes();
+  const uses = spaceTypes(types);
   let detail: BuildingDetail = opts.detail ?? "envelope";
   let building = new Building({}, types);
   let issues: BuildingIssue[] = [];
@@ -1035,7 +1080,7 @@ export function bindBuilding(doc: Doc<any>, scene: Scene, opts: BindBuildingOpti
         const floor = new Slab({ boundary: Polygon2D.closeRing(sp.boundary), thickness: 0.01, elevation: sp.elevation + 0.02 }).toMesh();
         const use = (sp.function ?? "").toLowerCase();
         add(keyOf("spaces", id), floor, {
-          color: SPACE_COLOURS[use] ?? "#d9cbe8", opacity: 0.5, layer: "spaces",
+          color: uses[use]?.colour ?? "#d9cbe8", opacity: 0.5, layer: "spaces",
           label: `${sp.name} · ${fmt(sp.area())} m²`,
         });
       }

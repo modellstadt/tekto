@@ -15,6 +15,26 @@ before 1.0, breaking changes bump the minor version. See
   plan, with a wall on every edge and a door or window in each, 900 rooms and 1860 walls
   check in 42 ms instead of 949 ms, 2500 rooms and 5100 walls in 147 ms instead of 7 s.
   The issues are the same, in the same order.
+- **Space types: a room's use carries its colour and what it needs.** `BuildingTypes.spaces`
+  maps a lower-cased `SpaceRecord.use` to a `BuildingSpaceType`: the `colour` `bindBuilding`
+  draws the room in, `daylight` (it wants a window on its outline, else `space-no-window`) and
+  `door` (false for a room you walk into without one, such as an open-plan office cell: no
+  `space-no-door`). An office app can now add a canteen or a foyer and say its cells need no
+  door, which the house's colours and checks were hard-coded against. `defaultBuildingTypes()`
+  lists the house's rooms as before, and `spaces` is optional: types without it check and draw
+  as they did. `buildingSchema(types)` lists the known uses and what each needs in the `use`
+  description; `use` stays free text.
+- **OBJ keeps groups and materials.** `ObjFile.parse` read `g` groups but `ObjFile.serialize`
+  silently dropped them, and neither knew `usemtl`, so an export could not stay separable by
+  element type with its colours. `serialize` now writes the groups (faces in no group first, then
+  each group's run) and both ways carry a group's `material` (a `usemtl` change starts a new run
+  under the same name; `mtllib` is skipped on read). `serialize(data, { mtllib })` names the .mtl
+  and `ObjFile.serializeMtl(materials)` writes it (`Kd`, a small `Ka`, `d` for opacity;
+  `ObjMaterial`). `scene.toMeshData({ groupBy: "object" | "layer" })` groups a scene for Rhino or
+  Cinema 4D: one group per object (named by its `key`, else its id) or per `style.layer`, each
+  layer's faces together, with materials named by colour (`c_rrggbb`) and listed in `materials`;
+  without options the output is unchanged. The House page has an **Export OBJ** button: the house
+  by layer, with its .mtl.
 - **Fix: callouts on a large model fill the margins.** On BuildGraph's 446-element IFC with
   every element labelled, 4 labels showed and the rest never did: the visibility check
   restarted every few seconds and got through one element per frame.

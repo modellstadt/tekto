@@ -3,7 +3,8 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import {
-  realizeBuilding, validateBuilding, bindBuilding, buildingSchema, BUILDING_SCHEMA, type Building, type BuildingData, type BuildingRecords,
+  realizeBuilding, validateBuilding, bindBuilding, buildingSchema, defaultBuildingTypes, BUILDING_SCHEMA,
+  type Building, type BuildingData, type BuildingRecords, type BuildingTypes,
 } from "../src/bim/building";
 import { checkRecord } from "../src/collab/recordSchema";
 import { PolygonBool } from "../src/core/geometry/PolygonBool";
@@ -360,5 +361,79 @@ describe("check() on a generated storey", () => {
     expect(count("space-no-door")).toBeLessThan(40 - 5);
     expect(count("space-no-window")).toBeGreaterThan(5);
     expect(count("space-no-window")).toBeLessThan(20 - 5);
+  });
+});
+
+describe("space types", () => {
+  /** An office floor, 12 × 5 m: two open-plan cells with no wall between them, and a canteen behind a partition. */
+  function office(): BuildingData {
+    return {
+      storeys: { eg: { name: "Ground floor", elevation: 0, height: 3.5 } },
+      walls: {
+        s: { storey: "eg", path: [[0, 0], [12, 0]] }, e: { storey: "eg", path: [[12, 0], [12, 5]] },
+        n: { storey: "eg", path: [[12, 5], [0, 5]] }, w: { storey: "eg", path: [[0, 5], [0, 0]] },
+        p: { storey: "eg", path: [[8, 0], [8, 5]], type: "interior" },
+      },
+      openings: { w1: { wall: "s", kind: "window", at: 2, width: 1.5 }, w2: { wall: "s", kind: "window", at: 10, width: 1.5 } },
+      spaces: {
+        cell1: { storey: "eg", name: "Cell 1", boundary: rect(0, 0, 4, 5), use: "Cell" },
+        cell2: { storey: "eg", name: "Cell 2", boundary: rect(4, 0, 8, 5), use: "cell" },
+        canteen: { storey: "eg", name: "Canteen", boundary: rect(8, 0, 12, 5), use: "canteen" },
+      },
+    };
+  }
+  const officeTypes = (): BuildingTypes => ({
+    ...defaultBuildingTypes(),
+    spaces: {
+      cell: { colour: "#a7d39a", daylight: true, door: false },
+      canteen: { colour: "#e8a07a", daylight: true },
+    },
+  });
+  const codes = (data: BuildingData, types?: BuildingTypes) => realizeBuilding(data, types).check().map((i) => `${i.code} ${i.keys.join(" ")}`);
+
+  it("say which rooms need a door and which want daylight", () => {
+    // An open-plan cell needs no door but wants a window; the canteen needs both.
+    expect(codes(office(), officeTypes())).toEqual(["space-no-window spaces/cell2", "space-no-door spaces/canteen"]);
+    // The house's types know neither use: every room needs a door, none a window.
+    expect(codes(office())).toEqual(["space-no-door spaces/cell1", "space-no-door spaces/cell2", "space-no-door spaces/canteen"]);
+  });
+
+  it("default to the house's rooms when the types name none", () => {
+    const { spaces: _, ...withoutSpaces } = defaultBuildingTypes();
+    const data = house();
+    delete data.openings!.w4;                                     // the study's only window
+    expect(codes(data, withoutSpaces)).toEqual(["space-no-window spaces/study"]);
+    expect(codes(data)).toEqual(["space-no-window spaces/study"]);
+  });
+
+  it("colour the rooms bindBuilding draws", () => {
+    const draw = (data: BuildingData, types?: BuildingTypes) => {
+      const doc = new Doc<BuildingRecords>({ name: "space-types-test" });
+      doc.transact("Build", () => {
+        for (const [c, rows] of Object.entries(data)) for (const [id, rec] of Object.entries(rows!)) doc.add(c as keyof BuildingRecords, rec as never, { id });
+      });
+      const scene = new Scene();
+      const binding = bindBuilding(doc, scene, { types });
+      const colour = (key: string) => scene.get(binding.objectsOf(key)[0])!.style.color;
+      return { binding, colour };
+    };
+    const custom = draw(office(), officeTypes());
+    expect(custom.colour("spaces/canteen")).toBe("#e8a07a");
+    expect(custom.colour("spaces/cell1")).toBe("#a7d39a");
+    expect(custom.binding.issues.map((i) => i.code)).toEqual(["space-no-window", "space-no-door"]);
+    const plain = draw(office());
+    expect(plain.colour("spaces/canteen")).toBe("#d9cbe8");         // a use the types do not know
+    const home = draw(house());
+    expect(home.colour("spaces/living")).toBe("#f2c46d");
+    expect(home.colour("spaces/hall")).toBe("#c8c8c8");
+  });
+
+  it("list the known uses in the schema, and keep any other use valid", () => {
+    const use = buildingSchema(officeTypes()).spaces.properties!.use;
+    expect(use.enum).toBeUndefined();
+    expect(use.description).toContain('Known uses: "cell" (window, no door), "canteen" (window)');
+    expect(buildingSchema().spaces.properties!.use.description).toContain('"bedroom" (window), "bath", "wc"');
+    expect(BUILDING_SCHEMA.spaces.properties!.use.description).toBe("living, kitchen, bedroom, bath, hall, …");
+    expect(checkRecord({ storey: "eg", name: "Sauna", boundary: rect(0, 0, 2, 2), use: "sauna" }, buildingSchema(officeTypes()).spaces)).toEqual([]);
   });
 });
