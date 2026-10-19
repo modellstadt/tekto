@@ -90,7 +90,7 @@ export default function (container: HTMLElement) {
 
     app.renderer.setBackground(mode === "light" ? 0xf5f7fa : 0x0a0b14);
     app.scene.clear();
-    app.scene.addFlatMesh(terrain.toMeshData(), { label: "terrain" });   // the node colours, drawn
+    app.scene.addMesh(terrain, { label: "terrain" });   // drawn in its node colours
     app.status(`${kind} · ${mode} · ${n} nodes`);
   });
 

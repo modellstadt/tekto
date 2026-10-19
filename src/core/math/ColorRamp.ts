@@ -108,11 +108,11 @@ function modeOf(mode: unknown, call: string): Mode {
  *
  *   const ramp = ColorRamp.sequential();                       // blue, for the dark 3D view
  *   mesh.setColors(ramp.colors(heights));                      // per node, range = min..max
- *   lab.flatMesh(mesh.toMeshData());                           // the renderer draws node colours
+ *   scene.addMesh(mesh);                                       // drawn in its node colours
  *   ramp.hex(0.5);                                             // "#5598e7" (step 350), for CSS
  *
- * Node colours are drawn by `lab.flatMesh` / `scene.addFlatMesh`; `lab.mesh` / `scene.addMesh`
- * draw the style colour.
+ * A mesh with node colours is drawn in them (`addMesh`, `lab.mesh`, `addFlatMesh`), not in its
+ * style colour.
  *
  * Lit faces darken their colour; the renderer config `flatLighting: "plain"` (e.g.
  * `appShell({ renderer: { flatLighting: "plain" } })`) keeps a face toward the sky true to the

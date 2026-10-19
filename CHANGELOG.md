@@ -18,6 +18,9 @@ before 1.0, breaking changes bump the minor version. See
   the view (in snapshots and ✎ Markup) or in a panel row. Lit faces darken their colour: the
   renderer config `flatLighting: "plain"` keeps them true to the legend. New page *Colour
   Ramps*; *Voxel Grid 2D*'s Blur scene uses the sequential ramp in place of its own rainbow.
+- **A `Mesh` with node colours is drawn in them.** `scene.addMesh` / `lab.mesh` ignored
+  `Mesh.setColors` and drew the style colour; only `addFlatMesh` drew node colours. Now both do.
+  A mesh without node colours draws as before.
 - **Fix: callouts on a large model fill the margins.** On BuildGraph's 446-element IFC with
   every element labelled, 4 labels showed and the rest never did: the visibility check
   restarted every few seconds and got through one element per frame.
