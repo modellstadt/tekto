@@ -91,6 +91,7 @@ const GROUPS: PageGroup[] = [
   ]},
   { name: "Motion & Camera", pages: [
     { slug: "particles", label: "Particles 2D", load: () => import("./pages/particles") },
+    { slug: "circle-packing", label: "Circle Packing", load: () => import("./pages/circle-packing") },
     { slug: "camera",    label: "Camera",       load: () => import("./pages/camera") },
     { slug: "gizmo",     label: "Pick & Gizmo", load: () => import("./pages/gizmo") },
     { slug: "shared-editing", label: "Shared Editing", load: () => import("./pages/shared-editing") },
