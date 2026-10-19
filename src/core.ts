@@ -75,7 +75,8 @@ export type { SunPositionInput, SunPositionResult } from "./core/solar/SunPositi
 export { Graph, GridGraph } from "./core/graph";
 
 // Planar Graph (DCEL)
-export { PlanarGraph, PGVertex, PGHalfEdge, PGFace, PlanarGraphRepair, PlanarGraphCleanup, Delaunay2D } from "./core/geometry/planarGraph";
+export { PlanarGraph, PGVertex, PGHalfEdge, PGFace, PlanarGraphRepair, PlanarGraphCleanup, Delaunay2D, Voronoi2D } from "./core/geometry/planarGraph";
+export type { VoronoiCell, VoronoiOptions } from "./core/geometry/planarGraph";
 
 // Voxel
 export { VoxelGrid2D, VoxelGrid, MarchingSquares, MarchingCubes, FloodFill, DistanceTransform, BlobDetect, PixelView } from "./core/voxel";
