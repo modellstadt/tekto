@@ -175,7 +175,7 @@ export {
   Building, realizeBuilding, validateBuilding, defaultBuildingTypes, bindBuilding, buildingSchema, BUILDING_SCHEMA, BUILDING_COLLECTIONS,
 } from "./bim/building";
 export type {
-  BuildingRecords, BuildingData, BuildingCollection, BuildingTypes, BuildingWallType, BuildingSlabType, BuildingIssue,
+  BuildingRecords, BuildingData, BuildingCollection, BuildingTypes, BuildingWallType, BuildingSlabType, BuildingSpaceType, BuildingIssue,
   BuildingBinding, BindBuildingOptions, BuildingDetail, RealizedStorey,
   StoreyRecord, WallRecord, OpeningRecord, SlabRecord, SlabOpeningRecord, SpaceRecord, RoofRecord, StairRecord, XY,
 } from "./bim/building";

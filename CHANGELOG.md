@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Space types: a room's use carries its colour and what it needs.** `BuildingTypes.spaces`
+  maps a lower-cased `SpaceRecord.use` to a `BuildingSpaceType`: the `colour` `bindBuilding`
+  draws the room in, `daylight` (it wants a window on its outline, else `space-no-window`) and
+  `door` (false for a room you walk into without one, such as an open-plan office cell: no
+  `space-no-door`). An office app can now add a canteen or a foyer and say its cells need no
+  door, which the house's colours and checks were hard-coded against. `defaultBuildingTypes()`
+  lists the house's rooms as before, and `spaces` is optional: types without it check and draw
+  as they did. `buildingSchema(types)` lists the known uses and what each needs in the `use`
+  description; `use` stays free text.
 - **OBJ keeps groups and materials.** `ObjFile.parse` read `g` groups but `ObjFile.serialize`
   silently dropped them, and neither knew `usemtl`, so an export could not stay separable by
   element type with its colours. `serialize` now writes the groups (faces in no group first, then
