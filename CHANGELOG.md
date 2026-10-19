@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`Building.check()` scales to generated buildings.** It compared every room with every
+  room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
+  with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells
+  took 146 ms with 400 rooms, 0.7 s with 900 and 5.4 s with 2500. It now finds the pairs
+  whose bounding boxes touch first (a sweep along x) and measures only those, and builds
+  each room's polygon once: 2, 4 and 13 ms. On irregular cells that tile, like a Voronoi
+  plan, with a wall on every edge and a door or window in each, 900 rooms and 1860 walls
+  check in 42 ms instead of 949 ms, 2500 rooms and 5100 walls in 147 ms instead of 7 s.
+  The issues are the same, in the same order.
 - **Fix: callouts on a large model fill the margins.** On BuildGraph's 446-element IFC with
   every element labelled, 4 labels showed and the rest never did: the visibility check
   restarted every few seconds and got through one element per frame.

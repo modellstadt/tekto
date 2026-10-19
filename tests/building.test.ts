@@ -1,11 +1,14 @@
 /**
  * A building as data: records → elements, checks by record, IFC, and a scene kept in step.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
-  realizeBuilding, validateBuilding, bindBuilding, buildingSchema, BUILDING_SCHEMA, type BuildingData, type BuildingRecords,
+  realizeBuilding, validateBuilding, bindBuilding, buildingSchema, BUILDING_SCHEMA, type Building, type BuildingData, type BuildingRecords,
 } from "../src/bim/building";
 import { checkRecord } from "../src/collab/recordSchema";
+import { PolygonBool } from "../src/core/geometry/PolygonBool";
+import { Polygon2D } from "../src/core/geometry/Polygon2D";
+import type { Vec2 } from "../src/core/math/vectors";
 import { Doc } from "../src/collab/Doc";
 import { Scene } from "../src/scene/Scene";
 
@@ -233,5 +236,129 @@ describe("bindBuilding", () => {
     expect(binding.issues.map((i) => i.code)).toContain("opening-outside-wall");
     binding.dispose();
     expect(scene.all().filter((o) => o.key?.startsWith("walls/")).length).toBe(0);
+  });
+});
+
+describe("check() on a generated storey", () => {
+  /** A random number generator that gives the same numbers every run. */
+  const random = (seed: number) => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  /**
+   * Cells of a jittered grid, side × side, about 5 m across, as a Voronoi plan makes them: each
+   * cell a room, a wall on each edge, a door in each inner wall and a window in each outer one.
+   */
+  function cells(side: number): BuildingData {
+    const rnd = random(7);
+    const at = Array.from({ length: side + 1 }, (_, i) => Array.from({ length: side + 1 }, (_, j): [number, number] => {
+      const edge = i === 0 || j === 0 || i === side || j === side;
+      return [i * 5 + (edge ? 0 : (rnd() - 0.5) * 2.4), j * 5 + (edge ? 0 : (rnd() - 0.5) * 2.4)];
+    }));
+    const data: Required<Pick<BuildingData, "storeys" | "spaces" | "walls" | "openings">> = {
+      storeys: { eg: { name: "Ground floor", elevation: 0, height: 3.5 } }, spaces: {}, walls: {}, openings: {},
+    };
+    for (let i = 0; i < side; i++) for (let j = 0; j < side; j++) {
+      data.spaces[`c${i}_${j}`] = { storey: "eg", name: `Cell ${i},${j}`, use: "hall", boundary: [at[i][j], at[i + 1][j], at[i + 1][j + 1], at[i][j + 1]] };
+    }
+    const wall = (id: string, a: [number, number], b: [number, number], outer: boolean) => {
+      data.walls[id] = { storey: "eg", path: [a, b], type: outer ? "exterior" : "interior" };
+      data.openings[id] = { wall: id, kind: outer ? "window" : "door", at: Math.hypot(b[0] - a[0], b[1] - a[1]) / 2, width: 0.9 };
+    };
+    for (let i = 0; i <= side; i++) for (let j = 0; j < side; j++) {
+      wall(`v${i}_${j}`, at[i][j], at[i][j + 1], i === 0 || i === side);
+      wall(`h${j}_${i}`, at[j][i], at[j + 1][i], i === 0 || i === side);
+    }
+    return data;
+  }
+
+  it("checks 900 rooms with their walls and doors in well under a second, each room against its neighbours", () => {
+    const b = realizeBuilding(cells(30));
+    expect(b.storey("eg")!.spaces.size).toBe(900);
+    const intersections = vi.spyOn(PolygonBool, "intersection");
+    const t0 = performance.now();
+    const issues = b.check();
+    const ms = performance.now() - t0;
+    const compared = intersections.mock.calls.length;
+    intersections.mockRestore();
+    expect(issues).toEqual([]);
+    expect(compared).toBeLessThanOrEqual(4 * 900);        // up to 8 neighbours each, not all 404 550 pairs
+    expect(ms).toBeLessThan(1000);                        // ~50 ms; comparing every pair took 1–1.5 s
+  });
+
+  /** Distance from a point to a polyline. */
+  const distance = (p: Vec2, line: Vec2[]) => Math.min(...line.slice(1).map((b, i) => {
+    const a = line[i], ab = b.sub(a);
+    const t = Math.max(0, Math.min(1, p.sub(a).dot(ab) / ab.dot(ab)));
+    return p.distTo(a.add(ab.mul(t)));
+  }));
+
+  /** What check() says about wall ends and rooms, worked out by comparing every pair. */
+  function everyPair(b: Building): string[] {
+    const out: string[] = [];
+    for (const s of b.storeys) {
+      const walls = [...s.walls];
+      for (const [id, wall] of walls) {
+        const cl = wall.centerline;
+        for (const end of wall.isClosedPolyline ? [] : [cl[0], cl[cl.length - 1]]) {
+          const met = walls.some(([oid, other]) => oid !== id && distance(end, other.centerline) <= (other.thickness + wall.thickness) / 2 + 0.05);
+          if (!met) out.push(`wall-end-free walls/${id}`);
+        }
+      }
+      const spaces = [...s.spaces];
+      const onOutline = (boundary: Vec2[], door: boolean) => walls.some(([, wall]) => wall.openings.some((o) => {
+        const at = wall.centerline[0].lerp(wall.centerline[1], o.centerlinePosition / wall.length);   // straight walls
+        return (o.type!.kind === "door") === door && distance(at, Polygon2D.closeRing(boundary)) <= wall.thickness / 2 + 0.05;
+      }));
+      for (const [id, sp] of spaces) {
+        if (spaces.length > 1 && !onOutline(sp.boundary, true)) out.push(`space-no-door spaces/${id}`);
+        if (sp.function === "office" && !onOutline(sp.boundary, false)) out.push(`space-no-window spaces/${id}`);
+      }
+      for (let i = 0; i < spaces.length; i++) for (let j = i + 1; j < spaces.length; j++) {
+        const shared = PolygonBool.area(PolygonBool.intersection(PolygonBool.fromRing(spaces[i][1].boundary), PolygonBool.fromRing(spaces[j][1].boundary)));
+        if (shared > 0.05) out.push(`spaces-overlap spaces/${spaces[i][0]} spaces/${spaces[j][0]}`);
+      }
+    }
+    return out;
+  }
+
+  it("finds what comparing every pair finds, in the same order", () => {
+    const rnd = random(11);
+    const data: Required<Pick<BuildingData, "storeys" | "spaces" | "walls" | "openings">> = {
+      storeys: { eg: { name: "Ground floor", elevation: 0, height: 3 } }, spaces: {}, walls: {}, openings: {},
+    };
+    // Rooms that overlap, touch along an edge or at a corner (on a 1 m grid), or turn.
+    for (let k = 0; k < 40; k++) {
+      const cx = rnd() * 30, cy = rnd() * 30, w = 1 + rnd() * 7, h = 1 + rnd() * 7, turn = rnd() < 0.5 ? 0 : rnd() * Math.PI;
+      const c = Math.cos(turn), s = Math.sin(turn), grid = turn === 0 && rnd() < 0.6;
+      const corners = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]]
+        .map(([x, y]): [number, number] => [cx + x * c - y * s, cy + x * s + y * c])
+        .map(([x, y]): [number, number] => grid ? [Math.round(x), Math.round(y)] : [x, y]);
+      data.spaces[`r${k}`] = { storey: "eg", name: `Room ${k}`, use: k % 2 ? "office" : "hall", boundary: corners };
+    }
+    // Straight walls on the same grid, some meeting, each with a door or a window halfway.
+    for (let k = 0; k < 40; k++) {
+      const x = Math.round(rnd() * 30), y = Math.round(rnd() * 30), length = 2 + Math.round(rnd() * 6);
+      data.walls[`w${k}`] = { storey: "eg", path: rnd() < 0.5 ? [[x, y], [x + length, y]] : [[x, y], [x, y + length]], type: rnd() < 0.5 ? "interior" : "exterior" };
+      data.openings[`o${k}`] = { wall: `w${k}`, kind: rnd() < 0.5 ? "door" : "window", at: length / 2, width: 0.8 };
+    }
+    // And along the first edge of every third room, so some doors and windows are on an outline.
+    for (let k = 0; k < 40; k += 3) {
+      const [a, b] = data.spaces[`r${k}`].boundary;
+      data.walls[`e${k}`] = { storey: "eg", path: [a, b], type: "interior" };
+      data.openings[`e${k}`] = { wall: `e${k}`, kind: k % 2 ? "window" : "door", at: Math.hypot(b[0] - a[0], b[1] - a[1]) / 2, width: 0.8 };
+    }
+    const b = realizeBuilding(data);
+    const codes = new Set(["wall-end-free", "space-no-door", "space-no-window", "spaces-overlap"]);
+    const found = b.check().filter((i) => codes.has(i.code)).map((i) => `${i.code} ${i.keys.join(" ")}`);
+    const expected = everyPair(b);
+    expect(found).toEqual(expected);
+    // Each check finds some here and passes some: 54 walls, 40 rooms, 20 of them offices.
+    const count = (code: string) => expected.filter((e) => e.startsWith(`${code} `)).length;
+    expect(count("spaces-overlap")).toBeGreaterThan(10);
+    expect(count("wall-end-free")).toBeGreaterThan(10);
+    expect(count("wall-end-free")).toBeLessThan(2 * 54 - 10);
+    expect(count("space-no-door")).toBeGreaterThan(10);
+    expect(count("space-no-door")).toBeLessThan(40 - 5);
+    expect(count("space-no-window")).toBeGreaterThan(5);
+    expect(count("space-no-window")).toBeLessThan(20 - 5);
   });
 });
