@@ -214,6 +214,14 @@ describe("Scene.toMeshData", () => {
     expect(d.materials!.map(m => m.name)).toEqual(["c_cccccc", "c_9cc8e8_a45", "c_a8705a", "c_d9cbe8_a50"]);
   });
 
+  it("a colour that is not hex keeps its name and exports grey, so the .mtl still writes", () => {
+    const s = new Scene();
+    s.addMesh(quad(0), { color: "tomato", layer: "walls" });
+    const d = s.toMeshData({ groupBy: "layer" });
+    expect(d.materials).toEqual([{ name: "c_tomato", color: "#808080", opacity: 1 }]);
+    expect(ObjFile.serializeMtl(d.materials!)).toContain("newmtl c_tomato\nKa 0.050196 0.050196 0.050196\nKd 0.501961 0.501961 0.501961\nd 1");
+  });
+
   it("goes through OBJ and MTL text intact", () => {
     const d = building().toMeshData({ groupBy: "layer" });
     const back = ObjFile.parse(ObjFile.serialize(d, { mtllib: "b.mtl" }));

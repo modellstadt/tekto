@@ -255,14 +255,16 @@ export const ObjFile = {
 
 /**
  * The material a scene colour stands for in an OBJ: named `c_rrggbb`, with `_a<percent>`
- * below full opacity (`c_9cc8e8_a45`), so objects of one colour share it. Internal —
- * `Scene.toMeshData` names its groups' materials with it.
+ * below full opacity (`c_9cc8e8_a45`), so objects of one colour share it. A colour that is
+ * not CSS hex (a name like `"tomato"`) keeps its name but exports grey, so the .mtl still
+ * writes. Internal — `Scene.toMeshData` names its groups' materials with it.
  */
 export function colorMaterial(color: string, opacity = 1): ObjMaterial {
+  const NOT_HEX = "#808080";
   const rgb = parseHex(color);
   const hex = rgb ? rgb.map(c => Math.round(c * 255).toString(16).padStart(2, "0")).join("") : objName(color);
   const alpha = opacity < 1 ? `_a${Math.round(opacity * 100)}` : "";
-  return { name: `c_${hex}${alpha}`, color, opacity };
+  return { name: `c_${hex}${alpha}`, color: rgb ? color : NOT_HEX, opacity };
 }
 
 // ─── Helpers ─────────────────────────────────
