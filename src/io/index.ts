@@ -5,23 +5,38 @@
  */
 
 import { Vec2, Vec3 } from "../core/math/vectors";
+import { parseHex } from "./PdfWriter";
 
 // ─── MeshData (interchange format) ──────────
 
-/** A polygon mesh as OBJ holds it (exported as `ObjMeshData`; not `Mesh`'s typed-array `MeshData`): parallel per-vertex positions, uvs and normals (the last two may be empty), 0-based `faces` into them, and optional `g` group ranges. */
+/** A polygon mesh as OBJ holds it (exported as `ObjMeshData`; not `Mesh`'s typed-array `MeshData`): parallel per-vertex positions, uvs and normals (the last two may be empty), 0-based `faces` into them, and optional `g` group ranges with their `usemtl` materials. */
 export interface MeshData {
   positions: Vec3[];
   normals: Vec3[];
   uvs: Vec2[];
   faces: number[][];
   /**
-   * Optional OBJ group ranges. Populated by `ObjFile.parse` whenever the
-   * file contains `g <name>` directives. Each entry is a contiguous run
-   * of face indices that share the named group — used by consumers
-   * (e.g. the stair app's FEM/streamline pipeline) to keep sub-meshes
-   * separable after the file is loaded.
+   * Optional OBJ group runs: each a contiguous range of faces under one `g` name and, when
+   * set, one `usemtl` material. `ObjFile.parse` fills it whenever the file has `g` or
+   * `usemtl` lines (a material change starts a new run under the same name), and
+   * `ObjFile.serialize` writes it back — used by consumers (e.g. the stair app's
+   * FEM/streamline pipeline, a CAD import) to keep sub-meshes separable after the file is
+   * loaded. Several runs may share a name.
    */
-  groups?: { name: string; faceStart: number; faceCount: number }[];
+  groups?: { name: string; faceStart: number; faceCount: number; material?: string }[];
+  /**
+   * The materials the groups name, with their colours, for `ObjFile.serializeMtl`.
+   * `Scene.toMeshData({ groupBy })` fills it; `parse` leaves it unset (it reads no .mtl
+   * file) and `serialize` doesn't write it.
+   */
+  materials?: ObjMaterial[];
+}
+
+/** A material of an OBJ's .mtl file, for `ObjFile.serializeMtl`: its name (as a group's `material` gives it), its colour as CSS hex (`"#9cc8e8"`) or [r, g, b] in 0..1, and its opacity, 1 by default. */
+export interface ObjMaterial {
+  name: string;
+  color: string | [number, number, number];
+  opacity?: number;
 }
 
 function emptyMeshData(): MeshData {
@@ -30,31 +45,52 @@ function emptyMeshData(): MeshData {
 
 // ─── ObjFile ─────────────────────────────────
 
-/** Wavefront OBJ text to and from `ObjMeshData`: `parse` reads v/vt/vn/f lines and `g` groups, `serialize` writes them back; coordinates pass through unchanged (no axis swap, no unit scaling). */
+/**
+ * Wavefront OBJ text to and from `ObjMeshData` with its `g` groups and `usemtl` materials, plus
+ * the .mtl (`serializeMtl`); coordinates pass through unchanged (no axis swap or unit scaling).
+ *
+ *   const data = scene.toMeshData({ groupBy: "layer" });
+ *   download(ObjFile.serializeMtl(data.materials!), "model.mtl");
+ *   download(ObjFile.serialize(data, { mtllib: "model.mtl" }), "model.obj");
+ */
 export const ObjFile = {
-  /** Parses an OBJ string into MeshData. Handles v/vt/vn/f lines. */
+  /**
+   * Parses an OBJ string into MeshData: v/vt/vn/f lines, `g` groups and `usemtl` materials
+   * (`mtllib` is skipped — the .mtl is a separate file). A `g` or a `usemtl` that changes the
+   * material starts a new group run; as in OBJ, a material carries over into the next `g`,
+   * and a `usemtl` before any `g` runs under `"default"`. `groups` stays unset when the file
+   * has neither.
+   */
   parse(source: string): MeshData {
     const result = emptyMeshData();
     const rawPositions: Vec3[] = [];
     const rawUVs: Vec2[] = [];
     const rawNormals: Vec3[] = [];
     const indexCache = new Map<string, number>();
-    // Active group while walking face lines — `null` means "no active
-    // group yet". Switched on `g <name>` directives; flushed into
-    // `result.groups` when the active name changes or the file ends.
-    let activeGroup: string | null = null;
-    let activeGroupFaceStart = 0;
+    // The current group run — `null` name means "no group yet". A run ends on `g <name>` or
+    // on a `usemtl` that changes the material, and is flushed into `result.groups` then and
+    // at the end of the file.
+    let runName: string | null = null;
+    let runMaterial: string | undefined;
+    let runFaceStart = 0;
 
-    const flushGroup = () => {
-      if (activeGroup === null) return;
-      const count = result.faces.length - activeGroupFaceStart;
+    const flushRun = () => {
+      if (runName === null) return;
+      const count = result.faces.length - runFaceStart;
       if (count > 0) {
         result.groups!.push({
-          name: activeGroup,
-          faceStart: activeGroupFaceStart,
+          name: runName,
+          faceStart: runFaceStart,
           faceCount: count,
+          ...(runMaterial !== undefined ? { material: runMaterial } : {}),
         });
       }
+    };
+    const startRun = (name: string, material: string | undefined) => {
+      flushRun();
+      runName = name;
+      runMaterial = material;
+      runFaceStart = result.faces.length;
     };
 
     for (const line of source.split("\n")) {
@@ -65,11 +101,15 @@ export const ObjFile = {
       const type = parts[0];
 
       if (type === "g" && parts.length >= 2) {
-        flushGroup();
-        activeGroup = parts.slice(1).join(" ");
-        activeGroupFaceStart = result.faces.length;
+        startRun(parts.slice(1).join(" "), runMaterial);
         continue;
       }
+      if (type === "usemtl" && parts.length >= 2) {
+        const material = parts.slice(1).join(" ");
+        if (runName === null || material !== runMaterial) startRun(runName ?? "default", material);
+        continue;
+      }
+      if (type === "mtllib") continue;
       if (type === "v" && parts.length >= 4) {
         rawPositions.push(new Vec3(
           parseFloat(parts[1]),
@@ -115,17 +155,25 @@ export const ObjFile = {
       }
     }
 
-    flushGroup();
+    flushRun();
     if (result.groups!.length === 0) result.groups = undefined;
     return result;
   },
 
-  /** Serializes MeshData to an OBJ format string. */
-  serialize(data: MeshData): string {
+  /**
+   * Serializes MeshData to an OBJ format string. `mtllib` names the .mtl file the materials
+   * are in (see `serializeMtl`). Faces in no group come first, then each group as a
+   * `g <name>` line, `usemtl <material>` when it has one, and its faces, in the order of
+   * `groups` — so `parse` gives the same groups back. Whitespace in group and material names
+   * becomes `_` (OBJ names are single tokens). OBJ cannot turn a material off: a group without
+   * one, written after a group with one, reads back with that material.
+   */
+  serialize(data: MeshData, options: { mtllib?: string } = {}): string {
     const lines: string[] = [];
     lines.push("# Exported by Tekto");
     lines.push(`# Vertices: ${data.positions.length}`);
     lines.push(`# Faces: ${data.faces.length}`);
+    if (options.mtllib) lines.push(`mtllib ${options.mtllib}`);
 
     for (const v of data.positions)
       lines.push(`v ${f(v.x)} ${f(v.y)} ${f(v.z)}`);
@@ -139,7 +187,7 @@ export const ObjFile = {
     const hasUV = data.uvs.length > 0;
     const hasNorm = data.normals.length > 0;
 
-    for (const face of data.faces) {
+    const faceLine = (face: number[]) => {
       let line = "f";
       for (const idx of face) {
         const val = idx + 1; // OBJ is 1-based
@@ -148,17 +196,84 @@ export const ObjFile = {
         else if (hasNorm) line += ` ${val}//${val}`;
         else line += ` ${val}`;
       }
-      lines.push(line);
+      return line;
+    };
+
+    const groups = data.groups ?? [];
+    const grouped = new Uint8Array(data.faces.length);
+    for (const g of groups) {
+      const end = g.faceStart + g.faceCount;
+      if (!(Number.isInteger(g.faceStart) && Number.isInteger(g.faceCount) && g.faceStart >= 0 && g.faceCount >= 0 && end <= data.faces.length)) {
+        throw new Error(`ObjFile.serialize: group "${g.name}" covers faces ${g.faceStart}..${end - 1}, but there are ${data.faces.length} faces`);
+      }
+      for (let i = g.faceStart; i < end; i++) {
+        if (grouped[i]) throw new Error(`ObjFile.serialize: face ${i} is in group "${g.name}" and in an earlier one`);
+        grouped[i] = 1;
+      }
+    }
+
+    for (let i = 0; i < data.faces.length; i++) if (!grouped[i]) lines.push(faceLine(data.faces[i]));
+    for (const g of groups) {
+      if (g.faceCount === 0) continue;
+      lines.push(`g ${objName(g.name)}`);
+      if (g.material !== undefined) lines.push(`usemtl ${objName(g.material)}`);
+      for (let i = g.faceStart; i < g.faceStart + g.faceCount; i++) lines.push(faceLine(data.faces[i]));
     }
 
     return lines.join("\n") + "\n";
   },
+
+  /**
+   * The .mtl file for an OBJ's materials: per material `newmtl`, a small ambient `Ka` (a tenth
+   * of the colour), the colour as `Kd` and the opacity as `d`. Names get the same `_` for
+   * whitespace as in `serialize`. Throws on a colour that is neither CSS hex nor [r, g, b] in
+   * 0..1, or an opacity outside 0..1.
+   *
+   *   ObjFile.serializeMtl([{ name: "glass", color: "#9cc8e8", opacity: 0.45 }]);
+   */
+  serializeMtl(materials: ObjMaterial[]): string {
+    const AMBIENT = 0.1;
+    const lines: string[] = ["# Exported by Tekto", `# Materials: ${materials.length}`];
+    for (const m of materials) {
+      const rgb = typeof m.color === "string" ? parseHex(m.color) : m.color;
+      if (!rgb || rgb.length !== 3 || !rgb.every(c => Number.isFinite(c) && c >= 0 && c <= 1)) {
+        throw new Error(`ObjFile.serializeMtl: material "${m.name}" has the colour ${JSON.stringify(m.color)}; give CSS hex ("#rrggbb") or [r, g, b] in 0..1`);
+      }
+      const opacity = m.opacity ?? 1;
+      if (!(opacity >= 0 && opacity <= 1)) throw new Error(`ObjFile.serializeMtl: material "${m.name}" has the opacity ${m.opacity}; give 0..1`);
+      lines.push(
+        "",
+        `newmtl ${objName(m.name)}`,
+        `Ka ${rgb.map(c => f(c * AMBIENT)).join(" ")}`,
+        `Kd ${rgb.map(f).join(" ")}`,
+        `d ${f(opacity)}`,
+      );
+    }
+    return lines.join("\n") + "\n";
+  },
 };
+
+/**
+ * The material a scene colour stands for in an OBJ: named `c_rrggbb`, with `_a<percent>`
+ * below full opacity (`c_9cc8e8_a45`), so objects of one colour share it. Internal —
+ * `Scene.toMeshData` names its groups' materials with it.
+ */
+export function colorMaterial(color: string, opacity = 1): ObjMaterial {
+  const rgb = parseHex(color);
+  const hex = rgb ? rgb.map(c => Math.round(c * 255).toString(16).padStart(2, "0")).join("") : objName(color);
+  const alpha = opacity < 1 ? `_a${Math.round(opacity * 100)}` : "";
+  return { name: `c_${hex}${alpha}`, color, opacity };
+}
 
 // ─── Helpers ─────────────────────────────────
 
 function f(v: number): string {
   return v.toFixed(6).replace(/\.?0+$/, "");
+}
+
+/** A group or material name as one OBJ token: whitespace → `_`, an empty name → "default". */
+function objName(name: string): string {
+  return name.trim().replace(/\s+/g, "_") || "default";
 }
 
 function parseObjIndex(

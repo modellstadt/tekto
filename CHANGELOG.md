@@ -6,6 +6,17 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **OBJ keeps groups and materials.** `ObjFile.parse` read `g` groups but `ObjFile.serialize`
+  silently dropped them, and neither knew `usemtl`, so an export could not stay separable by
+  element type with its colours. `serialize` now writes the groups (faces in no group first, then
+  each group's run) and both ways carry a group's `material` (a `usemtl` change starts a new run
+  under the same name; `mtllib` is skipped on read). `serialize(data, { mtllib })` names the .mtl
+  and `ObjFile.serializeMtl(materials)` writes it (`Kd`, a small `Ka`, `d` for opacity;
+  `ObjMaterial`). `scene.toMeshData({ groupBy: "object" | "layer" })` groups a scene for Rhino or
+  Cinema 4D: one group per object (named by its `key`, else its id) or per `style.layer`, each
+  layer's faces together, with materials named by colour (`c_rrggbb`) and listed in `materials`;
+  without options the output is unchanged. The House page has an **Export OBJ** button: the house
+  by layer, with its .mtl.
 - **Fix: callouts on a large model fill the margins.** On BuildGraph's 446-element IFC with
   every element labelled, 4 labels showed and the rest never did: the visibility check
   restarted every few seconds and got through one element per frame.
