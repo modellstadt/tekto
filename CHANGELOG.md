@@ -6,6 +6,16 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **One callout, many leaders.** `CalloutItem.leaders: "each"` draws a leader from one label to
+  each entry of `objects` (an object id, or a record key and everything drawn for it), and the
+  label sits level with the middle of their ends. For a label that names what many elements
+  share, a product or a material: the margin holds one label per thing rather than one per
+  element, and every element still has its line. Only the entries the reader can see get one;
+  an entry behind another, even one of the same label, gets none. `CalloutItem.side` keeps a
+  label to one margin whichever half its anchors are in, so a column of products down the left
+  reads as a key. The default is unchanged: one leader to the centre of everything in
+  `objects`, in the nearer margin. Leaders are SVG paths now (`leaderPath`), a fan sharing one
+  knee.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells

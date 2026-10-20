@@ -30,10 +30,11 @@ export class Marks {
 
   // ── Callouts (setCallouts) ──
   private callouts: Callouts | null = null;
-  /** Per callout, where to look for it: its centre, then points toward its box's corners. */
-  private calloutAnchors = new Map<string, THREE.Vector3[]>();
-  /** Per callout seen, the point its leader goes to. Redone only once the camera is still. */
-  private calloutVisible = new Map<string, THREE.Vector3>();
+  /** Per callout, per leader, where to look for it (its centre, then points toward its box's
+   *  corners) and what is its own, which cannot hide it. One leader unless `leaders: "each"`. */
+  private calloutAnchors = new Map<string, { samples: THREE.Vector3[]; own: readonly string[] }[]>();
+  /** Per callout seen, the point each seen leader goes to. Redone only once the camera is still. */
+  private calloutVisible = new Map<string, THREE.Vector3[]>();
   /** Something that decides visibility changed since the last answer. */
   private calloutCheckDirty = true;
   /** The camera the answer is for, and since when it has been still. */
@@ -329,15 +330,20 @@ export class Marks {
   }
 
 
-  /** Re-measure where to look for each callout: points in its objects' bounds. */
+  /** Re-measure where to look for each callout: points in the bounds of what each of its
+   *  leaders points at. */
   private _measureCallouts(): void {
     this.calloutsDirty = false;
     this.calloutAnchors.clear();
     const box = new THREE.Box3();
     for (const id of this.callouts?.ids ?? []) {
-      box.makeEmpty();
-      for (const t of this.core.resolve(this.callouts!.objectsOf(id))) if (t.visible) box.expandByObject(t);
-      if (!box.isEmpty()) this.calloutAnchors.set(id, calloutSamples(box));
+      const groups: { samples: THREE.Vector3[]; own: readonly string[] }[] = [];
+      for (const own of this.callouts!.groupsOf(id)) {
+        box.makeEmpty();
+        for (const t of this.core.resolve(own)) if (t.visible) box.expandByObject(t);
+        if (!box.isEmpty()) groups.push({ samples: calloutSamples(box), own });
+      }
+      if (groups.length) this.calloutAnchors.set(id, groups);
     }
     this.calloutPending = null;
     this.calloutCheckDirty = true;
@@ -348,8 +354,10 @@ export class Marks {
    * Work on which callouts the reader can see, until `deadline`. Seen means any of its
    * sample points is: the centre first, the others only if it is hidden, and the leader goes
    * to the first one seen. Only a surface that writes depth hides it (`occludes`), its own
-   * objects don't count, nor does what the section removed. A margin that is full takes no
-   * more, so its side needs no rays, and the check ends when both are.
+   * objects don't count, nor does what the section removed. A callout with a leader to each
+   * of its entries is seen when any one is, and gets a leader only to those seen: an entry
+   * behind another, even one of its own, gets none. A margin that is full takes no more, so
+   * its side needs no rays, and the check ends when both are.
    */
   private _checkCalloutVisibility(deadline: number): void {
     const pending = this.calloutPending;
@@ -363,32 +371,37 @@ export class Marks {
     const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
     while (pending.queue.length && !full() && performance.now() < deadline) {
       const id = pending.queue.pop()!;
-      const samples = this.calloutAnchors.get(id);
-      if (!samples) continue;
-      const side = ndc.copy(samples[0]).project(cam).x < 0 ? "left" : "right";
+      const groups = this.calloutAnchors.get(id);
+      if (!groups) continue;
+      // its own margin, or the one nearer the middle of what it points at
+      let x = 0;
+      for (const g of groups) x += ndc.copy(g.samples[0]).project(cam).x;
+      const side = this.callouts!.sideOf(id) ?? (x / groups.length < 0 ? "left" : "right");
       if (pending[side] >= pending.capacity) { pending.skipped.push(id); continue; }
-      const own = new Set(this.core.resolve(this.callouts!.objectsOf(id)));
-      let seen: THREE.Vector3 | null = null;
-      for (const point of samples) {
-        ndc.copy(point).project(cam);
-        if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;   // off screen: no ray
-        if (ortho) {
-          ray.set(point.clone().addScaledVector(view, -1e4), view);              // parallel rays: along the view
-          ray.far = 1e4;
-        } else {
-          dir.copy(point).sub(eye);
-          ray.far = dir.length();
-          ray.set(eye, dir.normalize());
+      const seen: THREE.Vector3[] = [];
+      for (const g of groups) {
+        const own = new Set(this.core.resolve(g.own));
+        for (const point of g.samples) {
+          ndc.copy(point).project(cam);
+          if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;   // off screen: no ray
+          if (ortho) {
+            ray.set(point.clone().addScaledVector(view, -1e4), view);              // parallel rays: along the view
+            ray.far = 1e4;
+          } else {
+            dir.copy(point).sub(eye);
+            ray.far = dir.length();
+            ray.set(eye, dir.normalize());
+          }
+          // Surfaces only: three.js picks lines within a whole unit of the ray.
+          const hit = ray.intersectObjects(pending.targets, false)
+            .find(h => (h.object as THREE.Mesh).isMesh && occludes((h.object as THREE.Mesh).material) && !this.cutAway(h.point));
+          let owner: THREE.Object3D | null = hit?.object ?? null;
+          while (owner && !own.has(owner)) owner = owner.parent;
+          if (!hit || owner || hit.distance >= ray.far - 1e-3) { seen.push(point); break; }
         }
-        // Surfaces only: three.js picks lines within a whole unit of the ray.
-        const hit = ray.intersectObjects(pending.targets, false)
-          .find(h => (h.object as THREE.Mesh).isMesh && occludes((h.object as THREE.Mesh).material) && !this.cutAway(h.point));
-        let owner: THREE.Object3D | null = hit?.object ?? null;
-        while (owner && !own.has(owner)) owner = owner.parent;
-        if (!hit || owner || hit.distance >= ray.far - 1e-3) { seen = point; break; }
       }
       // In place, so labels appear as they are found and a recheck never blanks the margins.
-      if (seen) { this.calloutVisible.set(id, seen); pending[side]++; } else this.calloutVisible.delete(id);
+      if (seen.length) { this.calloutVisible.set(id, seen); pending[side]++; } else this.calloutVisible.delete(id);
     }
     if (!pending.queue.length || full()) {
       // What was never looked at shows no label, and is counted as "up to".
@@ -438,14 +451,22 @@ export class Marks {
       if (this.calloutPending) this.core.requestRender();          // the next slice
     }
     const v = new THREE.Vector3();
-    const anchors: { id: string; x: number; y: number }[] = [];
+    const anchors: { id: string; x: number; y: number; side?: "left" | "right"; ends?: { x: number; y: number }[] }[] = [];
     // In the caller's order, which is priority.
     for (const id of this.calloutAnchors.keys()) {
-      const anchor = this.calloutVisible.get(id);
-      if (!anchor) continue;
-      v.copy(anchor).project(cam);
-      if (v.z > 1) continue;
-      anchors.push({ id, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+      const seen = this.calloutVisible.get(id);
+      if (!seen) continue;
+      const ends: { x: number; y: number }[] = [];
+      for (const point of seen) {
+        v.copy(point).project(cam);
+        if (v.z > 1) continue;
+        ends.push({ x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+      }
+      if (!ends.length) continue;
+      // a label with several leaders sits level with the middle of their ends
+      const x = ends.reduce((sum, e) => sum + e.x, 0) / ends.length;
+      const y = ends.reduce((sum, e) => sum + e.y, 0) / ends.length;
+      anchors.push({ id, x, y, side: this.callouts.sideOf(id), ...(this.callouts.fans(id) ? { ends } : {}) });
     }
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);

@@ -7,7 +7,7 @@
  * checked here rather than looked at in a browser.
  */
 import { describe, it, expect } from "vitest";
-import { calloutChanged, layoutLabels, marginCapacity } from "../src/render/Callouts";
+import { calloutChanged, calloutGroups, layoutLabels, leaderPath, marginCapacity } from "../src/render/Callouts";
 
 const BOX = { width: 800, height: 600, rowHeight: 30, labelWidth: 150, inset: 8 };
 
@@ -103,6 +103,52 @@ describe("callout layout", () => {
 
   it("has nothing to place when nothing is visible", () => {
     expect(layoutLabels([], BOX)).toEqual({ placed: [], dropped: [] });
+  });
+
+  it("keeps a label to the margin it names, whichever half its anchor is in", () => {
+    // a column of products down the left reads as a key
+    const { placed: out } = layoutLabels([
+      { id: "p", x: 700, y: 100, side: "left" },
+      { id: "q", x: 100, y: 200, side: "right" },
+      { id: "r", x: 700, y: 300 },
+    ], BOX);
+    const side = (id: string) => out.find((p) => p.id === id)!;
+    expect(side("p").side).toBe("left");
+    expect(side("p").x).toBe(BOX.inset);
+    expect(side("q").side).toBe("right");
+    expect(side("r").side).toBe("right");
+  });
+
+  it("carries each leader's end through, and none for a label with one", () => {
+    const ends = [{ x: 500, y: 100 }, { x: 600, y: 300 }];
+    const { placed: out } = layoutLabels([{ id: "p", x: 550, y: 200, side: "left", ends },
+                                          { id: "e", x: 100, y: 400 }], BOX);
+    expect(out.find((p) => p.id === "p")!.ends).toEqual(ends);
+    expect(out.find((p) => p.id === "e")).not.toHaveProperty("ends");
+  });
+});
+
+describe("callout leaders", () => {
+  it("points at everything together by default, and at each entry when asked", () => {
+    const objects = ["walls/a", "walls/b", "walls/c"];
+    expect(calloutGroups({ objects })).toEqual([objects]);
+    expect(calloutGroups({ objects, leaders: "one" })).toEqual([objects]);
+    expect(calloutGroups({ objects, leaders: "each" })).toEqual([["walls/a"], ["walls/b"], ["walls/c"]]);
+  });
+
+  it("draws one elbow to its anchor for a label with one leader", () => {
+    const p = { id: "e", side: "left" as const, x: 8, y: 100, anchorX: 300, anchorY: 250 };
+    // out of the label's right edge, a short level run, then to the anchor
+    expect(leaderPath(p, 150)).toBe("M158,109 L168,109 L300,250");
+    expect(leaderPath({ ...p, side: "right", x: 642 }, 150)).toBe("M642,109 L632,109 L300,250");
+  });
+
+  it("fans a label's leaders out from one knee, one line to each end", () => {
+    const ends = [{ x: 300, y: 50 }, { x: 320, y: 250 }, { x: 500, y: 400 }];
+    const d = leaderPath({ id: "p", side: "left", x: 8, y: 100, anchorX: 373, anchorY: 233, ends }, 150);
+    expect(d).toBe("M158,109 L168,109 M168,109 L300,50 M168,109 L320,250 M168,109 L500,400");
+    // every leader starts at the same knee, so they read as one label's
+    expect(d.match(/M168,109/g)).toHaveLength(3);
   });
 });
 
