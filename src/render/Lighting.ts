@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { Vec3 } from "../core/math/vectors";
 import type { LightingMode } from "../scene/Scene";
 import type { RendererCore } from "./RendererCore";
-import { daylight, flatLights, sunDirection, SUN_PRESETS, type SunPreset } from "./viewRules";
+import { daylight, flatLights, studioLights, sunDirection, SUN_PRESETS, type SunPreset } from "./viewRules";
 
 export class Lighting {
   ambientLight: THREE.AmbientLight;
@@ -228,19 +228,21 @@ export class Lighting {
     // Soft PCF: from r180 three makes PCFShadowMap soft and warns that PCFSoftShadowMap is
     // deprecated (it maps it to PCFShadowMap anyway), so ask for what each version draws soft.
     this.core.renderer.shadowMap.type    = parseInt(THREE.REVISION, 10) >= 180 ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
-    this.core.renderer.toneMapping       = studio ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+    const studioBalance = studioLights(this.core.config.studioLighting);
+    this.core.renderer.toneMapping       = studio && studioBalance.toneMapped
+      ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.core.renderer.toneMappingExposure = 1.0;
     this.core.renderer.outputColorSpace  = THREE.SRGBColorSpace;
 
     // ── Lights: rebalance so Studio reads more like a sunlit scene ─
     if (studio) {
-      // Studio's own sky, whatever Flat was given (daylight retints it after this)
-      const sketch = flatLights("sketch");
-      this.hemiLight.color.setHex(sketch.skyColour);
-      this.hemiLight.groundColor.setHex(sketch.groundColour);
-      this.ambientLight.intensity = 0.35;
-      this.hemiLight.intensity    = 0.30;
-      this.dirLight.intensity     = 2.8;
+      // Studio's own sky and balance, whatever Flat was given: filmic, or
+      // plain colours (studioLights). Daylight retints it after this.
+      this.hemiLight.color.setHex(studioBalance.skyColour);
+      this.hemiLight.groundColor.setHex(studioBalance.groundColour);
+      this.ambientLight.intensity = studioBalance.ambient;
+      this.hemiLight.intensity    = studioBalance.sky;
+      this.dirLight.intensity     = studioBalance.sun;
       this.dirLight.castShadow    = true;
       this.dirLight.shadow.mapSize.set(2048, 2048);
       this.dirLight.shadow.bias   = -0.0005;

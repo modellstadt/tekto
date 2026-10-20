@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`studioLighting: "plain"`** (renderer config): Studio's sun and shadows under a white sky
+  without tone mapping, the balance the old `Viewport` drew shadows with
+  (`lightBalance("shaded", true)`: sun 2.6, sky 1.1). The default, `"filmic"`, tone-maps with
+  ACES under a dim blue sky, and on a model of saturated colours the side turned from the sun
+  goes nearly black: BuildGraph's evidence colours there no longer matched their legend, so
+  it kept its sun off. With `"plain"` a face toward the sun and sky shows about its own
+  colour and one turned away a darker tone of it. The Studio counterpart of
+  `flatLighting: "plain"`; `studioLights(style)` is the rule. Daylight still retints either.
+
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells
