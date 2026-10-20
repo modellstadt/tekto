@@ -21,7 +21,8 @@ before 1.0, breaking changes bump the minor version. See
   in the model, say, without touching the layout. `setCallouts(items, { stack: "list", title })`
   lists the labels from the top of their margin in the order given, on a column headed by
   `title`, like a key: they stay put while the model turns, only the leaders move, and a label
-  whose things are all hidden stays listed without a leader. With `labels: false` it draws no
+  whose things are all behind others stays listed without a leader; what lies under the column
+  counts as out of sight. With `labels: false` it draws no
   labels and reports, after every frame, where each callout's leaders would end (`onEnds`): for
   an app that lists the labels in a column of its own, outside the view, and draws the leaders
   into it, with the same rule for what the reader can see.

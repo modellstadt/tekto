@@ -32,7 +32,7 @@ export class Marks {
   private callouts: Callouts | null = null;
   /** Per callout, per leader, where to look for it (its centre, then points toward its box's
    *  corners) and what is its own, which cannot hide it. One leader unless `leaders: "each"`. */
-  private calloutAnchors = new Map<string, { samples: THREE.Vector3[]; own: readonly string[] }[]>();
+  private calloutAnchors = new Map<string, { samples: THREE.Vector3[]; own: Set<THREE.Object3D> }[]>();
   /** Per callout seen, the point each seen leader goes to. Redone only once the camera is still. */
   private calloutVisible = new Map<string, THREE.Vector3[]>();
   /** Something that decides visibility changed since the last answer. */
@@ -46,6 +46,12 @@ export class Marks {
     queue: string[]; skipped: string[]; left: number; right: number; capacity: number;
     /** what the rays test, gathered once per check rather than per slice */
     targets: THREE.Mesh[];
+    /** the callout part-way through, a leader at a time: one with a thousand leaders is
+     *  spread over frames as a thousand callouts would be */
+    current: { id: string; side: "left" | "right"; group: number; seen: THREE.Vector3[] } | null;
+    /** in a list, how far each margin's column reaches into the view: what lies under it
+     *  cannot be seen, so it gets no leader */
+    bands: { left: number; right: number };
   } | null = null;
   /** Callouts the last check never looked at, because the margins were full. */
   private calloutUnchecked = 0;
@@ -354,11 +360,13 @@ export class Marks {
     this.calloutAnchors.clear();
     const box = new THREE.Box3();
     for (const id of this.callouts?.ids ?? []) {
-      const groups: { samples: THREE.Vector3[]; own: readonly string[] }[] = [];
-      for (const own of this.callouts!.groupsOf(id)) {
+      const groups: { samples: THREE.Vector3[]; own: Set<THREE.Object3D> }[] = [];
+      for (const objects of this.callouts!.groupsOf(id)) {
+        // resolved once here, not per check: a key is found by a scan of the scene
+        const own = this.core.resolve(objects);
         box.makeEmpty();
-        for (const t of this.core.resolve(own)) if (t.visible) box.expandByObject(t);
-        if (!box.isEmpty()) groups.push({ samples: calloutSamples(box), own });
+        for (const t of own) if (t.visible) box.expandByObject(t);
+        if (!box.isEmpty()) groups.push({ samples: calloutSamples(box), own: new Set(own) });
       }
       if (groups.length) this.calloutAnchors.set(id, groups);
     }
@@ -386,21 +394,27 @@ export class Marks {
     const ortho = (cam as THREE.OrthographicCamera).isOrthographicCamera;
     const ndc = new THREE.Vector3(), dir = new THREE.Vector3();
     const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
-    while (pending.queue.length && !full() && performance.now() < deadline) {
-      const id = pending.queue.pop()!;
-      const groups = this.calloutAnchors.get(id);
-      if (!groups) continue;
-      // its own margin, or the one nearer the middle of what it points at
-      let x = 0;
-      for (const g of groups) x += ndc.copy(g.samples[0]).project(cam).x;
-      const side = this.callouts!.sideOf(id) ?? (x / groups.length < 0 ? "left" : "right");
-      if (pending[side] >= pending.capacity) { pending.skipped.push(id); continue; }
-      const seen: THREE.Vector3[] = [];
-      for (const g of groups) {
-        const own = new Set(this.core.resolve(g.own));
+    const w = this.core.container.clientWidth || 1;
+    while ((pending.current || pending.queue.length) && !full() && performance.now() < deadline) {
+      if (!pending.current) {
+        const id = pending.queue.pop()!;
+        const groups = this.calloutAnchors.get(id);
+        if (!groups) continue;
+        const side = this.calloutSide(id, cam);
+        if (pending[side] >= pending.capacity) { pending.skipped.push(id); continue; }
+        pending.current = { id, side, group: 0, seen: [] };
+      }
+      const c = pending.current;
+      const groups = this.calloutAnchors.get(c.id) ?? [];
+      // a leader at a time, against the frame's budget
+      while (c.group < groups.length && performance.now() < deadline) {
+        const g = groups[c.group++];
         for (const point of g.samples) {
           ndc.copy(point).project(cam);
           if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;   // off screen: no ray
+          // under a list's column, or on the side a section removed: not seen
+          const px = ((ndc.x + 1) / 2) * w;
+          if (px < pending.bands.left || px > w - pending.bands.right || this.cutAway(point)) continue;
           if (ortho) {
             ray.set(point.clone().addScaledVector(view, -1e4), view);              // parallel rays: along the view
             ray.far = 1e4;
@@ -413,20 +427,38 @@ export class Marks {
           const hit = ray.intersectObjects(pending.targets, false)
             .find(h => (h.object as THREE.Mesh).isMesh && occludes((h.object as THREE.Mesh).material) && !this.cutAway(h.point));
           let owner: THREE.Object3D | null = hit?.object ?? null;
-          while (owner && !own.has(owner)) owner = owner.parent;
-          if (!hit || owner || hit.distance >= ray.far - 1e-3) { seen.push(point); break; }
+          while (owner && !g.own.has(owner)) owner = owner.parent;
+          if (!hit || owner || hit.distance >= ray.far - 1e-3) { c.seen.push(point); break; }
         }
       }
+      if (c.group < groups.length) break;                  // out of budget: the next slice goes on
       // In place, so labels appear as they are found and a recheck never blanks the margins.
-      if (seen.length) { this.calloutVisible.set(id, seen); pending[side]++; } else this.calloutVisible.delete(id);
+      if (c.seen.length) { this.calloutVisible.set(c.id, c.seen); pending[c.side]++; }
+      else this.calloutVisible.delete(c.id);
+      pending.current = null;
     }
-    if (!pending.queue.length || full()) {
+    if ((!pending.queue.length && !pending.current) || full()) {
       // What was never looked at shows no label, and is counted as "up to".
-      const unchecked = [...pending.queue, ...pending.skipped];
+      const unchecked = [...pending.queue, ...pending.skipped, ...(pending.current ? [pending.current.id] : [])];
       for (const id of unchecked) this.calloutVisible.delete(id);
       this.calloutUnchecked = unchecked.length;
       this.calloutPending = null;
     }
+  }
+
+  /**
+   * The margin a callout goes to: its own, or the one nearer the middle of what it points
+   * at, measured from where the things are rather than where they were last seen, so a
+   * listed label does not change columns as what is in sight of it changes.
+   */
+  private calloutSide(id: string, cam: THREE.Camera): "left" | "right" {
+    const forced = this.callouts?.sideOf(id);
+    if (forced) return forced;
+    const groups = this.calloutAnchors.get(id) ?? [];
+    const v = new THREE.Vector3();
+    let x = 0;
+    for (const g of groups) x += v.copy(g.samples[0]).project(cam).x;
+    return groups.length && x / groups.length >= 0 ? "right" : "left";
   }
 
 
@@ -452,7 +484,13 @@ export class Marks {
     }
     if (this.calloutCheckDirty && !this.calloutPending) {
       if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
+        // in a list the columns cover the view at their margins: nothing under them is seen
+        const list = this.calloutHandlers.stack === "list" && this.calloutHandlers.labels !== false;
+        const sides = new Set([...this.calloutAnchors.keys()].map((id) => this.calloutSide(id, cam)));
+        const band = labelWidthFor(w) + 16;
         this.calloutPending = {
+          current: null,
+          bands: { left: list && sides.has("left") ? band : 0, right: list && sides.has("right") ? band : 0 },
           queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0,
           // with no labels there are no margins to fill: every callout is looked at
           capacity: this.calloutHandlers.labels === false ? Infinity : marginCapacity(h - this.calloutTop()),
@@ -500,10 +538,11 @@ export class Marks {
         ends.push({ x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
       }
       if (!ends.length && !list) continue;
-      // a label with several leaders sits level with the middle of their ends
+      // a label with several leaders sits level with the middle of their ends; a listed one
+      // keeps to the column its things are on, seen or not
       const x = ends.length ? ends.reduce((sum, e) => sum + e.x, 0) / ends.length : 0;
       const y = ends.length ? ends.reduce((sum, e) => sum + e.y, 0) / ends.length : 0;
-      anchors.push({ id, x, y, side: this.callouts.sideOf(id),
+      anchors.push({ id, x, y, side: list ? this.calloutSide(id, cam) : this.callouts.sideOf(id),
                      ...(this.callouts.fans(id) || list ? { ends } : {}) });
     }
     const labelWidth = labelWidthFor(w);
