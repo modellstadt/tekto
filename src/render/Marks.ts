@@ -311,13 +311,24 @@ export class Marks {
     return !!this.sectionClip && this.sectionClip.distanceToPoint(p) < -1e-9;
   }
 
+  private calloutHighlight: { ids: readonly string[] | null; colour?: string } = { ids: null };
+
+  /** Show these callouts, and their leaders, as the ones meant; null clears. */
+  setCalloutHighlight(ids: readonly string[] | null, colour?: string): void {
+    this.calloutHighlight = { ids, colour };
+    this.callouts?.setHighlight(ids, colour);
+  }
+
   setCallouts(items: CalloutItem[], handlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {}): void {
     this.calloutHandlers = handlers;
     if (!items.length && !this.callouts) return;
-    this.callouts ??= new Callouts(this.core.container, {
-      onPick: (id) => this.calloutHandlers.onPick?.(id),
-      onHover: (id) => this.calloutHandlers.onHover?.(id),
-    });
+    if (!this.callouts) {
+      this.callouts = new Callouts(this.core.container, {
+        onPick: (id) => this.calloutHandlers.onPick?.(id),
+        onHover: (id) => this.calloutHandlers.onHover?.(id),
+      });
+      this.callouts.setHighlight(this.calloutHighlight.ids, this.calloutHighlight.colour);
+    }
     this.callouts.setVisible(this.calloutsShown);
     this.callouts.setItems(items);
     // Keep the last answer for what is still there, so a relabel doesn't blank the margins

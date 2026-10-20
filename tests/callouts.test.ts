@@ -143,6 +143,17 @@ describe("callout leaders", () => {
     expect(leaderPath({ ...p, side: "right", x: 642 }, 150)).toBe("M642,109 L632,109 L300,250");
   });
 
+  it("curves each leader out of the label level and into its end level", () => {
+    const ends = [{ x: 300, y: 50 }, { x: 500, y: 400 }];
+    const p = { id: "p", side: "left" as const, x: 8, y: 100, anchorX: 400, anchorY: 225, ends };
+    // from the label's edge, control points half way across at either height
+    expect(leaderPath(p, 150, "curve"))
+      .toBe("M158,109 C229,109 229,50 300,50 M158,109 C329,109 329,400 500,400");
+    expect(leaderPath({ ...p, ends: undefined }, 150, "curve")).toBe("M158,109 C279,109 279,225 400,225");
+    // the default stays the elbow
+    expect(leaderPath({ ...p, ends: undefined }, 150)).toBe("M158,109 L168,109 L400,225");
+  });
+
   it("fans a label's leaders out from one knee, one line to each end", () => {
     const ends = [{ x: 300, y: 50 }, { x: 320, y: 250 }, { x: 500, y: 400 }];
     const d = leaderPath({ id: "p", side: "left", x: 8, y: 100, anchorX: 373, anchorY: 233, ends }, 150);

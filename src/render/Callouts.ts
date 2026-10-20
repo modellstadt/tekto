@@ -44,6 +44,10 @@ export interface CalloutItem {
   /** The margin this label keeps to, rather than the one nearer its anchor: a column of
    *  products down the left reads as a key. */
   side?: "left" | "right";
+  /** The leader's shape: an elbow (the default), a level run and then a straight line, as a
+   *  drawing does; or a curve that leaves the label level and arrives level, as a diagram's
+   *  edges do, which stays readable where many leaders leave one label. */
+  leaderShape?: "elbow" | "curve";
 }
 
 /** One label, placed. Pixel coordinates within the host. */
@@ -64,16 +68,23 @@ export function calloutGroups(item: Pick<CalloutItem, "objects" | "leaders">): (
 }
 
 /**
- * A placed label's leader, as SVG path data: out of the label's side, a short level run to a
- * knee, then a straight line to each point it goes to. An elbow rather than a straight line,
- * so it reads as a leader on a drawing instead of as a line someone forgot to delete; and one
- * knee for all of a label's leaders, so they read as one label's.
+ * A placed label's leader, as SVG path data. An elbow: out of the label's side, a short level
+ * run to a knee, then a straight line to each point it goes to, so it reads as a leader on a
+ * drawing instead of as a line someone forgot to delete, and one knee for all of a label's
+ * leaders, so they read as one label's. Or a curve to each point, level where it leaves the
+ * label and level where it arrives.
  */
-export function leaderPath(p: Placement, labelWidth: number): string {
+export function leaderPath(p: Placement, labelWidth: number, shape: "elbow" | "curve" = "elbow"): string {
   const from = p.side === "left" ? p.x + labelWidth : p.x;
   const knee = p.side === "left" ? from + 10 : from - 10;
   const mid = p.y + 9;
   const ends = p.ends ?? [{ x: p.anchorX, y: p.anchorY }];
+  if (shape === "curve") {
+    return ends.map((e) => {
+      const c = (from + e.x) / 2;
+      return `M${from},${mid} C${c},${mid} ${c},${e.y} ${e.x},${e.y}`;
+    }).join(" ");
+  }
   const run = `M${from},${mid} L${knee},${mid}`;
   return ends.length === 1 ? `${run} L${ends[0].x},${ends[0].y}`
     : run + ends.map((e) => ` M${knee},${mid} L${e.x},${e.y}`).join("");
@@ -207,6 +218,9 @@ export class Callouts {
   private items = new Map<string, CalloutItem>();
   private overflow: HTMLDivElement | null = null;
   private labelWidth: number;
+  /** Labels shown as the ones meant, and in what colour (`setHighlight`). */
+  private highlighted = new Set<string>();
+  private highlightColour = "#1f7ae0";
 
   constructor(host: HTMLElement, private opts: {
     labelWidth?: number;
@@ -238,6 +252,25 @@ export class Callouts {
       }
     }
     this.items = next;
+  }
+
+  /**
+   * Show these labels, and their leaders, as the ones meant: what the pointer is over in the
+   * model, say, so a reader sees which label names it; null clears. Only the look changes.
+   */
+  setHighlight(ids: Iterable<string> | null, colour?: string) {
+    this.highlighted = new Set(ids ?? []);
+    if (colour) this.highlightColour = colour;
+    for (const [id, el] of this.labels) this.paint(id, el);
+  }
+
+  private paint(id: string, el: { box: HTMLButtonElement; leader: SVGPathElement }) {
+    const on = this.highlighted.has(id);
+    el.leader.setAttribute("stroke", on ? this.highlightColour : "#8a949e");
+    el.leader.setAttribute("stroke-width", on ? "1.75" : "1");
+    el.box.style.boxShadow = on ? `0 0 0 2px ${this.highlightColour}` : "0 1px 2px rgba(20,30,40,.12)";
+    // drawn last, so a lit leader is not crossed out by the others
+    if (on) this.svg.append(el.leader);
   }
 
   /** Track the host's width, so labels stay a share of it rather than a
@@ -290,7 +323,7 @@ export class Callouts {
       el.box.style.display = "block";
       el.box.style.left = `${p.x}px`;
       el.box.style.top = `${p.y}px`;
-      el.leader.setAttribute("d", leaderPath(p, this.labelWidth));
+      el.leader.setAttribute("d", leaderPath(p, this.labelWidth, item.leaderShape));
     }
     this.showOverflow(unplaced, upTo);
   }
@@ -349,6 +382,7 @@ export class Callouts {
     this.root.append(box);
     const el = { box, leader };
     this.labels.set(id, el);
+    this.paint(id, el);
     return el;
   }
 

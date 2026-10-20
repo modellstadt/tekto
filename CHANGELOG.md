@@ -15,7 +15,10 @@ before 1.0, breaking changes bump the minor version. See
   label to one margin whichever half its anchors are in, so a column of products down the left
   reads as a key. The default is unchanged: one leader to the centre of everything in
   `objects`, in the nearer margin. Leaders are SVG paths now (`leaderPath`), a fan sharing one
-  knee.
+  knee, or with `leaderShape: "curve"` a curve to each end, level where it leaves the label and
+  level where it arrives, as a diagram's edges are drawn. `setCalloutHighlight(ids, colour)`
+  shows labels and their leaders as the ones meant, the one naming what the pointer is over
+  in the model, say, without touching the layout.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells

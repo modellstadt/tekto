@@ -1031,6 +1031,9 @@ export class ThreeRenderer {
    * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
    */
   setCallouts(items: CalloutItem[], handlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {}): void { this.marks.setCallouts(items, handlers); }
+  /** Show these callouts (by id), and their leaders, as the ones meant, in `colour`: the label
+   *  naming what the pointer is over, say. Null clears. Only the look changes. */
+  setCalloutHighlight(ids: readonly string[] | null, colour?: string): void { this.marks.setCalloutHighlight(ids, colour); }
 
   // ── Crease lines ──
 
