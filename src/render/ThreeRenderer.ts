@@ -1029,7 +1029,9 @@ export class ThreeRenderer {
    * behind other things is left out; what doesn't fit is counted, not dropped silently.
    * `objects` are scene ids or record keys (a key follows its record through rebuilds).
    * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels;
-   * `stack: "list"` lists them from the top on a column under `title`, like a key.
+   * `stack: "list"` lists them from the top on a column under `title`, like a key;
+   * `labels: false` draws none and reports where their leaders would end (`onEnds`), for an
+   * app that lists them outside the view.
    */
   setCallouts(items: CalloutItem[], options: CalloutOptions = {}): void { this.marks.setCallouts(items, options); }
   /** Show these callouts (by id), and their leaders, as the ones meant, in `colour`: the label

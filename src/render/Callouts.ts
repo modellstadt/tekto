@@ -65,6 +65,15 @@ export interface CalloutOptions {
   stack?: "anchors" | "list";
   /** the list's heading, with `stack: "list"` */
   title?: string;
+  /**
+   * `false`: draw no labels, and report instead where each callout's leaders would end
+   * (`onEnds`), for an app that lists the labels itself, outside the view, and draws its own
+   * leaders into it. The visibility rule is the same: only the things the reader can see.
+   */
+  labels?: boolean;
+  /** Each callout's leader ends, in pixels within the view, after every frame drawn: only the
+   *  entries seen, none for a callout with nothing in sight. With `labels: false`. */
+  onEnds?: (ends: { id: string; ends: { x: number; y: number }[] }[]) => void;
 }
 
 /** The height a list's title takes at the top of its column, in CSS pixels. */

@@ -454,7 +454,9 @@ export class Marks {
       if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
         this.calloutPending = {
           queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0,
-          capacity: marginCapacity(h - this.calloutTop()), targets: rayTargets(this.core.objectMap.values()),
+          // with no labels there are no margins to fill: every callout is looked at
+          capacity: this.calloutHandlers.labels === false ? Infinity : marginCapacity(h - this.calloutTop()),
+          targets: rayTargets(this.core.objectMap.values()),
         };
         this.calloutCheckDirty = false;                  // cleared as it starts: a change while it runs asks for another
       } else if (!this.calloutRecheck) {
@@ -470,6 +472,22 @@ export class Marks {
     const v = new THREE.Vector3();
     const anchors: { id: string; x: number; y: number; side?: "left" | "right"; ends?: { x: number; y: number }[] }[] = [];
     // In the caller's order, which is priority.
+    // no labels: say where the leaders would end, and draw nothing
+    if (this.calloutHandlers.labels === false) {
+      const out: { id: string; ends: { x: number; y: number }[] }[] = [];
+      for (const id of this.calloutAnchors.keys()) {
+        const ends: { x: number; y: number }[] = [];
+        for (const point of this.calloutVisible.get(id) ?? []) {
+          v.copy(point).project(cam);
+          if (v.z > 1) continue;
+          ends.push({ x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+        }
+        out.push({ id, ends });
+      }
+      this.callouts.update([], 0);
+      this.calloutHandlers.onEnds?.(out);
+      return;
+    }
     // a list keeps a label whose things are all out of sight, without a leader
     const list = this.calloutHandlers.stack === "list";
     for (const id of this.calloutAnchors.keys()) {
