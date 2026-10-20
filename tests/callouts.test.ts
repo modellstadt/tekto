@@ -128,6 +128,33 @@ describe("callout layout", () => {
   });
 });
 
+describe("callouts as a list", () => {
+  const LIST = { ...BOX, stack: "list" as const, top: 24 };
+
+  it("stacks labels from the top in the order given, wherever their anchors are", () => {
+    // a key: it stays put while the model turns, and only the leaders move
+    const { placed: out } = layoutLabels([
+      { id: "walls", x: 100, y: 500, side: "left", ends: [] },
+      { id: "floors", x: 100, y: 50, side: "left", ends: [] },
+      { id: "windows", x: 100, y: 300, side: "left", ends: [] },
+    ], LIST);
+    expect(out.map((p) => p.id)).toEqual(["walls", "floors", "windows"]);
+    expect(out.map((p) => p.y)).toEqual([24 + 8, 24 + 8 + 30, 24 + 8 + 60]);
+  });
+
+  it("keeps room for the title, and says what it had no room for", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, x: 100, y: 0, side: "left" as const }));
+    const { placed, dropped } = layoutLabels(many, LIST);
+    expect(placed).toHaveLength(marginCapacity(BOX.height - 24, BOX));
+    expect(dropped).toHaveLength(30 - placed.length);
+    expect(dropped[0]).toBe(`p${placed.length}`);
+  });
+
+  it("draws no leader for a listed label whose things are all out of sight", () => {
+    expect(leaderPath({ id: "p", side: "left", x: 8, y: 40, anchorX: 0, anchorY: 0, ends: [] }, 150, "curve")).toBe("");
+  });
+});
+
 describe("callout leaders", () => {
   it("points at everything together by default, and at each entry when asked", () => {
     const objects = ["walls/a", "walls/b", "walls/c"];

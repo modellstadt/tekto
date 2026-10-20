@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import type { SectionRequest } from "../scene/Scene";
 import { sectionPlane, sectionAppearance, calloutSamples, occludes, shown, rayTargets, cameraKey } from "./viewRules";
-import { Callouts, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem } from "./Callouts";
+import { Callouts, LIST_TITLE_HEIGHT, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem, type CalloutOptions } from "./Callouts";
 import type { RendererCore } from "./RendererCore";
 
 /** How long the camera must be still before callout visibility is redone (ms). */
@@ -51,7 +51,12 @@ export class Marks {
   private calloutUnchecked = 0;
   private calloutRecheck = 0;
   calloutsDirty = false;
-  private calloutHandlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {};
+  private calloutHandlers: CalloutOptions = {};
+
+  /** Room at the top of a margin for a list's title. */
+  private calloutTop(): number {
+    return this.calloutHandlers.stack === "list" && this.calloutHandlers.title ? LIST_TITLE_HEIGHT : 0;
+  }
 
   // ── Selection as outlines ──
   private selectionStyle: "tint" | "outline" = "tint";
@@ -319,7 +324,7 @@ export class Marks {
     this.callouts?.setHighlight(ids, colour);
   }
 
-  setCallouts(items: CalloutItem[], handlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {}): void {
+  setCallouts(items: CalloutItem[], handlers: CalloutOptions = {}): void {
     this.calloutHandlers = handlers;
     if (!items.length && !this.callouts) return;
     if (!this.callouts) {
@@ -329,6 +334,7 @@ export class Marks {
       });
       this.callouts.setHighlight(this.calloutHighlight.ids, this.calloutHighlight.colour);
     }
+    this.callouts.setList(handlers.stack === "list", handlers.title);
     this.callouts.setVisible(this.calloutsShown);
     this.callouts.setItems(items);
     // Keep the last answer for what is still there, so a relabel doesn't blank the margins
@@ -448,7 +454,7 @@ export class Marks {
       if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
         this.calloutPending = {
           queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0,
-          capacity: marginCapacity(h), targets: rayTargets(this.core.objectMap.values()),
+          capacity: marginCapacity(h - this.calloutTop()), targets: rayTargets(this.core.objectMap.values()),
         };
         this.calloutCheckDirty = false;                  // cleared as it starts: a change while it runs asks for another
       } else if (!this.calloutRecheck) {
@@ -464,25 +470,31 @@ export class Marks {
     const v = new THREE.Vector3();
     const anchors: { id: string; x: number; y: number; side?: "left" | "right"; ends?: { x: number; y: number }[] }[] = [];
     // In the caller's order, which is priority.
+    // a list keeps a label whose things are all out of sight, without a leader
+    const list = this.calloutHandlers.stack === "list";
     for (const id of this.calloutAnchors.keys()) {
       const seen = this.calloutVisible.get(id);
-      if (!seen) continue;
+      if (!seen && !list) continue;
       const ends: { x: number; y: number }[] = [];
-      for (const point of seen) {
+      for (const point of seen ?? []) {
         v.copy(point).project(cam);
         if (v.z > 1) continue;
         ends.push({ x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
       }
-      if (!ends.length) continue;
+      if (!ends.length && !list) continue;
       // a label with several leaders sits level with the middle of their ends
-      const x = ends.reduce((sum, e) => sum + e.x, 0) / ends.length;
-      const y = ends.reduce((sum, e) => sum + e.y, 0) / ends.length;
-      anchors.push({ id, x, y, side: this.callouts.sideOf(id), ...(this.callouts.fans(id) ? { ends } : {}) });
+      const x = ends.length ? ends.reduce((sum, e) => sum + e.x, 0) / ends.length : 0;
+      const y = ends.length ? ends.reduce((sum, e) => sum + e.y, 0) / ends.length : 0;
+      anchors.push({ id, x, y, side: this.callouts.sideOf(id),
+                     ...(this.callouts.fans(id) || list ? { ends } : {}) });
     }
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);
-    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length + this.calloutUnchecked, this.calloutUnchecked > 0);
+    const { placed, dropped } = layoutLabels(anchors,
+      { width: w, height: h, labelWidth, stack: list ? "list" : "anchors", top: this.calloutTop() });
+    // a list lays out every label it has room for, looked at or not
+    this.callouts.update(placed, list ? dropped.length : dropped.length + this.calloutUnchecked,
+                         !list && this.calloutUnchecked > 0);
   }
 
   dispose(): void {

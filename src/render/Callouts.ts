@@ -50,6 +50,26 @@ export interface CalloutItem {
   leaderShape?: "elbow" | "curve";
 }
 
+/**
+ * How a set of callouts is laid out, and who hears about clicks and hovers on the labels.
+ *
+ * `stack: "anchors"` (the default) sets each label level with what it points at, pushed
+ * clear of its neighbours: the labels move with the model. `stack: "list"` stacks them from
+ * the top of their margin in the order given, on a column of their own headed by `title`,
+ * like a key: they stay put while the model turns and only the leaders move, and a label
+ * whose things are all hidden behind others stays in the list, without a leader.
+ */
+export interface CalloutOptions {
+  onPick?: (id: string) => void;
+  onHover?: (id: string | null) => void;
+  stack?: "anchors" | "list";
+  /** the list's heading, with `stack: "list"` */
+  title?: string;
+}
+
+/** The height a list's title takes at the top of its column, in CSS pixels. */
+export const LIST_TITLE_HEIGHT = 24;
+
 /** One label, placed. Pixel coordinates within the host. */
 export interface Placement {
   id: string;
@@ -79,6 +99,8 @@ export function leaderPath(p: Placement, labelWidth: number, shape: "elbow" | "c
   const knee = p.side === "left" ? from + 10 : from - 10;
   const mid = p.y + 9;
   const ends = p.ends ?? [{ x: p.anchorX, y: p.anchorY }];
+  // a listed label whose things are all out of sight points at nothing
+  if (!ends.length) return "";
   if (shape === "curve") {
     return ends.map((e) => {
       const c = (from + e.x) / 2;
@@ -112,6 +134,10 @@ export interface LayoutOptions {
   labelWidth?: number;
   /** clearance from the host's edges */
   inset?: number;
+  /** level with the anchors (the default), or listed from the top in the order given */
+  stack?: "anchors" | "list";
+  /** room kept at the top of each margin, for a list's title */
+  top?: number;
 }
 
 /** What a layout could place, and what it could not. */
@@ -165,33 +191,40 @@ export function layoutLabels(
   const rowHeight = opts.rowHeight ?? 30;
   const labelWidth = opts.labelWidth ?? labelWidthFor(opts.width);
   const inset = opts.inset ?? 8;
-  const capacity = marginCapacity(opts.height, { rowHeight, inset });
+  const top = opts.top ?? 0;
+  const listed = opts.stack === "list";
+  const capacity = marginCapacity(opts.height - top, { rowHeight, inset });
   const placed: Placement[] = [];
   const dropped: string[] = [];
 
   for (const side of ["left", "right"] as const) {
     const mine = anchors.filter((a) => (a.side ?? (a.x < opts.width / 2 ? "left" : "right")) === side);
-    // the caller's order decides who keeps a place; anchor order decides where
-    const keep = mine.slice(0, capacity).sort((a, b) => a.y - b.y);
+    // the caller's order decides who keeps a place; anchor order decides where,
+    // except in a list, where the caller's order is the order
+    const keep = listed ? mine.slice(0, capacity) : mine.slice(0, capacity).sort((a, b) => a.y - b.y);
     for (const a of mine.slice(capacity)) dropped.push(a.id);
     if (!keep.length) continue;
 
-    // greedy downward pass: take the wanted position, or just below the last
     const ys: number[] = [];
-    let previous = -Infinity;
-    for (const a of keep) {
-      const y = Math.max(a.y, previous + rowHeight, inset);
-      ys.push(y);
-      previous = y;
-    }
-    // if that ran off the bottom, lift the column by exactly the overshoot and
-    // let the top of it be clamped in turn. Within capacity this always fits.
-    const overshoot = ys[ys.length - 1] + rowHeight - (opts.height - inset);
-    if (overshoot > 0) {
-      let floor = inset;
-      for (let i = 0; i < ys.length; i++) {
-        ys[i] = Math.max(ys[i] - overshoot, floor);
-        floor = ys[i] + rowHeight;
+    if (listed) {
+      keep.forEach((_, i) => ys.push(top + inset + i * rowHeight));
+    } else {
+      // greedy downward pass: take the wanted position, or just below the last
+      let previous = -Infinity;
+      for (const a of keep) {
+        const y = Math.max(a.y, previous + rowHeight, top + inset);
+        ys.push(y);
+        previous = y;
+      }
+      // if that ran off the bottom, lift the column by exactly the overshoot and
+      // let the top of it be clamped in turn. Within capacity this always fits.
+      const overshoot = ys[ys.length - 1] + rowHeight - (opts.height - inset);
+      if (overshoot > 0) {
+        let floor = top + inset;
+        for (let i = 0; i < ys.length; i++) {
+          ys[i] = Math.max(ys[i] - overshoot, floor);
+          floor = ys[i] + rowHeight;
+        }
       }
     }
     keep.forEach((a, i) => placed.push({
@@ -218,6 +251,9 @@ export class Callouts {
   private items = new Map<string, CalloutItem>();
   private overflow: HTMLDivElement | null = null;
   private labelWidth: number;
+  /** A list's column, per margin, and its title (`setList`). */
+  private columns = new Map<"left" | "right", HTMLDivElement>();
+  private list: { on: boolean; title?: string } = { on: false };
   /** Labels shown as the ones meant, and in what colour (`setHighlight`). */
   private highlighted = new Set<string>();
   private highlightColour = "#1f7ae0";
@@ -252,6 +288,32 @@ export class Callouts {
       }
     }
     this.items = next;
+  }
+
+  /** Lay the labels out as a list, on a column of their own under `title`, or not. */
+  setList(on: boolean, title?: string) {
+    this.list = { on, title };
+    if (!on) { for (const c of this.columns.values()) c.remove(); this.columns.clear(); }
+  }
+
+  /** The column behind a margin's list: full height, as wide as a label and its clearance. */
+  private column(side: "left" | "right", shown: boolean) {
+    let c = this.columns.get(side);
+    if (!shown) { if (c) c.style.display = "none"; return; }
+    if (!c) {
+      c = document.createElement("div");
+      c.style.cssText = `position:absolute;top:0;bottom:0;${side}:0;pointer-events:none;
+        box-sizing:border-box;background:rgba(248,250,252,.92);
+        border-${side === "left" ? "right" : "left"}:1px solid rgba(90,100,110,.18);
+        font:600 9.5px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+        letter-spacing:.08em;text-transform:uppercase;color:#8a949e;padding:9px 8px 0`;
+      // under the leaders, so they leave it visibly
+      this.root.insertBefore(c, this.svg);
+      this.columns.set(side, c);
+    }
+    c.style.display = "block";
+    c.style.width = `${this.labelWidth + 16}px`;
+    c.textContent = this.list.title ?? "";
   }
 
   /**
@@ -315,6 +377,9 @@ export class Callouts {
       // display, not the hidden attribute: the box's own display:block would override that,
       // and a label whose element went out of sight stayed on screen without its leader.
       if (!placed.has(id)) { el.box.style.display = "none"; el.leader.setAttribute("d", ""); }
+    }
+    if (this.list.on) {
+      for (const side of ["left", "right"] as const) this.column(side, placements.some((p) => p.side === side));
     }
     for (const p of placements) {
       const item = this.items.get(p.id);

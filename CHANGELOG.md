@@ -18,7 +18,10 @@ before 1.0, breaking changes bump the minor version. See
   knee, or with `leaderShape: "curve"` a curve to each end, level where it leaves the label and
   level where it arrives, as a diagram's edges are drawn. `setCalloutHighlight(ids, colour)`
   shows labels and their leaders as the ones meant, the one naming what the pointer is over
-  in the model, say, without touching the layout.
+  in the model, say, without touching the layout. `setCallouts(items, { stack: "list", title })`
+  lists the labels from the top of their margin in the order given, on a column headed by
+  `title`, like a key: they stay put while the model turns, only the leaders move, and a label
+  whose things are all hidden stays listed without a leader.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells
