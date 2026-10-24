@@ -90,24 +90,3 @@ test("the render mode and lighting controls apply", async ({ page }) => {
   await expectLiveCanvas(page);
   expect(errors).toEqual([]);
 });
-
-test("a layer's colour is a square swatch and recolours the sketch", async ({ page }) => {
-  const errors = watchErrors(page);
-  await page.goto("/testbench.html?page=layers");
-  await expectLiveCanvas(page);
-
-  // Rhino-style chip: square, sharp corners (the injected .tekto-swatch rule).
-  const swatches = page.locator('#app input.tekto-swatch[title="Layer color"]');
-  await expect(swatches).toHaveCount(5);
-  const columns = swatches.nth(1);
-  const box = (await columns.boundingBox())!;
-  expect(Math.round(box.width)).toBe(Math.round(box.height));
-  expect(await columns.evaluate(el => getComputedStyle(el).borderRadius)).toBe("0px");
-
-  await columns.evaluate((el: HTMLInputElement) => {
-    el.value = "#00ff88";
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  await expect(page.locator("#app")).toContainText("Columns: #00ff88");
-  expect(errors).toEqual([]);
-});

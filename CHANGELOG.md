@@ -6,10 +6,26 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
-- **Layer colours are square swatches.** `LayerPanel` (and so `lab.layerTree`) draws each
-  layer's colour as a flat 12 px chip with a thin border, like Rhino's layer panel, instead of
-  the browser's rounded picker; clicking it still opens the system colour chooser. A new
-  playground page, *Layers*, shows a nested tree driving visibility and colour.
+- **A Rhino-style layer panel.** `LayerPanel` (and so `lab.layerTree`) shows per layer, after
+  its name, an active-layer check, an on/off bulb, a padlock and a square colour swatch (a flat
+  12 px chip instead of the browser's rounded picker), like Rhino's layer panel.
+  - **Active layer** (Rhino: current), the one new objects go on: `lab.layerTree(…).active` and
+    `.setActive(id)`, `opts.active` for the initial one (default: the first layer that is on).
+    It and its parents are always on and unlocked: making a layer active turns them on and
+    unlocks them (`activateLayer`), and their bulb and lock are disabled.
+  - **Lock**: `LayerState.locked`, `LayerNode.defaultLocked`, `computeEffectiveLock` (a locked
+    parent masks its children, like visibility). In a sketch, objects tagged `.layer(id)` or drawn
+    in `lab.viewLayer(id, …)` on a locked layer are drawn but can't be picked or hovered — the
+    click goes through to what is behind — and a selection on one is dropped.
+    `ThreeRenderer.setPickFilter` is the hook underneath, for apps with their own selection.
+  - `opts.columns` hides the active, lock or colour column.
+  - `lab.layerTree(…).value` now holds every layer's state from the start (`layerDefaults`);
+    before, only the layers someone had changed were in it, so a sketch saw no colour for an
+    untouched layer even though the panel showed one. `.set` on an untouched layer no longer
+    loses its colour.
+  - The on/off control is a bulb button (`role="checkbox"`, named `On: <label>`) instead of a
+    checkbox before the name; scripts that clicked `input[type=checkbox]` in the layer panel
+    should use the role instead. A new playground page, *Layers*, shows all of it.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells
