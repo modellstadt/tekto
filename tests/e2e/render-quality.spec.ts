@@ -495,3 +495,13 @@ test("in a strict-2D view the shading bar is the 2D palette: zoom in, zoom out, 
   await expect(bar.getByRole("button", { name: "Ghost" })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("a sketch that reads lab.lightingMode re-runs when the shading bar changes it", async ({ page }) => {
+  await page.goto("/testbench.html?page=mesh-factory");               // logs lab.lightingMode
+  const bar = page.locator("[data-tekto-shading-bar]");
+  await expect(page.locator("#app")).toContainText(/Lighting\s*flat/, { timeout: 15_000 });
+  await bar.getByRole("button", { name: /^Studio/ }).click();
+  await expect(page.locator("#app")).toContainText(/Lighting\s*studio/);
+  await bar.getByRole("button", { name: "Flat lighting" }).click();
+  await expect(page.locator("#app")).toContainText(/Lighting\s*flat/);
+});

@@ -15,6 +15,10 @@ before 1.0, breaking changes bump the minor version. See
   out and zoom to bounds (the selection, or everything); with rotation on again it is the 3D
   bar. New: `renderer.zoomBy(factor)` (animated; closer in perspective, a larger zoom in
   orthographic) and `renderer.orbitRotateEnabled`.
+- **A sketch can follow the view's style.** `lab.renderMode` and `lab.lightingMode` read the
+  render style and the lighting, however they were chosen (the shading bar, a shell, code). A
+  sketch that reads one is re-run when it changes, so its build can follow the style, as the
+  Buchholz stair leaves its line work out when shaded; a sketch that never reads them is not.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells

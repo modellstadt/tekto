@@ -276,6 +276,9 @@ export class SketchInstance {
   // scopes, keyed by layer name. Reset every run — ids don't survive clear().
   private _viewLayerStack: string[] = [];
   private _viewLayerObjects = new Map<string, string[]>();
+  // Which of the view's style settings the last run read (lab.renderMode / lab.lightingMode):
+  // a change to one of them — from the shading bar, a shell or code — re-runs the sketch.
+  private _readsStyle = new Set<"renderMode" | "lightingMode">();
 
   constructor(fn: SketchFn, config: SketchConfig) {
     this.fn = fn;
@@ -293,6 +296,9 @@ export class SketchInstance {
         const name = this._viewLayerStack[this._viewLayerStack.length - 1];
         this._viewLayerObjects.get(name)!.push(e.id);
       }
+      // Set during a run (by the sketch itself), a style change is already part of that run.
+      if (!this._running && ((e.type === "scene:renderMode" && this._readsStyle.has("renderMode"))
+        || (e.type === "scene:lightingMode" && this._readsStyle.has("lightingMode")))) this.runSketch();
     });
 
     // Resolve container
@@ -558,6 +564,7 @@ export class SketchInstance {
 
     // Build the Lab context
     const lab = this.buildLab(usedParams);
+    this._readsStyle.clear();
 
     // Execute. Param declarations during the run must not schedule re-runs.
     this._running = true;
@@ -981,6 +988,8 @@ export class SketchInstance {
       onDisplay(fn) { self._onDisplayFns.push(fn); },
 
       get activeTab() { return self.panel.getActiveTab(); },
+      get renderMode() { self._readsStyle.add("renderMode"); return self.scene.renderMode; },
+      get lightingMode() { self._readsStyle.add("lightingMode"); return self.scene.lightingMode; },
 
       onTabChange(fn) { self._onTabChange = fn; },
 

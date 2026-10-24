@@ -80,6 +80,8 @@ export default function (container: HTMLElement): SketchInstance {
     lab.info("Box, Sphere, Subdivided Sphere, Cylinder, Torus");
     lab.info("HeightGrid, Extrude, Revolve, Loft");
     lab.log("Subdivision levels", subLevels.value);
+    // Reading the lighting re-runs the sketch when the shading bar changes it.
+    lab.log("Lighting", lab.lightingMode);
   }, {
     container,
     title: "MeshFactory",

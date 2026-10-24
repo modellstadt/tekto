@@ -13,7 +13,7 @@ import type { Vec2, Vec3 } from "../core/math/vectors";
 import type { Mesh } from "../core/geometry/mesh/Mesh";
 import type { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import type { Algo } from "../core/algo/algorithms";
-import type { Scene, VisualStyle, FlatMeshData, LightSpec } from "../scene/Scene";
+import type { Scene, VisualStyle, FlatMeshData, LightSpec, RenderMode, LightingMode } from "../scene/Scene";
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 import type { SectionRequest, StandardView } from "../scene/Scene";
 import type { Command } from "../gui/Commands";
@@ -513,6 +513,13 @@ export interface Lab {
 
   /** The panel's currently active tab name ("" when the panel has no tabs). */
   readonly activeTab: string;
+
+  /** The render style the view draws in — chosen in the shading bar, by a host shell or in
+   *  code. A sketch that reads it is re-run when it changes, so a build can follow the style
+   *  (e.g. leave out line work when shaded). */
+  readonly renderMode: RenderMode;
+  /** The lighting, Flat or Studio — as `renderMode`: reading it re-runs the sketch when it changes. */
+  readonly lightingMode: LightingMode;
 
   /**
    * Register a callback for tab switches (per run, like other callbacks).
