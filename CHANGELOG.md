@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Layer colours are square swatches.** `LayerPanel` (and so `lab.layerTree`) draws each
+  layer's colour as a flat 12 px chip with a thin border, like Rhino's layer panel, instead of
+  the browser's rounded picker; clicking it still opens the system colour chooser. A new
+  playground page, *Layers*, shows a nested tree driving visibility and colour.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells

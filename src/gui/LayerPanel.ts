@@ -61,6 +61,24 @@ export function computeEffectiveVisibility(
   return result;
 }
 
+// Square ("Rhino-style") colour swatches — a flat chip with a thin border.
+// The native picker's inner swatch is a pseudo-element that can't be styled
+// inline, so a stylesheet is injected once per document; the border colour
+// flows through a CSS variable set inline on each input.
+const SWATCH_STYLE_ID = "tekto-swatch-style";
+function ensureSwatchStyle(doc: Document): void {
+  if (doc.getElementById(SWATCH_STYLE_ID)) return;
+  const el = doc.createElement("style");
+  el.id = SWATCH_STYLE_ID;
+  el.textContent = `
+    .tekto-swatch{-webkit-appearance:none;appearance:none;width:12px;height:12px;padding:0;margin:0 2px 0 0;border:1px solid var(--tekto-swatch-border,#9ca3af);border-radius:0;background:none;cursor:pointer;flex-shrink:0;outline:none;}
+    .tekto-swatch::-webkit-color-swatch-wrapper{padding:0;}
+    .tekto-swatch::-webkit-color-swatch{border:none;border-radius:0;}
+    .tekto-swatch::-moz-color-swatch{border:none;border-radius:0;}
+  `;
+  doc.head.appendChild(el);
+}
+
 // ─── LayerPanel class ────────────────────────────────────────────
 
 /**
@@ -85,6 +103,7 @@ export class LayerPanel {
   }) {
     this._isDark = opts.isDark ?? true;
     this._onChange = opts.onChange;
+    ensureSwatchStyle(document);
     this.el = document.createElement("div");
     this.el.style.cssText = "overflow-y:auto;max-height:300px;";
     this.update(opts.nodes, opts.value);
@@ -185,15 +204,13 @@ export class LayerPanel {
     `;
     row.appendChild(lbl);
 
-    // Color picker — always shown on every node
+    // Color picker — always shown on every node, as a square swatch
     const cp = document.createElement("input");
     cp.type  = "color";
     cp.value = state.color;
     cp.title = "Layer color";
-    cp.style.cssText = `
-      width:16px;height:13px;border:1px solid ${d ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.15)"};
-      border-radius:2px;padding:0;cursor:pointer;flex-shrink:0;outline:none;background:none;
-    `;
+    cp.className = "tekto-swatch";
+    cp.style.setProperty("--tekto-swatch-border", d ? "#9ca3af" : "#6b7280");
     cp.addEventListener("change", e => {
       e.stopPropagation();
       this._onChange({ [node.id]: { ...state, color: cp.value } });
