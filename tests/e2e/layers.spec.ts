@@ -53,8 +53,8 @@ test("the active layer is always on and unlocked; new objects go on it", async (
   await expect(page.getByRole("checkbox", { name: "On: Structure" })).toBeDisabled();
   await expect(info(page)).toContainText(/Active layer\s*structure/);
 
-  // Making the hidden Guides layer active turns it on.
-  const guidesOn = page.getByRole("checkbox", { name: "On: Guides" });
+  // Making the hidden Guides layer active turns it on (rows carry their layer id).
+  const guidesOn = page.locator('[data-layer="guides"]').getByRole("checkbox", { name: "On: Guides" });
   await expect(guidesOn).toHaveAttribute("aria-checked", "false");
   await page.getByRole("radio", { name: "Active: Guides" }).click();
   await expect(guidesOn).toHaveAttribute("aria-checked", "true");
