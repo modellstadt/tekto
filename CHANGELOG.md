@@ -27,7 +27,8 @@ before 1.0, breaking changes bump the minor version. See
     loses its colour.
   - The on/off control is a bulb button (`role="checkbox"`, named `On: <label>`) instead of a
     checkbox before the name; scripts that clicked `input[type=checkbox]` in the layer panel
-    should use the role instead. A new playground page, *Layers*, shows all of it.
+    should use the role instead. Each row carries its layer id (`data-layer="<id>"`), so a script
+    finds a layer by id rather than by its label. A new playground page, *Layers*, shows all of it.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells

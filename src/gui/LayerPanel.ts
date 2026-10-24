@@ -330,8 +330,9 @@ export class LayerPanel {
     const bulbOn     = d ? "#fbbf24" : "#d97706";
     const checkColor = d ? "#ffffff" : "#16182c";
 
-    // Row
+    // Row — `data-layer` names its node, so an app, a test or an agent finds it by id, not by its label
     const row = document.createElement("div");
+    row.dataset.layer = node.id;
     row.style.cssText = `
       display:flex;align-items:center;gap:5px;
       padding:3px 6px 3px ${6 + depth * 14}px;
