@@ -538,6 +538,9 @@ export interface Lab {
   readonly renderMode: RenderMode;
   /** The lighting, Flat or Studio — as `renderMode`: reading it re-runs the sketch when it changes. */
   readonly lightingMode: LightingMode;
+  /** What zoom to bounds (the shading bar's Frame, with nothing selected) frames: this box instead of
+   *  everything shown — the model without its site, say. Declared per run, like the controls. */
+  frameBounds(min: Vec3, max: Vec3): void;
 
   /**
    * Register a callback for tab switches (per run, like other callbacks).

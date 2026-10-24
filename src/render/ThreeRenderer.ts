@@ -139,6 +139,7 @@ export class ThreeRenderer {
   private gridHelper: THREE.Object3D | null = null;
   private fadingGrid: FadingGrid | null = null;
   private shadingBar: ShadingBar | null = null;
+  private frameBounds: THREE.Box3 | null = null;
   private overlayState: Record<BuiltInOverlay, boolean> = { grid: true, axes: true, wireframe: true, labels: true };
   private overlayExtra = new Map<string, { apply(on: boolean): void; on: boolean }>();
   private ao: AmbientOcclusion;
@@ -507,12 +508,21 @@ export class ThreeRenderer {
     return () => { this.overlayExtra.delete(name); this.shadingBar?.paint(); };
   }
 
-  /** Frame the selection (the highlighted objects), or everything when nothing is selected:
-   *  Blender's Frame Selected / Home. Animated. */
+  /** Frame the selection (the highlighted objects), or everything when nothing is selected —
+   *  or the frame bounds, when set (`setFrameBounds`): Blender's Frame Selected / Home. Animated. */
   frame(): void {
     const sel = this.marks.highlighted.filter((id) => this.objectMap.has(id));
+    if (!sel.length && this.frameBounds) { this.rig.fitBox(this.frameBounds.clone(), { margin: 1.3 }); return; }
     const ids = sel.length ? sel : [...this.objectMap.keys()].filter((id) => this.isObjectShown(id));
     if (ids.length) this.rig.fitTo(ids, sel.length ? {} : { margin: 1.3 });
+  }
+
+  /** What Frame — the shading bar's, its 2D palette's zoom to bounds — frames when nothing is
+   *  selected: this box (world coordinates) instead of everything shown, say the model without
+   *  its site. `null`: everything shown again. */
+  setFrameBounds(bounds: { min: Vec3; max: Vec3 } | null): void {
+    this.frameBounds = bounds && new THREE.Box3(
+      new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z), new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z));
   }
 
   /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named

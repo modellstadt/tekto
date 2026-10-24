@@ -507,3 +507,19 @@ test("a sketch that reads lab.lightingMode re-runs when the shading bar changes 
   await bar.getByRole("button", { name: "Flat lighting" }).click();
   await expect(page.locator("#app")).toContainText(/Lighting\s*flat/);
 });
+
+test("Frame with nothing selected frames the frame bounds, when set, instead of everything", async ({ page }) => {
+  await page.goto("/testbench.html?page=mesh-factory");               // shadingBar: true
+  const bar = page.locator("[data-tekto-shading-bar]");
+  await expect(bar.getByRole("button", { name: /^Frame/ })).toBeVisible({ timeout: 15_000 });
+  const target = () => page.evaluate(() => (window as any).__tekto.owner.renderer.cameraState().target as number[]);
+
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setFrameBounds({ min: { x: 4, y: 0, z: 4 }, max: { x: 6, y: 2, z: 6 } }));
+  await bar.getByRole("button", { name: /^Frame/ }).click();
+  await expect.poll(async () => (await target()).map((v) => Math.round(v * 100) / 100)).toEqual([5, 1, 5]);
+
+  // Cleared: everything shown again, which is not centred there.
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setFrameBounds(null));
+  await bar.getByRole("button", { name: /^Frame/ }).click();
+  await expect.poll(async () => (await target()).map((v) => Math.round(v * 100) / 100)).not.toEqual([5, 1, 5]);
+});

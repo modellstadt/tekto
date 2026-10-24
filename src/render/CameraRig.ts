@@ -263,6 +263,11 @@ export class CameraRig {
   fitTo(objects: readonly string[], opts: { margin?: number; animate?: boolean } = {}): void {
     const box = new THREE.Box3();
     for (const t of this.core.resolve(objects)) box.expandByObject(t);
+    this.fitBox(box, opts);
+  }
+
+  /** Frame a world-space box, as `fitTo` frames objects. */
+  fitBox(box: THREE.Box3, opts: { margin?: number; animate?: boolean } = {}): void {
     if (box.isEmpty()) return;
     const out = this._leaveInside();
     if (out) this._setFov(out.fov);                // framed with the outside lens

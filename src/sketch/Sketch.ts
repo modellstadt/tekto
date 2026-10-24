@@ -596,6 +596,7 @@ export class SketchInstance {
     // Build the Lab context
     const lab = this.buildLab(usedParams);
     this._readsStyle.clear();
+    this.renderer.setFrameBounds(null);   // declared per run (lab.frameBounds)
 
     // Execute. Param declarations during the run must not schedule re-runs.
     this._running = true;
@@ -1042,6 +1043,7 @@ export class SketchInstance {
       get activeTab() { return self.panel.getActiveTab(); },
       get renderMode() { self._readsStyle.add("renderMode"); return self.scene.renderMode; },
       get lightingMode() { self._readsStyle.add("lightingMode"); return self.scene.lightingMode; },
+      frameBounds(min, max) { self.renderer.setFrameBounds({ min, max }); },
 
       onTabChange(fn) { self._onTabChange = fn; },
 
