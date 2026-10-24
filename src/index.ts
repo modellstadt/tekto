@@ -63,13 +63,13 @@ export { Callouts, layoutLabels, labelWidthFor } from "./render/Callouts";
 export type { CalloutItem, Placement, LayoutOptions } from "./render/Callouts";
 
 // GUI: layer panel (consumed by both the sketch API + standalone apps).
-export { LayerPanel, computeEffectiveVisibility } from "./gui/LayerPanel";
-export type { LayerNode, LayerState, LayerMap } from "./gui/LayerPanel";
+export { LayerPanel, computeEffectiveVisibility, computeEffectiveLock, layerDefaults, activateLayer } from "./gui/LayerPanel";
+export type { LayerNode, LayerState, LayerMap, LayerColumns } from "./gui/LayerPanel";
 
 // Sketch API (Level 1 — primary student-facing API)
 export { sketch, SketchInstance } from "./sketch/Sketch";
 export type {
-  Lab, SketchConfig, Reactive,
+  Lab, SketchConfig, Reactive, LayerTree,
   MeshHandle, PointHandle, LineHandle, ShapeHandle,
   SliderOpts, SelectOpts, ShapeMode,
   ExportRegistration, ImportRegistration,

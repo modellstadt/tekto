@@ -20,6 +20,7 @@ export interface PickInfo { shiftKey: boolean; metaKey: boolean; ctrlKey: boolea
 export class Pointer {
   private raycaster = new THREE.Raycaster();
   private pickEnabled = false;
+  private pickFilter: ((id: string) => boolean) | null = null;
   private pickListeners = new Set<(id: string | null, info: PickInfo) => void>();
   private transformControls: TransformControls | null = null;
   private gizmoMode: GizmoMode = "translate";
@@ -300,9 +301,15 @@ export class Pointer {
       if (this.marks.cutAway(h.point) || !shown(h.object)) continue;
       let cur: THREE.Object3D | null = h.object;
       while (cur && !cur.userData.geomId) cur = cur.parent;
-      if (cur?.userData.geomId) return cur.userData.geomId as string;
+      const id = cur?.userData.geomId as string | undefined;
+      // A filtered-out object (e.g. on a locked layer) lets the pick through to what is behind it.
+      if (id && (!this.pickFilter || this.pickFilter(id))) return id;
     }
     return null;
+  }
+
+  setPickFilter(filter: ((id: string) => boolean) | null): void {
+    this.pickFilter = filter;
   }
 
   hitAt(clientX: number, clientY: number): { id: string; point: Vec3 } | null {
