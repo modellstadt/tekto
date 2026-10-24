@@ -13,7 +13,7 @@ before 1.0, breaking changes bump the minor version. See
   `appShell`. In a strict-2D view — orbit rotation off (`lab.setOrbitRotateEnabled(false)`,
   `renderer.setOrbitRotateEnabled(false)`) — the bar is the 2D palette instead: zoom in, zoom
   out and zoom to bounds (the selection, or everything); with rotation on again it is the 3D
-  bar. New: `renderer.zoomBy(factor)` (animated; closer in perspective, a larger zoom in
+  bar. The axis widget (`navGizmo`) hides in a strict-2D view too. New: `renderer.zoomBy(factor)` (animated; closer in perspective, a larger zoom in
   orthographic) and `renderer.orbitRotateEnabled`.
 - **A sketch can follow the view's style.** `lab.renderMode` and `lab.lightingMode` read the
   render style and the lighting, however they were chosen (the shading bar, a shell, code). A

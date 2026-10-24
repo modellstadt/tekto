@@ -56,7 +56,7 @@ export interface SketchConfig {
   /** Show the ✎ Markup button (draw instructions on the view; see Markup.ts). Default `true`. */
   markup?: boolean;
   /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
-   *  toggle persp/ortho under it. Default `false`. */
+   *  toggle persp/ortho under it; hidden in a strict-2D view. Default `false`. */
   navGizmo?: boolean;
   /** The shading bar in a corner of the view (top-left with `true`): icons for the render
    *  style, the lighting and the sun (morning, noon, sunset); in a strict-2D view
@@ -572,8 +572,8 @@ export interface Lab {
    * other than "none" is active). Default: disabled.
    */
   enablePicking(enabled?: boolean): void;
-  /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view, and the shading
-   *  bar shows its 2D palette: zoom in, zoom out, zoom to bounds. */
+  /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view: the shading bar
+   *  shows its 2D palette (zoom in, zoom out, zoom to bounds) and the axis widget hides. */
   setOrbitRotateEnabled(enabled: boolean): void;
   /** Register a callback invoked on every click pick. `id` is null for background clicks. */
   onPick(fn: (id: string | null, pick?: { tag?: string; layer?: string }) => void): void;

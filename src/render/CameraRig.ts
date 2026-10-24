@@ -67,6 +67,7 @@ export class CameraRig {
   setOrbitRotateEnabled(enabled: boolean): void {
     this._rotateEnabled = enabled;
     if (this.core.controls) (this.core.controls as { enableRotate?: boolean }).enableRotate = enabled;
+    this.navGizmo?.setVisible(enabled);   // a flat sheet has no axes to turn to
   }
 
   /** False in a strict-2D view: pan and zoom only. */

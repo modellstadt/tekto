@@ -828,8 +828,8 @@ export class ThreeRenderer {
    */
   worldToScreen(world: Vec3): { x: number; y: number; visible: boolean } { return this.rig.worldToScreen(world); }
 
-  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view, and the shading
-   *  bar shows its 2D palette (zoom in, zoom out, zoom to bounds). */
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view: the shading bar
+   *  shows its 2D palette (zoom in, zoom out, zoom to bounds) and the axis widget hides. */
   setOrbitRotateEnabled(enabled: boolean): void { this.rig.setOrbitRotateEnabled(enabled); this.shadingBar?.paint(); }
 
   /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
