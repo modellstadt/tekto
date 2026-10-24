@@ -139,6 +139,7 @@ export class ThreeRenderer {
   private gridHelper: THREE.Object3D | null = null;
   private fadingGrid: FadingGrid | null = null;
   private shadingBar: ShadingBar | null = null;
+  private frameBounds: THREE.Box3 | null = null;
   private overlayState: Record<BuiltInOverlay, boolean> = { grid: true, axes: true, wireframe: true, labels: true };
   private overlayExtra = new Map<string, { apply(on: boolean): void; on: boolean }>();
   private ao: AmbientOcclusion;
@@ -204,7 +205,6 @@ export class ThreeRenderer {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -237,6 +237,8 @@ export class ThreeRenderer {
 
     this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo);
     this.pointer = new Pointer(this.core, this.builder, this.marks);
+    // After the rig: the bar reads whether the view orbits (its 2D palette when it does not).
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
 
     // A restored context comes back blank; nothing else would ask for a draw.
     this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
@@ -506,12 +508,21 @@ export class ThreeRenderer {
     return () => { this.overlayExtra.delete(name); this.shadingBar?.paint(); };
   }
 
-  /** Frame the selection (the highlighted objects), or everything when nothing is selected:
-   *  Blender's Frame Selected / Home. Animated. */
+  /** Frame the selection (the highlighted objects), or everything when nothing is selected —
+   *  or the frame bounds, when set (`setFrameBounds`): Blender's Frame Selected / Home. Animated. */
   frame(): void {
     const sel = this.marks.highlighted.filter((id) => this.objectMap.has(id));
+    if (!sel.length && this.frameBounds) { this.rig.fitBox(this.frameBounds.clone(), { margin: 1.3 }); return; }
     const ids = sel.length ? sel : [...this.objectMap.keys()].filter((id) => this.isObjectShown(id));
     if (ids.length) this.rig.fitTo(ids, sel.length ? {} : { margin: 1.3 });
+  }
+
+  /** What Frame — the shading bar's, its 2D palette's zoom to bounds — frames when nothing is
+   *  selected: this box (world coordinates) instead of everything shown, say the model without
+   *  its site. `null`: everything shown again. */
+  setFrameBounds(bounds: { min: Vec3; max: Vec3 } | null): void {
+    this.frameBounds = bounds && new THREE.Box3(
+      new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z), new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z));
   }
 
   /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named
@@ -827,8 +838,16 @@ export class ThreeRenderer {
    */
   worldToScreen(world: Vec3): { x: number; y: number; visible: boolean } { return this.rig.worldToScreen(world); }
 
-  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
-  setOrbitRotateEnabled(enabled: boolean): void { this.rig.setOrbitRotateEnabled(enabled); }
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view: the shading bar
+   *  shows its 2D palette (zoom in, zoom out, zoom to bounds) and the axis widget hides. */
+  setOrbitRotateEnabled(enabled: boolean): void { this.rig.setOrbitRotateEnabled(enabled); this.shadingBar?.paint(); }
+
+  /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
+  get orbitRotateEnabled(): boolean { return this.rig.orbitRotateEnabled; }
+
+  /** Zoom in (`factor` > 1) or out (< 1) about the view's target, animated unless
+   *  `animate: false`: closer in perspective, a larger zoom in orthographic. */
+  zoomBy(factor: number, opts?: { animate?: boolean }): void { this.rig.zoomBy(factor, opts); }
 
   /** The camera as plain numbers, enough to reproduce the view. */
   cameraState(): { projection: "perspective" | "orthographic"; position: number[]; target: number[]; up: number[]; fov: number } { return this.rig.cameraState(); }

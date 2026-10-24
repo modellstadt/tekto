@@ -276,6 +276,9 @@ export class SketchInstance {
   // scopes, keyed by layer name. Reset every run — ids don't survive clear().
   private _viewLayerStack: string[] = [];
   private _viewLayerObjects = new Map<string, string[]>();
+  // Which of the view's style settings the last run read (lab.renderMode / lab.lightingMode):
+  // a change to one of them — from the shading bar, a shell or code — re-runs the sketch.
+  private _readsStyle = new Set<"renderMode" | "lightingMode">();
   private _objectViewLayer = new Map<string, string>();
   // Layer ids locked in any layer tree (own or a parent's lock): objects on
   // them — by `.layer()` name or view layer — can't be picked or hovered.
@@ -312,6 +315,14 @@ export class SketchInstance {
     this.buildDOM();
     this.initRenderer();
     this.renderer.setPickFilter(id => !this.onLockedLayer(id));
+    // A style the last run read (lab.renderMode / lab.lightingMode) changed: re-run. Subscribed
+    // after the renderer, so it has applied the change first — a lighting switch resets the
+    // exposure, which the re-run may set again. Set during a run (by the sketch itself), a
+    // style change is already part of that run.
+    this.scene.on((e) => {
+      if (!this._running && ((e.type === "scene:renderMode" && this._readsStyle.has("renderMode"))
+        || (e.type === "scene:lightingMode" && this._readsStyle.has("lightingMode")))) this.runSketch();
+    });
     this.commands.add(viewCommands(this.renderer));
     this._unbindCommandKeys = this.commands.bindKeys();
     this.wireInput();
@@ -369,7 +380,8 @@ export class SketchInstance {
       cameraTarget: this.config.target ?? [0, 0, 0],
       up: this.config.up ?? "y",
       navGizmo: this.config.navGizmo ?? false,
-      shadingBar: this.config.shadingBar ?? false,
+      // On by default; a shell with its own bar (the testbench's data-shell) turns it off.
+      shadingBar: this.config.shadingBar ?? this.container.dataset.shell == null,
       units: this.config.units ?? null,
     });
   }
@@ -583,6 +595,8 @@ export class SketchInstance {
 
     // Build the Lab context
     const lab = this.buildLab(usedParams);
+    this._readsStyle.clear();
+    this.renderer.setFrameBounds(null);   // declared per run (lab.frameBounds)
 
     // Execute. Param declarations during the run must not schedule re-runs.
     this._running = true;
@@ -1027,6 +1041,9 @@ export class SketchInstance {
       onDisplay(fn) { self._onDisplayFns.push(fn); },
 
       get activeTab() { return self.panel.getActiveTab(); },
+      get renderMode() { self._readsStyle.add("renderMode"); return self.scene.renderMode; },
+      get lightingMode() { self._readsStyle.add("lightingMode"); return self.scene.lightingMode; },
+      frameBounds(min, max) { self.renderer.setFrameBounds({ min, max }); },
 
       onTabChange(fn) { self._onTabChange = fn; },
 
