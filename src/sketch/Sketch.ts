@@ -296,9 +296,6 @@ export class SketchInstance {
         const name = this._viewLayerStack[this._viewLayerStack.length - 1];
         this._viewLayerObjects.get(name)!.push(e.id);
       }
-      // Set during a run (by the sketch itself), a style change is already part of that run.
-      if (!this._running && ((e.type === "scene:renderMode" && this._readsStyle.has("renderMode"))
-        || (e.type === "scene:lightingMode" && this._readsStyle.has("lightingMode")))) this.runSketch();
     });
 
     // Resolve container
@@ -312,6 +309,14 @@ export class SketchInstance {
 
     this.buildDOM();
     this.initRenderer();
+    // A style the last run read (lab.renderMode / lab.lightingMode) changed: re-run. Subscribed
+    // after the renderer, so it has applied the change first — a lighting switch resets the
+    // exposure, which the re-run may set again. Set during a run (by the sketch itself), a
+    // style change is already part of that run.
+    this.scene.on((e) => {
+      if (!this._running && ((e.type === "scene:renderMode" && this._readsStyle.has("renderMode"))
+        || (e.type === "scene:lightingMode" && this._readsStyle.has("lightingMode")))) this.runSketch();
+    });
     this.commands.add(viewCommands(this.renderer));
     this._unbindCommandKeys = this.commands.bindKeys();
     this.wireInput();

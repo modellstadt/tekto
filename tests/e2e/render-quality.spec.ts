@@ -502,6 +502,8 @@ test("a sketch that reads lab.lightingMode re-runs when the shading bar changes 
   await expect(page.locator("#app")).toContainText(/Lighting\s*flat/, { timeout: 15_000 });
   await bar.getByRole("button", { name: /^Studio/ }).click();
   await expect(page.locator("#app")).toContainText(/Lighting\s*studio/);
+  // The re-run comes after the renderer switched (which resets the exposure): its exposure holds.
+  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.renderer.toneMappingExposure)).toBeCloseTo(0.8, 5);
   await bar.getByRole("button", { name: "Flat lighting" }).click();
   await expect(page.locator("#app")).toContainText(/Lighting\s*flat/);
 });
