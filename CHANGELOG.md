@@ -18,7 +18,9 @@ before 1.0, breaking changes bump the minor version. See
     in `lab.viewLayer(id, …)` on a locked layer are drawn but can't be picked or hovered — the
     click goes through to what is behind — and a selection on one is dropped.
     `ThreeRenderer.setPickFilter` is the hook underneath, for apps with their own selection.
-  - `opts.columns` hides the active, lock or colour column.
+  - `opts.columns` hides the active, lock or colour column. Without the active column the tree
+    has no active layer (`.active` is ""), so nothing is kept on — a viewer's tree, with just the
+    bulb and the swatch.
   - `lab.layerTree(…).value` now holds every layer's state from the start (`layerDefaults`);
     before, only the layers someone had changed were in it, so a sketch saw no colour for an
     untouched layer even though the panel showed one. `.set` on an untouched layer no longer

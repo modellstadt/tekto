@@ -54,5 +54,8 @@ describe("layer tree state", () => {
     expect(kept).toEqual({ structure: {}, columns: { color: "#00ff88" }, beams: { visible: false } });
     expect(keepActiveOn(NODES, "columns", { columns: { visible: true, locked: false } }))
       .toEqual({ columns: { visible: true, locked: false } });
+    // A tree without an active layer ("", `columns: { active: false }`) keeps nothing on.
+    expect(keepActiveOn(NODES, "", { structure: { visible: false }, columns: { locked: true } }))
+      .toEqual({ structure: { visible: false }, columns: { locked: true } });
   });
 });

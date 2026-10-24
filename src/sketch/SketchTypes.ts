@@ -98,9 +98,11 @@ export interface Reactive<T, S = T> {
 
 /** What `lab.layerTree` returns: the layers' state, plus the active layer. */
 export interface LayerTree extends Reactive<LayerMap, Record<string, Partial<LayerState>>> {
-  /** The active layer's id (Rhino: the current layer) — the one new objects go on; "" for an empty tree. */
+  /** The active layer's id (Rhino: the current layer) — the one new objects go on; "" for an empty tree
+   *  or one created with `columns: { active: false }`, which has no active layer. */
   readonly active: string;
-  /** Make `id` the active layer: it and its parents turn on and unlock. Ignores an id not in the tree. */
+  /** Make `id` the active layer: it and its parents turn on and unlock. Ignores an id not in the tree,
+   *  and does nothing in a tree without an active layer. */
   setActive(id: string): void;
 }
 

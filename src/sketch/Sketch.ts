@@ -799,6 +799,7 @@ export class SketchInstance {
             changed(state);
           },
           setActive(id) {
+            if (opts?.columns?.active === false) return;   // a tree without an active layer
             if (id === state.panel.active || !(id in layerDefaults(state.nodes))) return;
             state.value = { ...state.value, ...activateLayer(state.nodes, state.value, id) };
             state.panel.update(state.nodes, state.value, id);

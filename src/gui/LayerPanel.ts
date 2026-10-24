@@ -47,7 +47,7 @@ export type LayerMap = Record<string, LayerState>;
 
 /** Which of the optional columns a `LayerPanel` shows — all of them unless switched off. */
 export interface LayerColumns {
-  /** The active-layer check (✓). */
+  /** The active-layer check (✓). Off: the tree has no active layer (a viewer's tree), so none is kept on. */
   active?: boolean;
   /** The padlock. */
   locked?: boolean;
@@ -249,7 +249,8 @@ export class LayerPanel {
     this.update(opts.nodes, opts.value);
   }
 
-  /** The active layer's id ("" for an empty tree). */
+  /** The active layer's id: "" for an empty tree, or with the active column hidden (`columns.active: false`),
+   *  where the tree has no active layer and nothing is kept on. */
   get active(): string { return this._active; }
 
   /**
@@ -261,8 +262,11 @@ export class LayerPanel {
   update(nodes: LayerNode[], value: LayerMap, active?: string): void {
     this._nodes = nodes;
     this._value = value;
-    if (active !== undefined && pathTo(nodes, active).length) this._active = active;
-    if (!pathTo(nodes, this._active).length) this._active = defaultActiveLayer(nodes, value);
+    if (!this._columns.active) this._active = "";                  // no active layer in this tree
+    else {
+      if (active !== undefined && pathTo(nodes, active).length) this._active = active;
+      if (!pathTo(nodes, this._active).length) this._active = defaultActiveLayer(nodes, value);
+    }
     this._rebuild();
   }
 

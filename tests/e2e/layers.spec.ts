@@ -3,6 +3,7 @@
  * swatches, the active layer (always on and unlocked) and locked layers whose
  * objects can't be picked.
  */
+import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 /** Pick at the screen point of a world position; returns the picked object's layer, or null. */
@@ -92,5 +93,34 @@ test("objects on a locked layer can't be picked; the pick goes through", async (
   await page.getByRole("radio", { name: "Active: Slab" }).click();
   await page.getByRole("checkbox", { name: "Locked: Structure" }).click();
   expect(await layerAt(page, column)).not.toBe("columns");
+  expect(errors).toEqual([]);
+});
+
+test("without the active column a tree has no active layer: every bulb works", async ({ page }) => {
+  const errors = await open(page);
+  // A viewer's tree, as an app shows it: just the bulb and the swatch.
+  const src = `/@fs${path.resolve(__dirname, "../../src/gui/LayerPanel.ts")}`;
+  const changes = await page.evaluate(async (src) => {
+    const { LayerPanel } = await import(/* @vite-ignore */ src);
+    const seen: unknown[] = [];
+    const panel = new LayerPanel({
+      nodes: [{ id: "model", label: "Model", children: [{ id: "part", label: "Part" }] }, { id: "notes", label: "Notes" }],
+      value: {}, columns: { active: false, locked: false },
+      onChange: (updates: unknown, active?: string) => seen.push({ updates, active }),
+    });
+    panel.el.id = "viewer-tree";
+    panel.el.style.cssText += "position:fixed;top:0;left:0;width:280px;z-index:100000;background:#111;";
+    document.body.appendChild(panel.el);
+    (window as any).viewerTree = { panel, seen };
+    return panel.active;
+  }, src);
+  expect(changes).toBe("");
+  const tree = page.locator("#viewer-tree");
+  await expect(tree.getByRole("radio")).toHaveCount(0);
+  await expect(tree.getByRole("checkbox", { name: /^Locked:/ })).toHaveCount(0);
+  await expect(tree.getByRole("checkbox", { name: "On: Model" })).toBeEnabled();
+  await tree.getByRole("checkbox", { name: "On: Model" }).click();
+  expect(await page.evaluate(() => (window as any).viewerTree.seen))
+    .toEqual([{ updates: { model: { visible: false, color: "#888888", locked: false } } }]);
   expect(errors).toEqual([]);
 });
