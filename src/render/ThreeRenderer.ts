@@ -204,7 +204,6 @@ export class ThreeRenderer {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -237,6 +236,8 @@ export class ThreeRenderer {
 
     this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo);
     this.pointer = new Pointer(this.core, this.builder, this.marks);
+    // After the rig: the bar reads whether the view orbits (its 2D palette when it does not).
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
 
     // A restored context comes back blank; nothing else would ask for a draw.
     this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
@@ -827,8 +828,16 @@ export class ThreeRenderer {
    */
   worldToScreen(world: Vec3): { x: number; y: number; visible: boolean } { return this.rig.worldToScreen(world); }
 
-  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
-  setOrbitRotateEnabled(enabled: boolean): void { this.rig.setOrbitRotateEnabled(enabled); }
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view, and the shading
+   *  bar shows its 2D palette (zoom in, zoom out, zoom to bounds). */
+  setOrbitRotateEnabled(enabled: boolean): void { this.rig.setOrbitRotateEnabled(enabled); this.shadingBar?.paint(); }
+
+  /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
+  get orbitRotateEnabled(): boolean { return this.rig.orbitRotateEnabled; }
+
+  /** Zoom in (`factor` > 1) or out (< 1) about the view's target, animated unless
+   *  `animate: false`: closer in perspective, a larger zoom in orthographic. */
+  zoomBy(factor: number, opts?: { animate?: boolean }): void { this.rig.zoomBy(factor, opts); }
 
   /** The camera as plain numbers, enough to reproduce the view. */
   cameraState(): { projection: "perspective" | "orthographic"; position: number[]; target: number[]; up: number[]; fov: number } { return this.rig.cameraState(); }

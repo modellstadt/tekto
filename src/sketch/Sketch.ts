@@ -363,7 +363,8 @@ export class SketchInstance {
       cameraTarget: this.config.target ?? [0, 0, 0],
       up: this.config.up ?? "y",
       navGizmo: this.config.navGizmo ?? false,
-      shadingBar: this.config.shadingBar ?? false,
+      // On by default; a shell with its own bar (the testbench's data-shell) turns it off.
+      shadingBar: this.config.shadingBar ?? this.container.dataset.shell == null,
       units: this.config.units ?? null,
     });
   }

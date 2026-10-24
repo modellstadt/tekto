@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The shading bar is on in every `sketch()`, and has a 2D palette.** `sketch()` shows the
+  shading bar (render style, lighting, sun, section, overlays, frame, snapshot as icons in the
+  view) unless the page passes `shadingBar: false`, or it runs inside a shell with its own bar
+  (the testbench's `data-shell`); `shadingBar` also takes a corner (`"bottom-left"` …), as in
+  `appShell`. In a strict-2D view — orbit rotation off (`lab.setOrbitRotateEnabled(false)`,
+  `renderer.setOrbitRotateEnabled(false)`) — the bar is the 2D palette instead: zoom in, zoom
+  out and zoom to bounds (the selection, or everything); with rotation on again it is the 3D
+  bar. New: `renderer.zoomBy(factor)` (animated; closer in perspective, a larger zoom in
+  orthographic) and `renderer.orbitRotateEnabled`.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells

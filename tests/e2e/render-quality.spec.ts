@@ -465,3 +465,33 @@ test("the shading bar's overlays, Frame and Snapshot", async ({ page }) => {
   const [dl] = await Promise.all([page.waitForEvent("download"), bar.getByRole("button", { name: /^Snapshot/ }).click()]);
   expect(dl.suggestedFilename()).toMatch(/^view-\d{8}-\d{4}\.png$/);
 });
+
+test("in a strict-2D view the shading bar is the 2D palette: zoom in, zoom out, zoom to bounds", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.goto("/testbench.html?page=mesh-factory");               // shadingBar: true
+  const bar = page.locator("[data-tekto-shading-bar]");
+  await expect(bar.getByRole("button", { name: "Ghost" })).toBeVisible({ timeout: 15_000 });
+  await expect(bar.getByRole("button", { name: "Zoom in" })).toBeHidden();
+  const dist = () => page.evaluate(() => {
+    const { position: p, target: t } = (window as any).__tekto.owner.renderer.cameraState();
+    return Math.hypot(p[0] - t[0], p[1] - t[1], p[2] - t[2]);
+  });
+
+  // Orbit rotation off: a flat sheet, nothing to style or light — only how much of it to see.
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setOrbitRotateEnabled(false));
+  await expect(bar).toHaveAttribute("data-palette", "2d");
+  await expect(bar.getByRole("button", { name: "Ghost" })).toBeHidden();
+  const d0 = await dist();
+  await bar.getByRole("button", { name: "Zoom in" }).click();
+  await expect.poll(dist).toBeCloseTo(d0 / 1.25, 3);
+  await bar.getByRole("button", { name: "Zoom out" }).click();
+  await expect.poll(dist).toBeCloseTo(d0, 3);
+  await bar.getByRole("button", { name: /^Zoom to bounds/ }).click();
+
+  // Rotation back on: the 3D palette again.
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setOrbitRotateEnabled(true));
+  await expect(bar).toHaveAttribute("data-palette", "3d");
+  await expect(bar.getByRole("button", { name: "Ghost" })).toBeVisible();
+  expect(errors).toEqual([]);
+});

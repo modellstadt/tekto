@@ -17,6 +17,7 @@ import type { Scene, VisualStyle, FlatMeshData, LightSpec } from "../scene/Scene
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 import type { SectionRequest, StandardView } from "../scene/Scene";
 import type { Command } from "../gui/Commands";
+import type { ShadingBarCorner } from "../render/ShadingBar";
 export type { LayerNode, LayerState, LayerMap } from "../gui/LayerPanel";
 import type { LayerState } from "../gui/LayerPanel";
 
@@ -57,9 +58,11 @@ export interface SketchConfig {
   /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
    *  toggle persp/ortho under it. Default `false`. */
   navGizmo?: boolean;
-  /** The shading bar in the view's top-left corner: icons for the render style, the lighting
-   *  and the sun (morning, noon, sunset). Default `false`. */
-  shadingBar?: boolean;
+  /** The shading bar in a corner of the view (top-left with `true`): icons for the render
+   *  style, the lighting and the sun (morning, noon, sunset); in a strict-2D view
+   *  (`lab.setOrbitRotateEnabled(false)`) zoom in, zoom out and zoom to bounds instead.
+   *  Default `true`, except inside a shell with its own bar (the testbench); `false` hides it. */
+  shadingBar?: boolean | ShadingBarCorner;
   /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset (default):
    *  relative to the content's extent. */
   units?: string;
@@ -544,7 +547,8 @@ export interface Lab {
    * other than "none" is active). Default: disabled.
    */
   enablePicking(enabled?: boolean): void;
-  /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view. */
+  /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view, and the shading
+   *  bar shows its 2D palette: zoom in, zoom out, zoom to bounds. */
   setOrbitRotateEnabled(enabled: boolean): void;
   /** Register a callback invoked on every click pick. `id` is null for background clicks. */
   onPick(fn: (id: string | null, pick?: { tag?: string; layer?: string }) => void): void;
