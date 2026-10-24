@@ -916,6 +916,10 @@ export class ThreeRenderer {
   /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
   pickAt(clientX: number, clientY: number): string | null { return this.pointer.pickAt(clientX, clientY); }
 
+  /** Only objects `filter` accepts can be picked or hovered; a rejected one lets the pick
+   *  through to what is behind it (a sketch rejects objects on locked layers). `null` clears it. */
+  setPickFilter(filter: ((id: string) => boolean) | null): void { this.pointer.setPickFilter(filter); }
+
   /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
    *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
   hitAt(clientX: number, clientY: number): { id: string; point: Vec3 } | null { return this.pointer.hitAt(clientX, clientY); }

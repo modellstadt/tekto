@@ -18,8 +18,8 @@ import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 import type { SectionRequest, StandardView } from "../scene/Scene";
 import type { Command } from "../gui/Commands";
 import type { ShadingBarCorner } from "../render/ShadingBar";
-export type { LayerNode, LayerState, LayerMap } from "../gui/LayerPanel";
-import type { LayerState } from "../gui/LayerPanel";
+export type { LayerNode, LayerState, LayerMap, LayerColumns } from "../gui/LayerPanel";
+import type { LayerState, LayerColumns } from "../gui/LayerPanel";
 
 // ─── SketchConfig ────────────────────────────────────────────────────
 
@@ -97,6 +97,16 @@ export interface ImportRegistration {
 export interface Reactive<T, S = T> {
   readonly value: T;
   set(value: S): void;
+}
+
+/** What `lab.layerTree` returns: the layers' state, plus the active layer. */
+export interface LayerTree extends Reactive<LayerMap, Record<string, Partial<LayerState>>> {
+  /** The active layer's id (Rhino: the current layer) — the one new objects go on; "" for an empty tree
+   *  or one created with `columns: { active: false }`, which has no active layer. */
+  readonly active: string;
+  /** Make `id` the active layer: it and its parents turn on and unlock. Ignores an id not in the tree,
+   *  and does nothing in a tree without an active layer. */
+  setActive(id: string): void;
 }
 
 // ─── Control options ────────────────────────────────────────────────
@@ -257,15 +267,23 @@ export interface Lab {
   select<T extends string>(label: string, options: readonly T[], defaultValue?: T, opts?: SelectOpts): Reactive<T>;
   colorPicker(label: string, defaultValue?: string, opts?: { group?: string; tab?: string; menu?: string; display?: boolean }): Reactive<string>;
   /**
-   * Render a scrollable layer-tree panel — checkboxes, collapse/expand, and
-   * optional per-node color pickers. Returns a reactive `LayerMap`
-   * (`Record<id, { visible, color }>`).
+   * Render a scrollable, Rhino-style layer tree — per layer an active-layer
+   * check, an on/off bulb, a lock and a colour swatch, collapse/expand. `.value`
+   * is a `LayerMap` with every layer's own state (`{ visible, color, locked }`,
+   * starting from the nodes' defaults); combine parents with
+   * `computeEffectiveVisibility`. `.set({ beams: { visible: false } })` updates
+   * layers in place (partial per layer).
    *
-   * The panel instance is persistent: collapsed state and scroll position
-   * survive sketch re-runs. Nodes can change between runs (e.g. async loads).
+   * Objects on a locked layer — tagged `.layer(id)` or drawn inside
+   * `lab.viewLayer(id, …)` — are drawn but can't be picked or hovered. `.active`
+   * is the active layer (Rhino: current), the one new objects go on; it and its
+   * parents stay on and unlocked. Pass `active` for the initial one (default:
+   * the first layer that is on), `columns` to hide the active, lock or colour column.
+   *
+   * The panel instance is persistent: collapsed state, scroll position and the
+   * active layer survive sketch re-runs. Nodes can change between runs (e.g. async loads).
    */
-  /** `.set({ beams: { visible: false } })` updates layers in place (partial per layer). */
-  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean }): Reactive<LayerMap, Record<string, Partial<LayerState>>>;
+  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean; active?: string; columns?: LayerColumns }): LayerTree;
 
   // ── Actions ──
   /** `display: true` marks a display-only action (camera preset, restyle):
