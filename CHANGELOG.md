@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **A sketch's Info tab can hold controls.** Controls declared with `tab: "Info"` show in the Info
+  tab above the log; before, the tab drew only the log and they were lost. In general an extra
+  tab of a `ControlPanel` shows the controls declared in it above its own content.
 - **The shading bar is on in every `sketch()`, and has a 2D palette.** `sketch()` shows the
   shading bar (render style, lighting, sun, section, overlays, frame, snapshot as icons in the
   view) unless the page passes `shadingBar: false`, or it runs inside a shell with its own bar
