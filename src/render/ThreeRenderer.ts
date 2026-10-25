@@ -26,7 +26,7 @@ import { CameraRig } from "./CameraRig";
 import { Pointer, type GizmoMode, type PickInfo } from "./Pointer";
 import { Marks } from "./Marks";
 import { FadingGrid } from "./FadingGrid";
-import { ShadingBar, type ShadingBarCorner } from "./ShadingBar";
+import { ShadingBar, VIEWER_HEADER_H, type ShadingBarPlacement } from "./ShadingBar";
 import { downloadSnapshot } from "./snapshot";
 
 /** The overlays a renderer has itself (an app can register more, such as notes). */
@@ -65,8 +65,10 @@ export interface ThreeRendererConfig {
   navGizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   /** The shading bar in a corner of the view (`true` = top left): minimal icons for the
    *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
-   *  viewport header. The renderer draws it, so an app only switches it on. */
-  shadingBar: boolean | ShadingBarCorner;
+   *  viewport header. The renderer draws it, so an app only switches it on. `"header"`: a strip
+   *  across the top of the view (Blender's viewport header) with slots for the app's controls
+   *  (`viewerHeader`), the axis widget top right under it and zoom in / out / to bounds below that. */
+  shadingBar: boolean | ShadingBarPlacement;
   /**
    * The scene's unit, as a label (`"m"`, `"mm"`, `"ft"`): readouts such as the shading bar's
    * section show coordinates in it, and a cut stays at its coordinate. Unset (null, the
@@ -74,6 +76,9 @@ export interface ThreeRendererConfig {
    * share of the content as the content changes. An app that knows its units says so.
    */
   units: string | null;
+  /** Where the viewer header goes (`shadingBar: "header"`): default the container. A sketch passes its
+   *  viewport wrapper, so the header stays above the overlay() layers and ✎ Markup's drawing layer. */
+  headerHost: HTMLElement | null;
   /**
    * How Flat lighting is balanced (`flatLights`). `"sketch"` (the default): a dim blue sky,
    * for a dark page. `"plain"`: a white sky bright enough that a face toward it shows its own
@@ -104,6 +109,7 @@ const DEFAULTS: ThreeRendererConfig = {
   navGizmo: false,
   shadingBar: false,
   units: null,
+  headerHost: null,
   flatLighting: "sketch",
 };
 
@@ -235,10 +241,10 @@ export class ThreeRenderer {
       this.controls.addEventListener("change", () => this.requestRender());
     }
 
-    this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo);
+    this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo, cfg.shadingBar === "header" ? VIEWER_HEADER_H : 0);
     this.pointer = new Pointer(this.core, this.builder, this.marks);
     // After the rig: the bar reads whether the view orbits (its 2D palette when it does not).
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar, cfg.headerHost);
 
     // A restored context comes back blank; nothing else would ask for a draw.
     this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
@@ -844,6 +850,13 @@ export class ThreeRenderer {
 
   /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
   get orbitRotateEnabled(): boolean { return this.rig.orbitRotateEnabled; }
+
+  /** The axis widget's element, or null without one (`navGizmo`). */
+  get navGizmoEl(): HTMLElement | null { return this.rig.navGizmoEl; }
+
+  /** With `shadingBar: "header"`: the header strip's slots — `left` and `right` for the app's own
+   *  controls (view tabs, tools, who is here), `end` where ✎ Markup goes. Null otherwise. */
+  get viewerHeader(): { left: HTMLElement; right: HTMLElement; end: HTMLElement } | null { return this.shadingBar?.header ?? null; }
 
   /** Zoom in (`factor` > 1) or out (< 1) about the view's target, animated unless
    *  `animate: false`: closer in perspective, a larger zoom in orthographic. */

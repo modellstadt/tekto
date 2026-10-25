@@ -35,12 +35,14 @@ export class CameraRig {
     readonly camera: THREE.PerspectiveCamera,
     private _orthoCam: THREE.OrthographicCamera,
     gizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right",
+    gizmoTop = 0,   // a header strip's height: the widget goes top-right, under it
   ) {
     // The reader outranks an animation: a view turn that fights an orbit is worse than none.
     core.controls?.addEventListener("start", () => { this.cameraMove = null; });
     if (gizmo) {
       this.navGizmo = new NavGizmo(core.container, {
-        corner: typeof gizmo === "string" ? gizmo : "bottom-right",
+        corner: typeof gizmo === "string" ? gizmo : gizmoTop ? "top-right" : "bottom-right",
+        offsetTop: gizmoTop,
         onAxis: (direction) => this.orbitTo(direction),
         onDrag: (dx, dy) => this.orbitBy(dx, dy),
         onSnap: () => this.orbitTo(nearestAxis(this._viewOffset())),
@@ -69,6 +71,9 @@ export class CameraRig {
     if (this.core.controls) (this.core.controls as { enableRotate?: boolean }).enableRotate = enabled;
     this.navGizmo?.setVisible(enabled);   // a flat sheet has no axes to turn to
   }
+
+  /** The axis widget's element, or null without one. */
+  get navGizmoEl(): HTMLElement | null { return this.navGizmo?.el ?? null; }
 
   /** False in a strict-2D view: pan and zoom only. */
   get orbitRotateEnabled(): boolean { return this._rotateEnabled; }

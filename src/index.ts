@@ -39,7 +39,7 @@ export type {
 export { ThreeRenderer } from "./render/ThreeRenderer";
 export type { ThreeRendererConfig, PickInfo } from "./render/ThreeRenderer";
 export type { AmbientOcclusionOptions } from "./render/AmbientOcclusion";
-export type { ShadingBarCorner } from "./render/ShadingBar";
+export type { ShadingBarCorner, ShadingBarPlacement } from "./render/ShadingBar";
 export type { SunPreset } from "./render/viewRules";
 export { SVGRenderer } from "./render/SVGRenderer";
 export { SheetCanvas, drawSheet, fitSheet } from "./render/SheetCanvas";

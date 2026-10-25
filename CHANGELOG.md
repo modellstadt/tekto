@@ -6,6 +6,15 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The viewer header**, as Blender has one: `shadingBar: "header"` — now the default of `sketch()`
+  outside the testbench — is a strip across the top of the view. On its left the app's own
+  controls (`lab.viewerHeader.left` / `.right`, `renderer.viewerHeader`: view tabs, tools, who is
+  here); on its right the render style, lighting, sun, section, overlays, snapshot and ✎ Markup.
+  The axis widget sits top right under it, and zoom in / out / to bounds in a column below that;
+  in a strict-2D view the header keeps the snapshot and ✎ Markup and the column moves up. The
+  header is above ✎ Markup's drawing layer (its Done stays in reach) and above `lab.overlay()`
+  layers. A corner (`shadingBar: true` / `"top-left"` …) is the compact bar as before. New:
+  `ShadingBarPlacement`, `renderer.navGizmoEl`; `MarkupHost.buttonHost` / `.top`.
 - **A sketch's Info tab can hold controls.** Controls declared with `tab: "Info"` show in the Info
   tab above the log; before, the tab drew only the log and they were lost. In general an extra
   tab of a `ControlPanel` shows the controls declared in it above its own content.
