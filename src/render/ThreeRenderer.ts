@@ -31,7 +31,7 @@ import { downloadSnapshot } from "./snapshot";
 
 /** The overlays a renderer has itself (an app can register more, such as notes). */
 type BuiltInOverlay = "grid" | "axes" | "wireframe" | "labels";
-import type { FlatLighting, SunPreset } from "./viewRules";
+import type { FlatLighting, StudioLighting, SunPreset } from "./viewRules";
 import { AmbientOcclusion, type AmbientOcclusionOptions } from "./AmbientOcclusion";
 import { shown } from "./viewRules";
 
@@ -86,6 +86,12 @@ export interface ThreeRendererConfig {
    * colour, for an app whose colours are a key beside the model. Studio is unaffected.
    */
   flatLighting: FlatLighting;
+  /**
+   * How Studio lighting is balanced (`studioLights`). `"filmic"` (the default): ACES tone
+   * mapping, a strong sun, a dim sky. `"plain"`: shadows under a white sky without tone
+   * mapping, so a colour stays readable against a key on the side turned from the sun too.
+   */
+  studioLighting: StudioLighting;
 }
 
 // Style keys that never change the three.js object: layer is metadata, WebGL
@@ -112,6 +118,7 @@ const DEFAULTS: ThreeRendererConfig = {
   units: null,
   headerHost: null,
   flatLighting: "sketch",
+  studioLighting: "filmic",
 };
 
 /** How long a frame may spend building crease lines before it draws. */

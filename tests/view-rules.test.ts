@@ -12,7 +12,7 @@ import {
   edgeStyle, surfaceAppearance, lightBalance, standardOrbit, fitRadius, orthoFrustum,
   modeBackground, groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   orbitFor, shortestTurn, nearestAxis, easeInOut, sectionPlane, viewDirection, calloutSamples, occludes, rayTargets, cameraKey,
-  groundGrid, gridLineColour, daylight, sunDirection, SUN_PRESETS, flatLights,
+  groundGrid, gridLineColour, daylight, sunDirection, SUN_PRESETS, flatLights, studioLights,
 } from "../src/render/viewRules";
 
 /** Rough perceptual brightness of a packed hex colour, 0 to 255. */
@@ -388,5 +388,29 @@ describe("flat lights", () => {
     const sketch = flatLights("sketch");
     expect(sketch).toMatchObject({ ambient: 0.5, sky: 0.4, skyColour: 0x4466aa, sun: 0.7 });
     expect(share(sketch)).toBeLessThan(0.5);
+  });
+});
+
+describe("studio lights", () => {
+  // the default sun at (8, 10, 15) in a Z-up scene; a roof faces up, a wall
+  // turned from the sun gets half the sky and half the ground
+  const up = 15 / Math.hypot(8, 10, 15);
+  const linear = (c: number) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const grey = (hex: number) => (linear((hex >> 16) & 255) + linear((hex >> 8) & 255) + linear(hex & 255)) / 3;
+  const roof = (l: ReturnType<typeof studioLights>) => (l.ambient + l.sky * grey(l.skyColour) + l.sun * up) / Math.PI;
+  const shade = (l: ReturnType<typeof studioLights>) =>
+    (l.ambient + l.sky * (grey(l.skyColour) + grey(l.groundColour)) / 2) / Math.PI;
+
+  it("plain keeps colours readable on both sides of the sun, untone-mapped", () => {
+    const plain = studioLights("plain");
+    expect(plain.toneMapped).toBe(false);
+    expect(roof(plain)).toBeGreaterThan(0.95);
+    expect(roof(plain)).toBeLessThan(1.4);
+    // the side away from the sun: a darker tone of the colour, not black
+    expect(shade(plain)).toBeGreaterThan(1.5 * shade(studioLights("filmic")));
+  });
+
+  it("filmic keeps the balance Studio was tuned with", () => {
+    expect(studioLights("filmic")).toMatchObject({ ambient: 0.35, sky: 0.3, sun: 2.8, toneMapped: true });
   });
 });
