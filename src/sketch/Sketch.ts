@@ -40,7 +40,7 @@ import { Mesh } from "../core/geometry/mesh/Mesh";
 import { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import { Algo } from "../core/algo/algorithms";
 import { Scene, RenderMode } from "../scene/Scene";
-import { LayerPanel, LayerMap, LayerNode, LayerState } from "../gui/LayerPanel";
+import { LayerPanel, LayerMap, LayerNode, LayerState, layerDefaults, computeEffectiveLock, activateLayer, keepActiveOn } from "../gui/LayerPanel";
 import { ParamStore } from "../gui/Params";
 import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
@@ -61,7 +61,7 @@ export type {
   SliderOpts, SelectOpts, ShapeMode,
   MeshHandle, PointHandle, LineHandle, ShapeHandle,
   ExportRegistration, ImportRegistration,
-  LayerNode, LayerState, LayerMap,
+  LayerNode, LayerState, LayerMap, LayerColumns, LayerTree,
 } from "./SketchTypes";
 import type {
   Lab, SketchConfig, ExportRegistration, ImportRegistration,
@@ -276,6 +276,10 @@ export class SketchInstance {
   // scopes, keyed by layer name. Reset every run — ids don't survive clear().
   private _viewLayerStack: string[] = [];
   private _viewLayerObjects = new Map<string, string[]>();
+  private _objectViewLayer = new Map<string, string>();
+  // Layer ids locked in any layer tree (own or a parent's lock): objects on
+  // them — by `.layer()` name or view layer — can't be picked or hovered.
+  private _lockedLayers = new Set<string>();
 
   constructor(fn: SketchFn, config: SketchConfig) {
     this.fn = fn;
@@ -292,6 +296,7 @@ export class SketchInstance {
       if (e.type === "object:add" && this._viewLayerStack.length > 0) {
         const name = this._viewLayerStack[this._viewLayerStack.length - 1];
         this._viewLayerObjects.get(name)!.push(e.id);
+        this._objectViewLayer.set(e.id, name);
       }
     });
 
@@ -306,6 +311,7 @@ export class SketchInstance {
 
     this.buildDOM();
     this.initRenderer();
+    this.renderer.setPickFilter(id => !this.onLockedLayer(id));
     this.commands.add(viewCommands(this.renderer));
     this._unbindCommandKeys = this.commands.bindKeys();
     this.wireInput();
@@ -430,6 +436,25 @@ export class SketchInstance {
     }
   }
 
+  /** Recompute which layer ids are locked, and drop a selection that is now on one. */
+  private refreshLocks(): void {
+    this._lockedLayers.clear();
+    for (const lt of this.layerTrees.values()) {
+      const locked = computeEffectiveLock(lt.nodes, lt.value);
+      for (const id in locked) if (locked[id]) this._lockedLayers.add(id);
+    }
+    if (!this._running && this._selectedId && this.onLockedLayer(this._selectedId)) this.setSelected(null);
+  }
+
+  /** Whether scene object `id` is on a locked layer: its `.layer()` name or its view layer is a locked layer id. */
+  private onLockedLayer(id: string): boolean {
+    if (this._lockedLayers.size === 0) return false;
+    const layer = this.scene.get(id)?.style.layer;
+    if (layer && this._lockedLayers.has(layer)) return true;
+    const view = this._objectViewLayer.get(id);
+    return !!view && this._lockedLayers.has(view);
+  }
+
   setGizmoMode(mode: "translate" | "rotate" | "scale" | "none"): void {
     this.renderer.setGizmoMode(mode);
   }
@@ -546,6 +571,7 @@ export class SketchInstance {
     this._displayKeys.clear();
     this._viewLayerStack = [];
     this._viewLayerObjects.clear();
+    this._objectViewLayer.clear();
 
     // Reset drag-handle declaration order; mark all currently-known handles
     // as "unseen" so any that aren't re-declared this run get removed.
@@ -581,6 +607,7 @@ export class SketchInstance {
     for (const key of this.layerTrees.keys()) {
       if (!usedParams.has(key)) this.layerTrees.delete(key);
     }
+    this.refreshLocks();
 
     // Only rebuild panel DOM when the control structure changes
     // (params/buttons added/removed), not on value-only changes.
@@ -606,7 +633,7 @@ export class SketchInstance {
     // selection if this run no longer declares it. Without this, clicking an
     // object left the gizmo stranded at the origin.
     if (this._selectedId) {
-      if (this.scene.has(this._selectedId)) {
+      if (this.scene.has(this._selectedId) && !this.onLockedLayer(this._selectedId)) {
         this.renderer.setSelectionHighlight(this._selectedId);
         this.renderer.attachGizmo(this._selectedId);
       } else {
@@ -719,10 +746,17 @@ export class SketchInstance {
         const key = `layertree:${opts?.group ?? ""}:${label}`;
         usedParams.add(key);
         let lt = self.layerTrees.get(key);
+        // Any change to the tree — on/off, lock, colour, the active layer — re-runs
+        // the sketch, or runs the display pass for a `display` tree.
+        const changed = (state: LayerTreeState) => {
+          self.refreshLocks();
+          if (state.display && self._onDisplayFns.length > 0) self.runDisplayPass();
+          else self.runSketch();
+        };
         if (!lt) {
           const state = {
             key,
-            value: {} as LayerMap,
+            value: layerDefaults(nodes),
             nodes,
             group: opts?.group ?? "Layers",
             tab: opts?.tab ?? "",
@@ -730,34 +764,47 @@ export class SketchInstance {
           } as LayerTreeState;
           state.panel = new LayerPanel({
             nodes,
-            value: {},
+            value: state.value,
             isDark: self.theme.isDark,
-            onChange: (updates) => {
+            active: opts?.active,
+            columns: opts?.columns,
+            onChange: (updates, active) => {
               state.value = { ...state.value, ...updates };
-              state.panel.update(state.nodes, state.value);
-              if (state.display && self._onDisplayFns.length > 0) self.runDisplayPass();
-              else self.runSketch();
+              state.panel.update(state.nodes, state.value, active);
+              changed(state);
             },
           });
           lt = state;
           self.layerTrees.set(key, state);
+          self.refreshLocks();
         } else {
-          // Nodes may change between runs (e.g. async mesh load)
+          // Nodes may change between runs (e.g. async mesh load); new ones start from their defaults
           lt.nodes = nodes;
           lt.display = !!opts?.display;
+          lt.value = { ...layerDefaults(nodes), ...lt.value };
           lt.panel.update(nodes, lt.value);
         }
         const state = lt;
         return {
           get value() { return state.value; },
+          get active() { return state.panel.active; },
           set(update) {
             const next = { ...state.value };
-            for (const [id, v] of Object.entries(update)) next[id] = { ...next[id], ...v } as LayerState;
+            for (const [id, v] of Object.entries(keepActiveOn(state.nodes, state.panel.active, update))) {
+              next[id] = { ...next[id], ...v } as LayerState;
+            }
             state.value = next;
             state.panel.update(state.nodes, state.value);
-            if (self._running) return;
-            if (state.display && self._onDisplayFns.length > 0) self.runDisplayPass();
-            else self.runSketch();
+            if (self._running) { self.refreshLocks(); return; }
+            changed(state);
+          },
+          setActive(id) {
+            if (opts?.columns?.active === false) return;   // a tree without an active layer
+            if (id === state.panel.active || !(id in layerDefaults(state.nodes))) return;
+            state.value = { ...state.value, ...activateLayer(state.nodes, state.value, id) };
+            state.panel.update(state.nodes, state.value, id);
+            if (self._running) { self.refreshLocks(); return; }
+            changed(state);
           },
         };
       },
