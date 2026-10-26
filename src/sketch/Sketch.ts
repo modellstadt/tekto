@@ -40,6 +40,7 @@ import { Mesh } from "../core/geometry/mesh/Mesh";
 import { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import { Algo } from "../core/algo/algorithms";
 import { Scene, RenderMode } from "../scene/Scene";
+import { VIEWER_HEADER_H } from "../render/ShadingBar";
 import { LayerPanel, LayerMap, LayerNode, LayerState, layerDefaults, computeEffectiveLock, activateLayer, keepActiveOn } from "../gui/LayerPanel";
 import { ParamStore } from "../gui/Params";
 import { ControlPanel, ControlItem, PanelButton, CustomRow, ExtraTab } from "../gui/ControlPanel";
@@ -381,7 +382,8 @@ export class SketchInstance {
       up: this.config.up ?? "y",
       navGizmo: this.config.navGizmo ?? false,
       // On by default; a shell with its own bar (the testbench's data-shell) turns it off.
-      shadingBar: this.config.shadingBar ?? this.container.dataset.shell == null,
+      shadingBar: this.config.shadingBar ?? (this.container.dataset.shell == null ? "header" : false),
+      headerHost: this.viewportWrap,   // above overlay() layers and ✎ Markup's drawing layer
       units: this.config.units ?? null,
     });
   }
@@ -1041,6 +1043,7 @@ export class SketchInstance {
       onDisplay(fn) { self._onDisplayFns.push(fn); },
 
       get activeTab() { return self.panel.getActiveTab(); },
+      get viewerHeader() { const h = self.renderer.viewerHeader; return h ? { left: h.left, right: h.right } : null; },
       get renderMode() { self._readsStyle.add("renderMode"); return self.scene.renderMode; },
       get lightingMode() { self._readsStyle.add("lightingMode"); return self.scene.lightingMode; },
       frameBounds(min, max) { self.renderer.setFrameBounds({ min, max }); },
@@ -1455,6 +1458,8 @@ export class SketchInstance {
       snapshotPng: () => snapshotWithOverlays(this.renderer, this.viewportWrap),
       describe: (id) => this.describeObject(id),
       context: () => this.markupContext(),
+      buttonHost: this.renderer.viewerHeader?.end,
+      top: this.renderer.viewerHeader ? VIEWER_HEADER_H : 0,
       setTracking(on) {
         if (on === self._trackSource) return;
         self._trackSource = on;

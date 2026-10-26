@@ -17,7 +17,7 @@ import type { Scene, VisualStyle, FlatMeshData, LightSpec, RenderMode, LightingM
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 import type { SectionRequest, StandardView } from "../scene/Scene";
 import type { Command } from "../gui/Commands";
-import type { ShadingBarCorner } from "../render/ShadingBar";
+import type { ShadingBarPlacement } from "../render/ShadingBar";
 export type { LayerNode, LayerState, LayerMap, LayerColumns } from "../gui/LayerPanel";
 import type { LayerState, LayerColumns } from "../gui/LayerPanel";
 
@@ -58,11 +58,14 @@ export interface SketchConfig {
   /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
    *  toggle persp/ortho under it; hidden in a strict-2D view. Default `false`. */
   navGizmo?: boolean;
-  /** The shading bar in a corner of the view (top-left with `true`): icons for the render
-   *  style, the lighting and the sun (morning, noon, sunset); in a strict-2D view
-   *  (`lab.setOrbitRotateEnabled(false)`) zoom in, zoom out and zoom to bounds instead.
-   *  Default `true`, except inside a shell with its own bar (the testbench); `false` hides it. */
-  shadingBar?: boolean | ShadingBarCorner;
+  /** The view's controls. `"header"` (the default): a strip across the top of the view, as
+   *  Blender's viewport header — the app's own controls on its left (`lab.viewerHeader`), the
+   *  render style, lighting, sun, section, overlays, snapshot and ✎ Markup on its right; the axis
+   *  widget (`navGizmo`) top right under it and zoom in / out / to bounds below. In a strict-2D view
+   *  (`lab.setOrbitRotateEnabled(false)`) the header keeps the snapshot and ✎ Markup, the column the
+   *  zoom. A corner (`true` = top left) is the compact bar instead; `false` hides it. Off by default
+   *  inside a shell with its own bar (the testbench). */
+  shadingBar?: boolean | ShadingBarPlacement;
   /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset (default):
    *  relative to the content's extent. */
   units?: string;
@@ -532,6 +535,10 @@ export interface Lab {
   /** The panel's currently active tab name ("" when the panel has no tabs). */
   readonly activeTab: string;
 
+  /** With the viewer header (`shadingBar: "header"`): its slots for the app's own controls — view
+   *  tabs, tools, who is here. Append to them once (they persist across re-runs). Null otherwise. */
+  readonly viewerHeader: { left: HTMLElement; right: HTMLElement } | null;
+
   /** The render style the view draws in — chosen in the shading bar, by a host shell or in
    *  code. A sketch that reads it is re-run when it changes, so a build can follow the style
    *  (e.g. leave out line work when shaded). */
@@ -576,7 +583,7 @@ export interface Lab {
    */
   enablePicking(enabled?: boolean): void;
   /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view: the shading bar
-   *  shows its 2D palette (zoom in, zoom out, zoom to bounds) and the axis widget hides. */
+   *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
   setOrbitRotateEnabled(enabled: boolean): void;
   /** Register a callback invoked on every click pick. `id` is null for background clicks. */
   onPick(fn: (id: string | null, pick?: { tag?: string; layer?: string }) => void): void;
