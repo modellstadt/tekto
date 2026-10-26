@@ -6,6 +6,11 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The status line folds away**: the info box `app.status(…)` shows over an `appShell`'s view
+  has a button that folds it to an ⓘ in the corner (its text in the tooltip) and back; the
+  choice is remembered per app. `appShell({ statusCollapsed: true })` starts folded. The box
+  still lets clicks through to the view.
+
 - **Fix: a `Mesh` with node colours is drawn in them.** `scene.addMesh` / `lab.mesh` ignored
   `Mesh.setColors` and drew the style colour; only `addFlatMesh` drew node colours. Now both do.
   A mesh without node colours draws as before.
