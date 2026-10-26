@@ -6,6 +6,18 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`Voronoi2D`: clipped Voronoi and power diagrams with neighbour labels.** The dual of
+  `Delaunay2D`: `Voronoi2D.cells(sites, { clip, radii })` gives each site the part of the clip
+  region nearer to it than to any other site, as a counter-clockwise polygon whose every edge
+  names the site across it (`neighbors[k]`, `-1` along the clip). The clip is any simple ring,
+  convex or not (default: the sites' bounds grown by half their larger side). `cells[i].site ===
+  i` and holds the piece with the site in it; where a concave clip cuts a cell in two, the further
+  pieces follow the first `sites.length` entries. With `radii` it is a power (Laguerre) diagram,
+  whose boundary between two touching circles runs through their contact point, for relaxed
+  circle packings. `Voronoi2D.neighbors(cells, n)` lists each site's neighbours. Exact half-plane
+  clipping over a uniform grid with a security radius, independent of `Delaunay2D`: 5,000 sites
+  in 15–40 ms in Node. Coincident and collinear sites each get their cell (or an empty one). The
+  **Voronoi** playground page shows it on four clips.
 - **`Particles2D`**: circles in the plane relaxed step by step — overlapping circles push
   apart, springs (`addSpring`) pull pairs toward a rest length, pinned circles stay put, and a
   `boundary` ring (any simple polygon, concave too) keeps every circle its radius inside. A
