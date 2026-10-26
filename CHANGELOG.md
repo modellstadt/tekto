@@ -15,6 +15,68 @@ before 1.0, breaking changes bump the minor version. See
   colour and one turned away a darker tone of it. The Studio counterpart of
   `flatLighting: "plain"`; `studioLights(style)` is the rule. Daylight still retints either.
 
+- **The status line folds away**: the info box `app.status(…)` shows over an `appShell`'s view
+  has a button that folds it to an ⓘ in the corner (its text in the tooltip) and back; the
+  choice is remembered per app. `appShell({ statusCollapsed: true })` starts folded. The box
+  still lets clicks through to the view.
+
+- **Fix: a `Mesh` with node colours is drawn in them.** `scene.addMesh` / `lab.mesh` ignored
+  `Mesh.setColors` and drew the style colour; only `addFlatMesh` drew node colours. Now both do.
+  A mesh without node colours draws as before.
+- **The viewer header**, as Blender has one: `shadingBar: "header"` — now the default of `sketch()`
+  outside the testbench — is a strip across the top of the view. On its left the app's own
+  controls (`lab.viewerHeader.left` / `.right`, `renderer.viewerHeader`: view tabs, tools, who is
+  here); on its right the render style, lighting, sun, section, overlays, snapshot and ✎ Markup.
+  The axis widget sits top right under it, and zoom in / out / to bounds in a column below that;
+  in a strict-2D view the header keeps the snapshot and ✎ Markup and the column moves up. The
+  header is above ✎ Markup's drawing layer (its Done stays in reach) and above `lab.overlay()`
+  layers. A corner (`shadingBar: true` / `"top-left"` …) is the compact bar as before. New:
+  `ShadingBarPlacement`, `renderer.navGizmoEl`; `MarkupHost.buttonHost` / `.top`.
+- **The 2D palette has a hand.** In a strict-2D view the palette (the header's nav column) has a
+  hand above the zoom buttons. On, a left drag (one finger) moves the view along under a grab
+  cursor — before, a plain left drag did nothing in 2D — over drag handles too; a click still
+  picks. It turns off when the view turns 3D. New: `renderer.setHandMode(on)` / `renderer.handMode`.
+- **A sketch's Info tab can hold controls.** Controls declared with `tab: "Info"` show in the Info
+  tab above the log; before, the tab drew only the log and they were lost. In general an extra
+  tab of a `ControlPanel` shows the controls declared in it above its own content.
+- **The shading bar is on in every `sketch()`, and has a 2D palette.** `sketch()` shows the
+  shading bar (render style, lighting, sun, section, overlays, frame, snapshot as icons in the
+  view) unless the page passes `shadingBar: false`, or it runs inside a shell with its own bar
+  (the testbench's `data-shell`); `shadingBar` also takes a corner (`"bottom-left"` …), as in
+  `appShell`. In a strict-2D view — orbit rotation off (`lab.setOrbitRotateEnabled(false)`,
+  `renderer.setOrbitRotateEnabled(false)`) — the bar is the 2D palette instead: zoom in, zoom
+  out and zoom to bounds (the selection, or everything); with rotation on again it is the 3D
+  bar. The axis widget (`navGizmo`) hides in a strict-2D view too. What Frame / zoom to bounds
+  frames with nothing selected can be set: `lab.frameBounds(min, max)` (per run) or
+  `renderer.setFrameBounds(box)`, say the model without its site. New: `renderer.zoomBy(factor)` (animated; closer in perspective, a larger zoom in
+  orthographic) and `renderer.orbitRotateEnabled`.
+- **A sketch can follow the view's style.** `lab.renderMode` and `lab.lightingMode` read the
+  render style and the lighting, however they were chosen (the shading bar, a shell, code). A
+  sketch that reads one is re-run when it changes, so its build can follow the style, as the
+  Buchholz stair leaves its line work out when shaded; a sketch that never reads them is not.
+- **A Rhino-style layer panel.** `LayerPanel` (and so `lab.layerTree`) shows per layer, after
+  its name, an active-layer check, an on/off bulb, a padlock and a square colour swatch (a flat
+  12 px chip instead of the browser's rounded picker), like Rhino's layer panel.
+  - **Active layer** (Rhino: current), the one new objects go on: `lab.layerTree(…).active` and
+    `.setActive(id)`, `opts.active` for the initial one (default: the first layer that is on).
+    It and its parents are always on and unlocked: making a layer active turns them on and
+    unlocks them (`activateLayer`), and their bulb and lock are disabled.
+  - **Lock**: `LayerState.locked`, `LayerNode.defaultLocked`, `computeEffectiveLock` (a locked
+    parent masks its children, like visibility). In a sketch, objects tagged `.layer(id)` or drawn
+    in `lab.viewLayer(id, …)` on a locked layer are drawn but can't be picked or hovered — the
+    click goes through to what is behind — and a selection on one is dropped.
+    `ThreeRenderer.setPickFilter` is the hook underneath, for apps with their own selection.
+  - `opts.columns` hides the active, lock or colour column. Without the active column the tree
+    has no active layer (`.active` is ""), so nothing is kept on — a viewer's tree, with just the
+    bulb and the swatch.
+  - `lab.layerTree(…).value` now holds every layer's state from the start (`layerDefaults`);
+    before, only the layers someone had changed were in it, so a sketch saw no colour for an
+    untouched layer even though the panel showed one. `.set` on an untouched layer no longer
+    loses its colour.
+  - The on/off control is a bulb button (`role="checkbox"`, named `On: <label>`) instead of a
+    checkbox before the name; scripts that clicked `input[type=checkbox]` in the layer panel
+    should use the role instead. Each row carries its layer id (`data-layer="<id>"`), so a script
+    finds a layer by id rather than by its label. A new playground page, *Layers*, shows all of it.
 - **`Building.check()` scales to generated buildings.** It compared every room with every
   room (`spaces-overlap`), every wall end with every wall (`wall-end-free`) and every room
   with every opening (`space-no-door`, `space-no-window`), so a storey of square 5 m cells
