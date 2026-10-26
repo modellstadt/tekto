@@ -101,6 +101,8 @@ export { SpringSystem3D } from "./core/physics";
 export type { Spring } from "./core/physics";
 export { RigidBody2D, Spring2D, repelBodies } from "./core/physics/RigidBody2D";
 export type { RigidBodyConfig, SpringConfig } from "./core/physics/RigidBody2D";
+export { Particles2D } from "./core/physics/Particles2D";
+export type { Particles2DSpring } from "./core/physics/Particles2D";
 
 // IO
 export { ObjFile } from "./io";

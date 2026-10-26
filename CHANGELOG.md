@@ -6,6 +6,16 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **`Particles2D`**: circles in the plane relaxed step by step — overlapping circles push
+  apart, springs (`addSpring`) pull pairs toward a rest length, pinned circles stay put, and a
+  `boundary` ring (any simple polygon, concave too) keeps every circle its radius inside. A
+  step gathers the overlap and spring corrections and moves all circles at once, so the
+  result does not depend on their order and a given input always relaxes the same way.
+  `Particles2D.pack(ring, r, { seed })` is the packing of a 2008 office-building applet:
+  area/(2√3 r²) seeded points, 200 steps inside the ring, centres left outside dropped.
+  Overlaps are found with a spatial hash: a step over 3,000 circles takes about 1 ms. The
+  *Circle Packing* page animates a packing in a square, an L or a site, and a bubble
+  diagram of rooms linked by springs.
 - **`studioLighting: "plain"`** (renderer config): Studio's sun and shadows under a white sky
   without tone mapping, the balance the old `Viewport` drew shadows with
   (`lightBalance("shaded", true)`: sun 2.6, sky 1.1). The default, `"filmic"`, tone-maps with
