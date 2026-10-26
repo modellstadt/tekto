@@ -37,6 +37,8 @@ export interface NavGizmoOptions {
   corner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
   /** Distance from the two edges of that corner, in pixels. */
   inset?: number;
+  /** Extra distance from the top edge (in a top corner), e.g. for a header strip across the view. */
+  offsetTop?: number;
   /**
    * Whether to show the projection toggle under the axes.
    *
@@ -100,7 +102,7 @@ export class NavGizmo {
     const corner = opts.corner ?? "bottom-right";
     const inset = `${opts.inset ?? 12}px`;
     this.root.style.cssText = `position:absolute;width:${this.size}px;
-      ${corner.includes("top") ? "top" : "bottom"}:${inset};
+      ${corner.includes("top") ? `top:${(opts.inset ?? 12) + (opts.offsetTop ?? 0)}px` : `bottom:${inset}`};
       ${corner.includes("left") ? "left" : "right"}:${inset};
       cursor:grab;touch-action:none;user-select:none;z-index:5;
       display:flex;flex-direction:column;align-items:center;gap:2px`;
@@ -284,6 +286,9 @@ export class NavGizmo {
   }
 
   setVisible(on: boolean) { this.root.style.display = on ? "" : "none"; }
+
+  /** The widget's element (axes and the projection toggle). */
+  get el(): HTMLElement { return this.root; }
 
   dispose() {
     this.listeners.abort();               // or a disposed widget keeps orbiting

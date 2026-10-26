@@ -2,7 +2,9 @@
  * The shading bar: a small strip of icons in a corner of the 3D view, as Blender has one in
  * its viewport header. The render style (solid, wireframe, hidden line, ghost), the lighting
  * (Flat, Studio) and the sun (Morning, Noon, Sunset). The renderer draws it in its own view,
- * so an app only switches it on (`shadingBar: true`); it follows changes made in code.
+ * so an app only switches it on (`shadingBar: true`); it follows changes made in code. In a
+ * strict-2D view (orbit rotation off) it is the 2D palette instead: the hand (drag the view along),
+ * zoom in, zoom out, zoom to bounds.
  */
 import type { RenderMode, LightingMode } from "../scene/Scene";
 import type { SunPreset } from "./viewRules";
@@ -41,18 +43,35 @@ export const SHADING_ICONS = {
   // A box with a slice through it.
   section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
   flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`),
+  // Zoom in / out: a magnifier with a plus or a minus.
+  zoomIn: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/>`),
+  zoomOut: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5"/>`),
+  // The hand: four fingers up, the thumb out to the left.
+  hand: svg(`<path d="M7 14V7.3a1.3 1.3 0 0 1 2.6 0V11M9.6 11V5.3a1.3 1.3 0 0 1 2.6 0V11M12.2 11V6.3a1.3 1.3 0 0 1 2.6 0V11`
+    + `M14.8 11.5V8.3a1.3 1.3 0 0 1 2.6 0V15a6 6 0 0 1-6 6h-1a5 5 0 0 1-3.9-1.9L3.6 15.4a1.4 1.4 0 0 1 2.1-1.8L7 15"/>`),
 };
+
+/** How much one click of the 2D palette's zoom in / out zooms. */
+const ZOOM_STEP = 1.25;
 
 const MODES: [RenderMode, string][] = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hidden line"], ["ghost", "Ghost"]];
 const LIGHTS: [LightingMode, string][] = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
 const SUNS: [SunPreset, string][] = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
 
-/** What the bar asks of its renderer beyond the parts: overlays, framing, a snapshot. */
+/** What the bar asks of its renderer beyond the parts: overlays, framing, zooming, a snapshot,
+ *  and whether the view is strict 2D (orbit rotation off). */
 export interface ShadingBarHost {
   readonly overlays: Record<string, boolean>;
   setOverlays(overlays: Record<string, boolean>): void;
   frame(): void;
+  zoomBy(factor: number): void;
+  readonly orbitRotateEnabled: boolean;
+  /** The hand (a strict-2D view's tool): the left button drags the view along. */
+  readonly handMode: boolean;
+  setHandMode(on: boolean): void;
   saveSnapshot(fileName?: string): void;
+  /** The axis widget's element, if there is one: in the header layout the nav column sits under it. */
+  readonly navGizmoEl: HTMLElement | null;
 }
 
 const OVERLAY_LABELS: Record<string, string> = { grid: "Grid", axes: "Axes", wireframe: "Wireframe", labels: "Labels", notes: "Notes" };
@@ -60,9 +79,28 @@ const OVERLAY_LABELS: Record<string, string> = { grid: "Grid", axes: "Axes", wir
 /** Corner of the view the bar sits in. */
 export type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
+/** Where the bar sits: a corner of the view, or `"header"` — a strip across the top of the view, as
+ *  Blender's viewport header: the app's own controls on its left (`renderer.viewerHeader.left`), the
+ *  shading icons, the snapshot and ✎ Markup on its right, and zoom in / out / to bounds in a column
+ *  under the axis widget (the hand above them in a strict-2D view). */
+export type ShadingBarPlacement = ShadingBarCorner | "header";
+
+/** The header strip's height in pixels (`shadingBar: "header"`). */
+export const VIEWER_HEADER_H = 34;
+
 export class ShadingBar {
   private root = document.createElement("div");
+  // Two palettes, one shown: the 3D one (style, lighting, sun, section, overlays) and, in a
+  // strict-2D view, the 2D one (the hand, zoom in, zoom out, zoom to bounds).
+  private full = document.createElement("div");
+  private flat = document.createElement("div");
+  private group: HTMLElement = this.full;
   private openPop: HTMLDivElement | null = null;
+  /** The header layout's slots: the app's controls (left, right) and where ✎ Markup goes (end). */
+  readonly header: { left: HTMLElement; right: HTMLElement; end: HTMLElement } | null = null;
+  // The header layout's nav column (zoom in / out / to bounds; the hand in 2D), under the axis widget.
+  private nav: HTMLDivElement | null = null;
+  private openers = new Map<HTMLDivElement, HTMLButtonElement>();
   // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
   private levels: { name: string; elevation: number }[] = [];
   private cutHeight = 1.2;
@@ -74,14 +112,42 @@ export class ShadingBar {
   private off: () => void;
 
   constructor(private core: RendererCore, private lighting: Lighting, private marks: Marks, private ao: AmbientOcclusion,
-    private view: ShadingBarHost, corner: ShadingBarCorner = "top-left") {
+    private view: ShadingBarHost, placement: ShadingBarPlacement = "top-left", headerHost: HTMLElement | null = null) {
     const host = core.container;
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    // The header may sit outside the view's own stacking context (above overlays laid over the view);
+    // the nav column stays with the view, under the axis widget.
+    const rootHost = placement === "header" && headerHost ? headerHost : host;
+    if (rootHost !== host && getComputedStyle(rootHost).position === "static") rootHost.style.position = "relative";
+    const isHeader = placement === "header";
+    const corner: ShadingBarCorner = isHeader ? "top-left" : placement;
     const [v, h] = [corner.startsWith("top") ? "top" : "bottom", corner.endsWith("left") ? "left" : "right"];
-    this.root.style.cssText = `position:absolute;${v}:10px;${h}:10px;z-index:5;display:flex;align-items:center;gap:2px;`
-      + "padding:3px;border-radius:7px;background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);"
-      + "box-shadow:0 2px 8px rgba(0,0,0,.3);user-select:none;";
     this.root.dataset.tektoShadingBar = "";
+    this.full.style.display = "contents";
+    this.flat.style.display = "contents";
+    if (isHeader) {
+      // Above the ✎ Markup drawing layer (z 20–22), so its Done stays in reach while drawing.
+      this.root.style.cssText = `position:absolute;top:0;left:0;right:0;height:${VIEWER_HEADER_H}px;box-sizing:border-box;z-index:23;`
+        + "display:flex;align-items:center;gap:2px;padding:0 6px;background:rgba(16,18,26,.9);"
+        + "border-bottom:1px solid rgba(255,255,255,.08);user-select:none;";
+      this.root.dataset.tektoViewerHeader = "";
+      const slot = () => { const d = document.createElement("div"); d.style.cssText = "display:flex;align-items:center;gap:6px;"; return d; };
+      const left = slot(), right = slot(), end = slot(), spacer = document.createElement("div");
+      spacer.style.cssText = "flex:1;min-width:8px;";
+      right.style.marginLeft = end.style.marginLeft = "8px";
+      this.header = { left, right, end };
+      this.root.append(left, spacer, this.full, this.flat, right, end);
+      this.nav = document.createElement("div");
+      this.nav.dataset.tektoNavColumn = "";
+      this.nav.style.cssText = "position:absolute;z-index:5;display:flex;flex-direction:column;gap:2px;padding:3px;border-radius:7px;"
+        + "background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);user-select:none;";
+      host.appendChild(this.nav);
+    } else {
+      this.root.style.cssText = `position:absolute;${v}:10px;${h}:10px;z-index:5;display:flex;align-items:center;gap:2px;`
+        + "padding:3px;border-radius:7px;background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);"
+        + "box-shadow:0 2px 8px rgba(0,0,0,.3);user-select:none;";
+      this.root.append(this.full, this.flat);
+    }
 
     const scene = core.gScene;
     for (const [mode, label] of MODES) this.button(viewModeIconSvg(mode, 16), label, () => scene.renderMode === mode, () => scene.setRenderMode(mode));
@@ -91,6 +157,7 @@ export class ShadingBar {
     this.separator();
     const sunPop = this.popover(v, h);
     const sun = this.button(SHADING_ICONS.noon, "Sun: morning, noon, sunset", () => this.openPop === sunPop, () => this.toggle(sunPop));
+    this.openers.set(sunPop, sun);
     this.paints.push(() => { sun.innerHTML = SHADING_ICONS[this.lighting.currentSunPreset ?? "noon"]; });
     for (const [preset, label] of SUNS) {
       const b = this.button(`${SHADING_ICONS[preset]}<span style="font:500 9.5px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">${label}</span>`,
@@ -106,7 +173,7 @@ export class ShadingBar {
     const cutPop = this.popover(v, h);
     cutPop.style.flexDirection = "column";
     cutPop.style.gap = "6px";
-    this.button(SHADING_ICONS.section, "Section: cut the model", () => this.openPop === cutPop || !!this.marks.section, () => this.toggle(cutPop));
+    this.openers.set(cutPop, this.button(SHADING_ICONS.section, "Section: cut the model", () => this.openPop === cutPop || !!this.marks.section, () => this.toggle(cutPop)));
     this.sectionControls(cutPop);
     this.separator();
 
@@ -114,7 +181,7 @@ export class ShadingBar {
     const overlayPop = this.popover(v, h);
     overlayPop.style.flexDirection = "column";
     overlayPop.style.minWidth = "120px";
-    this.button(SHADING_ICONS.overlays, "Overlays: grid, axes, wireframe, labels, notes", () => this.openPop === overlayPop, () => this.toggle(overlayPop));
+    this.openers.set(overlayPop, this.button(SHADING_ICONS.overlays, "Overlays: grid, axes, wireframe, labels, notes", () => this.openPop === overlayPop, () => this.toggle(overlayPop)));
     let listed = "";
     this.paints.push(() => {
       const names = Object.keys(this.view.overlays);
@@ -143,10 +210,32 @@ export class ShadingBar {
     });
     this.paints.push(() => { for (const p of this.overlayPaints) p(); });
 
-    // Frame the selection or everything; save the view.
-    this.button(SHADING_ICONS.frame, "Frame: the selection, or everything", () => false, () => this.view.frame());
+    // Frame the selection or everything (the header layout has it in the nav column); save the view.
+    if (!isHeader) this.button(SHADING_ICONS.frame, "Frame: the selection, or everything", () => false, () => this.view.frame());
     this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
-    host.appendChild(this.root);
+
+    // The 2D palette, for a strict-2D view (orbit rotation off): a flat sheet has no style,
+    // lighting, sun or section to choose — only how much of it to see. In the header layout the
+    // zoom is in the nav column (in 2D and 3D), and the 2D header keeps just the snapshot.
+    this.group = this.flat;
+    if (isHeader) this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
+    this.group = this.nav ?? this.flat;
+    const hand = this.button(SHADING_ICONS.hand, "Hand: drag the view along (click again to stop)",
+      () => this.view.handMode, () => this.view.setHandMode(!this.view.handMode));
+    this.button(SHADING_ICONS.zoomIn, "Zoom in", () => false, () => this.view.zoomBy(ZOOM_STEP));
+    this.button(SHADING_ICONS.zoomOut, "Zoom out", () => false, () => this.view.zoomBy(1 / ZOOM_STEP));
+    this.button(SHADING_ICONS.frame, "Zoom to bounds: the selection, or everything", () => false, () => this.view.frame());
+    this.paints.push(() => {
+      const flat = !this.view.orbitRotateEnabled;
+      this.root.dataset.palette = flat ? "2d" : "3d";
+      this.full.style.display = flat ? "none" : "contents";
+      this.flat.style.display = flat ? "contents" : "none";
+      hand.style.display = flat ? "flex" : "none";            // a flat sheet's tool (the nav column shows in 3D too)
+      if (flat && this.openPop) { this.openPop.style.display = "none"; this.openPop = null; }
+      if (this.nav) this.placeNav();
+    });
+    rootHost.appendChild(this.root);
+    if (this.nav) requestAnimationFrame(() => this.placeNav());   // once laid out
 
     // Follow the state wherever it is changed.
     this.off = scene.on((e) => { if (e.type === "scene:renderMode" || e.type === "scene:lightingMode") this.paint(); });
@@ -155,6 +244,14 @@ export class ShadingBar {
 
   /** Redraw which buttons are on (after a change made elsewhere, such as the sun moved in code). */
   paint(): void { for (const p of this.paints) p(); }
+
+  /** The nav column under the axis widget, or right under the header without one (a strict-2D view). */
+  private placeNav(): void {
+    const nav = this.nav!, g = this.view.navGizmoEl;
+    const under = !!g && g.style.display !== "none" && g.offsetHeight > 0;
+    nav.style.top = `${under ? g!.offsetTop + g!.offsetHeight + 6 : VIEWER_HEADER_H + 8}px`;
+    nav.style.right = `${under ? 12 + Math.max(0, (g!.offsetWidth - nav.offsetWidth) / 2) : 12}px`;
+  }
 
   /** A popover under the bar (above it when the bar sits at the bottom). */
   private popover(v: string, h: string): HTMLDivElement {
@@ -171,6 +268,10 @@ export class ShadingBar {
     const next = pop && this.openPop !== pop ? pop : null;
     if (this.openPop) this.openPop.style.display = "none";
     if (next) next.style.display = "flex";
+    const opener = next && this.header ? this.openers.get(next) : undefined;
+    if (next && opener) {   // in the header: under its button, kept inside the header's width
+      next.style.left = `${Math.max(0, Math.min(opener.offsetLeft, this.root.clientWidth - next.offsetWidth - 4))}px`;
+    }
     this.openPop = next;
     this.paint();
   }
@@ -323,7 +424,7 @@ export class ShadingBar {
     this.paint();
   }
 
-  private button(icon: string, title: string, on: () => boolean, run: () => void, parent: HTMLElement = this.root, paints = this.paints): HTMLButtonElement {
+  private button(icon: string, title: string, on: () => boolean, run: () => void, parent: HTMLElement = this.group, paints = this.paints): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
@@ -348,13 +449,14 @@ export class ShadingBar {
   private separator(): void {
     const s = document.createElement("div");
     s.style.cssText = "width:1px;height:18px;margin:0 3px;background:rgba(255,255,255,.14);";
-    this.root.appendChild(s);
+    this.group.appendChild(s);
   }
 
   dispose(): void {
     this.off();
     this.marks.showSectionPlane(false);
     this.root.remove();
+    this.nav?.remove();
   }
 }
 
