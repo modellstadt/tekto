@@ -2,15 +2,18 @@
  * ControlPanel tabs: an extra tab (the sketch's Info, its log) shows the controls declared in
  * that tab too, above its own content.
  */
-import path from "node:path";
 import { expect, test } from "@playwright/test";
+
+// A tekto source module's URL on the playground's dev server (/@fs + its absolute path), found
+// from this spec's own path: no Node types needed (CI's clean install has none).
+const srcUrl = (f: string) => "/@fs" + test.info().file.replace(/\\/g, "/").replace(/^(?!\/)/, "/").replace(/tests\/e2e\/[^/]+$/, `src/gui/${f}`);
 
 test("an extra tab shows the controls declared in it, above its own content", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/testbench.html?page=primitives");
   await expect(page.locator("canvas").first()).toBeVisible({ timeout: 15_000 });
-  const src = (f: string) => `/@fs${path.resolve(__dirname, "../../src/gui", f)}`;
+  const src = srcUrl;
   await page.evaluate(async ([cp, params]) => {
     const { ControlPanel } = await import(/* @vite-ignore */ cp);
     const { ParamStore } = await import(/* @vite-ignore */ params);
