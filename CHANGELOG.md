@@ -15,6 +15,10 @@ before 1.0, breaking changes bump the minor version. See
   header is above ✎ Markup's drawing layer (its Done stays in reach) and above `lab.overlay()`
   layers. A corner (`shadingBar: true` / `"top-left"` …) is the compact bar as before. New:
   `ShadingBarPlacement`, `renderer.navGizmoEl`; `MarkupHost.buttonHost` / `.top`.
+- **The 2D palette has a hand.** In a strict-2D view the palette (the header's nav column) has a
+  hand above the zoom buttons. On, a left drag (one finger) moves the view along under a grab
+  cursor — before, a plain left drag did nothing in 2D — over drag handles too; a click still
+  picks. It turns off when the view turns 3D. New: `renderer.setHandMode(on)` / `renderer.handMode`.
 - **A sketch's Info tab can hold controls.** Controls declared with `tab: "Info"` show in the Info
   tab above the log; before, the tab drew only the log and they were lost. In general an extra
   tab of a `ControlPanel` shows the controls declared in it above its own content.
