@@ -44,6 +44,9 @@ export class Pointer {
   private hovered: string | null = null;
   private hoverAt = 0;
 
+  /** The hand is on (CameraRig.setHandMode): the left button drags the view, over drag handles too. */
+  handMode = false;
+
   constructor(private core: RendererCore, private builder: ObjectBuilder, private marks: Marks) {}
 
   setPickEnabled(enabled: boolean): void {
@@ -68,7 +71,7 @@ export class Pointer {
 
   private onPointerDown = (e: PointerEvent) => {
     // Drag handle pick? — start dragging it, don't fire normal pick.
-    const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
+    const handleName = this.handMode ? null : this.dragHandleHitTest(e.clientX, e.clientY);
     if (handleName) {
       e.preventDefault();
       this.activeDragHandle = handleName;

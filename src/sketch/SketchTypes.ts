@@ -583,7 +583,7 @@ export interface Lab {
    */
   enablePicking(enabled?: boolean): void;
   /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view: the shading bar
-   *  shows its 2D palette (zoom in, zoom out, zoom to bounds) and the axis widget hides. */
+   *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
   setOrbitRotateEnabled(enabled: boolean): void;
   /** Register a callback invoked on every click pick. `id` is null for background clicks. */
   onPick(fn: (id: string | null, pick?: { tag?: string; layer?: string }) => void): void;

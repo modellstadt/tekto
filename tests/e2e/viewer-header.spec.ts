@@ -74,6 +74,43 @@ test("in a strict-2D view the header keeps snapshot and Markup, the column moves
   expect(errors).toEqual([]);
 });
 
+test("in a strict-2D view the column has the hand: on, a left drag moves the view along", async ({ page }) => {
+  const errors = await open(page);
+  const nav = page.locator("[data-tekto-nav-column]");
+  const hand = nav.getByRole("button", { name: /^Hand/ });
+  await expect(hand).toBeHidden();                                // 3D: the left button turns the view
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setOrbitRotateEnabled(false));
+  await expect(hand).toBeVisible();
+  const canvas = page.locator("canvas").first();
+  const state = () => page.evaluate(() => {
+    const r = (window as any).__tekto.owner.renderer, { position: p, target: t } = r.cameraState();
+    return { t, d: Math.hypot(p[0] - t[0], p[1] - t[1], p[2] - t[2]), cursor: r.renderer.domElement.style.cursor };
+  });
+  const drag = async () => {
+    const b = (await canvas.boundingBox())!, x = b.x + b.width / 2, y = b.y + b.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 120, y + 40, { steps: 8 }); await page.mouse.up();
+  };
+  const s0 = await state();
+  await drag();                                                   // the hand off: a plain left drag does nothing in 2D
+  const s1 = await state();
+  expect(Math.hypot(s1.t[0] - s0.t[0], s1.t[1] - s0.t[1], s1.t[2] - s0.t[2])).toBeLessThan(1e-6);
+  await hand.click();
+  await expect(hand).toHaveAttribute("aria-pressed", "true");
+  expect((await state()).cursor).toBe("grab");
+  await drag();
+  await expect.poll(async () => { const s = await state(); return Math.hypot(s.t[0] - s1.t[0], s.t[1] - s1.t[1], s.t[2] - s1.t[2]); }).toBeGreaterThan(0.05);
+  expect((await state()).d).toBeCloseTo(s1.d, 3);                 // moved along, not zoomed
+  await hand.click();                                             // off again
+  await expect(hand).toHaveAttribute("aria-pressed", "false");
+  expect((await state()).cursor).toBe("");
+  await hand.click();
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setOrbitRotateEnabled(true));
+  await expect(hand).toBeHidden();                                // back in 3D: the hand is off
+  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.handMode)).toBe(false);
+  expect((await state()).cursor).toBe("");
+  expect(errors).toEqual([]);
+});
+
 test("a header popover opens under its button; Markup's Done stays in reach while drawing", async ({ page }) => {
   const errors = await open(page);
   const header = page.locator("[data-tekto-viewer-header]");

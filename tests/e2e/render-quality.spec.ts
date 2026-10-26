@@ -466,7 +466,7 @@ test("the shading bar's overlays, Frame and Snapshot", async ({ page }) => {
   expect(dl.suggestedFilename()).toMatch(/^view-\d{8}-\d{4}\.png$/);
 });
 
-test("in a strict-2D view the shading bar is the 2D palette: zoom in, zoom out, zoom to bounds", async ({ page }) => {
+test("in a strict-2D view the shading bar is the 2D palette: the hand, zoom in, zoom out, zoom to bounds", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.goto("/testbench.html?page=mesh-factory");               // shadingBar: true
@@ -488,11 +488,16 @@ test("in a strict-2D view the shading bar is the 2D palette: zoom in, zoom out, 
   await bar.getByRole("button", { name: "Zoom out" }).click();
   await expect.poll(dist).toBeCloseTo(d0, 3);
   await bar.getByRole("button", { name: /^Zoom to bounds/ }).click();
+  const hand = bar.getByRole("button", { name: /^Hand/ });
+  await hand.click();
+  await expect(hand).toHaveAttribute("aria-pressed", "true");
 
-  // Rotation back on: the 3D palette again.
+  // Rotation back on: the 3D palette again (the hand off).
   await page.evaluate(() => (window as any).__tekto.owner.renderer.setOrbitRotateEnabled(true));
   await expect(bar).toHaveAttribute("data-palette", "3d");
   await expect(bar.getByRole("button", { name: "Ghost" })).toBeVisible();
+  await expect(hand).toBeHidden();
+  expect(await page.evaluate(() => (window as any).__tekto.owner.renderer.handMode)).toBe(false);
   expect(errors).toEqual([]);
 });
 

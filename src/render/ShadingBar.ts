@@ -3,7 +3,8 @@
  * its viewport header. The render style (solid, wireframe, hidden line, ghost), the lighting
  * (Flat, Studio) and the sun (Morning, Noon, Sunset). The renderer draws it in its own view,
  * so an app only switches it on (`shadingBar: true`); it follows changes made in code. In a
- * strict-2D view (orbit rotation off) it is the 2D palette instead: zoom in, zoom out, zoom to bounds.
+ * strict-2D view (orbit rotation off) it is the 2D palette instead: the hand (drag the view along),
+ * zoom in, zoom out, zoom to bounds.
  */
 import type { RenderMode, LightingMode } from "../scene/Scene";
 import type { SunPreset } from "./viewRules";
@@ -45,6 +46,9 @@ export const SHADING_ICONS = {
   // Zoom in / out: a magnifier with a plus or a minus.
   zoomIn: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/>`),
   zoomOut: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5"/>`),
+  // The hand: four fingers up, the thumb out to the left.
+  hand: svg(`<path d="M7 14V7.3a1.3 1.3 0 0 1 2.6 0V11M9.6 11V5.3a1.3 1.3 0 0 1 2.6 0V11M12.2 11V6.3a1.3 1.3 0 0 1 2.6 0V11`
+    + `M14.8 11.5V8.3a1.3 1.3 0 0 1 2.6 0V15a6 6 0 0 1-6 6h-1a5 5 0 0 1-3.9-1.9L3.6 15.4a1.4 1.4 0 0 1 2.1-1.8L7 15"/>`),
 };
 
 /** How much one click of the 2D palette's zoom in / out zooms. */
@@ -62,6 +66,9 @@ export interface ShadingBarHost {
   frame(): void;
   zoomBy(factor: number): void;
   readonly orbitRotateEnabled: boolean;
+  /** The hand (a strict-2D view's tool): the left button drags the view along. */
+  readonly handMode: boolean;
+  setHandMode(on: boolean): void;
   saveSnapshot(fileName?: string): void;
   /** The axis widget's element, if there is one: in the header layout the nav column sits under it. */
   readonly navGizmoEl: HTMLElement | null;
@@ -75,7 +82,7 @@ export type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "botto
 /** Where the bar sits: a corner of the view, or `"header"` — a strip across the top of the view, as
  *  Blender's viewport header: the app's own controls on its left (`renderer.viewerHeader.left`), the
  *  shading icons, the snapshot and ✎ Markup on its right, and zoom in / out / to bounds in a column
- *  under the axis widget. */
+ *  under the axis widget (the hand above them in a strict-2D view). */
 export type ShadingBarPlacement = ShadingBarCorner | "header";
 
 /** The header strip's height in pixels (`shadingBar: "header"`). */
@@ -84,14 +91,14 @@ export const VIEWER_HEADER_H = 34;
 export class ShadingBar {
   private root = document.createElement("div");
   // Two palettes, one shown: the 3D one (style, lighting, sun, section, overlays) and, in a
-  // strict-2D view, the 2D one (zoom in, zoom out, zoom to bounds).
+  // strict-2D view, the 2D one (the hand, zoom in, zoom out, zoom to bounds).
   private full = document.createElement("div");
   private flat = document.createElement("div");
   private group: HTMLElement = this.full;
   private openPop: HTMLDivElement | null = null;
   /** The header layout's slots: the app's controls (left, right) and where ✎ Markup goes (end). */
   readonly header: { left: HTMLElement; right: HTMLElement; end: HTMLElement } | null = null;
-  // The header layout's nav column (zoom in / out / to bounds), under the axis widget.
+  // The header layout's nav column (zoom in / out / to bounds; the hand in 2D), under the axis widget.
   private nav: HTMLDivElement | null = null;
   private openers = new Map<HTMLDivElement, HTMLButtonElement>();
   // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
@@ -213,6 +220,8 @@ export class ShadingBar {
     this.group = this.flat;
     if (isHeader) this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
     this.group = this.nav ?? this.flat;
+    const hand = this.button(SHADING_ICONS.hand, "Hand: drag the view along (click again to stop)",
+      () => this.view.handMode, () => this.view.setHandMode(!this.view.handMode));
     this.button(SHADING_ICONS.zoomIn, "Zoom in", () => false, () => this.view.zoomBy(ZOOM_STEP));
     this.button(SHADING_ICONS.zoomOut, "Zoom out", () => false, () => this.view.zoomBy(1 / ZOOM_STEP));
     this.button(SHADING_ICONS.frame, "Zoom to bounds: the selection, or everything", () => false, () => this.view.frame());
@@ -221,6 +230,7 @@ export class ShadingBar {
       this.root.dataset.palette = flat ? "2d" : "3d";
       this.full.style.display = flat ? "none" : "contents";
       this.flat.style.display = flat ? "contents" : "none";
+      hand.style.display = flat ? "flex" : "none";            // a flat sheet's tool (the nav column shows in 3D too)
       if (flat && this.openPop) { this.openPop.style.display = "none"; this.openPop = null; }
       if (this.nav) this.placeNav();
     });

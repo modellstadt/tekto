@@ -67,7 +67,8 @@ export interface ThreeRendererConfig {
    *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
    *  viewport header. The renderer draws it, so an app only switches it on. `"header"`: a strip
    *  across the top of the view (Blender's viewport header) with slots for the app's controls
-   *  (`viewerHeader`), the axis widget top right under it and zoom in / out / to bounds below that. */
+   *  (`viewerHeader`), the axis widget top right under it and zoom in / out / to bounds below that
+   *  (and, in a strict-2D view, the hand). */
   shadingBar: boolean | ShadingBarPlacement;
   /**
    * The scene's unit, as a label (`"m"`, `"mm"`, `"ft"`): readouts such as the shading bar's
@@ -845,8 +846,24 @@ export class ThreeRenderer {
   worldToScreen(world: Vec3): { x: number; y: number; visible: boolean } { return this.rig.worldToScreen(world); }
 
   /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view: the shading bar
-   *  shows its 2D palette (zoom in, zoom out, zoom to bounds) and the axis widget hides. */
-  setOrbitRotateEnabled(enabled: boolean): void { this.rig.setOrbitRotateEnabled(enabled); this.shadingBar?.paint(); }
+   *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
+  setOrbitRotateEnabled(enabled: boolean): void {
+    this.rig.setOrbitRotateEnabled(enabled);
+    this.pointer.handMode = this.rig.handMode;
+    this.shadingBar?.paint();
+  }
+
+  /** The hand, a strict-2D view's tool (the 2D palette has its button): on, the left button drags
+   *  the view along — over drag handles too — under a grab cursor; a click still picks. Off again
+   *  when the view turns 3D; ignored in a 3D view. */
+  setHandMode(on: boolean): void {
+    this.rig.setHandMode(on);
+    this.pointer.handMode = this.rig.handMode;
+    this.shadingBar?.paint();
+  }
+
+  /** Whether the hand is on (see `setHandMode`). */
+  get handMode(): boolean { return this.rig.handMode; }
 
   /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
   get orbitRotateEnabled(): boolean { return this.rig.orbitRotateEnabled; }
