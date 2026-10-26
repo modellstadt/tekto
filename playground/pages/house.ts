@@ -9,6 +9,8 @@
  *   checks        what is wrong, as callouts on the records concerned (openings past a wall's
  *                 end, free wall ends, rooms that overlap…)
  *   undo / redo   every edit, including a whole house written at once, is one step
+ *   Export OBJ    the house for Rhino / Cinema 4D: one group per layer (walls, openings, roofs,
+ *                 stairs, slabs, spaces), coloured by the .mtl downloaded with it
  *   agentDoc      an agent reads and edits the records (`__tekto.doc`, or from outside through
  *                 the dev server: `tools/mcp.mjs`), each patch one undo step, answered with the issues
  *   ?empty        start on an empty site (the Empty site button does the same, undoably)
@@ -16,7 +18,7 @@
  *                 every window that opens the page with it
  */
 import {
-  appShell, Doc, bindBuilding, agentDoc, buildingSchema, Selection, selectOnClick, localAdapter, devServerAdapter, download,
+  appShell, Doc, bindBuilding, agentDoc, buildingSchema, Selection, selectOnClick, localAdapter, devServerAdapter, download, ObjFile, stampName,
   type BuildingData, type BuildingRecords, type BuildingIssue, type DocJSON,
 } from "../../src";
 
@@ -103,13 +105,14 @@ export default function (container: HTMLElement) {
       reset: { type: "button", label: "Example house", action: () => load(EXAMPLE, "Example house") },
       empty: { type: "button", label: "Empty site", action: () => load({}, "Clear the site") },
       ifc: { type: "button", label: "Export IFC", action: () => download(house.building.toIfc({ projectName: "House" }), "house.ifc", { stamp: true }) },
+      obj: { type: "button", label: "Export OBJ", action: () => exportObj() },
       save: { type: "button", label: "Save JSON", action: () => download(JSON.stringify(doc.toJSON(), null, 2), "house.json", { stamp: true }) },
       open: { type: "button", label: "Open JSON", action: () => openJson() },
     },
     groups: {
       Show: ["framing", "issues"],
       History: ["undo", "redo"],
-      File: ["reset", "empty", "ifc", "save", "open"],
+      File: ["reset", "empty", "ifc", "obj", "save", "open"],
     },
   });
 
@@ -165,6 +168,15 @@ export default function (container: HTMLElement) {
       catch (e) { console.error("Open JSON:", e); }
     };
     input.click();
+  }
+
+  /** The house as OBJ grouped by layer, and the .mtl its groups' colours are in — two downloads. */
+  function exportObj() {
+    const now = new Date();
+    const obj = stampName("house.obj", now), mtl = stampName("house.mtl", now);
+    const data = app.scene.toMeshData({ groupBy: "layer" });
+    download(ObjFile.serializeMtl(data.materials ?? []), mtl);
+    download(ObjFile.serialize(data, { mtllib: mtl }), obj);
   }
 
   app.commands.add([

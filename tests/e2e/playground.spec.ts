@@ -8,7 +8,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const PAGES = [
-  "primitives", "transforms", "lines-points", "shape-modes", "colors",
+  "primitives", "transforms", "lines-points", "shape-modes", "colors", "layers",
   "mesh-factory", "curves", "nurbs-surfaces", "mesh-ops", "curvature", "streamlines", "bsp-csg",
   "sdf", "graph", "planar-graph", "voxel-2d",
   "particles", "circle-packing", "camera", "gizmo",

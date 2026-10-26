@@ -44,6 +44,10 @@ export interface MarkupHost {
   keep?(notes: Note[]): void;
   /** Who is drawing, written into a kept note. */
   author?: string;
+  /** Where the ✎ Markup button goes (a viewer header's slot) instead of the view's top-right corner. */
+  buttonHost?: HTMLElement;
+  /** Pixels from the top of the view where the overlay's bar starts (below a viewer header). */
+  top?: number;
 }
 
 /** A scene object as a mark or snapshot names it: id, type, layer, label, pick tag, colour, the source line that created it, and its document `key`. */
@@ -129,12 +133,12 @@ export class MarkupOverlay {
     this.toggleBtn = document.createElement("button");
     this.toggleBtn.textContent = "✎ Markup";
     this.toggleBtn.title = "Draw on the view to give instructions (saved as screenshot + JSON)";
-    this.toggleBtn.style.cssText = `position:absolute;top:10px;right:10px;z-index:22;${btnCss}`;
+    this.toggleBtn.style.cssText = host.buttonHost ? `${btnCss}padding:3px 9px;` : `position:absolute;top:10px;right:10px;z-index:22;${btnCss}`;
     this.toggleBtn.addEventListener("click", () => this.setActive(!this.active));
-    vp.appendChild(this.toggleBtn);
+    (host.buttonHost ?? vp).appendChild(this.toggleBtn);
 
     this.bar = document.createElement("div");
-    this.bar.style.cssText = "position:absolute;top:10px;right:100px;z-index:22;display:none;gap:6px;align-items:center;background:#fff;border:1px solid #d0d0d6;border-radius:7px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,.12);";
+    this.bar.style.cssText = `position:absolute;top:${(host.top ?? 0) + 10}px;right:${host.buttonHost ? 10 : 100}px;z-index:22;display:none;gap:6px;align-items:center;background:#fff;border:1px solid #d0d0d6;border-radius:7px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,.12);`;
     this.noteBox = document.createElement("input");
     this.noteBox.placeholder = "Instruction for the whole view…";
     this.noteBox.style.cssText = "font:12px system-ui,sans-serif;width:260px;padding:5px 8px;border:1px solid #d0d0d6;border-radius:5px;";

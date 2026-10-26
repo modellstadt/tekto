@@ -45,6 +45,7 @@ import { getTheme, Theme } from "../gui/theme";
 import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
 import { Commands, viewCommands } from "../gui/Commands";
 import { viewerToolbar, type TopBarOptions } from "./ViewerToolbar";
+import { VIEWER_HEADER_H } from "../render/ShadingBar";
 import { NotesLayer, type Note } from "./Notes";
 import type { Doc } from "../collab/Doc";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
@@ -74,6 +75,11 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   topBar?: boolean | TopBarOptions;
   /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
   markup?: boolean;
+  /**
+   * Start with the status line collapsed to an ⓘ in the corner of the view. Its button folds
+   * and unfolds it, and a person's choice is remembered for this app (by its title). Default false.
+   */
+  statusCollapsed?: boolean;
   /** Notes that live with the model: the doc whose `notes` collection keeps them (or
    *  `{ doc, collection, author }`). Markup then offers "Keep as notes", and the notes are
    *  drawn over the view with a pin each (`app.notes`). */
@@ -84,7 +90,7 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   /** The shading bar in a viewport corner (`true` = top left): icons for the render style, the
    *  lighting and the sun (morning, noon, sunset). Default `false`. */
-  shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right" | "header";
   /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset: relative to
    *  the content's extent. */
   units?: string;
@@ -204,19 +210,54 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
   viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
   vpWrap.appendChild(viewportEl);
 
-  // Status overlay
+  // Status overlay: the app's status line, folded to an ⓘ by its button (remembered per app).
+  // Clicks pass through it to the view, except on the button.
   const statusEl = document.createElement("div");
+  statusEl.dataset.tektoStatus = "";
   statusEl.style.cssText = `
     position:absolute; bottom:12px; left:12px;
-    padding:8px 12px; border-radius:6px;
+    border-radius:6px;
     background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
     font-size:11px; line-height:1.7; color:${t.textDim};
     pointer-events:none; max-width:340px;
     border:1px solid rgba(22,24,42,.8);
-    white-space:pre; font-family:${t.font};
-    display:none;
+    font-family:${t.font};
+    display:none; align-items:flex-start;
   `;
+  const statusTextEl = document.createElement("div");
+  statusTextEl.style.cssText = "white-space:pre;overflow:hidden;text-overflow:ellipsis;padding:8px 2px 8px 12px;";
+  const statusToggle = document.createElement("button");
+  statusToggle.type = "button";
+  statusToggle.style.cssText = `
+    pointer-events:auto; cursor:pointer; flex:none; border:none; background:transparent;
+    color:${t.textDim}; font:600 11px/1 ${t.font}; padding:0; width:22px; height:22px;
+    margin:4px 4px 0 0; border-radius:4px;
+  `;
+  statusToggle.addEventListener("pointerenter", () => { statusToggle.style.color = t.text; });
+  statusToggle.addEventListener("pointerleave", () => { statusToggle.style.color = t.textDim; });
+  statusEl.append(statusTextEl, statusToggle);
   vpWrap.appendChild(statusEl);
+  const statusKey = `tekto.appShell.statusCollapsed.${config.title ?? "app"}`;
+  let statusCollapsed = config.statusCollapsed ?? false;
+  try {
+    const stored = localStorage.getItem(statusKey);
+    if (stored !== null) statusCollapsed = stored === "1";
+  } catch { /* storage blocked: the default */ }
+  const paintStatus = () => {
+    statusTextEl.style.display = statusCollapsed ? "none" : "";
+    statusToggle.style.margin = statusCollapsed ? "2px" : "4px 4px 0 0";
+    statusToggle.textContent = statusCollapsed ? "i" : "–";
+    statusToggle.title = statusCollapsed ? `Show status${statusTextEl.textContent ? `: ${statusTextEl.textContent}` : ""}` : "Hide status";
+    statusToggle.setAttribute("aria-label", statusCollapsed ? "Show status" : "Hide status");
+    statusToggle.setAttribute("aria-expanded", String(!statusCollapsed));
+  };
+  statusToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    statusCollapsed = !statusCollapsed;
+    try { localStorage.setItem(statusKey, statusCollapsed ? "1" : "0"); } catch { /* noop */ }
+    paintStatus();
+  });
+  paintStatus();
 
   root.appendChild(vpWrap);
   config.container.appendChild(root);
@@ -247,6 +288,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
     shadingBar: config.shadingBar ?? false,
+    headerHost: vpWrap,   // the viewer header (shadingBar: "header") above overlays and ✎ Markup
     units: config.units ?? null,
     ...config.renderer,
   });
@@ -326,8 +368,9 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     status(text: string) {
       statusText = text;
       if (text) {
-        statusEl.textContent = text;
-        statusEl.style.display = "block";
+        statusTextEl.textContent = text;
+        statusEl.style.display = "flex";
+        paintStatus();
       } else {
         statusEl.style.display = "none";
       }
@@ -370,6 +413,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => { /* retained scenes aren't re-run: objects carry their record key instead */ },
+    ...(renderer.viewerHeader ? { buttonHost: renderer.viewerHeader.end, top: VIEWER_HEADER_H } : {}),
     ...(notes ? { keep: (ns: Note[]) => { notes.keep(ns); } } : {}),
     ...(notesCfg && "author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}),
   });

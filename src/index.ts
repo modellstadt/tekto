@@ -39,7 +39,7 @@ export type {
 export { ThreeRenderer } from "./render/ThreeRenderer";
 export type { ThreeRendererConfig, PickInfo } from "./render/ThreeRenderer";
 export type { AmbientOcclusionOptions } from "./render/AmbientOcclusion";
-export type { ShadingBarCorner } from "./render/ShadingBar";
+export type { ShadingBarCorner, ShadingBarPlacement } from "./render/ShadingBar";
 export type { SunPreset } from "./render/viewRules";
 export { SVGRenderer } from "./render/SVGRenderer";
 export { SheetCanvas, drawSheet, fitSheet } from "./render/SheetCanvas";
@@ -50,9 +50,9 @@ export {
   edgeStyle, surfaceAppearance, lightBalance, modeBackground,
   groundAppearance, sectionAppearance, DEFAULT_BACKGROUND,
   standardOrbit, orbitFor, shortestTurn, nearestAxis, easeInOut,
-  fitRadius, orthoFrustum, sectionPlane, flatLights,
+  fitRadius, orthoFrustum, sectionPlane, flatLights, studioLights,
 } from "./render/viewRules";
-export type { ViewMode, Appearance, FlatLighting } from "./render/viewRules";
+export type { ViewMode, Appearance, FlatLighting, StudioLighting } from "./render/viewRules";
 // The axis widget ThreeRenderer puts in a corner (`navGizmo: true`). Exported for an app
 // that wants one over a renderer of its own.
 export { NavGizmo } from "./render/NavGizmo";
@@ -63,13 +63,13 @@ export { Callouts, layoutLabels, labelWidthFor } from "./render/Callouts";
 export type { CalloutItem, Placement, LayoutOptions } from "./render/Callouts";
 
 // GUI: layer panel (consumed by both the sketch API + standalone apps).
-export { LayerPanel, computeEffectiveVisibility } from "./gui/LayerPanel";
-export type { LayerNode, LayerState, LayerMap } from "./gui/LayerPanel";
+export { LayerPanel, computeEffectiveVisibility, computeEffectiveLock, layerDefaults, activateLayer } from "./gui/LayerPanel";
+export type { LayerNode, LayerState, LayerMap, LayerColumns } from "./gui/LayerPanel";
 
 // Sketch API (Level 1 — primary student-facing API)
 export { sketch, SketchInstance } from "./sketch/Sketch";
 export type {
-  Lab, SketchConfig, Reactive,
+  Lab, SketchConfig, Reactive, LayerTree,
   MeshHandle, PointHandle, LineHandle, ShapeHandle,
   SliderOpts, SelectOpts, ShapeMode,
   ExportRegistration, ImportRegistration,
