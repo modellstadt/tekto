@@ -26,7 +26,7 @@ import { CameraRig } from "./CameraRig";
 import { Pointer, type GizmoMode, type PickInfo } from "./Pointer";
 import { Marks } from "./Marks";
 import { FadingGrid } from "./FadingGrid";
-import { ShadingBar, type ShadingBarCorner } from "./ShadingBar";
+import { ShadingBar, VIEWER_HEADER_H, type ShadingBarPlacement } from "./ShadingBar";
 import { downloadSnapshot } from "./snapshot";
 
 /** The overlays a renderer has itself (an app can register more, such as notes). */
@@ -65,8 +65,11 @@ export interface ThreeRendererConfig {
   navGizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   /** The shading bar in a corner of the view (`true` = top left): minimal icons for the
    *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
-   *  viewport header. The renderer draws it, so an app only switches it on. */
-  shadingBar: boolean | ShadingBarCorner;
+   *  viewport header. The renderer draws it, so an app only switches it on. `"header"`: a strip
+   *  across the top of the view (Blender's viewport header) with slots for the app's controls
+   *  (`viewerHeader`), the axis widget top right under it and zoom in / out / to bounds below that
+   *  (and, in a strict-2D view, the hand). */
+  shadingBar: boolean | ShadingBarPlacement;
   /**
    * The scene's unit, as a label (`"m"`, `"mm"`, `"ft"`): readouts such as the shading bar's
    * section show coordinates in it, and a cut stays at its coordinate. Unset (null, the
@@ -74,6 +77,9 @@ export interface ThreeRendererConfig {
    * share of the content as the content changes. An app that knows its units says so.
    */
   units: string | null;
+  /** Where the viewer header goes (`shadingBar: "header"`): default the container. A sketch passes its
+   *  viewport wrapper, so the header stays above the overlay() layers and ✎ Markup's drawing layer. */
+  headerHost: HTMLElement | null;
   /**
    * How Flat lighting is balanced (`flatLights`). `"sketch"` (the default): a dim blue sky,
    * for a dark page. `"plain"`: a white sky bright enough that a face toward it shows its own
@@ -104,6 +110,7 @@ const DEFAULTS: ThreeRendererConfig = {
   navGizmo: false,
   shadingBar: false,
   units: null,
+  headerHost: null,
   flatLighting: "sketch",
 };
 
@@ -139,6 +146,7 @@ export class ThreeRenderer {
   private gridHelper: THREE.Object3D | null = null;
   private fadingGrid: FadingGrid | null = null;
   private shadingBar: ShadingBar | null = null;
+  private frameBounds: THREE.Box3 | null = null;
   private overlayState: Record<BuiltInOverlay, boolean> = { grid: true, axes: true, wireframe: true, labels: true };
   private overlayExtra = new Map<string, { apply(on: boolean): void; on: boolean }>();
   private ao: AmbientOcclusion;
@@ -204,7 +212,6 @@ export class ThreeRenderer {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     // Apply whatever lighting mode the scene was last set to.
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
@@ -235,8 +242,10 @@ export class ThreeRenderer {
       this.controls.addEventListener("change", () => this.requestRender());
     }
 
-    this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo);
+    this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo, cfg.shadingBar === "header" ? VIEWER_HEADER_H : 0);
     this.pointer = new Pointer(this.core, this.builder, this.marks);
+    // After the rig: the bar reads whether the view orbits (its 2D palette when it does not).
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar, cfg.headerHost);
 
     // A restored context comes back blank; nothing else would ask for a draw.
     this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
@@ -506,12 +515,21 @@ export class ThreeRenderer {
     return () => { this.overlayExtra.delete(name); this.shadingBar?.paint(); };
   }
 
-  /** Frame the selection (the highlighted objects), or everything when nothing is selected:
-   *  Blender's Frame Selected / Home. Animated. */
+  /** Frame the selection (the highlighted objects), or everything when nothing is selected —
+   *  or the frame bounds, when set (`setFrameBounds`): Blender's Frame Selected / Home. Animated. */
   frame(): void {
     const sel = this.marks.highlighted.filter((id) => this.objectMap.has(id));
+    if (!sel.length && this.frameBounds) { this.rig.fitBox(this.frameBounds.clone(), { margin: 1.3 }); return; }
     const ids = sel.length ? sel : [...this.objectMap.keys()].filter((id) => this.isObjectShown(id));
     if (ids.length) this.rig.fitTo(ids, sel.length ? {} : { margin: 1.3 });
+  }
+
+  /** What Frame — the shading bar's, its 2D palette's zoom to bounds — frames when nothing is
+   *  selected: this box (world coordinates) instead of everything shown, say the model without
+   *  its site. `null`: everything shown again. */
+  setFrameBounds(bounds: { min: Vec3; max: Vec3 } | null): void {
+    this.frameBounds = bounds && new THREE.Box3(
+      new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z), new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z));
   }
 
   /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named
@@ -827,8 +845,39 @@ export class ThreeRenderer {
    */
   worldToScreen(world: Vec3): { x: number; y: number; visible: boolean } { return this.rig.worldToScreen(world); }
 
-  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
-  setOrbitRotateEnabled(enabled: boolean): void { this.rig.setOrbitRotateEnabled(enabled); }
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view: the shading bar
+   *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
+  setOrbitRotateEnabled(enabled: boolean): void {
+    this.rig.setOrbitRotateEnabled(enabled);
+    this.pointer.handMode = this.rig.handMode;
+    this.shadingBar?.paint();
+  }
+
+  /** The hand, a strict-2D view's tool (the 2D palette has its button): on, the left button drags
+   *  the view along — over drag handles too — under a grab cursor; a click still picks. Off again
+   *  when the view turns 3D; ignored in a 3D view. */
+  setHandMode(on: boolean): void {
+    this.rig.setHandMode(on);
+    this.pointer.handMode = this.rig.handMode;
+    this.shadingBar?.paint();
+  }
+
+  /** Whether the hand is on (see `setHandMode`). */
+  get handMode(): boolean { return this.rig.handMode; }
+
+  /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
+  get orbitRotateEnabled(): boolean { return this.rig.orbitRotateEnabled; }
+
+  /** The axis widget's element, or null without one (`navGizmo`). */
+  get navGizmoEl(): HTMLElement | null { return this.rig.navGizmoEl; }
+
+  /** With `shadingBar: "header"`: the header strip's slots — `left` and `right` for the app's own
+   *  controls (view tabs, tools, who is here), `end` where ✎ Markup goes. Null otherwise. */
+  get viewerHeader(): { left: HTMLElement; right: HTMLElement; end: HTMLElement } | null { return this.shadingBar?.header ?? null; }
+
+  /** Zoom in (`factor` > 1) or out (< 1) about the view's target, animated unless
+   *  `animate: false`: closer in perspective, a larger zoom in orthographic. */
+  zoomBy(factor: number, opts?: { animate?: boolean }): void { this.rig.zoomBy(factor, opts); }
 
   /** The camera as plain numbers, enough to reproduce the view. */
   cameraState(): { projection: "perspective" | "orthographic"; position: number[]; target: number[]; up: number[]; fov: number } { return this.rig.cameraState(); }
@@ -906,6 +955,10 @@ export class ThreeRenderer {
 
   /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
   pickAt(clientX: number, clientY: number): string | null { return this.pointer.pickAt(clientX, clientY); }
+
+  /** Only objects `filter` accepts can be picked or hovered; a rejected one lets the pick
+   *  through to what is behind it (a sketch rejects objects on locked layers). `null` clears it. */
+  setPickFilter(filter: ((id: string) => boolean) | null): void { this.pointer.setPickFilter(filter); }
 
   /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
    *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */

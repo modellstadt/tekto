@@ -45,6 +45,7 @@ import { getTheme, Theme } from "../gui/theme";
 import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
 import { Commands, viewCommands } from "../gui/Commands";
 import { viewerToolbar, type TopBarOptions } from "./ViewerToolbar";
+import { VIEWER_HEADER_H } from "../render/ShadingBar";
 import { NotesLayer, type Note } from "./Notes";
 import type { Doc } from "../collab/Doc";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
@@ -89,7 +90,7 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   /** The shading bar in a viewport corner (`true` = top left): icons for the render style, the
    *  lighting and the sun (morning, noon, sunset). Default `false`. */
-  shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right" | "header";
   /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset: relative to
    *  the content's extent. */
   units?: string;
@@ -287,6 +288,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
     shadingBar: config.shadingBar ?? false,
+    headerHost: vpWrap,   // the viewer header (shadingBar: "header") above overlays and ✎ Markup
     units: config.units ?? null,
     ...config.renderer,
   });
@@ -411,6 +413,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => { /* retained scenes aren't re-run: objects carry their record key instead */ },
+    ...(renderer.viewerHeader ? { buttonHost: renderer.viewerHeader.end, top: VIEWER_HEADER_H } : {}),
     ...(notes ? { keep: (ns: Note[]) => { notes.keep(ns); } } : {}),
     ...(notesCfg && "author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}),
   });
