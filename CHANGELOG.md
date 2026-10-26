@@ -6,6 +6,9 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Fix: a `Mesh` with node colours is drawn in them.** `scene.addMesh` / `lab.mesh` ignored
+  `Mesh.setColors` and drew the style colour; only `addFlatMesh` drew node colours. Now both do.
+  A mesh without node colours draws as before.
 - **The viewer header**, as Blender has one: `shadingBar: "header"` — now the default of `sketch()`
   outside the testbench — is a strip across the top of the view. On its left the app's own
   controls (`lab.viewerHeader.left` / `.right`, `renderer.viewerHeader`: view tabs, tools, who is
