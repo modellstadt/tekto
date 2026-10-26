@@ -15,6 +15,7 @@ export const NO_TURN = new THREE.Quaternion();
 
 export class CameraRig {
   private _isOrtho = false;
+  private _rotateEnabled = true;
   // Camera position at the previous renderIfNeeded(), to follow orbit damping
   // below OrbitControls' change threshold (see settleDamping).
   private _lastCamPos = new THREE.Vector3(NaN, NaN, NaN);
@@ -64,7 +65,28 @@ export class CameraRig {
   }
 
   setOrbitRotateEnabled(enabled: boolean): void {
+    this._rotateEnabled = enabled;
     if (this.core.controls) (this.core.controls as { enableRotate?: boolean }).enableRotate = enabled;
+    this.navGizmo?.setVisible(enabled);   // a flat sheet has no axes to turn to
+  }
+
+  /** False in a strict-2D view: pan and zoom only. */
+  get orbitRotateEnabled(): boolean { return this._rotateEnabled; }
+
+  /** Zoom in (`factor` > 1) or out (< 1) about the target: closer in perspective, a larger zoom in orthographic. */
+  zoomBy(factor: number, opts: { animate?: boolean } = {}): void {
+    if (!(factor > 0)) throw new Error(`zoomBy: factor must be > 0 (got ${factor})`);
+    const target = this.core.controls?.target.clone() ?? new THREE.Vector3();
+    const offset = this.activeCamera.position.clone().sub(target);
+    const dist = this._isOrtho ? offset.length() : offset.length() / factor;
+    const zoom = this._isOrtho ? this._orthoCam.zoom * factor : this._orthoCam.zoom;
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      if (this._isOrtho) { this._orthoCam.zoom = zoom; this._orthoCam.updateProjectionMatrix(); }
+      this._placeCamera(target, offset.setLength(dist));
+      return;
+    }
+    this._moveCamera(offset.normalize(), target, dist, zoom);
   }
 
   cameraState(): { projection: "perspective" | "orthographic"; position: number[]; target: number[]; up: number[]; fov: number } {
@@ -241,6 +263,11 @@ export class CameraRig {
   fitTo(objects: readonly string[], opts: { margin?: number; animate?: boolean } = {}): void {
     const box = new THREE.Box3();
     for (const t of this.core.resolve(objects)) box.expandByObject(t);
+    this.fitBox(box, opts);
+  }
+
+  /** Frame a world-space box, as `fitTo` frames objects. */
+  fitBox(box: THREE.Box3, opts: { margin?: number; animate?: boolean } = {}): void {
     if (box.isEmpty()) return;
     const out = this._leaveInside();
     if (out) this._setFov(out.fov);                // framed with the outside lens

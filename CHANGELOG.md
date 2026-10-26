@@ -6,6 +6,21 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **The shading bar is on in every `sketch()`, and has a 2D palette.** `sketch()` shows the
+  shading bar (render style, lighting, sun, section, overlays, frame, snapshot as icons in the
+  view) unless the page passes `shadingBar: false`, or it runs inside a shell with its own bar
+  (the testbench's `data-shell`); `shadingBar` also takes a corner (`"bottom-left"` …), as in
+  `appShell`. In a strict-2D view — orbit rotation off (`lab.setOrbitRotateEnabled(false)`,
+  `renderer.setOrbitRotateEnabled(false)`) — the bar is the 2D palette instead: zoom in, zoom
+  out and zoom to bounds (the selection, or everything); with rotation on again it is the 3D
+  bar. The axis widget (`navGizmo`) hides in a strict-2D view too. What Frame / zoom to bounds
+  frames with nothing selected can be set: `lab.frameBounds(min, max)` (per run) or
+  `renderer.setFrameBounds(box)`, say the model without its site. New: `renderer.zoomBy(factor)` (animated; closer in perspective, a larger zoom in
+  orthographic) and `renderer.orbitRotateEnabled`.
+- **A sketch can follow the view's style.** `lab.renderMode` and `lab.lightingMode` read the
+  render style and the lighting, however they were chosen (the shading bar, a shell, code). A
+  sketch that reads one is re-run when it changes, so its build can follow the style, as the
+  Buchholz stair leaves its line work out when shaded; a sketch that never reads them is not.
 - **A Rhino-style layer panel.** `LayerPanel` (and so `lab.layerTree`) shows per layer, after
   its name, an active-layer check, an on/off bulb, a padlock and a square colour swatch (a flat
   12 px chip instead of the browser's rounded picker), like Rhino's layer panel.

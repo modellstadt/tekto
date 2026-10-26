@@ -2,7 +2,8 @@
  * The shading bar: a small strip of icons in a corner of the 3D view, as Blender has one in
  * its viewport header. The render style (solid, wireframe, hidden line, ghost), the lighting
  * (Flat, Studio) and the sun (Morning, Noon, Sunset). The renderer draws it in its own view,
- * so an app only switches it on (`shadingBar: true`); it follows changes made in code.
+ * so an app only switches it on (`shadingBar: true`); it follows changes made in code. In a
+ * strict-2D view (orbit rotation off) it is the 2D palette instead: zoom in, zoom out, zoom to bounds.
  */
 import type { RenderMode, LightingMode } from "../scene/Scene";
 import type { SunPreset } from "./viewRules";
@@ -41,17 +42,26 @@ export const SHADING_ICONS = {
   // A box with a slice through it.
   section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
   flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`),
+  // Zoom in / out: a magnifier with a plus or a minus.
+  zoomIn: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/>`),
+  zoomOut: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5"/>`),
 };
+
+/** How much one click of the 2D palette's zoom in / out zooms. */
+const ZOOM_STEP = 1.25;
 
 const MODES: [RenderMode, string][] = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hidden line"], ["ghost", "Ghost"]];
 const LIGHTS: [LightingMode, string][] = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
 const SUNS: [SunPreset, string][] = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
 
-/** What the bar asks of its renderer beyond the parts: overlays, framing, a snapshot. */
+/** What the bar asks of its renderer beyond the parts: overlays, framing, zooming, a snapshot,
+ *  and whether the view is strict 2D (orbit rotation off). */
 export interface ShadingBarHost {
   readonly overlays: Record<string, boolean>;
   setOverlays(overlays: Record<string, boolean>): void;
   frame(): void;
+  zoomBy(factor: number): void;
+  readonly orbitRotateEnabled: boolean;
   saveSnapshot(fileName?: string): void;
 }
 
@@ -62,6 +72,11 @@ export type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "botto
 
 export class ShadingBar {
   private root = document.createElement("div");
+  // Two palettes, one shown: the 3D one (style, lighting, sun, section, overlays) and, in a
+  // strict-2D view, the 2D one (zoom in, zoom out, zoom to bounds).
+  private full = document.createElement("div");
+  private flat = document.createElement("div");
+  private group: HTMLElement = this.full;
   private openPop: HTMLDivElement | null = null;
   // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
   private levels: { name: string; elevation: number }[] = [];
@@ -82,6 +97,9 @@ export class ShadingBar {
       + "padding:3px;border-radius:7px;background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);"
       + "box-shadow:0 2px 8px rgba(0,0,0,.3);user-select:none;";
     this.root.dataset.tektoShadingBar = "";
+    this.full.style.display = "contents";
+    this.flat.style.display = "contents";
+    this.root.append(this.full, this.flat);
 
     const scene = core.gScene;
     for (const [mode, label] of MODES) this.button(viewModeIconSvg(mode, 16), label, () => scene.renderMode === mode, () => scene.setRenderMode(mode));
@@ -146,6 +164,20 @@ export class ShadingBar {
     // Frame the selection or everything; save the view.
     this.button(SHADING_ICONS.frame, "Frame: the selection, or everything", () => false, () => this.view.frame());
     this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
+
+    // The 2D palette, for a strict-2D view (orbit rotation off): a flat sheet has no style,
+    // lighting, sun or section to choose — only how much of it to see.
+    this.group = this.flat;
+    this.button(SHADING_ICONS.zoomIn, "Zoom in", () => false, () => this.view.zoomBy(ZOOM_STEP));
+    this.button(SHADING_ICONS.zoomOut, "Zoom out", () => false, () => this.view.zoomBy(1 / ZOOM_STEP));
+    this.button(SHADING_ICONS.frame, "Zoom to bounds: the selection, or everything", () => false, () => this.view.frame());
+    this.paints.push(() => {
+      const flat = !this.view.orbitRotateEnabled;
+      this.root.dataset.palette = flat ? "2d" : "3d";
+      this.full.style.display = flat ? "none" : "contents";
+      this.flat.style.display = flat ? "contents" : "none";
+      if (flat && this.openPop) { this.openPop.style.display = "none"; this.openPop = null; }
+    });
     host.appendChild(this.root);
 
     // Follow the state wherever it is changed.
@@ -323,7 +355,7 @@ export class ShadingBar {
     this.paint();
   }
 
-  private button(icon: string, title: string, on: () => boolean, run: () => void, parent: HTMLElement = this.root, paints = this.paints): HTMLButtonElement {
+  private button(icon: string, title: string, on: () => boolean, run: () => void, parent: HTMLElement = this.group, paints = this.paints): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
@@ -348,7 +380,7 @@ export class ShadingBar {
   private separator(): void {
     const s = document.createElement("div");
     s.style.cssText = "width:1px;height:18px;margin:0 3px;background:rgba(255,255,255,.14);";
-    this.root.appendChild(s);
+    this.group.appendChild(s);
   }
 
   dispose(): void {
