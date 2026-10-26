@@ -119,7 +119,10 @@ export interface SpaceRecord {
   name: string;
   /** Floor outline, three or more points (not repeating the first). */
   boundary: XY[];
-  /** What the room is for: "living", "kitchen", "bedroom", "bath", "hall" … */
+  /**
+   * What the room is for: "living", "kitchen", "bedroom", "bath", "hall" … Lower-cased, it names
+   * a space type of the `BuildingTypes` (its colour, whether it needs daylight or a door); any other use is fine too.
+   */
   use?: string;
 }
 
@@ -307,7 +310,8 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
 /**
  * `BUILDING_SCHEMA` for these types: each record's `type` lists the names it may take, and its
  * description says what each one is (wall and slab thicknesses), so whoever writes records can
- * choose without guessing.
+ * choose without guessing. A space's `use` stays free text; its description lists the known
+ * uses and what each needs (a window, no door).
  *
  *   agentDoc(doc, { schema: buildingSchema(types), check: () => house.issues });
  */
@@ -320,6 +324,15 @@ export function buildingSchema(types: BuildingTypes = defaultBuildingTypes()): R
   typed("walls", Object.keys(types.walls), `Wall type, default "exterior" — ${list(types.walls, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
   typed("slabs", Object.keys(types.slabs), `Slab type, default "floor" — ${list(types.slabs, (t) => `${t.type.name}, ${fmt(t.thickness)} m thick`)}`);
   typed("openings", Object.keys(types.openings), `Opening type, default the kind — ${list(types.openings, (t) => `${t.name} (${t.kind})`)}`);
+  const uses = Object.entries(spaceTypes(types)).map(([n, t]) => {
+    const needs = [t.daylight ? "window" : "", t.door === false ? "no door" : ""].filter(Boolean).join(", ");
+    return needs ? `"${n}" (${needs})` : `"${n}"`;
+  });
+  schema.spaces.properties!.use = {
+    type: "string",
+    description: "What the room is for, any text. A room needs a door on its outline when its storey has other rooms, and a window when its use wants daylight."
+      + (uses.length ? ` Known uses: ${uses.join(", ")}` : ""),
+  };
   return schema;
 }
 
@@ -330,18 +343,38 @@ export interface BuildingWallType { type: WallType; thickness: number; colour?: 
 /** A slab type a record can name, with its thickness. */
 export interface BuildingSlabType { type: SlabType; thickness: number; colour?: string }
 
-/** The types building records name: wall, slab and opening types by name. */
+/** A room use a space record names (`SpaceRecord.use`): the colour it is drawn in and what the room needs. */
+export interface BuildingSpaceType {
+  /** The colour `bindBuilding` draws the room's floor in. */
+  colour?: string;
+  /** The room wants daylight: a window on its outline (else `space-no-window`). Default false. */
+  daylight?: boolean;
+  /**
+   * The room needs a door on its outline when its storey has other rooms (else `space-no-door`).
+   * False for a room you walk into without one, e.g. an open-plan office cell. Default true.
+   */
+  door?: boolean;
+}
+
+/** The types building records name: wall, slab and opening types by name, and room uses. */
 export interface BuildingTypes {
   walls: Record<string, BuildingWallType>;
   slabs: Record<string, BuildingSlabType>;
   openings: Record<string, OpeningType>;
+  /**
+   * Room uses by the lower-cased `SpaceRecord.use`; a use not listed is drawn in a neutral
+   * colour, needs a door and no window. Default `defaultBuildingTypes().spaces`; to add uses,
+   * spread those: `{ ...defaultBuildingTypes().spaces, canteen: { colour: "#e8a07a", daylight: true } }`.
+   */
+  spaces?: Record<string, BuildingSpaceType>;
 }
 
 /**
  * Timber construction for a house: "exterior" (Holzrahmenbau, insulated, ~0.25 m),
  * "interior" (a framed partition, 0.125 m) and "solid" (0.2 m) walls; "floor" (joisted,
- * 0.26 m), "ground" (concrete, 0.25 m) and "roof" (joisted flat roof, 0.3 m) slabs; and a
- * "door" and a "window".
+ * 0.26 m), "ground" (concrete, 0.25 m) and "roof" (joisted flat roof, 0.3 m) slabs; a
+ * "door" and a "window"; and the rooms of a house, each with its colour, the ones people
+ * stay in (living, kitchen, dining, bedroom, office, study) wanting daylight.
  */
 export function defaultBuildingTypes(): BuildingTypes {
   const exteriorLayers = holzrahmenbauLayers({ insulation: { material: "Mineralwolle", thickness: 0.140 } });
@@ -399,7 +432,23 @@ export function defaultBuildingTypes(): BuildingTypes {
       door: new OpeningType({ name: "Door", kind: "door", operation: "single_swing_left" }),
       window: new OpeningType({ name: "Window", kind: "window", partitioning: "single_panel" }),
     },
+    spaces: defaultSpaceTypes(),
   };
+}
+
+/** The rooms of a house: rooms people stay in want daylight. */
+function defaultSpaceTypes(): Record<string, BuildingSpaceType> {
+  return {
+    living: { colour: "#f2c46d", daylight: true }, kitchen: { colour: "#f29e6d", daylight: true }, dining: { colour: "#f2b36d", daylight: true },
+    bedroom: { colour: "#8fb8e8", daylight: true }, bath: { colour: "#7fd0d0" }, wc: { colour: "#7fd0d0" },
+    hall: { colour: "#c8c8c8" }, corridor: { colour: "#c8c8c8" }, office: { colour: "#a7d39a", daylight: true }, study: { colour: "#a7d39a", daylight: true },
+    storage: { colour: "#bdb2a6" }, utility: { colour: "#bdb2a6" },
+  };
+}
+
+/** The room uses of these types (the defaults when they name none). */
+function spaceTypes(types: BuildingTypes): Record<string, BuildingSpaceType> {
+  return types.spaces ?? defaultSpaceTypes();
 }
 
 // ── Issues ────────────────────────────────────────────────────────────────────
@@ -667,11 +716,13 @@ export class Building {
    * What is wrong with the building, by record: the `issues` (validation, records that could
    * not be built) and the checks — openings that leave their wall, overlap or reach above it;
    * wall ends that meet no other wall; storeys that do not stack; a storey without a floor;
-   * rooms that are tiny or overlap, have no door, or (living, kitchen, dining, bedroom, office,
-   * study) no window; uncomfortable stairs and wells that leave the floor. An empty list: nothing found.
+   * rooms that are tiny or overlap, have no door (unless their space type needs none), or no
+   * window where their space type wants daylight (by default living, kitchen, dining, bedroom,
+   * office, study); uncomfortable stairs and wells that leave the floor. An empty list: nothing found.
    */
   check(): BuildingIssue[] {
     const out = [...this.issues];
+    const uses = spaceTypes(this.types);
     const warn = (code: string, message: string, ...keys: string[]) => out.push({ severity: "warning", code, message, keys });
     const error = (code: string, message: string, ...keys: string[]) => out.push({ severity: "error", code, message, keys });
 
@@ -720,15 +771,23 @@ export class Building {
       }
 
       // Wall ends meet another wall (an open end is a free-standing wall, usually a mistake).
+      // Only a wall whose box reaches an end's box can meet it, so each end is measured to those.
       const walls = [...s.walls];
-      for (const [id, wall] of walls) {
-        if (wall.isClosedPolyline) continue;
+      const ends = walls.filter(([, wall]) => !wall.isClosedPolyline).flatMap(([id, wall]) => {
         const cl = wall.centerline;
-        for (const end of [cl[0], cl[cl.length - 1]]) {
-          const met = walls.some(([oid, other]) => oid !== id && distanceToPolyline(end, other.centerline) <= (other.thickness + wall.thickness) / 2 + 0.05);
-          if (!met) warn("wall-end-free", `walls/${id}: its end at (${fmt(end.x)}, ${fmt(end.y)}) meets no other wall.`, keyOf("walls", id));
-        }
-      }
+        return [cl[0], cl[cl.length - 1]].map((end) => ({ id, wall, end }));
+      });
+      const nearEnd = touchingBoxes(
+        ends.map(({ wall, end }) => boxAround([end], wall.thickness / 2 + 0.05)),
+        walls.map(([, wall]) => boxAround(wall.centerline, wall.thickness / 2)),
+      );
+      ends.forEach(({ id, wall, end }, n) => {
+        const met = nearEnd[n].some((k) => {
+          const [oid, other] = walls[k];
+          return oid !== id && distanceToPolyline(end, other.centerline) <= (other.thickness + wall.thickness) / 2 + 0.05;
+        });
+        if (!met) warn("wall-end-free", `walls/${id}: its end at (${fmt(end.x)}, ${fmt(end.y)}) meets no other wall.`, keyOf("walls", id));
+      });
 
       // Stairs: a comfortable step (2 risers + 1 going ≈ 0.63 m).
       for (const [id, st] of s.stairs) {
@@ -743,24 +802,36 @@ export class Building {
       for (const [id, sp] of spaces) {
         if (sp.area() < 2) warn("space-small", `spaces/${id} "${sp.name}" is ${fmt(sp.area())} m².`, keyOf("spaces", id));
       }
-      // A way in, and daylight where people stay: a door, and for a habitable room a window, on its outline.
-      const onOutline = (sp: Space, kind: "door" | "window") => [...s.walls.values()].some((wall) => wall.openings.some((o) => {
-        if ((o.type ? o.type.kind === "door" : o.isDoor) !== (kind === "door")) return false;
-        return distanceToPolyline(pointOnWall(wall, o.centerlinePosition), Polygon2D.closeRing(sp.boundary)) <= wall.thickness / 2 + 0.05;
-      }));
+      // Each room's box: only what reaches it can be on the room's outline or overlap it.
+      const roomBoxes = spaces.map(([, sp]) => boxAround(sp.boundary));
+      // A way in, and daylight where people stay: a door, and a window where its use wants daylight, on its outline.
+      const openings = [...s.walls.values()].flatMap((wall) => wall.openings.map((o) => ({
+        door: o.type ? o.type.kind === "door" : o.isDoor,
+        at: pointOnWall(wall, o.centerlinePosition),
+        reach: wall.thickness / 2 + 0.05,
+      })));
+      const nearRoom = touchingBoxes(roomBoxes, openings.map((o) => boxAround([o.at], o.reach)));
+      const rooms = new Map(spaces.map(([, sp], k) => [sp, { outline: Polygon2D.closeRing(sp.boundary), openings: nearRoom[k].map((n) => openings[n]) }]));
+      const onOutline = (sp: Space, kind: "door" | "window") => {
+        const room = rooms.get(sp)!;
+        return room.openings.some((o) => o.door === (kind === "door") && distanceToPolyline(o.at, room.outline) <= o.reach);
+      };
       for (const [id, sp] of spaces) {
-        if (spaces.length > 1 && !onOutline(sp, "door")) {
+        const type = uses[(sp.function ?? "").toLowerCase()];
+        if (spaces.length > 1 && (type?.door ?? true) && !onOutline(sp, "door")) {
           warn("space-no-door", `spaces/${id} "${sp.name}" has no door on its outline: no way in.`, keyOf("spaces", id));
         }
-        if (HABITABLE.has((sp.function ?? "").toLowerCase()) && !onOutline(sp, "window")) {
+        if (type?.daylight && !onOutline(sp, "window")) {
           warn("space-no-window", `spaces/${id} "${sp.name}" (${sp.function}) has no window on its outline.`, keyOf("spaces", id));
         }
       }
+      // Rooms on top of each other: only rooms whose boxes overlap by some area can be.
+      const regions = spaces.map(([, sp]) => PolygonBool.fromRing(Polygon2D.openRing(sp.boundary)));
+      const nearRooms = touchingBoxes(roomBoxes, roomBoxes);
       for (let i = 0; i < spaces.length; i++) {
-        for (let j = i + 1; j < spaces.length; j++) {
-          const a = PolygonBool.fromRing(Polygon2D.openRing(spaces[i][1].boundary));
-          const b = PolygonBool.fromRing(Polygon2D.openRing(spaces[j][1].boundary));
-          const shared = PolygonBool.area(PolygonBool.intersection(a, b));
+        for (const j of nearRooms[i]) {
+          if (j <= i || !boxesShareArea(roomBoxes[i], roomBoxes[j])) continue;
+          const shared = PolygonBool.area(PolygonBool.intersection(regions[i], regions[j]));
           if (shared > 0.05) {
             warn("spaces-overlap", `spaces/${spaces[i][0]} and spaces/${spaces[j][0]} overlap by ${fmt(shared)} m².`, keyOf("spaces", spaces[i][0]), keyOf("spaces", spaces[j][0]));
           }
@@ -810,9 +881,6 @@ export class Building {
   }
 }
 
-/** Rooms people stay in, which want daylight (`space-no-window`). */
-const HABITABLE = new Set(["living", "kitchen", "dining", "bedroom", "office", "study"]);
-
 /** The point at arc length `m` along a wall's centreline. */
 function pointOnWall(wall: Wall, m: number): Vec2 {
   const cl = wall.centerline;
@@ -834,6 +902,58 @@ function distanceToPolyline(p: Vec2, line: readonly Vec2[]): number {
     best = Math.min(best, p.distTo(a.add(ab.mul(t))));
   }
   return best;
+}
+
+// ── Bounding boxes: which elements can be near each other ──────────────────────────
+// `check()` compares rooms with rooms, wall ends with walls and openings with rooms. Comparing
+// every pair grows with the square of their number (a storey of 900 generated rooms took a
+// second, 2500 took seven), so it first finds the pairs whose boxes touch and measures only those.
+
+/** An axis-aligned box in the ground plane. */
+interface Box { minX: number; minY: number; maxX: number; maxY: number }
+
+/** What the box tests allow for rounding, so they never drop a pair the exact test would keep (m). */
+const BOX_SLACK = 1e-6;
+
+/** The box around some points, grown by `pad` on every side. */
+function boxAround(points: readonly Vec2[], pad = 0): Box {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+  }
+  return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+}
+
+/** Whether two boxes overlap by some area; boxes that only touch do not. */
+function boxesShareArea(a: Box, b: Box): boolean {
+  return a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY;
+}
+
+/**
+ * For each box of `a`, the indices of the boxes of `b` that overlap or touch it (within
+ * `BOX_SLACK`), ascending. A sweep along x: the boxes sorted by their left edge, each compared
+ * only with the boxes still open (whose right edge it has not passed), not with every box.
+ */
+function touchingBoxes(a: Box[], b: Box[]): number[][] {
+  type Item = { box: Box; index: number; inA: boolean };
+  const items: Item[] = [
+    ...a.map((box, index) => ({ box, index, inA: true })),
+    ...b.map((box, index) => ({ box, index, inA: false })),
+  ].sort((p, q) => p.box.minX - q.box.minX);
+  const out = a.map(() => [] as number[]);
+  let open: Item[] = [];
+  for (const item of items) {
+    open = open.filter((o) => o.box.maxX + BOX_SLACK >= item.box.minX);
+    for (const o of open) {
+      if (o.inA === item.inA || o.box.minY > item.box.maxY + BOX_SLACK || item.box.minY > o.box.maxY + BOX_SLACK) continue;
+      if (item.inA) out[item.index].push(o.index);
+      else out[o.index].push(item.index);
+    }
+    open.push(item);
+  }
+  for (const list of out) list.sort((i, j) => i - j);
+  return out;
 }
 
 /**
@@ -874,11 +994,6 @@ export interface BuildingBinding {
   dispose(): void;
 }
 
-const SPACE_COLOURS: Record<string, string> = {
-  living: "#f2c46d", kitchen: "#f29e6d", dining: "#f2b36d", bedroom: "#8fb8e8", bath: "#7fd0d0", wc: "#7fd0d0",
-  hall: "#c8c8c8", corridor: "#c8c8c8", office: "#a7d39a", study: "#a7d39a", storage: "#bdb2a6", utility: "#bdb2a6",
-};
-
 /**
  * Keep a scene in step with the building records of a document. Every change to a building
  * collection rebuilds the building (a storey's walls trim at their joints, so one wall's edit
@@ -892,6 +1007,7 @@ const SPACE_COLOURS: Record<string, string> = {
  */
 export function bindBuilding(doc: Doc<any>, scene: Scene, opts: BindBuildingOptions = {}): BuildingBinding {
   const types = opts.types ?? defaultBuildingTypes();
+  const uses = spaceTypes(types);
   let detail: BuildingDetail = opts.detail ?? "envelope";
   let building = new Building({}, types);
   let issues: BuildingIssue[] = [];
@@ -964,7 +1080,7 @@ export function bindBuilding(doc: Doc<any>, scene: Scene, opts: BindBuildingOpti
         const floor = new Slab({ boundary: Polygon2D.closeRing(sp.boundary), thickness: 0.01, elevation: sp.elevation + 0.02 }).toMesh();
         const use = (sp.function ?? "").toLowerCase();
         add(keyOf("spaces", id), floor, {
-          color: SPACE_COLOURS[use] ?? "#d9cbe8", opacity: 0.5, layer: "spaces",
+          color: uses[use]?.colour ?? "#d9cbe8", opacity: 0.5, layer: "spaces",
           label: `${sp.name} · ${fmt(sp.area())} m²`,
         });
       }

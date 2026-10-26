@@ -13,12 +13,13 @@ import type { Vec2, Vec3 } from "../core/math/vectors";
 import type { Mesh } from "../core/geometry/mesh/Mesh";
 import type { MeshFactory } from "../core/geometry/mesh/MeshFactory";
 import type { Algo } from "../core/algo/algorithms";
-import type { Scene, VisualStyle, FlatMeshData, LightSpec } from "../scene/Scene";
+import type { Scene, VisualStyle, FlatMeshData, LightSpec, RenderMode, LightingMode } from "../scene/Scene";
 import type { LayerNode, LayerMap } from "../gui/LayerPanel";
 import type { SectionRequest, StandardView } from "../scene/Scene";
 import type { Command } from "../gui/Commands";
-export type { LayerNode, LayerState, LayerMap } from "../gui/LayerPanel";
-import type { LayerState } from "../gui/LayerPanel";
+import type { ShadingBarPlacement } from "../render/ShadingBar";
+export type { LayerNode, LayerState, LayerMap, LayerColumns } from "../gui/LayerPanel";
+import type { LayerState, LayerColumns } from "../gui/LayerPanel";
 
 // ─── SketchConfig ────────────────────────────────────────────────────
 
@@ -55,11 +56,16 @@ export interface SketchConfig {
   /** Show the ✎ Markup button (draw instructions on the view; see Markup.ts). Default `true`. */
   markup?: boolean;
   /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
-   *  toggle persp/ortho under it. Default `false`. */
+   *  toggle persp/ortho under it; hidden in a strict-2D view. Default `false`. */
   navGizmo?: boolean;
-  /** The shading bar in the view's top-left corner: icons for the render style, the lighting
-   *  and the sun (morning, noon, sunset). Default `false`. */
-  shadingBar?: boolean;
+  /** The view's controls. `"header"` (the default): a strip across the top of the view, as
+   *  Blender's viewport header — the app's own controls on its left (`lab.viewerHeader`), the
+   *  render style, lighting, sun, section, overlays, snapshot and ✎ Markup on its right; the axis
+   *  widget (`navGizmo`) top right under it and zoom in / out / to bounds below. In a strict-2D view
+   *  (`lab.setOrbitRotateEnabled(false)`) the header keeps the snapshot and ✎ Markup, the column the
+   *  zoom. A corner (`true` = top left) is the compact bar instead; `false` hides it. Off by default
+   *  inside a shell with its own bar (the testbench). */
+  shadingBar?: boolean | ShadingBarPlacement;
   /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset (default):
    *  relative to the content's extent. */
   units?: string;
@@ -94,6 +100,16 @@ export interface ImportRegistration {
 export interface Reactive<T, S = T> {
   readonly value: T;
   set(value: S): void;
+}
+
+/** What `lab.layerTree` returns: the layers' state, plus the active layer. */
+export interface LayerTree extends Reactive<LayerMap, Record<string, Partial<LayerState>>> {
+  /** The active layer's id (Rhino: the current layer) — the one new objects go on; "" for an empty tree
+   *  or one created with `columns: { active: false }`, which has no active layer. */
+  readonly active: string;
+  /** Make `id` the active layer: it and its parents turn on and unlock. Ignores an id not in the tree,
+   *  and does nothing in a tree without an active layer. */
+  setActive(id: string): void;
 }
 
 // ─── Control options ────────────────────────────────────────────────
@@ -254,15 +270,23 @@ export interface Lab {
   select<T extends string>(label: string, options: readonly T[], defaultValue?: T, opts?: SelectOpts): Reactive<T>;
   colorPicker(label: string, defaultValue?: string, opts?: { group?: string; tab?: string; menu?: string; display?: boolean }): Reactive<string>;
   /**
-   * Render a scrollable layer-tree panel — checkboxes, collapse/expand, and
-   * optional per-node color pickers. Returns a reactive `LayerMap`
-   * (`Record<id, { visible, color }>`).
+   * Render a scrollable, Rhino-style layer tree — per layer an active-layer
+   * check, an on/off bulb, a lock and a colour swatch, collapse/expand. `.value`
+   * is a `LayerMap` with every layer's own state (`{ visible, color, locked }`,
+   * starting from the nodes' defaults); combine parents with
+   * `computeEffectiveVisibility`. `.set({ beams: { visible: false } })` updates
+   * layers in place (partial per layer).
    *
-   * The panel instance is persistent: collapsed state and scroll position
-   * survive sketch re-runs. Nodes can change between runs (e.g. async loads).
+   * Objects on a locked layer — tagged `.layer(id)` or drawn inside
+   * `lab.viewLayer(id, …)` — are drawn but can't be picked or hovered. `.active`
+   * is the active layer (Rhino: current), the one new objects go on; it and its
+   * parents stay on and unlocked. Pass `active` for the initial one (default:
+   * the first layer that is on), `columns` to hide the active, lock or colour column.
+   *
+   * The panel instance is persistent: collapsed state, scroll position and the
+   * active layer survive sketch re-runs. Nodes can change between runs (e.g. async loads).
    */
-  /** `.set({ beams: { visible: false } })` updates layers in place (partial per layer). */
-  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean }): Reactive<LayerMap, Record<string, Partial<LayerState>>>;
+  layerTree(label: string, nodes: LayerNode[], opts?: { group?: string; tab?: string; display?: boolean; active?: string; columns?: LayerColumns }): LayerTree;
 
   // ── Actions ──
   /** `display: true` marks a display-only action (camera preset, restyle):
@@ -511,6 +535,20 @@ export interface Lab {
   /** The panel's currently active tab name ("" when the panel has no tabs). */
   readonly activeTab: string;
 
+  /** With the viewer header (`shadingBar: "header"`): its slots for the app's own controls — view
+   *  tabs, tools, who is here. Append to them once (they persist across re-runs). Null otherwise. */
+  readonly viewerHeader: { left: HTMLElement; right: HTMLElement } | null;
+
+  /** The render style the view draws in — chosen in the shading bar, by a host shell or in
+   *  code. A sketch that reads it is re-run when it changes, so a build can follow the style
+   *  (e.g. leave out line work when shaded). */
+  readonly renderMode: RenderMode;
+  /** The lighting, Flat or Studio — as `renderMode`: reading it re-runs the sketch when it changes. */
+  readonly lightingMode: LightingMode;
+  /** What zoom to bounds (the shading bar's Frame, with nothing selected) frames: this box instead of
+   *  everything shown — the model without its site, say. Declared per run, like the controls. */
+  frameBounds(min: Vec3, max: Vec3): void;
+
   /**
    * Register a callback for tab switches (per run, like other callbacks).
    * Tab clicks re-render only the panel — the sketch does NOT re-run — so use
@@ -544,7 +582,8 @@ export interface Lab {
    * other than "none" is active). Default: disabled.
    */
   enablePicking(enabled?: boolean): void;
-  /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view. */
+  /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view: the shading bar
+   *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
   setOrbitRotateEnabled(enabled: boolean): void;
   /** Register a callback invoked on every click pick. `id` is null for background clicks. */
   onPick(fn: (id: string | null, pick?: { tag?: string; layer?: string }) => void): void;

@@ -15,7 +15,7 @@ export function stampName(fileName: string, date = new Date()): string {
 }
 
 const MIME: Record<string, string> = {
-  dxf: "application/dxf", svg: "image/svg+xml", json: "application/json", obj: "model/obj",
+  dxf: "application/dxf", svg: "image/svg+xml", json: "application/json", obj: "model/obj", mtl: "model/mtl",
   ifc: "application/x-step", csv: "text/csv", txt: "text/plain", png: "image/png", stl: "model/stl", pdf: "application/pdf",
 };
 

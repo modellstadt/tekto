@@ -73,6 +73,7 @@ const GROUPS: PageGroup[] = [
     { slug: "lines-points", label: "Lines & Points", load: () => import("./pages/lines-points") },
     { slug: "shape-modes",  label: "Shape Modes",    load: () => import("./pages/shape-modes") },
     { slug: "colors",       label: "Colors",         load: () => import("./pages/colors") },
+    { slug: "layers",       label: "Layers",         load: () => import("./pages/layers") },
   ]},
   { name: "Geometry", pages: [
     { slug: "mesh-factory",   label: "MeshFactory",     load: () => import("./pages/mesh-factory") },
@@ -92,6 +93,7 @@ const GROUPS: PageGroup[] = [
   ]},
   { name: "Motion & Camera", pages: [
     { slug: "particles", label: "Particles 2D", load: () => import("./pages/particles") },
+    { slug: "circle-packing", label: "Circle Packing", load: () => import("./pages/circle-packing") },
     { slug: "camera",    label: "Camera",       load: () => import("./pages/camera") },
     { slug: "gizmo",     label: "Pick & Gizmo", load: () => import("./pages/gizmo") },
     { slug: "shared-editing", label: "Shared Editing", load: () => import("./pages/shared-editing") },

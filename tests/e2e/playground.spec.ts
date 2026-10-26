@@ -8,10 +8,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const PAGES = [
-  "primitives", "transforms", "lines-points", "shape-modes", "colors",
+  "primitives", "transforms", "lines-points", "shape-modes", "colors", "layers",
   "mesh-factory", "curves", "nurbs-surfaces", "mesh-ops", "curvature", "streamlines", "bsp-csg",
   "sdf", "graph", "planar-graph", "voronoi", "voxel-2d",
-  "particles", "camera", "gizmo",
+  "particles", "circle-packing", "camera", "gizmo",
   "app-shell", "site-editor", "drawing-sheet", "sketch-drawing",
   "pointer-2d",
   "timber", "framed-wall", "framed-floor", "roofs", "custom-viewer", "dxf-test", "dxf-3d",
