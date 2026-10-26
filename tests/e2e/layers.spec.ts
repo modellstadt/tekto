@@ -3,8 +3,11 @@
  * swatches, the active layer (always on and unlocked) and locked layers whose
  * objects can't be picked.
  */
-import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+
+// A tekto source module's URL on the playground's dev server (/@fs + its absolute path), found
+// from this spec's own path: no Node types needed (CI's clean install has none).
+const srcUrl = (f: string) => "/@fs" + test.info().file.replace(/\\/g, "/").replace(/^(?!\/)/, "/").replace(/tests\/e2e\/[^/]+$/, `src/gui/${f}`);
 
 /** Pick at the screen point of a world position; returns the picked object's layer, or null. */
 const layerAt = (page: Page, p: [number, number, number]) => page.evaluate(([x, y, z]) => {
@@ -99,7 +102,7 @@ test("objects on a locked layer can't be picked; the pick goes through", async (
 test("without the active column a tree has no active layer: every bulb works", async ({ page }) => {
   const errors = await open(page);
   // A viewer's tree, as an app shows it: just the bulb and the swatch.
-  const src = `/@fs${path.resolve(__dirname, "../../src/gui/LayerPanel.ts")}`;
+  const src = srcUrl("LayerPanel.ts");
   const changes = await page.evaluate(async (src) => {
     const { LayerPanel } = await import(/* @vite-ignore */ src);
     const seen: unknown[] = [];
