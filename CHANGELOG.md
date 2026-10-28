@@ -6,6 +6,16 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **A program as its steps**: `lab.step(name, inputs, fn)` (and `app.step` in an `appShell`)
+  records a part of a program as it runs — its inputs, output, time, error, the line that
+  called it and the objects it drew — and which step fed which, read off the values. The
+  **steps panel** draws the run as a graph (time and share per step, errors red, unused
+  outputs dashed): click a step for its details and its geometry, click geometry for its step,
+  and leave a note on a step for the agent; a snapshot carries the steps (`markup.json`
+  `steps`) and the notes (`stepMarks`). Agents: `__tekto.steps()`, the relay's `steps`, the MCP
+  tool `tekto_steps`. `StepTrace` / `describeValue` in `tekto/core`; `StepsPanel` in `tekto`.
+  Playground: **Steps**, a generated site plan written as steps.
+
 - **`Voronoi2D`: clipped Voronoi and power diagrams with neighbour labels.** The dual of
   `Delaunay2D`: `Voronoi2D.cells(sites, { clip, radii })` gives each site the part of the clip
   region nearer to it than to any other site, as a counter-clockwise polygon whose every edge
