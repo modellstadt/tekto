@@ -414,6 +414,19 @@ export interface Lab {
    */
   cameraUp(x: number, y: number, z: number): void;
 
+  // ── Steps ──
+  /**
+   * Run `fn(inputs)` as a named step of the program and record it: its inputs, what it
+   * produced, how long it took, an error, the line that called it and the objects it drew.
+   * Which step fed which is read off the values (`inputs` holding an earlier step's output), so
+   * the steps panel draws the program as a graph — click a step to light up its geometry, click
+   * geometry to find its step, leave a note on a step for the agent. Returns what `fn` returns.
+   *
+   *   const seeds = lab.step("seeds", { count }, ({ count }) => scatter(count));
+   *   const cells = lab.step("cells", { seeds, site }, ({ seeds, site }) => Voronoi2D.cells(seeds, { clip: site }));
+   */
+  step<I extends Record<string, unknown>, T>(name: string, inputs: I, fn: (inputs: I) => T): T;
+
   // ── Info display ──
   log(label: string, value?: string | number): void;
   info(text: string): void;

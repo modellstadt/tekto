@@ -112,6 +112,12 @@ const TOOLS = [
     run: async (a) => [text(await relay("run", { id: a.id }))],
   },
   {
+    name: "tekto_steps",
+    description: "The program as the steps it ran (code that wraps its parts in lab.step / app.step): each step's inputs (and which step each came from), output, time, error, code location and the objects it drew; the links between steps; an analysis (slowest steps and chain, outputs nobody used, errors); and the notes the person left on steps (`marks`) — what they want changed, step by step. Read this before changing generated code the person has marked.",
+    inputSchema: { type: "object", properties: {} },
+    run: async () => [text(await relay("steps"))],
+  },
+  {
     name: "tekto_section",
     description: "Cut the 3D view, to see inside before a snapshot: a plan is axis \"z\" at a height (`coordinate`, metres, e.g. 1.2 above a storey's floor), an elevation cut is \"x\" or \"y\"; `flip` keeps the other side. No axis: remove the cut. Views (top, front, orthographic) are commands: tekto_run_command.",
     inputSchema: { type: "object", properties: { axis: { type: "string", enum: ["x", "y", "z"] }, coordinate: { type: "number" }, at: { type: "number", description: "0–1 across the model instead of a coordinate" }, flip: { type: "boolean" } } },
