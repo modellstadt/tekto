@@ -58,6 +58,8 @@ export interface AgentBridgeHost {
   commands?: Commands;
   /** The app's notes layer, if it has one: an agent lists, answers and resolves the notes. */
   notes?(): AgentNotes | null;
+  /** The last run's steps (`lab.step` / `app.step`) and the notes a person left on them. */
+  steps?(): { steps: unknown[]; edges: unknown[]; analysis: unknown; marks: unknown[] } | null;
 }
 
 export interface AgentBridge {
@@ -107,6 +109,8 @@ export function installAgentBridge(host: AgentBridgeHost): AgentBridge {
     },
     ...(host.camera ? { camera: host.camera } : {}),
     ...(host.section ? { section: host.section } : {}),
+    // The program as the steps it ran: inputs, outputs, times, links, and a person's notes on steps.
+    steps: () => host.steps?.() ?? null,
     // What the app can do — undo, delete, the views … — by id, as a person would by key.
     commands: () => host.commands?.list() ?? [],
     run: (id: string) => host.commands ? host.commands.run(id) : Promise.resolve(false),
@@ -336,6 +340,7 @@ async function runRelayed(op: string, args: Record<string, unknown>, agent: stri
       if (!t.camera) throw new Error("this app has no 3D camera");
       t.camera(args.position as number[], args.target as number[] | undefined);
       return { ok: true };
+    case "steps": return t.steps?.() ?? null;
     case "section":
       if (!t.section) throw new Error("this app has no 3D view to cut");
       t.section(args.axis ? { axis: args.axis, at: args.at, coordinate: args.coordinate, flip: args.flip } : null);
@@ -345,7 +350,7 @@ async function runRelayed(op: string, args: Record<string, unknown>, agent: stri
       const m = b.markup as unknown as Record<string, unknown>;
       return { viewPng: b.viewPng, camera: m.camera ?? null, scene: m.scene ?? null, logs: m.logs ?? [], errors: m.errors ?? [] };
     }
-    default: throw new Error(`unknown call "${op}" (info, records, apply, check, notes, noteReply, noteResolve, undo, redo, setParams, run, camera, section, snapshot)`);
+    default: throw new Error(`unknown call "${op}" (info, records, apply, check, notes, noteReply, noteResolve, undo, redo, setParams, run, camera, section, steps, snapshot)`);
   }
 }
 
@@ -517,4 +522,21 @@ export async function saveBundle(b: MarkupBundle, label: string): Promise<string
 
 function safeJson(v: unknown): string {
   try { return JSON.stringify(v); } catch { return String(v); }
+}
+
+/** First stack frame outside tekto itself: the user's line that made an object or ran a step.
+ *  Raw "url:line:col"; the dev-server plugin maps it through the source map to "file.ts:line". */
+export function callSite(): string | undefined {
+  const limit = (Error as any).stackTraceLimit;
+  (Error as any).stackTraceLimit = 40;
+  const stack = new Error().stack ?? "";
+  (Error as any).stackTraceLimit = limit;
+  for (const line of stack.split("\n").slice(1)) {
+    const m = line.match(/(https?:\/\/[^\s)]+):(\d+):(\d+)/) ?? line.match(/@(\S+):(\d+):(\d+)$/);
+    if (!m) continue;
+    const url = m[1];
+    if (/\/tekto\/(src|dist)\/|node_modules|\/@vite\/|\/@fs\/.*\/tekto\/src\//.test(url)) continue;
+    return `${url}:${m[2]}:${m[3]}`;
+  }
+  return undefined;
 }
