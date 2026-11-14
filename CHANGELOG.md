@@ -6,6 +6,22 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Notes are how a person tells an agent what to change**: a `Note` has a `status` (open
+  until done) and `replies`; `NotesLayer` gains `reply`, `resolve`, `reopen` and `describe`
+  (the notes as a list), and its card shows the replies with a reply box and Done / Reopen; a
+  done note keeps a grey pin. In an app with notes, ✎ Markup's **Save** keeps the marks as
+  notes too (the bundle names each mark's `noteKey`). Agents: `__tekto.notes`, relay calls
+  `notes` / `noteReply` / `noteResolve`, MCP tools **`tekto_notes`**, **`tekto_note_reply`**,
+  **`tekto_note_resolve`**; `tekto_info` reports how many notes are open. `appShell({ notes })`
+  shares its notes by itself; other apps pass `agentDoc(doc, { notes: layer })`.
+- **The agent is visible**: while it works through a window, a chip at the top of the page
+  names it and what it is doing, and on a shared document `PresenceBar` shows its badge beside
+  that person (presence `state.agent`). The MCP server sends the client's name (`TEKTO_AGENT`
+  overrides it).
+- **A relay call can name its page**: `"page": "house"` (MCP: `TEKTO_PAGE`) picks the newest
+  tab whose URL or title contains it; without it the newest tab takes the call, as before.
+- The House page keeps notes with the building and, shared (`?shared=1`), shows who is online
+  and what they have selected.
 - **A program as its steps**: `lab.step(name, inputs, fn)` (and `app.step` in an `appShell`)
   records a part of a program as it runs — its inputs, output, time, error, the line that
   called it and the objects it drew — and which step fed which, read off the values. The

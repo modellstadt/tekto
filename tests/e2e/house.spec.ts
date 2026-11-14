@@ -24,9 +24,11 @@ test("builds the example house from its records, with nothing to report", async 
 });
 
 test("an agent edits it from outside: a bad patch changes nothing, a good one is one undo step with its issues", async ({ page, request }) => {
-  await open(page, "&agent-relay");
-  await expect.poll(async () => (await (await request.get("/__tekto/agent/status")).json()).pages.length).toBeGreaterThan(0);
-  const call = async (op: string, args: object = {}) => (await request.post("/__tekto/agent/call", { data: { op, args } })).json();
+  // A page of this test's own: the calls name it, as other tests have House pages open too.
+  const tab = `tab=${Math.random().toString(36).slice(2, 10)}`;
+  await open(page, `&agent-relay&${tab}`);
+  await expect.poll(async () => (await (await request.get("/__tekto/agent/status")).json()).pages.some((p: { url: string }) => p.url.includes(tab))).toBe(true);
+  const call = async (op: string, args: object = {}) => (await request.post("/__tekto/agent/call", { data: { op, args, page: tab } })).json();
 
   const info = (await call("info")).result;
   expect(info.doc).toMatchObject({ name: "house", collections: { storeys: 2, walls: 13 } });

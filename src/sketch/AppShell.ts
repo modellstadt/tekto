@@ -83,8 +83,9 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
    */
   statusCollapsed?: boolean;
   /** Notes that live with the model: the doc whose `notes` collection keeps them (or
-   *  `{ doc, collection, author }`). Markup then offers "Keep as notes", and the notes are
-   *  drawn over the view with a pin each (`app.notes`). */
+   *  `{ doc, collection, author }`). Markup then offers "Keep as notes" (and Save keeps the
+   *  marks as notes too), the notes are drawn over the view with a pin each (`app.notes`), and
+   *  an agent lists, answers and resolves them (`__tekto.notes`). */
   notes?: Doc<any> | { doc: Doc<any>; collection?: string; author?: string };
   /** The axis widget in a viewport corner (`true` = bottom right): click an axis for a plan
    *  or an elevation, toggle persp/ortho under it. Default `false` — an app may have its own
@@ -312,7 +313,9 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
   // ── Notes that live with the model (a Doc collection), drawn over the view ──
   const notesCfg = config.notes ? ("doc" in config.notes ? config.notes : { doc: config.notes }) : null;
-  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, { collection: notesCfg.collection, host: vpWrap }) : null;
+  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, {
+    collection: notesCfg.collection, host: vpWrap, ...("author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}),
+  }) : null;
 
   // ── Build / display passes ──
   // Two-tier invalidation: params flagged `display: true` only re-run the
@@ -434,7 +437,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     context,
     setTracking: () => { /* retained scenes aren't re-run: objects carry their record key instead */ },
     ...(renderer.viewerHeader ? { buttonHost: renderer.viewerHeader.end, top: VIEWER_HEADER_H } : {}),
-    ...(notes ? { keep: (ns: Note[]) => { notes.keep(ns); } } : {}),
+    ...(notes ? { keep: (ns: Note[]) => notes.keep(ns).map((id) => `${notes.collection}/${id}`) } : {}),
     ...(notesCfg && "author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}),
   });
 
@@ -458,6 +461,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       if (target) renderer.lookAt(target[0], target[1], target[2]);
     },
     section: (cut) => renderer.setSection(cut),
+    notes: () => notes,
     steps: () => (trace.steps.length ? { ...trace.toJSON(), marks: [...(stepsPanel?.pendingMarks ?? [])] } : null),
   });
   return instance;
