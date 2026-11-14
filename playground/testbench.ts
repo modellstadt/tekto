@@ -89,6 +89,7 @@ const GROUPS: PageGroup[] = [
     { slug: "graph",        label: "Graph",          load: () => import("./pages/graph") },
     { slug: "planar-graph", label: "Planar Graph",   load: () => import("./pages/planar-graph") },
     { slug: "voronoi",      label: "Voronoi",        load: () => import("./pages/voronoi") },
+    { slug: "steps", label: "Steps (a program as a graph)", load: () => import("./pages/steps") },
     { slug: "voxel-2d",     label: "Voxel Grid 2D",  load: () => import("./pages/voxel-2d") },
   ]},
   { name: "Motion & Camera", pages: [

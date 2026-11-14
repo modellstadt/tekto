@@ -42,7 +42,9 @@ import { ThreeRenderer, ThreeRendererConfig } from "../render/ThreeRenderer";
 import { ParamStore, ParamSchema } from "../gui/Params";
 import { ControlPanel, ControlItem } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
-import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
+import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays, callSite } from "./AgentBridge";
+import { StepTrace } from "../core/steps/StepTrace";
+import { StepsPanel, type StepMark } from "./StepsPanel";
 import { Commands, viewCommands } from "../gui/Commands";
 import { viewerToolbar, type TopBarOptions } from "./ViewerToolbar";
 import { VIEWER_HEADER_H } from "../render/ShadingBar";
@@ -141,6 +143,11 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
 
   /** Update the status overlay text (cheap — just sets textContent) */
   status(text: string): void;
+  /**
+   * Run `fn(inputs)` as a named step of the build and record it (see `lab.step`): the steps
+   * panel draws the build as a graph of its steps, and a snapshot carries them for an agent.
+   */
+  step<I extends Record<string, unknown>, T>(name: string, inputs: I, fn: (inputs: I) => T): T;
 
   /**
    * A new layer over the 3D view, under the status line and ✎ Markup — mount a 2D view
@@ -313,13 +320,23 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
   let buildFn: (() => void) | null = null;
   let displayFn: (() => void) | null = null;
+  // The build's steps (`app.step`): a fresh record each build, the objects drawn in a step its own.
+  let trace = new StepTrace();
+  let stepsPanel: StepsPanel | null = null;
+  let stepMarks: StepMark[] = [];
+  scene.on((e) => { if (e.type === "object:add") trace.current?.objects.push(e.id); });
+  const build = () => {
+    trace = new StepTrace();
+    buildFn?.();
+    showSteps();
+  };
 
   params.onChange((key) => {
     const def = params.getDef(key as any) as { display?: boolean } | undefined;
     if (def?.display) {
       displayFn?.();
     } else {
-      buildFn?.();
+      build();
       displayFn?.();
     }
   });
@@ -363,7 +380,8 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
     onBuild(fn) { buildFn = fn; },
     onDisplay(fn) { displayFn = fn; },
-    rebuild() { buildFn?.(); displayFn?.(); },
+    rebuild() { build(); displayFn?.(); },
+    step: (name, inputs, fn) => trace.step(name, inputs, fn, { src: callSite() }),
 
     status(text: string) {
       statusText = text;
@@ -403,6 +421,8 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     logs: statusText ? [{ label: "status", value: statusText }] : [],
     commands: commands.list(),
     errors: bridge.errors(),
+    ...(trace.steps.length ? { steps: trace.toJSON() } : {}),
+    ...(stepMarks.length ? { stepMarks } : {}),
   });
   const markup = config.markup === false ? null : new MarkupOverlay({
     viewport: vpWrap,
@@ -438,6 +458,37 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       if (target) renderer.lookAt(target[0], target[1], target[2]);
     },
     section: (cut) => renderer.setSection(cut),
+    steps: () => (trace.steps.length ? { ...trace.toJSON(), marks: [...(stepsPanel?.pendingMarks ?? [])] } : null),
   });
   return instance;
+
+  /** The build's steps in the panel (made the first time a build records any); a click on geometry finds its step. */
+  function showSteps(): void {
+    if (!trace.steps.length && !stepsPanel) return;
+    if (!stepsPanel) {
+      stepsPanel = new StepsPanel(vpWrap, {
+        theme: t,
+        onSelect: (_step, objects) => renderer.setSelectionHighlight(objects.length ? objects : null),
+        onSave: async (marks) => {
+          if (!markup) return undefined;
+          stepMarks = [...marks];
+          try {
+            const n = marks.length;
+            return (await markup.capture({ note: `${n} note${n > 1 ? "s" : ""} on steps`, label: "steps" })).dir;
+          } finally {
+            stepMarks = [];
+          }
+        },
+      });
+      let down: { x: number; y: number } | null = null;
+      renderer.canvasEl.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
+      renderer.canvasEl.addEventListener("pointerup", (e) => {
+        if (!down || !stepsPanel?.isOpen || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+        const hit = renderer.hitAt(e.clientX, e.clientY);
+        const step = hit ? stepsPanel.stepOfObject(hit.id) : undefined;
+        if (step) stepsPanel.select(step);
+      });
+    }
+    stepsPanel.show(trace.steps.length ? trace.toJSON() : null);
+  }
 }

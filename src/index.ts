@@ -90,6 +90,9 @@ export { markup } from "./sketch/Markup";
 // Share an app's document with agents: `window.__tekto.doc`, and through the dev server's relay
 // (tekto/markup-vite) from outside the page — `tools/mcp.mjs` gives an agent these as tools.
 export { agentDoc } from "./sketch/AgentBridge";
+// The steps of a run (`lab.step`, `app.step`) as a graph over a view; sketch() and appShell() mount it.
+export { StepsPanel } from "./sketch/StepsPanel";
+export type { StepMark, StepsPanelOptions } from "./sketch/StepsPanel";
 export type { AgentDocOptions, AgentDocApi, AgentIssue } from "./sketch/AgentBridge";
 // Notes that live with the model: sketched notes kept in a Doc collection, drawn over the view.
 export { notesLayer, NotesLayer } from "./sketch/Notes";

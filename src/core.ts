@@ -215,6 +215,10 @@ export { SharedStore, collabColor, memoryAdapter, devServerAdapter, supabaseAdap
 // The document of a retained app: typed records, stable ids, undo/redo, save/open (on SharedStore).
 export { Doc, localAdapter, bindScene, applyPatch, Selection, selectOnClick, shareSelection } from "./collab/Doc";
 export type { DocSchema, DocChange, DocChangeSource, DocEditOptions, DocOptions, DocJSON, DocPatch, PatchResult, SceneBinding, PickingView, PresenceView } from "./collab/Doc";
+// A program read as the steps it ran: inputs, outputs, times, errors and the links between
+// steps read off the values — what the steps panel draws and an agent reads.
+export { StepTrace, describeValue } from "./core/steps/StepTrace";
+export type { StepRecord, StepInput, StepEdge, StepAnalysis, StepTraceJSON } from "./core/steps/StepTrace";
 // Records checked against a JSON Schema: one schema validates, defines an agent's tool input, documents.
 export { checkRecord } from "./collab/recordSchema";
 export type { RecordSchema, SchemaIssue } from "./collab/recordSchema";
