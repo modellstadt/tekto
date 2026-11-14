@@ -13,10 +13,12 @@
  * read and edit an app's shared document (`agentDoc`), set controls, take a snapshot:
  *
  *   POST /__tekto/agent/call   {"op": "apply", "args": {"patch": {…}, "label": "…"}}  → {"result": …}
+ *                              ("agent": "Claude" names who is calling: the page shows it at work;
+ *                               "page": "house" picks the newest tab whose URL or title contains it)
  *   GET  /__tekto/agent/status                                                       → the open pages
  *
  * The page listens on `/__tekto/agent/events` (the plugin marks it with a meta tag) and
- * answers on `/__tekto/agent/result`; the newest page to connect takes the calls.
+ * answers on `/__tekto/agent/result`; the newest page to connect takes the calls, unless a call names its page.
  * `tools/mcp.mjs` is an MCP server over these calls.
  *
  * Usage (vite.config.mjs):
@@ -100,7 +102,10 @@ function agentRelay(server) {
         return json(res, 200, { ok: true });
       }
       if (route === "/call") {
-        const page = pages[pages.length - 1];
+        // The newest page, or with `page` the newest whose URL or title contains it (several tabs open).
+        const want = body.page ? String(body.page) : "";
+        const page = want ? [...pages].reverse().find((p) => p.url.includes(want) || p.title.includes(want)) : pages[pages.length - 1];
+        if (!page && want) return json(res, 503, { error: `No open tekto page matches "${want}" (open: ${pages.map((p) => p.url).join(", ") || "none"}).` });
         if (!page) return json(res, 503, { error: "No tekto page is open on this dev server: open the app in a browser first." });
         const id = String(next++);
         const timeoutMs = Number(body.timeoutMs) > 0 ? Number(body.timeoutMs) : 30000;
@@ -109,7 +114,7 @@ function agentRelay(server) {
           json(res, 504, { error: `The page "${page.title}" did not answer "${body.op}" within ${timeoutMs} ms.` });
         }, timeoutMs);
         waiting.set(id, { timer, done: (r) => (r.error !== undefined ? json(res, 500, { error: r.error }) : json(res, 200, { result: r.result, page: page.title })) });
-        page.res.write(`event: call\ndata: ${JSON.stringify({ id, op: body.op, args: body.args ?? {} })}\n\n`);
+        page.res.write(`event: call\ndata: ${JSON.stringify({ id, op: body.op, args: body.args ?? {}, ...(body.agent ? { agent: String(body.agent) } : {}) })}\n\n`);
         server.config.logger.info(`[tekto-agent] ${body.op} → ${page.title || page.url}`);
         return;
       }

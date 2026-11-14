@@ -40,8 +40,9 @@ export interface MarkupHost {
   /** Record creation sites for objects (costs a stack trace per object, so only while needed). */
   setTracking(on: boolean): void;
   title: string;
-  /** Keep marks as notes with the model; with it the bar offers "Keep as notes". */
-  keep?(notes: Note[]): void;
+  /** Keep marks as notes with the model, returning their record keys (`"notes/k3f9x2"`). With
+   *  it the bar offers "Keep as notes", and Save keeps the marks as notes too. */
+  keep?(notes: Note[]): string[] | void;
   /** Who is drawing, written into a kept note. */
   author?: string;
   /** Where the ✎ Markup button goes (a viewer header's slot) instead of the view's top-right corner. */
@@ -72,6 +73,8 @@ interface Mark {
   strokes: Pt[][];
   note: string;
   resolved?: ResolvedMark;
+  /** The note it was kept as (`"notes/k3f9x2"`), once Save or "Keep as notes" kept it. */
+  noteKey?: string;
 }
 
 interface ResolvedMark {
@@ -155,7 +158,7 @@ export class MarkupOverlay {
       this.noteBox,
       mk("Undo", "Remove last mark (⌘Z)", () => this.undo()),
       mk("Clear", "Remove all marks", () => { this.marks = []; this.redraw(); }),
-      mk("Save", "Save view.png + markup.json (⌘S)", () => void this.save()),
+      mk("Save", host.keep ? "Save view.png + markup.json, and keep the marks as notes an agent can answer (⌘S)" : "Save view.png + markup.json (⌘S)", () => void this.save()),
       ...(host.keep ? [mk("Keep as notes", "Keep the marks as notes with the model: saved, undoable, shared", () => this.keepNotes())] : []),
       this.status,
     );
@@ -240,12 +243,25 @@ export class MarkupOverlay {
   private keepNotes() {
     if (!this.host.keep) return;
     if (!this.marks.length) { this.setStatus("Draw a mark first"); return; }
+    const kept = this.marksToNotes();
+    if (!kept) { this.setStatus("The marks lie on nothing to keep them on"); return; }
+    this.marks = [];
+    this.noteBox.value = "";
+    this.redraw();
+    this.setStatus(`Kept ${kept} note${kept > 1 ? "s" : ""}`);
+  }
+
+  /** Keep the marks that lie on the model (or the ground) as notes; each remembers its note's key. Returns how many. */
+  private marksToNotes(): number {
+    if (!this.host.keep) return 0;
     const r = this.canvas.getBoundingClientRect();
     const onModel = (p: Pt) => this.host.hitAt(r.left + p[0], r.top + p[1])?.point ?? this.host.groundAt(r.left + p[0], r.top + p[1]);
     const cam = (this.host.context().camera ?? {}) as { position?: number[]; target?: number[]; projection?: "perspective" | "orthographic" };
     const instruction = this.noteBox.value.trim();
     const notes: Note[] = [];
+    const from: Mark[] = [];
     for (const m of this.marks) {
+      if (m.noteKey) continue;                                       // kept already
       const strokes = m.strokes
         .map((s) => (s.length === 1 ? s : resample(s, 6, 60)).map(onModel).filter((p): p is Vec3 => !!p).map((p) => round3(p) as [number, number, number]))
         .filter((s) => s.length > 0);
@@ -261,13 +277,12 @@ export class MarkupOverlay {
         keys: [...new Set((m.resolved?.hits ?? []).map((h) => h.key).filter((k): k is string => !!k))],
         view: { position: cam.position ?? [0, 0, 10], target: cam.target ?? [0, 0, 0], ...(cam.projection ? { projection: cam.projection } : {}) },
       });
+      from.push(m);
     }
-    if (!notes.length) { this.setStatus("The marks lie on nothing to keep them on"); return; }
-    this.host.keep(notes);
-    this.marks = [];
-    this.noteBox.value = "";
-    this.redraw();
-    this.setStatus(`Kept ${notes.length} note${notes.length > 1 ? "s" : ""}`);
+    if (!notes.length) return 0;
+    const keys = this.host.keep(notes);
+    if (keys) from.forEach((m, i) => { m.noteKey = keys[i]; });
+    return notes.length;
   }
 
   /** A small input at the mark's badge; Enter keeps it, Escape leaves the mark without a note. */
@@ -374,8 +389,13 @@ export class MarkupOverlay {
   private async save() {
     this.setStatus("Saving…");
     try {
+      // With notes in the app, the marks are kept as notes first: shared with everyone on the
+      // model, and an agent can list, answer and resolve them. The bundle names each mark's note.
+      const kept = this.marksToNotes();
       const b = await this.capture({ note: this.noteBox.value.trim() });
-      this.setStatus(b.dir ? `Saved → ${b.dir}` : "Downloaded (no dev-server plugin)");
+      if (kept) { this.marks = this.marks.filter((m) => !m.noteKey); this.redraw(); }
+      const notes = kept ? ` · kept ${kept} note${kept > 1 ? "s" : ""}` : "";
+      this.setStatus((b.dir ? `Saved → ${b.dir}` : "Downloaded (no dev-server plugin)") + notes);
     } catch (e) {
       this.setStatus(`Save failed: ${e}`);
     }
@@ -402,6 +422,7 @@ export class MarkupOverlay {
         marks: this.marks.map((m) => ({
           n: m.n,
           note: m.note,
+          ...(m.noteKey ? { noteKey: m.noteKey } : {}),
           kind: m.resolved?.kind,
           summary: m.resolved?.summary,
           hits: m.resolved?.hits ?? [],
@@ -652,7 +673,7 @@ export function markup(
     describe,
     context: () => ({ ...sceneSummary(scene, renderer, describe), ...(opts.context?.() ?? {}) }),
     setTracking: () => { /* objects carry their record key; no creation sites to track */ },
-    ...(opts.notes ? { keep: (ns: Note[]) => { opts.notes!.keep(ns); } } : {}),
+    ...(opts.notes ? { keep: (ns: Note[]) => opts.notes!.keep(ns).map((id) => `${opts.notes!.collection}/${id}`) } : {}),
     ...(opts.author ? { author: opts.author } : {}),
   });
   return { capture: (o) => overlay.capture(o), dispose: () => overlay.dispose() };

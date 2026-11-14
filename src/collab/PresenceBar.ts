@@ -2,6 +2,8 @@
  * PresenceBar — who is online in a SharedStore document: a dot for the connection, one round
  * badge per person (their colour, initials or GitHub avatar; tooltip = name and what they are
  * on), and a Sign in / Sign out button. Sits in the viewport's top bar row, left of ✎ Markup.
+ * An agent working through someone's window (their presence `state.agent`, set by `agentDoc`)
+ * gets a square badge beside that person: "Claude, through Ana's window: Agent: east window".
  */
 import type { CollabStatus, Presence, SharedStore } from "./SharedStore";
 
@@ -73,6 +75,19 @@ export class PresenceBar {
       }
       const what = this.opts.describe?.(p);
       b.title = `${p.user.name}${me ? " (you)" : ""}${what ? ` — ${what}` : ""}`;
+      this.people.appendChild(b);
+    }
+    // Agents at work, one badge per agent and window.
+    for (const p of this.store.presence) {
+      const agent = p.state.agent as { name?: string; doing?: string } | null | undefined;
+      if (!agent?.name) continue;
+      const b = document.createElement("span");
+      b.dataset.agent = agent.name;
+      b.style.cssText = "height:22px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;"
+        + "font:600 10px system-ui,sans-serif;color:#14161e;background:#ffb020;white-space:nowrap;";
+      b.textContent = agent.name;
+      const me = p.session === this.store.session;
+      b.title = `${agent.name}, through ${me ? "your" : `${p.user.name}'s`} window${agent.doing ? `: ${agent.doing}` : ""}`;
       this.people.appendChild(b);
     }
   }

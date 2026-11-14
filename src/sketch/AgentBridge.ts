@@ -10,13 +10,17 @@
  * An app that keeps a `Doc` shares it with `agentDoc(doc, { schema, check })`: then
  * `__tekto.doc` reads the records and applies patches as one undo step, and with the markup
  * dev-server plugin (`tekto/markup-vite`) every call here also reaches this tab from outside,
- * through `POST /__tekto/agent/call` — what `tools/mcp.mjs` gives an agent as tools.
+ * through `POST /__tekto/agent/call` — what `tools/mcp.mjs` gives an agent as tools. The notes
+ * people leave on the model (`__tekto.notes`) are the agent's to-do list: it lists the open
+ * ones, answers and resolves them. While it works, a chip in the page and a badge in the
+ * presence bar say so.
  *
  * No three.js here (`sketch2d` and `tekto/2d` use it): the 3D harnesses pass in what the
  * renderer knows through small structural interfaces.
  */
 import { applyPatch, type Doc, type DocPatch, type PatchResult } from "../collab/Doc";
 import type { RecordSchema } from "../collab/recordSchema";
+import type { NoteInfo } from "./Notes";
 import type { ParamStore, ParamDef } from "../gui/Params";
 import type { Scene } from "../scene/Scene";
 import type { MarkupBundle, MarkupCaptureOptions, MarkupObjectRef } from "./Markup";
@@ -52,6 +56,8 @@ export interface AgentBridgeHost {
   section?(section: { axis: "x" | "y" | "z"; at?: number; coordinate?: number; flip?: boolean } | null): void;
   /** The app's commands, listed and run by id for agents. */
   commands?: Commands;
+  /** The app's notes layer, if it has one: an agent lists, answers and resolves the notes. */
+  notes?(): AgentNotes | null;
 }
 
 export interface AgentBridge {
@@ -106,6 +112,8 @@ export function installAgentBridge(host: AgentBridgeHost): AgentBridge {
     run: (id: string) => host.commands ? host.commands.run(id) : Promise.resolve(false),
     // The document the app shares (`agentDoc`), or undefined.
     get doc() { return sharedDoc ?? undefined; },
+    // The notes people left on the model (the app's notes layer, or `agentDoc`'s), or undefined.
+    get notes() { return host.notes?.() ?? sharedNotes ?? undefined; },
   };
   connectRelay();
 
@@ -130,12 +138,26 @@ export interface AgentIssue {
   keys?: string[];
 }
 
+/**
+ * The notes on a model as an agent works through them: structurally a `NotesLayer`.
+ * `appShell({ notes })` shares its layer by itself; an app with its own UI passes its layer
+ * to `agentDoc(doc, { notes })`.
+ */
+export interface AgentNotes {
+  /** The open notes (or all), with their number, record key, the records they are about and their replies. */
+  describe(status?: "open" | "all"): NoteInfo[];
+  reply(id: string, text: string, author?: string): void;
+  resolve(id: string, text?: string, author?: string): void;
+}
+
 /** What an app shares with agents through `agentDoc`. */
 export interface AgentDocOptions {
   /** Each collection's JSON Schema: a patch with a record that breaks it is rejected whole. */
   schema?: Record<string, RecordSchema>;
   /** What is wrong now, e.g. `() => house.issues`; asked after every patch. */
   check?: () => readonly AgentIssue[];
+  /** The app's notes layer, when it is not an `appShell`'s (which shares its own). */
+  notes?: AgentNotes;
 }
 
 /** `__tekto.doc`: the document an app shares, as an agent reads and edits it. */
@@ -156,6 +178,9 @@ export interface AgentDocApi {
 }
 
 let sharedDoc: AgentDocApi | null = null;
+let sharedNotes: AgentNotes | null = null;
+/** Tells the others on a shared document that an agent is working through this window. */
+let announceAgent: ((agent: { name: string; doing: string; at: number } | null) => void) | null = null;
 
 /** After the app has reacted to a change (its bindings rebuild in a microtask or on the next turn). */
 const settled = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -189,7 +214,62 @@ export function agentDoc(doc: Doc<any>, opts: AgentDocOptions = {}): () => void 
     redo: () => doc.redo(),
   };
   sharedDoc = api;
-  return () => { if (sharedDoc === api) sharedDoc = null; };
+  if (opts.notes) sharedNotes = opts.notes;
+  const announce = (agent: { name: string; doing: string; at: number } | null) => doc.store.setPresence({ agent });
+  announceAgent = announce;
+  return () => {
+    if (sharedDoc === api) sharedDoc = null;
+    if (sharedNotes === opts.notes) sharedNotes = null;
+    if (announceAgent === announce) announceAgent = null;
+  };
+}
+
+// ── The agent, visible ──────────────────────────────────────────────────────────
+
+const AGENT_LINGER_MS = 8000;
+let agentChip: HTMLDivElement | null = null;
+let agentTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Show that an agent is at work in this window: a chip at the top of the page ("Claude ·
+ * Agent: east window") and, on a shared document, in everyone's presence (`state.agent`, which
+ * `PresenceBar` draws as a badge beside the person whose window it works through). Both go a
+ * few seconds after its last call.
+ */
+function showAgent(name: string, doing: string): void {
+  if (!agentChip) {
+    agentChip = document.createElement("div");
+    agentChip.dataset.tektoAgent = "";
+    agentChip.style.cssText = "position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:1000;display:flex;gap:7px;align-items:center;max-width:340px;"
+      + "padding:6px 11px;border-radius:14px;background:rgba(17,19,26,.92);border:1px solid rgba(255,255,255,.18);"
+      + "color:#e8ebf0;font:500 11px/1.3 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none;";
+    const dot = document.createElement("span");
+    dot.style.cssText = "width:7px;height:7px;border-radius:50%;background:#ffb020;flex:none;";
+    const text = document.createElement("span");
+    text.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    agentChip.append(dot, text);
+  }
+  (agentChip.lastChild as HTMLElement).textContent = `${name} · ${doing}`;
+  if (!agentChip.isConnected) document.body.appendChild(agentChip);
+  announceAgent?.({ name, doing, at: Date.now() });
+  clearTimeout(agentTimer);
+  agentTimer = setTimeout(() => { agentChip?.remove(); announceAgent?.(null); }, AGENT_LINGER_MS);
+}
+
+/** What a relayed call is doing, in a few words, for the chip and the presence badge. */
+function doingOf(op: string, args: Record<string, unknown>): string {
+  switch (op) {
+    case "apply": return typeof args.label === "string" && args.label ? args.label : "editing";
+    case "undo": return "undo";
+    case "redo": return "redo";
+    case "noteReply": return "answering a note";
+    case "noteResolve": return "resolving a note";
+    case "notes": return "reading the notes";
+    case "snapshot": return "looking at the view";
+    case "setParams": return "setting controls";
+    case "run": return `running ${String(args.id)}`;
+    default: return "reading the model";
+  }
 }
 
 // ── The relay: calls from outside the page, through the dev server ──────────────
@@ -209,8 +289,8 @@ function connectRelay(): void {
   if (navigator.webdriver && !/[?&]agent-relay\b/.test(location.search)) return;
   relay = new EventSource(`${base}/events?title=${encodeURIComponent(document.title)}&url=${encodeURIComponent(location.href)}`);
   relay.addEventListener("call", (e) => {
-    const { id, op, args } = JSON.parse((e as MessageEvent).data) as { id: string; op: string; args?: Record<string, unknown> };
-    void runRelayed(op, args ?? {}).then(
+    const { id, op, args, agent } = JSON.parse((e as MessageEvent).data) as { id: string; op: string; args?: Record<string, unknown>; agent?: string };
+    void runRelayed(op, args ?? {}, agent || "Agent").then(
       (result) => ({ id, result }),
       (err) => ({ id, error: err instanceof Error ? err.message : String(err) }),
     ).then((body) => fetch(`${base}/result`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }))
@@ -219,17 +299,32 @@ function connectRelay(): void {
 }
 
 /** One relayed call, run against this page's `__tekto`. */
-async function runRelayed(op: string, args: Record<string, unknown>): Promise<unknown> {
+async function runRelayed(op: string, args: Record<string, unknown>, agent: string): Promise<unknown> {
   const t = (window as any).__tekto;
   if (!t) throw new Error("this page has no tekto app (no window.__tekto)");
   const doc: AgentDocApi | undefined = t.doc;
+  const notes: AgentNotes | undefined = t.notes;
   const needDoc = () => { if (!doc) throw new Error("this app shares no document (agentDoc)"); return doc; };
+  const needNotes = () => { if (!notes) throw new Error("this app keeps no notes (appShell({ notes }) or agentDoc(doc, { notes }))"); return notes; };
+  const needText = () => { const text = String(args.text ?? "").trim(); if (!text) throw new Error("text is required"); return text; };
+  showAgent(agent, doingOf(op, args));
   switch (op) {
-    case "info": return {
-      title: document.title, url: location.href, harness: t.harness,
-      doc: doc ? { name: doc.name, collections: doc.collections(), schema: doc.schema() } : null,
-      controls: t.schema(), commands: t.commands(), errors: t.errors(),
-    };
+    case "info": {
+      const all = notes?.describe("all") ?? [];
+      return {
+        title: document.title, url: location.href, harness: t.harness,
+        doc: doc ? { name: doc.name, collections: doc.collections(), schema: doc.schema() } : null,
+        notes: notes ? { open: all.filter((n) => n.status === "open").length, done: all.filter((n) => n.status === "done").length } : null,
+        controls: t.schema(), commands: t.commands(), errors: t.errors(),
+      };
+    }
+    case "notes": return needNotes().describe(args.status === "all" ? "all" : "open");
+    case "noteReply":
+      needNotes().reply(String(args.id), needText(), agent);
+      return { ok: true };
+    case "noteResolve":
+      needNotes().resolve(String(args.id), String(args.text ?? "").trim() || undefined, agent);
+      return { ok: true, open: needNotes().describe("open").length };
     case "records": return needDoc().records(args.collection as string | undefined);
     case "apply": return needDoc().apply(args.patch as DocPatch, args.label as string | undefined);
     case "check": return needDoc().check();
@@ -250,7 +345,7 @@ async function runRelayed(op: string, args: Record<string, unknown>): Promise<un
       const m = b.markup as unknown as Record<string, unknown>;
       return { viewPng: b.viewPng, camera: m.camera ?? null, scene: m.scene ?? null, logs: m.logs ?? [], errors: m.errors ?? [] };
     }
-    default: throw new Error(`unknown call "${op}" (info, records, apply, check, undo, redo, setParams, run, camera, section, snapshot)`);
+    default: throw new Error(`unknown call "${op}" (info, records, apply, check, notes, noteReply, noteResolve, undo, redo, setParams, run, camera, section, snapshot)`);
   }
 }
 

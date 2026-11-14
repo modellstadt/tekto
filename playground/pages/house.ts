@@ -13,13 +13,18 @@
  *                 stairs, slabs, spaces), coloured by the .mtl downloaded with it
  *   agentDoc      an agent reads and edits the records (`__tekto.doc`, or from outside through
  *                 the dev server: `tools/mcp.mjs`), each patch one undo step, answered with the issues
+ *   notes         ✎ Markup: draw on the house, Save — the marks become notes with the model
+ *                 (pinned, saved, undoable). An agent lists the open notes (`tekto_notes`), makes
+ *                 the change, and resolves each with what it did; the pin turns grey
  *   ?empty        start on an empty site (the Empty site button does the same, undoably)
- *   ?shared=1     the records go through the dev server (`.tekto/collab/house.json`), shared by
- *                 every window that opens the page with it
+ *   ?shared=1     the records and notes go through the dev server (`.tekto/collab/house.json`),
+ *                 shared by every window that opens the page with it: who is online, what they
+ *                 have selected, and the agent at work through one of the windows
  */
 import {
-  appShell, Doc, bindBuilding, agentDoc, buildingSchema, Selection, selectOnClick, localAdapter, devServerAdapter, download, ObjFile, stampName,
-  type BuildingData, type BuildingRecords, type BuildingIssue, type DocJSON,
+  appShell, Doc, bindBuilding, agentDoc, buildingSchema, Selection, selectOnClick, shareSelection, PresenceBar,
+  localAdapter, devServerAdapter, download, ObjFile, stampName,
+  type BuildingData, type BuildingRecords, type BuildingIssue, type DocJSON, type Note,
 } from "../../src";
 
 const rect = (x0: number, y0: number, x1: number, y1: number): [number, number][] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
@@ -84,7 +89,7 @@ const EXAMPLE: BuildingData = {
 export default function (container: HTMLElement) {
   const query = new URLSearchParams(location.search);
   const shared = query.get("shared");
-  const doc = new Doc<BuildingRecords>({ name: "house", adapter: shared ? devServerAdapter() : localAdapter() });
+  const doc = new Doc<BuildingRecords & { notes: Note }>({ name: "house", adapter: shared ? devServerAdapter() : localAdapter() });
   const selection = new Selection();
 
   const app = appShell({
@@ -94,6 +99,8 @@ export default function (container: HTMLElement) {
     navGizmo: true,
     shadingBar: true,
     units: "m",
+    // Notes with the model: Markup's marks are kept in the doc's `notes`, for people and the agent.
+    notes: doc,
     renderer: { gridStyle: "fading" },
     camera: [22, -18, 16],
     target: [5, 4, 2.5],
@@ -134,6 +141,13 @@ export default function (container: HTMLElement) {
   selection.onChange(status);
   // Agents edit the same records: checked against the schema, one undo step, answered with the issues.
   const stopAgent = agentDoc(doc, { schema: buildingSchema(), check: () => house.issues });
+  // Shared (`?shared=1`): each window outlines what the others have selected, and the bar shows
+  // who is online — and the agent, beside the person whose window it works through.
+  const stopSharing = shared ? shareSelection(selection, doc.store, app.renderer, app.scene) : null;
+  const presence = shared ? new PresenceBar(doc.store, app.renderer.canvasEl.parentElement!, { describe: (p) => {
+    const n = Array.isArray(p.state.selection) ? p.state.selection.length : 0;
+    return n ? `${n} selected` : undefined;
+  } }) : null;
 
   /** Each issue as a callout on the records it concerns: red for an error, amber for a warning. */
   function showIssues(issues: BuildingIssue[]) {
@@ -214,11 +228,13 @@ export default function (container: HTMLElement) {
   });
 
   // For agents and tests: the document, the building and its issues.
-  (window as unknown as { house: unknown }).house = { doc, selection, get building() { return house.building; }, get issues() { return house.issues; } };
+  (window as unknown as { house: unknown }).house = { doc, selection, notes: app.notes, get building() { return house.building; }, get issues() { return house.issues; } };
 
   return {
     dispose() {
       stopSelecting();
+      stopSharing?.();
+      presence?.destroy();
       stopAgent();
       house.dispose();
       doc.dispose();

@@ -9,6 +9,11 @@
  * "Delete". Markup's "Keep as notes" turns marks into notes (`markup(…, { notes })`,
  * `appShell({ notes: doc })`).
  *
+ * A note is also how a person tells an agent what to change: it is open until someone marks
+ * it done, and it carries the replies to it. An agent lists the open notes, answers and
+ * resolves them (`__tekto.notes`, the MCP tools `tekto_notes` / `tekto_note_reply` /
+ * `tekto_note_resolve`); with a shared document everyone sees the note, the reply and the tick.
+ *
  *   const notes = notesLayer(renderer, doc);              // the doc's "notes" collection
  *   markup(renderer, scene, { notes, author: "BD" });
  */
@@ -31,6 +36,35 @@ export interface Note {
   keys: string[];
   /** The view it was drawn from, for "Go to view". */
   view: { position: number[]; target: number[]; projection?: "perspective" | "orthographic" };
+  /** Open (the default) until a person or an agent marks it done. */
+  status?: "open" | "done";
+  /** The answers to it, oldest first: what was changed, a question back. */
+  replies?: NoteReply[];
+}
+
+/** An answer to a note. */
+export interface NoteReply {
+  text: string;
+  author?: string;
+  /** When, as an ISO date. */
+  at: string;
+}
+
+/** A note as an agent (or a list) reads it: its number in the view, its record key and state. */
+export interface NoteInfo {
+  id: string;
+  /** The record: `"notes/k3f9x2"`. */
+  key: string;
+  /** The number on its pin. */
+  n: number;
+  text: string;
+  author?: string;
+  createdAt: string;
+  status: "open" | "done";
+  /** The records it is about. */
+  keys: string[];
+  pin: [number, number, number];
+  replies: NoteReply[];
 }
 
 /** What a `NotesLayer` needs from a renderer: structurally a `ThreeRenderer`. */
@@ -47,6 +81,7 @@ export interface NotesRenderer {
 }
 
 const INK = "#ffb020";                    // amber: a note, not geometry, and not Markup's magenta
+const DONE = "#9aa0aa";                   // a note that is done: its pin stays, grey
 
 /** The notes of one `Doc` collection, drawn over a renderer's view. */
 export class NotesLayer {
@@ -60,9 +95,12 @@ export class NotesLayer {
   private openId: string | null = null;
   private shown = true;
   private offs: (() => void)[] = [];
+  /** Who answers from the note's card. */
+  private author?: string;
 
-  constructor(private renderer: NotesRenderer, private doc: Doc<any>, opts: { collection?: string; host?: HTMLElement } = {}) {
+  constructor(private renderer: NotesRenderer, private doc: Doc<any>, opts: { collection?: string; host?: HTMLElement; author?: string } = {}) {
     this.collection = opts.collection ?? "notes";
+    this.author = opts.author;
     const host = opts.host ?? renderer.canvasEl.parentElement;
     if (!host) throw new Error("notesLayer: the renderer's canvas is not in the page yet (or pass opts.host)");
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
@@ -78,6 +116,7 @@ export class NotesLayer {
     this.offs.push(doc.onChange((changes) => {
       if (!changes.some((c) => c.collection === this.collection)) return;
       if (this.openId && !doc.has(this.collection, this.openId)) this.closeCard();
+      else if (this.openId && changes.some((c) => c.collection === this.collection && c.id === this.openId)) this.openCard(this.openId);
       renderer.requestRender();
     }));
     renderer.requestRender();
@@ -92,6 +131,31 @@ export class NotesLayer {
   /** Keep a note: one undo step. Returns its id. */
   add(note: Note): string {
     return this.doc.add(this.collection, note, { label: "Add note" });
+  }
+
+  /** The notes as a list reads them (an agent's `tekto_notes`): the open ones, or all. */
+  describe(status: "open" | "all" = "open"): NoteInfo[] {
+    return this.list().map(([id, n], i): NoteInfo => ({
+      id, key: `${this.collection}/${id}`, n: i + 1, text: n.text, ...(n.author ? { author: n.author } : {}),
+      createdAt: n.createdAt, status: n.status ?? "open", keys: n.keys, pin: n.pin, replies: n.replies ?? [],
+    })).filter((n) => status === "all" || n.status === "open");
+  }
+
+  /** Answer a note: one undo step. Throws if the note does not exist. */
+  reply(id: string, text: string, author?: string): void {
+    const r: NoteReply = { text, ...(author ? { author } : {}), at: new Date().toISOString() };
+    this.doc.update(this.collection, id, (n: Note) => ({ ...n, replies: [...(n.replies ?? []), r] }), { label: "Reply to note" });
+  }
+
+  /** Mark a note done, with a last reply saying what was done if `text` is given: one undo step. */
+  resolve(id: string, text?: string, author?: string): void {
+    const r: NoteReply | null = text ? { text, ...(author ? { author } : {}), at: new Date().toISOString() } : null;
+    this.doc.update(this.collection, id, (n: Note) => ({ ...n, status: "done", ...(r ? { replies: [...(n.replies ?? []), r] } : {}) }), { label: "Resolve note" });
+  }
+
+  /** Open a done note again. */
+  reopen(id: string): void {
+    this.doc.update(this.collection, id, (n: Note) => ({ ...n, status: "open" }), { label: "Reopen note" });
   }
 
   /** Keep several notes as one undo step ("Keep as notes"). Returns their ids. */
@@ -150,7 +214,7 @@ export class NotesLayer {
       const project = at;
       for (const [width, colour] of [[6, "rgba(10,12,18,.55)"], [2.5, INK]] as const) {
         g.strokeStyle = colour; g.fillStyle = colour; g.lineWidth = width;
-        for (const [, n] of notes) for (const s of n.strokes) {
+        for (const [, n] of notes) for (const s of n.status === "done" ? [] : n.strokes) {
           if (s.length === 1) {
             const q = project(s[0]);
             if (q.visible) { g.beginPath(); g.arc(q.x, q.y, width, 0, Math.PI * 2); g.fill(); }
@@ -172,8 +236,12 @@ export class NotesLayer {
       seen.add(id);
       const q = at(n.pin);
       const pin = this.pins.get(id) ?? this.makePin(id);
+      const done = n.status === "done";
       pin.textContent = String(i + 1);
-      pin.title = n.text || "(no text)";
+      pin.title = `${done ? "Done: " : ""}${n.text || "(no text)"}`;
+      pin.dataset.status = done ? "done" : "open";
+      pin.style.background = done ? DONE : INK;
+      pin.style.opacity = done ? "0.75" : "1";
       pin.style.display = q.visible ? "flex" : "none";
       pin.style.left = `${q.x - 11}px`;
       pin.style.top = `${q.y - 11}px`;
@@ -227,8 +295,31 @@ export class NotesLayer {
       b.addEventListener("click", (e) => { e.stopPropagation(); run(); });
       return b;
     };
-    row.append(btn("Go to view", () => this.goTo(id)), btn("Delete", () => this.remove(id)), btn("Close", () => this.closeCard()));
-    card.append(text, meta, row);
+    const done = n.status === "done";
+    const replies = document.createElement("div");
+    replies.dataset.noteReplies = "";
+    for (const r of n.replies ?? []) {
+      const line = document.createElement("div");
+      line.style.cssText = "margin:0 0 6px;padding-left:8px;border-left:2px solid rgba(255,255,255,.18);white-space:pre-wrap;";
+      const who = document.createElement("span");
+      who.textContent = `${r.author ?? "Reply"}: `;
+      who.style.color = "rgba(232,235,240,.55)";
+      line.append(who, document.createTextNode(r.text));
+      replies.appendChild(line);
+    }
+    const answer = document.createElement("input");
+    answer.placeholder = "Reply…";
+    answer.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:4px 7px;border-radius:5px;font:11px system-ui,sans-serif;"
+      + "border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);color:#e8ebf0;";
+    const send = () => { const t = answer.value.trim(); if (t) this.reply(id, t, this.author); };
+    answer.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") send(); });
+    row.style.flexWrap = "wrap";
+    row.append(
+      done ? btn("Reopen", () => this.reopen(id)) : btn("Done", () => { const t = answer.value.trim(); this.resolve(id, t || undefined, this.author); }),
+      btn("Go to view", () => this.goTo(id)), btn("Delete", () => this.remove(id)), btn("Close", () => this.closeCard()),
+    );
+    if (done) meta.textContent = `Done · ${meta.textContent}`;
+    card.append(text, meta, replies, answer, row);
     this.pinLayer.appendChild(card);
     this.renderer.requestRender();                                   // placed on the next draw
   }

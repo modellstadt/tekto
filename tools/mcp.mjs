@@ -6,6 +6,8 @@
  *
  *   claude mcp add tekto -- node node_modules/tekto/tools/mcp.mjs
  *   TEKTO_URL=http://localhost:5174 …        the app's dev server (default http://localhost:5173)
+ *   TEKTO_PAGE=house …                       with several tabs open: the one whose URL or title contains this
+ *   TEKTO_AGENT=Claude …                     the name the page shows while the agent works (default: the MCP client's)
  *
  * The app's dev server needs `tekto/markup-vite` (it relays the calls into the page) and the
  * app shares its document with `agentDoc(doc, { schema, check })`. No dependencies: JSON-RPC
@@ -21,12 +23,16 @@ const VERSION = (() => {
   catch { return "0.0.0"; }
 })();
 
+/** Who is calling, as the page shows it: TEKTO_AGENT, else the MCP client's name ("claude-code" → "Claude Code"). */
+let AGENT = process.env.TEKTO_AGENT ?? "Agent";
+const agentName = (client) => String(client).split(/[-_\s]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
+
 /** One call into the open page, through the dev server's relay. */
 async function relay(op, args = {}) {
   let res;
   try {
     res = await fetch(`${BASE}/__tekto/agent/call`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, args }),
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, args, agent: AGENT, ...(process.env.TEKTO_PAGE ? { page: process.env.TEKTO_PAGE } : {}) }),
     });
   } catch (e) {
     throw new Error(`No dev server at ${BASE} (${e.cause?.code ?? e.message}). Start the app's dev server, or set TEKTO_URL.`);
@@ -44,7 +50,7 @@ const POINT3 = { type: "array", items: { type: "number" }, minItems: 3, maxItems
 const TOOLS = [
   {
     name: "tekto_info",
-    description: "What the open tekto app is: its title, the document it shares (collections with record counts, and each collection's JSON Schema — read it before writing records), its controls and commands, and errors the page logged. Call this first.",
+    description: "What the open tekto app is: its title, the document it shares (collections with record counts, and each collection's JSON Schema — read it before writing records), how many notes people left on the model are open (tekto_notes lists them), its controls and commands, and errors the page logged. Call this first.",
     inputSchema: { type: "object", properties: {} },
     run: async () => [text(await relay("info"))],
   },
@@ -78,6 +84,24 @@ const TOOLS = [
     description: "What is wrong with the app's document now, as the app checks it: errors and warnings, each with the records it concerns.",
     inputSchema: { type: "object", properties: {} },
     run: async () => [text(await relay("check"))],
+  },
+  {
+    name: "tekto_notes",
+    description: "The notes people left on the model: what they want changed, each pinned to a place and naming the records it is about (`keys`, e.g. \"walls/s\"), with its number in the view, its author and the replies so far. By default the open ones — your to-do list; `status: \"all\"` includes the done ones. Work through them: make the change (tekto_apply), then tekto_note_resolve with what you did, or tekto_note_reply to ask back.",
+    inputSchema: { type: "object", properties: { status: { type: "string", enum: ["open", "all"] } } },
+    run: async (a) => [text(await relay("notes", { status: a.status }))],
+  },
+  {
+    name: "tekto_note_reply",
+    description: "Answer a note without closing it: a question back, or why it cannot be done. The person (and everyone on a shared model) sees the reply on the note. `id` is the note's id from tekto_notes.",
+    inputSchema: { type: "object", required: ["id", "text"], properties: { id: { type: "string" }, text: { type: "string" } } },
+    run: async (a) => [text(await relay("noteReply", { id: a.id, text: a.text }))],
+  },
+  {
+    name: "tekto_note_resolve",
+    description: "Mark a note done once you have made the change it asks for, with a short `text` saying what you changed. Its pin turns grey; the person can reopen it. Resolve only what you actually did and checked.",
+    inputSchema: { type: "object", required: ["id"], properties: { id: { type: "string" }, text: { type: "string", description: "What you changed" } } },
+    run: async (a) => [text(await relay("noteResolve", { id: a.id, text: a.text }))],
   },
   {
     name: "tekto_snapshot",
@@ -125,7 +149,7 @@ const TOOLS = [
   },
 ];
 
-const INSTRUCTIONS = "These tools work in the tekto app open in the person's browser. Start with tekto_info: it gives the document's collections and the JSON Schema of their records. Make changes with tekto_apply (one undo step each), read tekto_apply's issues and fix them, and look with tekto_snapshot.";
+const INSTRUCTIONS = "These tools work in the tekto app open in the person's browser. Start with tekto_info: it gives the document's collections and the JSON Schema of their records. Make changes with tekto_apply (one undo step each), read tekto_apply's issues and fix them, and look with tekto_snapshot. If tekto_info reports open notes, they are what the person wants changed: read them with tekto_notes, and resolve each with what you did.";
 
 // ── JSON-RPC over stdio ───────────────────────────────────────────────────────
 
@@ -137,6 +161,7 @@ async function handle(msg) {
   const fail = (code, message) => { if (id !== undefined) send({ id, error: { code, message } }); };
   switch (method) {
     case "initialize":
+      if (!process.env.TEKTO_AGENT && params?.clientInfo?.name) AGENT = agentName(params.clientInfo.name);
       return reply({
         protocolVersion: VERSIONS.includes(params?.protocolVersion) ? params.protocolVersion : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
