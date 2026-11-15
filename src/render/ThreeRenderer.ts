@@ -18,7 +18,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Scene as GScene, SceneObject, SceneEvent, type SectionRequest, type StandardView } from "../scene/Scene";
 import { Vec3 } from "../core/math/vectors";
-import type { CalloutItem } from "./Callouts";
+import type { CalloutItem, CalloutOptions } from "./Callouts";
 import type { RendererCore } from "./RendererCore";
 import { ObjectBuilder } from "./ObjectBuilder";
 import { Lighting } from "./Lighting";
@@ -1088,9 +1088,15 @@ export class ThreeRenderer {
    * they never overlap and don't swim as the model turns; a label whose thing is hidden
    * behind other things is left out; what doesn't fit is counted, not dropped silently.
    * `objects` are scene ids or record keys (a key follows its record through rebuilds).
-   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
+   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels;
+   * `stack: "list"` lists them from the top on a column under `title`, like a key;
+   * `labels: false` draws none and reports where their leaders would end (`onEnds`), for an
+   * app that lists them outside the view.
    */
-  setCallouts(items: CalloutItem[], handlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {}): void { this.marks.setCallouts(items, handlers); }
+  setCallouts(items: CalloutItem[], options: CalloutOptions = {}): void { this.marks.setCallouts(items, options); }
+  /** Show these callouts (by id), and their leaders, as the ones meant, in `colour`: the label
+   *  naming what the pointer is over, say. Null clears. Only the look changes. */
+  setCalloutHighlight(ids: readonly string[] | null, colour?: string): void { this.marks.setCalloutHighlight(ids, colour); }
 
   // ── Crease lines ──
 

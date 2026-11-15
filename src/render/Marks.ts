@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import type { SectionRequest } from "../scene/Scene";
 import { sectionPlane, sectionAppearance, calloutSamples, occludes, shown, rayTargets, cameraKey } from "./viewRules";
-import { Callouts, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem } from "./Callouts";
+import { Callouts, LIST_TITLE_HEIGHT, layoutLabels, labelWidthFor, marginCapacity, type CalloutItem, type CalloutOptions } from "./Callouts";
 import type { RendererCore } from "./RendererCore";
 
 /** How long the camera must be still before callout visibility is redone (ms). */
@@ -30,10 +30,11 @@ export class Marks {
 
   // ── Callouts (setCallouts) ──
   private callouts: Callouts | null = null;
-  /** Per callout, where to look for it: its centre, then points toward its box's corners. */
-  private calloutAnchors = new Map<string, THREE.Vector3[]>();
-  /** Per callout seen, the point its leader goes to. Redone only once the camera is still. */
-  private calloutVisible = new Map<string, THREE.Vector3>();
+  /** Per callout, per leader, where to look for it (its centre, then points toward its box's
+   *  corners) and what is its own, which cannot hide it. One leader unless `leaders: "each"`. */
+  private calloutAnchors = new Map<string, { samples: THREE.Vector3[]; own: Set<THREE.Object3D> }[]>();
+  /** Per callout seen, the point each seen leader goes to. Redone only once the camera is still. */
+  private calloutVisible = new Map<string, THREE.Vector3[]>();
   /** Something that decides visibility changed since the last answer. */
   private calloutCheckDirty = true;
   /** The camera the answer is for, and since when it has been still. */
@@ -45,12 +46,23 @@ export class Marks {
     queue: string[]; skipped: string[]; left: number; right: number; capacity: number;
     /** what the rays test, gathered once per check rather than per slice */
     targets: THREE.Mesh[];
+    /** the callout part-way through, a leader at a time: one with a thousand leaders is
+     *  spread over frames as a thousand callouts would be */
+    current: { id: string; side: "left" | "right"; group: number; seen: THREE.Vector3[] } | null;
+    /** in a list, how far each margin's column reaches into the view: what lies under it
+     *  cannot be seen, so it gets no leader */
+    bands: { left: number; right: number };
   } | null = null;
   /** Callouts the last check never looked at, because the margins were full. */
   private calloutUnchecked = 0;
   private calloutRecheck = 0;
   calloutsDirty = false;
-  private calloutHandlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {};
+  private calloutHandlers: CalloutOptions = {};
+
+  /** Room at the top of a margin for a list's title. */
+  private calloutTop(): number {
+    return this.calloutHandlers.stack === "list" && this.calloutHandlers.title ? LIST_TITLE_HEIGHT : 0;
+  }
 
   // ── Selection as outlines ──
   private selectionStyle: "tint" | "outline" = "tint";
@@ -310,13 +322,25 @@ export class Marks {
     return !!this.sectionClip && this.sectionClip.distanceToPoint(p) < -1e-9;
   }
 
-  setCallouts(items: CalloutItem[], handlers: { onPick?: (id: string) => void; onHover?: (id: string | null) => void } = {}): void {
+  private calloutHighlight: { ids: readonly string[] | null; colour?: string } = { ids: null };
+
+  /** Show these callouts, and their leaders, as the ones meant; null clears. */
+  setCalloutHighlight(ids: readonly string[] | null, colour?: string): void {
+    this.calloutHighlight = { ids, colour };
+    this.callouts?.setHighlight(ids, colour);
+  }
+
+  setCallouts(items: CalloutItem[], handlers: CalloutOptions = {}): void {
     this.calloutHandlers = handlers;
     if (!items.length && !this.callouts) return;
-    this.callouts ??= new Callouts(this.core.container, {
-      onPick: (id) => this.calloutHandlers.onPick?.(id),
-      onHover: (id) => this.calloutHandlers.onHover?.(id),
-    });
+    if (!this.callouts) {
+      this.callouts = new Callouts(this.core.container, {
+        onPick: (id) => this.calloutHandlers.onPick?.(id),
+        onHover: (id) => this.calloutHandlers.onHover?.(id),
+      });
+      this.callouts.setHighlight(this.calloutHighlight.ids, this.calloutHighlight.colour);
+    }
+    this.callouts.setList(handlers.stack === "list", handlers.title);
     this.callouts.setVisible(this.calloutsShown);
     this.callouts.setItems(items);
     // Keep the last answer for what is still there, so a relabel doesn't blank the margins
@@ -329,15 +353,22 @@ export class Marks {
   }
 
 
-  /** Re-measure where to look for each callout: points in its objects' bounds. */
+  /** Re-measure where to look for each callout: points in the bounds of what each of its
+   *  leaders points at. */
   private _measureCallouts(): void {
     this.calloutsDirty = false;
     this.calloutAnchors.clear();
     const box = new THREE.Box3();
     for (const id of this.callouts?.ids ?? []) {
-      box.makeEmpty();
-      for (const t of this.core.resolve(this.callouts!.objectsOf(id))) if (t.visible) box.expandByObject(t);
-      if (!box.isEmpty()) this.calloutAnchors.set(id, calloutSamples(box));
+      const groups: { samples: THREE.Vector3[]; own: Set<THREE.Object3D> }[] = [];
+      for (const objects of this.callouts!.groupsOf(id)) {
+        // resolved once here, not per check: a key is found by a scan of the scene
+        const own = this.core.resolve(objects);
+        box.makeEmpty();
+        for (const t of own) if (t.visible) box.expandByObject(t);
+        if (!box.isEmpty()) groups.push({ samples: calloutSamples(box), own: new Set(own) });
+      }
+      if (groups.length) this.calloutAnchors.set(id, groups);
     }
     this.calloutPending = null;
     this.calloutCheckDirty = true;
@@ -348,8 +379,10 @@ export class Marks {
    * Work on which callouts the reader can see, until `deadline`. Seen means any of its
    * sample points is: the centre first, the others only if it is hidden, and the leader goes
    * to the first one seen. Only a surface that writes depth hides it (`occludes`), its own
-   * objects don't count, nor does what the section removed. A margin that is full takes no
-   * more, so its side needs no rays, and the check ends when both are.
+   * objects don't count, nor does what the section removed. A callout with a leader to each
+   * of its entries is seen when any one is, and gets a leader only to those seen: an entry
+   * behind another, even one of its own, gets none. A margin that is full takes no more, so
+   * its side needs no rays, and the check ends when both are.
    */
   private _checkCalloutVisibility(deadline: number): void {
     const pending = this.calloutPending;
@@ -361,42 +394,71 @@ export class Marks {
     const ortho = (cam as THREE.OrthographicCamera).isOrthographicCamera;
     const ndc = new THREE.Vector3(), dir = new THREE.Vector3();
     const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
-    while (pending.queue.length && !full() && performance.now() < deadline) {
-      const id = pending.queue.pop()!;
-      const samples = this.calloutAnchors.get(id);
-      if (!samples) continue;
-      const side = ndc.copy(samples[0]).project(cam).x < 0 ? "left" : "right";
-      if (pending[side] >= pending.capacity) { pending.skipped.push(id); continue; }
-      const own = new Set(this.core.resolve(this.callouts!.objectsOf(id)));
-      let seen: THREE.Vector3 | null = null;
-      for (const point of samples) {
-        ndc.copy(point).project(cam);
-        if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;   // off screen: no ray
-        if (ortho) {
-          ray.set(point.clone().addScaledVector(view, -1e4), view);              // parallel rays: along the view
-          ray.far = 1e4;
-        } else {
-          dir.copy(point).sub(eye);
-          ray.far = dir.length();
-          ray.set(eye, dir.normalize());
-        }
-        // Surfaces only: three.js picks lines within a whole unit of the ray.
-        const hit = ray.intersectObjects(pending.targets, false)
-          .find(h => (h.object as THREE.Mesh).isMesh && occludes((h.object as THREE.Mesh).material) && !this.cutAway(h.point));
-        let owner: THREE.Object3D | null = hit?.object ?? null;
-        while (owner && !own.has(owner)) owner = owner.parent;
-        if (!hit || owner || hit.distance >= ray.far - 1e-3) { seen = point; break; }
+    const w = this.core.container.clientWidth || 1;
+    while ((pending.current || pending.queue.length) && !full() && performance.now() < deadline) {
+      if (!pending.current) {
+        const id = pending.queue.pop()!;
+        const groups = this.calloutAnchors.get(id);
+        if (!groups) continue;
+        const side = this.calloutSide(id, cam);
+        if (pending[side] >= pending.capacity) { pending.skipped.push(id); continue; }
+        pending.current = { id, side, group: 0, seen: [] };
       }
+      const c = pending.current;
+      const groups = this.calloutAnchors.get(c.id) ?? [];
+      // a leader at a time, against the frame's budget
+      while (c.group < groups.length && performance.now() < deadline) {
+        const g = groups[c.group++];
+        for (const point of g.samples) {
+          ndc.copy(point).project(cam);
+          if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;   // off screen: no ray
+          // under a list's column, or on the side a section removed: not seen
+          const px = ((ndc.x + 1) / 2) * w;
+          if (px < pending.bands.left || px > w - pending.bands.right || this.cutAway(point)) continue;
+          if (ortho) {
+            ray.set(point.clone().addScaledVector(view, -1e4), view);              // parallel rays: along the view
+            ray.far = 1e4;
+          } else {
+            dir.copy(point).sub(eye);
+            ray.far = dir.length();
+            ray.set(eye, dir.normalize());
+          }
+          // Surfaces only: three.js picks lines within a whole unit of the ray.
+          const hit = ray.intersectObjects(pending.targets, false)
+            .find(h => (h.object as THREE.Mesh).isMesh && occludes((h.object as THREE.Mesh).material) && !this.cutAway(h.point));
+          let owner: THREE.Object3D | null = hit?.object ?? null;
+          while (owner && !g.own.has(owner)) owner = owner.parent;
+          if (!hit || owner || hit.distance >= ray.far - 1e-3) { c.seen.push(point); break; }
+        }
+      }
+      if (c.group < groups.length) break;                  // out of budget: the next slice goes on
       // In place, so labels appear as they are found and a recheck never blanks the margins.
-      if (seen) { this.calloutVisible.set(id, seen); pending[side]++; } else this.calloutVisible.delete(id);
+      if (c.seen.length) { this.calloutVisible.set(c.id, c.seen); pending[c.side]++; }
+      else this.calloutVisible.delete(c.id);
+      pending.current = null;
     }
-    if (!pending.queue.length || full()) {
+    if ((!pending.queue.length && !pending.current) || full()) {
       // What was never looked at shows no label, and is counted as "up to".
-      const unchecked = [...pending.queue, ...pending.skipped];
+      const unchecked = [...pending.queue, ...pending.skipped, ...(pending.current ? [pending.current.id] : [])];
       for (const id of unchecked) this.calloutVisible.delete(id);
       this.calloutUnchecked = unchecked.length;
       this.calloutPending = null;
     }
+  }
+
+  /**
+   * The margin a callout goes to: its own, or the one nearer the middle of what it points
+   * at, measured from where the things are rather than where they were last seen, so a
+   * listed label does not change columns as what is in sight of it changes.
+   */
+  private calloutSide(id: string, cam: THREE.Camera): "left" | "right" {
+    const forced = this.callouts?.sideOf(id);
+    if (forced) return forced;
+    const groups = this.calloutAnchors.get(id) ?? [];
+    const v = new THREE.Vector3();
+    let x = 0;
+    for (const g of groups) x += v.copy(g.samples[0]).project(cam).x;
+    return groups.length && x / groups.length >= 0 ? "right" : "left";
   }
 
 
@@ -422,9 +484,17 @@ export class Marks {
     }
     if (this.calloutCheckDirty && !this.calloutPending) {
       if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
+        // in a list the columns cover the view at their margins: nothing under them is seen
+        const list = this.calloutHandlers.stack === "list" && this.calloutHandlers.labels !== false;
+        const sides = new Set([...this.calloutAnchors.keys()].map((id) => this.calloutSide(id, cam)));
+        const band = labelWidthFor(w) + 16;
         this.calloutPending = {
+          current: null,
+          bands: { left: list && sides.has("left") ? band : 0, right: list && sides.has("right") ? band : 0 },
           queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0,
-          capacity: marginCapacity(h), targets: rayTargets(this.core.objectMap.values()),
+          // with no labels there are no margins to fill: every callout is looked at
+          capacity: this.calloutHandlers.labels === false ? Infinity : marginCapacity(h - this.calloutTop()),
+          targets: rayTargets(this.core.objectMap.values()),
         };
         this.calloutCheckDirty = false;                  // cleared as it starts: a change while it runs asks for another
       } else if (!this.calloutRecheck) {
@@ -438,19 +508,50 @@ export class Marks {
       if (this.calloutPending) this.core.requestRender();          // the next slice
     }
     const v = new THREE.Vector3();
-    const anchors: { id: string; x: number; y: number }[] = [];
+    const anchors: { id: string; x: number; y: number; side?: "left" | "right"; ends?: { x: number; y: number }[] }[] = [];
     // In the caller's order, which is priority.
+    // no labels: say where the leaders would end, and draw nothing
+    if (this.calloutHandlers.labels === false) {
+      const out: { id: string; ends: { x: number; y: number }[] }[] = [];
+      for (const id of this.calloutAnchors.keys()) {
+        const ends: { x: number; y: number }[] = [];
+        for (const point of this.calloutVisible.get(id) ?? []) {
+          v.copy(point).project(cam);
+          if (v.z > 1) continue;
+          ends.push({ x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+        }
+        out.push({ id, ends });
+      }
+      this.callouts.update([], 0);
+      this.calloutHandlers.onEnds?.(out);
+      return;
+    }
+    // a list keeps a label whose things are all out of sight, without a leader
+    const list = this.calloutHandlers.stack === "list";
     for (const id of this.calloutAnchors.keys()) {
-      const anchor = this.calloutVisible.get(id);
-      if (!anchor) continue;
-      v.copy(anchor).project(cam);
-      if (v.z > 1) continue;
-      anchors.push({ id, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+      const seen = this.calloutVisible.get(id);
+      if (!seen && !list) continue;
+      const ends: { x: number; y: number }[] = [];
+      for (const point of seen ?? []) {
+        v.copy(point).project(cam);
+        if (v.z > 1) continue;
+        ends.push({ x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h });
+      }
+      if (!ends.length && !list) continue;
+      // a label with several leaders sits level with the middle of their ends; a listed one
+      // keeps to the column its things are on, seen or not
+      const x = ends.length ? ends.reduce((sum, e) => sum + e.x, 0) / ends.length : 0;
+      const y = ends.length ? ends.reduce((sum, e) => sum + e.y, 0) / ends.length : 0;
+      anchors.push({ id, x, y, side: list ? this.calloutSide(id, cam) : this.callouts.sideOf(id),
+                     ...(this.callouts.fans(id) || list ? { ends } : {}) });
     }
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);
-    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length + this.calloutUnchecked, this.calloutUnchecked > 0);
+    const { placed, dropped } = layoutLabels(anchors,
+      { width: w, height: h, labelWidth, stack: list ? "list" : "anchors", top: this.calloutTop() });
+    // a list lays out every label it has room for, looked at or not
+    this.callouts.update(placed, list ? dropped.length : dropped.length + this.calloutUnchecked,
+                         !list && this.calloutUnchecked > 0);
   }
 
   dispose(): void {

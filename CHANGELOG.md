@@ -6,6 +6,26 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **One callout, many leaders.** `CalloutItem.leaders: "each"` draws a leader from one label to
+  each entry of `objects` (an object id, or a record key and everything drawn for it), and the
+  label sits level with the middle of their ends. For a label that names what many elements
+  share, a product or a material: the margin holds one label per thing rather than one per
+  element, and every element still has its line. Only the entries the reader can see get one;
+  an entry behind another, even one of the same label, gets none. `CalloutItem.side` keeps a
+  label to one margin whichever half its anchors are in, so a column of products down the left
+  reads as a key. The default is unchanged: one leader to the centre of everything in
+  `objects`, in the nearer margin. Leaders are SVG paths now (`leaderPath`), a fan sharing one
+  knee, or with `leaderShape: "curve"` a curve to each end, level where it leaves the label and
+  level where it arrives, as a diagram's edges are drawn. `setCalloutHighlight(ids, colour)`
+  shows labels and their leaders as the ones meant, the one naming what the pointer is over
+  in the model, say, without touching the layout. `setCallouts(items, { stack: "list", title })`
+  lists the labels from the top of their margin in the order given, on a column headed by
+  `title`, like a key: they stay put while the model turns, only the leaders move, and a label
+  whose things are all behind others stays listed without a leader; what lies under the column
+  counts as out of sight. With `labels: false` it draws no
+  labels and reports, after every frame, where each callout's leaders would end (`onEnds`): for
+  an app that lists the labels in a column of its own, outside the view, and draws the leaders
+  into it, with the same rule for what the reader can see.
 ## 0.10.0 — 2026-11-15
 
 A building as data that an agent can write, read and correct in the app a person has open: building records with checks, roofs, stairs with landings and filled openings; an MCP server over the open tab; notes as the agent's to-do list; a program read as its steps. Also the viewer header and shading bar in every sketch, Rhino-style layers, Voronoi and particle relaxation in 2D.

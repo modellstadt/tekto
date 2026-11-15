@@ -33,7 +33,51 @@ export interface CalloutItem {
   /** What it points at: scene object ids, or record keys (`"walls/w1"`, which follow their
    *  record through rebuilds). The anchor is the centre of their combined bounds. */
   objects: readonly string[];
+  /**
+   * One leader to the centre of everything in `objects` (the default), or one to each entry
+   * of it: an object id, or a record key and everything drawn for it. "each" is for a label
+   * that names what many things share, a product or a material: the margin holds one label
+   * per thing rather than one per element, and every element still has its line. Only the
+   * entries the reader can see get one.
+   */
+  leaders?: "one" | "each";
+  /** The margin this label keeps to, rather than the one nearer its anchor: a column of
+   *  products down the left reads as a key. */
+  side?: "left" | "right";
+  /** The leader's shape: an elbow (the default), a level run and then a straight line, as a
+   *  drawing does; or a curve that leaves the label level and arrives level, as a diagram's
+   *  edges do, which stays readable where many leaders leave one label. */
+  leaderShape?: "elbow" | "curve";
 }
+
+/**
+ * How a set of callouts is laid out, and who hears about clicks and hovers on the labels.
+ *
+ * `stack: "anchors"` (the default) sets each label level with what it points at, pushed
+ * clear of its neighbours: the labels move with the model. `stack: "list"` stacks them from
+ * the top of their margin in the order given, on a column of their own headed by `title`,
+ * like a key: they stay put while the model turns and only the leaders move, and a label
+ * whose things are all hidden behind others stays in the list, without a leader.
+ */
+export interface CalloutOptions {
+  onPick?: (id: string) => void;
+  onHover?: (id: string | null) => void;
+  stack?: "anchors" | "list";
+  /** the list's heading, with `stack: "list"` */
+  title?: string;
+  /**
+   * `false`: draw no labels, and report instead where each callout's leaders would end
+   * (`onEnds`), for an app that lists the labels itself, outside the view, and draws its own
+   * leaders into it. The visibility rule is the same: only the things the reader can see.
+   */
+  labels?: boolean;
+  /** Each callout's leader ends, in pixels within the view, after every frame drawn: only the
+   *  entries seen, none for a callout with nothing in sight. With `labels: false`. */
+  onEnds?: (ends: { id: string; ends: { x: number; y: number }[] }[]) => void;
+}
+
+/** The height a list's title takes at the top of its column, in CSS pixels. */
+export const LIST_TITLE_HEIGHT = 24;
 
 /** One label, placed. Pixel coordinates within the host. */
 export interface Placement {
@@ -41,8 +85,40 @@ export interface Placement {
   side: "left" | "right";
   /** where the label's own box sits */
   x: number; y: number;
-  /** where its leader ends */
+  /** where its leader ends: for a label with several leaders, the middle of their ends */
   anchorX: number; anchorY: number;
+  /** each leader's end, for a label with `leaders: "each"` */
+  ends?: { x: number; y: number }[];
+}
+
+/** What each of a callout's leaders points at: all of `objects` together, or each entry. */
+export function calloutGroups(item: Pick<CalloutItem, "objects" | "leaders">): (readonly string[])[] {
+  return item.leaders === "each" ? item.objects.map((o) => [o]) : [item.objects];
+}
+
+/**
+ * A placed label's leader, as SVG path data. An elbow: out of the label's side, a short level
+ * run to a knee, then a straight line to each point it goes to, so it reads as a leader on a
+ * drawing instead of as a line someone forgot to delete, and one knee for all of a label's
+ * leaders, so they read as one label's. Or a curve to each point, level where it leaves the
+ * label and level where it arrives.
+ */
+export function leaderPath(p: Placement, labelWidth: number, shape: "elbow" | "curve" = "elbow"): string {
+  const from = p.side === "left" ? p.x + labelWidth : p.x;
+  const knee = p.side === "left" ? from + 10 : from - 10;
+  const mid = p.y + 9;
+  const ends = p.ends ?? [{ x: p.anchorX, y: p.anchorY }];
+  // a listed label whose things are all out of sight points at nothing
+  if (!ends.length) return "";
+  if (shape === "curve") {
+    return ends.map((e) => {
+      const c = (from + e.x) / 2;
+      return `M${from},${mid} C${c},${mid} ${c},${e.y} ${e.x},${e.y}`;
+    }).join(" ");
+  }
+  const run = `M${from},${mid} L${knee},${mid}`;
+  return ends.length === 1 ? `${run} L${ends[0].x},${ends[0].y}`
+    : run + ends.map((e) => ` M${knee},${mid} L${e.x},${e.y}`).join("");
 }
 
 /**
@@ -67,6 +143,10 @@ export interface LayoutOptions {
   labelWidth?: number;
   /** clearance from the host's edges */
   inset?: number;
+  /** level with the anchors (the default), or listed from the top in the order given */
+  stack?: "anchors" | "list";
+  /** room kept at the top of each margin, for a list's title */
+  top?: number;
 }
 
 /** What a layout could place, and what it could not. */
@@ -106,46 +186,54 @@ export function calloutChanged(was: CalloutItem | undefined, now: CalloutItem | 
  *
  * Anchors on the left half of the screen get the left margin. Not because the
  * side matters, but because a leader that crosses the whole drawing to reach
- * the far margin passes over everything in between.
+ * the far margin passes over everything in between. An anchor that names its
+ * `side` keeps to it.
  *
  * More labels than rows is resolved by *input order*, which is the caller's
  * priority, and never by compressing the pitch: labels printed on top of each
  * other are not more information, they are less.
  */
 export function layoutLabels(
-  anchors: { id: string; x: number; y: number }[],
+  anchors: { id: string; x: number; y: number; side?: "left" | "right"; ends?: { x: number; y: number }[] }[],
   opts: LayoutOptions,
 ): Layout {
   const rowHeight = opts.rowHeight ?? 30;
   const labelWidth = opts.labelWidth ?? labelWidthFor(opts.width);
   const inset = opts.inset ?? 8;
-  const capacity = marginCapacity(opts.height, { rowHeight, inset });
+  const top = opts.top ?? 0;
+  const listed = opts.stack === "list";
+  const capacity = marginCapacity(opts.height - top, { rowHeight, inset });
   const placed: Placement[] = [];
   const dropped: string[] = [];
 
   for (const side of ["left", "right"] as const) {
-    const mine = anchors.filter((a) => (a.x < opts.width / 2) === (side === "left"));
-    // the caller's order decides who keeps a place; anchor order decides where
-    const keep = mine.slice(0, capacity).sort((a, b) => a.y - b.y);
+    const mine = anchors.filter((a) => (a.side ?? (a.x < opts.width / 2 ? "left" : "right")) === side);
+    // the caller's order decides who keeps a place; anchor order decides where,
+    // except in a list, where the caller's order is the order
+    const keep = listed ? mine.slice(0, capacity) : mine.slice(0, capacity).sort((a, b) => a.y - b.y);
     for (const a of mine.slice(capacity)) dropped.push(a.id);
     if (!keep.length) continue;
 
-    // greedy downward pass: take the wanted position, or just below the last
     const ys: number[] = [];
-    let previous = -Infinity;
-    for (const a of keep) {
-      const y = Math.max(a.y, previous + rowHeight, inset);
-      ys.push(y);
-      previous = y;
-    }
-    // if that ran off the bottom, lift the column by exactly the overshoot and
-    // let the top of it be clamped in turn. Within capacity this always fits.
-    const overshoot = ys[ys.length - 1] + rowHeight - (opts.height - inset);
-    if (overshoot > 0) {
-      let floor = inset;
-      for (let i = 0; i < ys.length; i++) {
-        ys[i] = Math.max(ys[i] - overshoot, floor);
-        floor = ys[i] + rowHeight;
+    if (listed) {
+      keep.forEach((_, i) => ys.push(top + inset + i * rowHeight));
+    } else {
+      // greedy downward pass: take the wanted position, or just below the last
+      let previous = -Infinity;
+      for (const a of keep) {
+        const y = Math.max(a.y, previous + rowHeight, top + inset);
+        ys.push(y);
+        previous = y;
+      }
+      // if that ran off the bottom, lift the column by exactly the overshoot and
+      // let the top of it be clamped in turn. Within capacity this always fits.
+      const overshoot = ys[ys.length - 1] + rowHeight - (opts.height - inset);
+      if (overshoot > 0) {
+        let floor = top + inset;
+        for (let i = 0; i < ys.length; i++) {
+          ys[i] = Math.max(ys[i] - overshoot, floor);
+          floor = ys[i] + rowHeight;
+        }
       }
     }
     keep.forEach((a, i) => placed.push({
@@ -153,6 +241,7 @@ export function layoutLabels(
       x: side === "left" ? inset : opts.width - inset - labelWidth,
       y: ys[i],
       anchorX: a.x, anchorY: a.y,
+      ...(a.ends ? { ends: a.ends } : {}),
     }));
   }
   return { placed, dropped };
@@ -167,10 +256,16 @@ export function layoutLabels(
 export class Callouts {
   private root: HTMLDivElement;
   private svg: SVGSVGElement;
-  private labels = new Map<string, { box: HTMLButtonElement; leader: SVGPolylineElement }>();
+  private labels = new Map<string, { box: HTMLButtonElement; leader: SVGPathElement }>();
   private items = new Map<string, CalloutItem>();
   private overflow: HTMLDivElement | null = null;
   private labelWidth: number;
+  /** A list's column, per margin, and its title (`setList`). */
+  private columns = new Map<"left" | "right", HTMLDivElement>();
+  private list: { on: boolean; title?: string } = { on: false };
+  /** Labels shown as the ones meant, and in what colour (`setHighlight`). */
+  private highlighted = new Set<string>();
+  private highlightColour = "#1f7ae0";
 
   constructor(host: HTMLElement, private opts: {
     labelWidth?: number;
@@ -204,6 +299,51 @@ export class Callouts {
     this.items = next;
   }
 
+  /** Lay the labels out as a list, on a column of their own under `title`, or not. */
+  setList(on: boolean, title?: string) {
+    this.list = { on, title };
+    if (!on) { for (const c of this.columns.values()) c.remove(); this.columns.clear(); }
+  }
+
+  /** The column behind a margin's list: full height, as wide as a label and its clearance. */
+  private column(side: "left" | "right", shown: boolean) {
+    let c = this.columns.get(side);
+    if (!shown) { if (c) c.style.display = "none"; return; }
+    if (!c) {
+      c = document.createElement("div");
+      c.style.cssText = `position:absolute;top:0;bottom:0;${side}:0;pointer-events:none;
+        box-sizing:border-box;background:rgba(248,250,252,.92);
+        border-${side === "left" ? "right" : "left"}:1px solid rgba(90,100,110,.18);
+        font:600 9.5px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+        letter-spacing:.08em;text-transform:uppercase;color:#8a949e;padding:9px 8px 0`;
+      // under the leaders, so they leave it visibly
+      this.root.insertBefore(c, this.svg);
+      this.columns.set(side, c);
+    }
+    c.style.display = "block";
+    c.style.width = `${this.labelWidth + 16}px`;
+    c.textContent = this.list.title ?? "";
+  }
+
+  /**
+   * Show these labels, and their leaders, as the ones meant: what the pointer is over in the
+   * model, say, so a reader sees which label names it; null clears. Only the look changes.
+   */
+  setHighlight(ids: Iterable<string> | null, colour?: string) {
+    this.highlighted = new Set(ids ?? []);
+    if (colour) this.highlightColour = colour;
+    for (const [id, el] of this.labels) this.paint(id, el);
+  }
+
+  private paint(id: string, el: { box: HTMLButtonElement; leader: SVGPathElement }) {
+    const on = this.highlighted.has(id);
+    el.leader.setAttribute("stroke", on ? this.highlightColour : "#8a949e");
+    el.leader.setAttribute("stroke-width", on ? "1.75" : "1");
+    el.box.style.boxShadow = on ? `0 0 0 2px ${this.highlightColour}` : "0 1px 2px rgba(20,30,40,.12)";
+    // drawn last, so a lit leader is not crossed out by the others
+    if (on) this.svg.append(el.leader);
+  }
+
   /** Track the host's width, so labels stay a share of it rather than a
    *  constant that only suits one panel size. */
   setLabelWidth(px: number) {
@@ -214,6 +354,18 @@ export class Callouts {
 
   /** The objects a caller must measure to anchor each callout. */
   objectsOf(id: string): readonly string[] { return this.items.get(id)?.objects ?? []; }
+
+  /** What each of a callout's leaders points at (`calloutGroups`). */
+  groupsOf(id: string): (readonly string[])[] {
+    const item = this.items.get(id);
+    return item ? calloutGroups(item) : [];
+  }
+
+  /** The margin a callout keeps to, if it names one. */
+  sideOf(id: string): "left" | "right" | undefined { return this.items.get(id)?.side; }
+
+  /** Whether a callout has a leader to each of its entries. */
+  fans(id: string): boolean { return this.items.get(id)?.leaders === "each"; }
 
   get ids(): string[] { return [...this.items.keys()]; }
 
@@ -233,7 +385,10 @@ export class Callouts {
     for (const [id, el] of this.labels) {
       // display, not the hidden attribute: the box's own display:block would override that,
       // and a label whose element went out of sight stayed on screen without its leader.
-      if (!placed.has(id)) { el.box.style.display = "none"; el.leader.setAttribute("points", ""); }
+      if (!placed.has(id)) { el.box.style.display = "none"; el.leader.setAttribute("d", ""); }
+    }
+    if (this.list.on) {
+      for (const side of ["left", "right"] as const) this.column(side, placements.some((p) => p.side === side));
     }
     for (const p of placements) {
       const item = this.items.get(p.id);
@@ -242,14 +397,7 @@ export class Callouts {
       el.box.style.display = "block";
       el.box.style.left = `${p.x}px`;
       el.box.style.top = `${p.y}px`;
-      // an elbow rather than a straight line: a horizontal run out of the
-      // label, then one segment to the anchor. It reads as a leader on a
-      // drawing instead of as a line someone forgot to delete.
-      const from = p.side === "left" ? p.x + this.labelWidth : p.x;
-      const knee = p.side === "left" ? from + 10 : from - 10;
-      const mid = p.y + 9;
-      el.leader.setAttribute("points",
-        `${from},${mid} ${knee},${mid} ${p.anchorX},${p.anchorY}`);
+      el.leader.setAttribute("d", leaderPath(p, this.labelWidth, item.leaderShape));
     }
     this.showOverflow(unplaced, upTo);
   }
@@ -268,7 +416,7 @@ export class Callouts {
   }
 
   private make(id: string, item: CalloutItem) {
-    const leader = document.createElementNS(SVG, "polyline") as SVGPolylineElement;
+    const leader = document.createElementNS(SVG, "path") as SVGPathElement;
     leader.setAttribute("fill", "none");
     leader.setAttribute("stroke", "#8a949e");
     leader.setAttribute("stroke-width", "1");
@@ -308,6 +456,7 @@ export class Callouts {
     this.root.append(box);
     const el = { box, leader };
     this.labels.set(id, el);
+    this.paint(id, el);
     return el;
   }
 

@@ -60,7 +60,7 @@ export type { NavGizmoOptions } from "./render/NavGizmo";
 // Labels in the margins with leaders to what they name, laid out the way a
 // drawing is annotated rather than floated at the thing.
 export { Callouts, layoutLabels, labelWidthFor } from "./render/Callouts";
-export type { CalloutItem, Placement, LayoutOptions } from "./render/Callouts";
+export type { CalloutItem, CalloutOptions, Placement, LayoutOptions } from "./render/Callouts";
 
 // GUI: layer panel (consumed by both the sketch API + standalone apps).
 export { LayerPanel, computeEffectiveVisibility, computeEffectiveLock, layerDefaults, activateLayer } from "./gui/LayerPanel";

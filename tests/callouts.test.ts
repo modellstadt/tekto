@@ -7,7 +7,7 @@
  * checked here rather than looked at in a browser.
  */
 import { describe, it, expect } from "vitest";
-import { calloutChanged, layoutLabels, marginCapacity } from "../src/render/Callouts";
+import { calloutChanged, calloutGroups, layoutLabels, leaderPath, marginCapacity } from "../src/render/Callouts";
 
 const BOX = { width: 800, height: 600, rowHeight: 30, labelWidth: 150, inset: 8 };
 
@@ -103,6 +103,90 @@ describe("callout layout", () => {
 
   it("has nothing to place when nothing is visible", () => {
     expect(layoutLabels([], BOX)).toEqual({ placed: [], dropped: [] });
+  });
+
+  it("keeps a label to the margin it names, whichever half its anchor is in", () => {
+    // a column of products down the left reads as a key
+    const { placed: out } = layoutLabels([
+      { id: "p", x: 700, y: 100, side: "left" },
+      { id: "q", x: 100, y: 200, side: "right" },
+      { id: "r", x: 700, y: 300 },
+    ], BOX);
+    const side = (id: string) => out.find((p) => p.id === id)!;
+    expect(side("p").side).toBe("left");
+    expect(side("p").x).toBe(BOX.inset);
+    expect(side("q").side).toBe("right");
+    expect(side("r").side).toBe("right");
+  });
+
+  it("carries each leader's end through, and none for a label with one", () => {
+    const ends = [{ x: 500, y: 100 }, { x: 600, y: 300 }];
+    const { placed: out } = layoutLabels([{ id: "p", x: 550, y: 200, side: "left", ends },
+                                          { id: "e", x: 100, y: 400 }], BOX);
+    expect(out.find((p) => p.id === "p")!.ends).toEqual(ends);
+    expect(out.find((p) => p.id === "e")).not.toHaveProperty("ends");
+  });
+});
+
+describe("callouts as a list", () => {
+  const LIST = { ...BOX, stack: "list" as const, top: 24 };
+
+  it("stacks labels from the top in the order given, wherever their anchors are", () => {
+    // a key: it stays put while the model turns, and only the leaders move
+    const { placed: out } = layoutLabels([
+      { id: "walls", x: 100, y: 500, side: "left", ends: [] },
+      { id: "floors", x: 100, y: 50, side: "left", ends: [] },
+      { id: "windows", x: 100, y: 300, side: "left", ends: [] },
+    ], LIST);
+    expect(out.map((p) => p.id)).toEqual(["walls", "floors", "windows"]);
+    expect(out.map((p) => p.y)).toEqual([24 + 8, 24 + 8 + 30, 24 + 8 + 60]);
+  });
+
+  it("keeps room for the title, and says what it had no room for", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, x: 100, y: 0, side: "left" as const }));
+    const { placed, dropped } = layoutLabels(many, LIST);
+    expect(placed).toHaveLength(marginCapacity(BOX.height - 24, BOX));
+    expect(dropped).toHaveLength(30 - placed.length);
+    expect(dropped[0]).toBe(`p${placed.length}`);
+  });
+
+  it("draws no leader for a listed label whose things are all out of sight", () => {
+    expect(leaderPath({ id: "p", side: "left", x: 8, y: 40, anchorX: 0, anchorY: 0, ends: [] }, 150, "curve")).toBe("");
+  });
+});
+
+describe("callout leaders", () => {
+  it("points at everything together by default, and at each entry when asked", () => {
+    const objects = ["walls/a", "walls/b", "walls/c"];
+    expect(calloutGroups({ objects })).toEqual([objects]);
+    expect(calloutGroups({ objects, leaders: "one" })).toEqual([objects]);
+    expect(calloutGroups({ objects, leaders: "each" })).toEqual([["walls/a"], ["walls/b"], ["walls/c"]]);
+  });
+
+  it("draws one elbow to its anchor for a label with one leader", () => {
+    const p = { id: "e", side: "left" as const, x: 8, y: 100, anchorX: 300, anchorY: 250 };
+    // out of the label's right edge, a short level run, then to the anchor
+    expect(leaderPath(p, 150)).toBe("M158,109 L168,109 L300,250");
+    expect(leaderPath({ ...p, side: "right", x: 642 }, 150)).toBe("M642,109 L632,109 L300,250");
+  });
+
+  it("curves each leader out of the label level and into its end level", () => {
+    const ends = [{ x: 300, y: 50 }, { x: 500, y: 400 }];
+    const p = { id: "p", side: "left" as const, x: 8, y: 100, anchorX: 400, anchorY: 225, ends };
+    // from the label's edge, control points half way across at either height
+    expect(leaderPath(p, 150, "curve"))
+      .toBe("M158,109 C229,109 229,50 300,50 M158,109 C329,109 329,400 500,400");
+    expect(leaderPath({ ...p, ends: undefined }, 150, "curve")).toBe("M158,109 C279,109 279,225 400,225");
+    // the default stays the elbow
+    expect(leaderPath({ ...p, ends: undefined }, 150)).toBe("M158,109 L168,109 L400,225");
+  });
+
+  it("fans a label's leaders out from one knee, one line to each end", () => {
+    const ends = [{ x: 300, y: 50 }, { x: 320, y: 250 }, { x: 500, y: 400 }];
+    const d = leaderPath({ id: "p", side: "left", x: 8, y: 100, anchorX: 373, anchorY: 233, ends }, 150);
+    expect(d).toBe("M158,109 L168,109 M168,109 L300,50 M168,109 L320,250 M168,109 L500,400");
+    // every leader starts at the same knee, so they read as one label's
+    expect(d.match(/M168,109/g)).toHaveLength(3);
   });
 });
 
