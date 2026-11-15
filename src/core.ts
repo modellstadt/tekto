@@ -75,7 +75,8 @@ export type { SunPositionInput, SunPositionResult } from "./core/solar/SunPositi
 export { Graph, GridGraph } from "./core/graph";
 
 // Planar Graph (DCEL)
-export { PlanarGraph, PGVertex, PGHalfEdge, PGFace, PlanarGraphRepair, PlanarGraphCleanup, Delaunay2D } from "./core/geometry/planarGraph";
+export { PlanarGraph, PGVertex, PGHalfEdge, PGFace, PlanarGraphRepair, PlanarGraphCleanup, Delaunay2D, Voronoi2D } from "./core/geometry/planarGraph";
+export type { VoronoiCell, VoronoiOptions } from "./core/geometry/planarGraph";
 
 // Voxel
 export { VoxelGrid2D, VoxelGrid, MarchingSquares, MarchingCubes, FloodFill, DistanceTransform, BlobDetect, PixelView } from "./core/voxel";
@@ -101,6 +102,8 @@ export { SpringSystem3D } from "./core/physics";
 export type { Spring } from "./core/physics";
 export { RigidBody2D, Spring2D, repelBodies } from "./core/physics/RigidBody2D";
 export type { RigidBodyConfig, SpringConfig } from "./core/physics/RigidBody2D";
+export { Particles2D } from "./core/physics/Particles2D";
+export type { Particles2DSpring } from "./core/physics/Particles2D";
 
 // IO
 export { ObjFile } from "./io";
@@ -212,6 +215,10 @@ export { SharedStore, collabColor, memoryAdapter, devServerAdapter, supabaseAdap
 // The document of a retained app: typed records, stable ids, undo/redo, save/open (on SharedStore).
 export { Doc, localAdapter, bindScene, applyPatch, Selection, selectOnClick, shareSelection } from "./collab/Doc";
 export type { DocSchema, DocChange, DocChangeSource, DocEditOptions, DocOptions, DocJSON, DocPatch, PatchResult, SceneBinding, PickingView, PresenceView } from "./collab/Doc";
+// A program read as the steps it ran: inputs, outputs, times, errors and the links between
+// steps read off the values — what the steps panel draws and an agent reads.
+export { StepTrace, describeValue } from "./core/steps/StepTrace";
+export type { StepRecord, StepInput, StepEdge, StepAnalysis, StepTraceJSON } from "./core/steps/StepTrace";
 // Records checked against a JSON Schema: one schema validates, defines an agent's tool input, documents.
 export { checkRecord } from "./collab/recordSchema";
 export type { RecordSchema, SchemaIssue } from "./collab/recordSchema";

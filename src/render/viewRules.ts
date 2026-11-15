@@ -136,6 +136,35 @@ export function flatLights(style: FlatLighting): {
   return { ambient: 0.5, sky: 0.4, skyColour: 0x4466aa, groundColour: 0x332211, sun: 0.7 };
 }
 
+/** How Studio lighting balances its lights; see `studioLights`. */
+export type StudioLighting = "filmic" | "plain";
+
+/**
+ * Studio lighting's lights, and whether the frame is tone-mapped.
+ *
+ * `"filmic"`, the default: ACES tone mapping and a strong sun over a dim blue
+ * sky, a sunlit render. Contrasty, and the side of a model turned from the sun
+ * gets so little light that a saturated colour there goes nearly black.
+ * `"plain"`: the balance the old Viewport drew shadows with,
+ * `lightBalance("shaded", true)` under a white sky and without tone mapping.
+ * Shadows still fall; a face turned to the sun and sky shows about its own
+ * colour, and one turned away is a darker tone of it rather than black, for an
+ * app whose colours are a key beside the model. Daylight (`setDaylight`) still
+ * retints either when it is on.
+ */
+export function studioLights(style: StudioLighting): {
+  ambient: number; sky: number; skyColour: number; groundColour: number; sun: number;
+  toneMapped: boolean;
+} {
+  if (style === "plain") {
+    const { sky, sun } = lightBalance("shaded", true);
+    return { ambient: 0, sky, skyColour: 0xffffff, groundColour: 0x8899aa, sun, toneMapped: false };
+  }
+  const sketch = flatLights("sketch");
+  return { ambient: 0.35, sky: 0.30, skyColour: sketch.skyColour, groundColour: sketch.groundColour,
+           sun: 2.8, toneMapped: true };
+}
+
 /**
  * Sun and sky intensity for a mode.
  *

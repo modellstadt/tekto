@@ -1,9 +1,11 @@
 import {
   AABB,
+  ACI,
   HMath,
+  Vec2,
   Vec3,
   closestPointOnSegment
-} from "./chunk-QLUI3675.mjs";
+} from "./chunk-56LGGW6L.mjs";
 
 // src/core/geometry/Plane.ts
 var Plane = class _Plane {
@@ -288,9 +290,9 @@ var Mesh = class _Mesh {
     }
     const out = new Uint32Array(this._triCount * 3);
     let k = 0;
-    for (let f = 0; f < this._faceN; f++) {
-      if (!this._faceAlive[f]) continue;
-      const s = this._faceStart[f], e = this._faceStart[f + 1];
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const s = this._faceStart[f2], e = this._faceStart[f2 + 1];
       for (let c = s + 1; c + 1 < e; c++) {
         out[k++] = this._cVert[s];
         out[k++] = this._cVert[c];
@@ -451,7 +453,7 @@ var Mesh = class _Mesh {
   }
   removeNode(id) {
     if (!this.isNodeAlive(id)) return;
-    for (const f of this.nodeFaces(id)) this.removeFace(f);
+    for (const f2 of this.nodeFaces(id)) this.removeFace(f2);
     for (const e of this.nodeEdges(id)) this.removeEdge(e);
     this._nodeAlive[id] = 0;
     this._nodeLive--;
@@ -534,7 +536,7 @@ var Mesh = class _Mesh {
   /** Removes the edge and every face that uses it. */
   removeEdge(id) {
     if (!this.isEdgeAlive(id)) return;
-    for (const f of this.edgeFaces(id)) this.removeFace(f);
+    for (const f2 of this.edgeFaces(id)) this.removeFace(f2);
     const a = this._edgeA[id], b = this._edgeB[id];
     this._unlinkEdge(id, a);
     if (b !== a) this._unlinkEdge(id, b);
@@ -777,14 +779,14 @@ var Mesh = class _Mesh {
       edges[e] = m.addEdge(nodes[this._edgeA[e]], nodes[this._edgeB[e]], this._edgeData?.get(e));
     }
     const buf = [];
-    for (let f = 0; f < this._faceN; f++) {
-      if (!this._faceAlive[f]) continue;
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
       buf.length = 0;
-      const s = this._faceStart[f], e = this._faceStart[f + 1];
+      const s = this._faceStart[f2], e = this._faceStart[f2 + 1];
       for (let c = s; c < e; c++) buf.push(nodes[this._cVert[c]]);
-      faces[f] = m.addFace(buf, this._faceData?.get(f));
-      if (this._faceNrm && f < this._faceNrmN) {
-        m.setFaceNormal(faces[f], new Vec3(this._faceNrm[f * 3], this._faceNrm[f * 3 + 1], this._faceNrm[f * 3 + 2]));
+      faces[f2] = m.addFace(buf, this._faceData?.get(f2));
+      if (this._faceNrm && f2 < this._faceNrmN) {
+        m.setFaceNormal(faces[f2], new Vec3(this._faceNrm[f2 * 3], this._faceNrm[f2 * 3 + 1], this._faceNrm[f2 * 3 + 2]));
       }
     }
     return { nodes, edges, faces };
@@ -808,12 +810,12 @@ var Mesh = class _Mesh {
       if (other._edgeAlive[e]) m.addEdge(nodes[other._edgeA[e]], nodes[other._edgeB[e]]);
     }
     const buf = [];
-    for (let f = 0; f < other._faceN; f++) {
-      if (!other._faceAlive[f]) continue;
+    for (let f2 = 0; f2 < other._faceN; f2++) {
+      if (!other._faceAlive[f2]) continue;
       buf.length = 0;
-      const s = other._faceStart[f], e = other._faceStart[f + 1];
+      const s = other._faceStart[f2], e = other._faceStart[f2 + 1];
       for (let c = s; c < e; c++) buf.push(nodes[other._cVert[c]]);
-      m.addFace(buf, other._faceData?.get(f));
+      m.addFace(buf, other._faceData?.get(f2));
     }
     m._nrmN = 0;
     return m;
@@ -825,9 +827,9 @@ var Mesh = class _Mesh {
       this._faceNrm = new Float32Array(this._faceAlive.length * 3);
     }
     const pos = this._pos, fn = this._faceNrm, cv = this._cVert;
-    for (let f = 0; f < this._faceN; f++) {
-      if (!this._faceAlive[f]) continue;
-      const s = this._faceStart[f], e = this._faceStart[f + 1], n = e - s;
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const s = this._faceStart[f2], e = this._faceStart[f2 + 1], n = e - s;
       let nx = 0, ny = 0, nz = 0;
       for (let i = 0; i < n; i++) {
         const a = cv[s + i] * 3, b = cv[s + (i + 1) % n] * 3;
@@ -837,9 +839,9 @@ var Mesh = class _Mesh {
       }
       const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
       const inv = len > 1e-12 ? 1 / len : 0;
-      fn[f * 3] = nx * inv;
-      fn[f * 3 + 1] = ny * inv;
-      fn[f * 3 + 2] = nz * inv;
+      fn[f2 * 3] = nx * inv;
+      fn[f2 * 3 + 1] = ny * inv;
+      fn[f2 * 3 + 2] = nz * inv;
     }
     this._faceNrmN = this._faceN;
   }
@@ -851,10 +853,10 @@ var Mesh = class _Mesh {
     }
     const nrm = this._nrm, fn = this._faceNrm, cv = this._cVert;
     nrm.fill(0, 0, this._nodeN * 3);
-    for (let f = 0; f < this._faceN; f++) {
-      if (!this._faceAlive[f]) continue;
-      const x = fn[f * 3], y = fn[f * 3 + 1], z = fn[f * 3 + 2];
-      for (let c = this._faceStart[f], e = this._faceStart[f + 1]; c < e; c++) {
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const x = fn[f2 * 3], y = fn[f2 * 3 + 1], z = fn[f2 * 3 + 2];
+      for (let c = this._faceStart[f2], e = this._faceStart[f2 + 1]; c < e; c++) {
         const o = cv[c] * 3;
         nrm[o] += x;
         nrm[o + 1] += y;
@@ -959,18 +961,18 @@ var Mesh = class _Mesh {
         note("nonFinite", `node ${i}`);
       }
     }
-    for (let f = 0; f < this._faceN; f++) {
-      if (!this._faceAlive[f]) continue;
-      const s0 = this._faceStart[f], s1 = this._faceStart[f + 1], n = s1 - s0;
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const s0 = this._faceStart[f2], s1 = this._faceStart[f2 + 1], n = s1 - s0;
       let bad = false;
       for (let c = s0; c < s1; c++) {
         if (!this.isNodeAlive(cv[c])) {
           bad = true;
-          note("badRefs", `face ${f} \u2192 node ${cv[c]}`);
+          note("badRefs", `face ${f2} \u2192 node ${cv[c]}`);
         }
         if (cv[c] === cv[s0 + (c - s0 + 1) % n]) {
           repeated++;
-          note("repeated", `face ${f}`);
+          note("repeated", `face ${f2}`);
           break;
         }
       }
@@ -993,7 +995,7 @@ var Mesh = class _Mesh {
       }
       if (!(Math.hypot(nx, ny, nz) > 1e-14)) {
         degenerate++;
-        note("degenerate", `face ${f}`);
+        note("degenerate", `face ${f2}`);
       }
     }
     let boundary = 0, nonManifold = 0, inconsistent = 0;
@@ -1223,7 +1225,7 @@ var Mesh = class _Mesh {
   static fromFaces(positions, faces) {
     const mesh = new _Mesh();
     const ids = mesh.addNodes(positions);
-    for (const f of faces) mesh.addFace(f.map((i) => ids[i]));
+    for (const f2 of faces) mesh.addFace(f2.map((i) => ids[i]));
     mesh.computeVertexNormals();
     return mesh;
   }
@@ -1260,11 +1262,11 @@ var Mesh = class _Mesh {
     }
     const faces = [];
     const faceData = [];
-    for (let f = 0; f < this._faceN; f++) {
-      if (!this._faceAlive[f]) continue;
-      const d = this._faceData?.get(f);
+    for (let f2 = 0; f2 < this._faceN; f2++) {
+      if (!this._faceAlive[f2]) continue;
+      const d = this._faceData?.get(f2);
       if (d && Object.keys(d).length) faceData.push([faces.length, d]);
-      faces.push(this.faceNodes(f).map((n) => map[n]));
+      faces.push(this.faceNodes(f2).map((n) => map[n]));
     }
     const nodeData = [];
     if (this._nodeData) {
@@ -1305,7 +1307,7 @@ var Mesh = class _Mesh {
     }
     if ("indices" in json) return new _Mesh(json.positions, json.indices, json.normals, json.uvs);
     const mesh = new _Mesh(json.positions, [], json.normals, json.uvs, json.colors);
-    for (const f of json.faces) mesh.addFace(f);
+    for (const f2 of json.faces) mesh.addFace(f2);
     if (json.nodeData) for (const [id, d] of json.nodeData) mesh._nodeData ? mesh._nodeData.set(id, d) : mesh._nodeData = /* @__PURE__ */ new Map([[id, d]]);
     if (json.faceData) for (const [id, d] of json.faceData) mesh._faceData ? mesh._faceData.set(id, d) : mesh._faceData = /* @__PURE__ */ new Map([[id, d]]);
     return mesh;
@@ -1436,6 +1438,561 @@ function julianDay(year, month, day) {
   const a = Math.floor(y / 100);
   const b = 2 - a + Math.floor(a / 4);
   return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + day + b - 1524.5;
+}
+
+// src/io/PdfWriter.ts
+var HELV = [
+  278,
+  278,
+  355,
+  556,
+  556,
+  889,
+  667,
+  191,
+  333,
+  333,
+  389,
+  584,
+  278,
+  333,
+  278,
+  278,
+  556,
+  556,
+  556,
+  556,
+  556,
+  556,
+  556,
+  556,
+  556,
+  556,
+  278,
+  278,
+  584,
+  584,
+  584,
+  556,
+  1015,
+  667,
+  667,
+  722,
+  722,
+  667,
+  611,
+  778,
+  722,
+  278,
+  500,
+  667,
+  556,
+  833,
+  722,
+  778,
+  667,
+  778,
+  722,
+  667,
+  611,
+  722,
+  667,
+  944,
+  667,
+  667,
+  611,
+  278,
+  278,
+  278,
+  469,
+  556,
+  333,
+  556,
+  556,
+  500,
+  556,
+  556,
+  278,
+  556,
+  556,
+  222,
+  222,
+  500,
+  222,
+  833,
+  556,
+  556,
+  556,
+  556,
+  333,
+  500,
+  278,
+  556,
+  500,
+  722,
+  500,
+  500,
+  500,
+  334,
+  260,
+  334,
+  584
+];
+var CAP = 0.718;
+var DESC = 0.207;
+var MM = 72 / 25.4;
+var textWidth = (s) => [...s].reduce((w, ch) => {
+  const c = ch.charCodeAt(0);
+  return w + (c >= 32 && c <= 126 ? HELV[c - 32] : 556);
+}, 0) / 1e3;
+var WIN_ANSI = {
+  "\u20AC": 128,
+  "\u201A": 130,
+  "\u201E": 132,
+  "\u2026": 133,
+  "\u2020": 134,
+  "\u2021": 135,
+  "\u2030": 137,
+  "\u2018": 145,
+  "\u2019": 146,
+  "\u201C": 147,
+  "\u201D": 148,
+  "\u2022": 149,
+  "\u2013": 150,
+  "\u2014": 151,
+  "\u2122": 153
+};
+var pdfString = (s) => "(" + [...s.replace(/[\r\n]+/g, " ")].map((ch) => {
+  const c = ch.charCodeAt(0), w = WIN_ANSI[ch];
+  if (ch === "\\" || ch === "(" || ch === ")") return "\\" + ch;
+  if (c >= 32 && c <= 126) return ch;
+  if (w !== void 0 || c >= 160 && c <= 255) return "\\" + (w ?? c).toString(8).padStart(3, "0");
+  return "?";
+}).join("") + ")";
+var parseHex = (hex) => {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? m[1].split("").map((c) => c + c).join("") : m[1];
+  return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255];
+};
+var forPaper = ([r, g, b]) => {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  if (d < 0.08) return l > 0.5 ? [0, 0, 0] : [r, g, b];
+  if (l <= 0.42) return [r, g, b];
+  const s = d / (1 - Math.abs(2 * l - 1)), L = 0.42, C = (1 - Math.abs(2 * L - 1)) * s;
+  let h = mx === r ? (g - b) / d % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  if (h < 0) h += 6;
+  const X = C * (1 - Math.abs(h % 2 - 1)), m = L - C / 2;
+  const [R, G, B] = h < 1 ? [C, X, 0] : h < 2 ? [X, C, 0] : h < 3 ? [0, C, X] : h < 4 ? [0, X, C] : h < 5 ? [X, 0, C] : [C, 0, X];
+  return [R + m, G + m, B + m];
+};
+function writePdf2D(content, opts = {}) {
+  const scale = opts.scale ?? 50, unit = opts.unit ?? 1, margin = opts.margin ?? 10, lw = opts.lineWidth ?? 0.18;
+  if (!(Number.isFinite(scale) && scale > 0)) throw new Error(`writePdf2D: scale must be a positive number, got ${scale}`);
+  if (!(Number.isFinite(unit) && unit > 0)) throw new Error(`writePdf2D: unit must be a positive number, got ${unit}`);
+  const polylines = content.polylines ?? [], lineSegs = content.lines ?? [], circles = content.circles ?? [];
+  const arcs = content.arcs ?? [], texts = content.texts ?? [], solids = content.solids ?? [];
+  const finite = (p) => Number.isFinite(p.x) && Number.isFinite(p.y);
+  const bad = (what, i, layer, why = "a non-finite coordinate") => {
+    throw new Error(`writePdf2D: ${what} ${i} (layer "${layer}") has ${why}`);
+  };
+  polylines.forEach((p, i) => {
+    if (!p.points.every(finite)) bad("polyline", i, p.layer);
+  });
+  lineSegs.forEach((l, i) => {
+    if (!finite(l.start) || !finite(l.end)) bad("line", i, l.layer);
+  });
+  circles.forEach((c, i) => {
+    if (!finite(c.center) || !Number.isFinite(c.radius)) bad("circle", i, c.layer);
+  });
+  arcs.forEach((a, i) => {
+    if (!finite(a.center) || ![a.radius, a.startDeg, a.endDeg].every(Number.isFinite)) bad("arc", i, a.layer);
+  });
+  texts.forEach((t, i) => {
+    if (!finite(t.at)) bad("text", i, t.layer);
+    if (!(Number.isFinite(t.height) && t.height > 0)) bad("text", i, t.layer, `a height of ${t.height} (needs > 0)`);
+  });
+  solids.forEach((s, i) => {
+    if (!s.points.every(finite)) bad("solid", i, s.layer);
+  });
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const grow2 = (x, y) => {
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  };
+  for (const p of polylines) for (const q of p.points) grow2(q.x, q.y);
+  for (const l of lineSegs) {
+    grow2(l.start.x, l.start.y);
+    grow2(l.end.x, l.end.y);
+  }
+  for (const c of [...circles, ...arcs]) if (c.radius > 0) {
+    grow2(c.center.x - c.radius, c.center.y - c.radius);
+    grow2(c.center.x + c.radius, c.center.y + c.radius);
+  }
+  for (const s of solids) for (const q of s.points) grow2(q.x, q.y);
+  for (const t of texts) {
+    const w = textWidth(t.text) * t.height / CAP, h = t.height / CAP;
+    grow2(t.at.x - w, t.at.y - h);
+    grow2(t.at.x + w, t.at.y + h);
+  }
+  if (!(x1 >= x0)) {
+    x0 = y0 = 0;
+    x1 = y1 = 1;
+  }
+  const k = unit * 1e3 / scale;
+  const foot = opts.scaleBar ?? true ? 14 : 0, head = opts.title ? 10 : 0;
+  const Wmm = (x1 - x0) * k + 2 * margin, Hmm = (y1 - y0) * k + 2 * margin + foot + head;
+  const X = (x) => (margin + (x - x0) * k) * MM, Y = (y) => (margin + foot + (y - y0) * k) * MM;
+  const n = (v) => Math.abs(v) < 5e-4 ? "0" : v.toFixed(2).replace(/\.?0+$/, "");
+  const layerRgb = /* @__PURE__ */ new Map(), layerType = /* @__PURE__ */ new Map();
+  const aciRgb = (c) => {
+    const e = ACI.find((a) => a[0] === c);
+    return e ? [e[1] / 255, e[2] / 255, e[3] / 255] : null;
+  };
+  for (const d of content.layers ?? []) {
+    const c = d.rgb && parseHex(d.rgb) || (d.color !== void 0 ? aciRgb(d.color) : null);
+    if (c) layerRgb.set(d.name, c);
+    if (d.lineType) layerType.set(d.name, d.lineType.toUpperCase());
+  }
+  const paper = opts.forPaper ?? true;
+  const colourOf = (e) => {
+    const c = e.rgb && parseHex(e.rgb) || (e.color !== void 0 ? aciRgb(e.color) : null) || layerRgb.get(e.layer) || [0, 0, 0];
+    return paper ? forPaper(c) : c;
+  };
+  const ops = [`1 J 1 j ${n(lw * MM)} w`];
+  let stroke = "", fill = "", dash = "[] 0 d";
+  const setStroke = (c) => {
+    const s = `${n(c[0])} ${n(c[1])} ${n(c[2])} RG`;
+    if (s !== stroke) {
+      ops.push(s);
+      stroke = s;
+    }
+  };
+  const setFill = (c) => {
+    const s = `${n(c[0])} ${n(c[1])} ${n(c[2])} rg`;
+    if (s !== fill) {
+      ops.push(s);
+      fill = s;
+    }
+  };
+  const DASH = { DASHED: [3, 1.5], HIDDEN: [1.5, 1], DOTTED: [0.2, 1], CENTER: [6, 1.2, 1.2, 1.2] };
+  const setLook = (e) => {
+    setStroke(colourOf(e));
+    const pattern = DASH[e.linetype ?? layerType.get(e.layer) ?? ""];
+    const d = pattern ? `[${pattern.map((v) => n(v * MM)).join(" ")}] 0 d` : "[] 0 d";
+    if (d !== dash) {
+      ops.push(d);
+      dash = d;
+    }
+  };
+  const arcPath = (c, r, a, b) => {
+    const seg = Math.max(1, Math.ceil(Math.abs(b - a) / (Math.PI / 2))), da = (b - a) / seg, t = 4 / 3 * Math.tan(da / 4);
+    const out2 = [`${n(X(c.x + r * Math.cos(a)))} ${n(Y(c.y + r * Math.sin(a)))} m`];
+    for (let i = 0; i < seg; i++) {
+      const p = a + i * da, q = p + da;
+      const P1 = [c.x + r * (Math.cos(p) - t * Math.sin(p)), c.y + r * (Math.sin(p) + t * Math.cos(p))];
+      const P2 = [c.x + r * (Math.cos(q) + t * Math.sin(q)), c.y + r * (Math.sin(q) - t * Math.cos(q))];
+      out2.push(`${n(X(P1[0]))} ${n(Y(P1[1]))} ${n(X(P2[0]))} ${n(Y(P2[1]))} ${n(X(c.x + r * Math.cos(q)))} ${n(Y(c.y + r * Math.sin(q)))} c`);
+    }
+    return out2.join(" ");
+  };
+  for (const s of solids) {
+    if (s.points.length < 3) continue;
+    setFill(colourOf(s));
+    ops.push(s.points.map((q, i) => `${n(X(q.x))} ${n(Y(q.y))} ${i ? "l" : "m"}`).join(" ") + " h f");
+  }
+  for (const p of polylines) {
+    if (p.points.length < 2) continue;
+    setLook(p);
+    ops.push(p.points.map((q, i) => `${n(X(q.x))} ${n(Y(q.y))} ${i ? "l" : "m"}`).join(" ") + (p.closed ? " h S" : " S"));
+  }
+  for (const l of lineSegs) {
+    setLook(l);
+    ops.push(`${n(X(l.start.x))} ${n(Y(l.start.y))} m ${n(X(l.end.x))} ${n(Y(l.end.y))} l S`);
+  }
+  for (const c of circles) if (c.radius > 0) {
+    setLook(c);
+    ops.push(arcPath(c.center, c.radius, 0, 2 * Math.PI) + " h S");
+  }
+  for (const a of arcs) {
+    if (!(a.radius > 0)) continue;
+    setLook(a);
+    let b = a.endDeg;
+    while (b <= a.startDeg) b += 360;
+    ops.push(arcPath(a.center, a.radius, a.startDeg * Math.PI / 180, Math.min(b, a.startDeg + 360) * Math.PI / 180) + " S");
+  }
+  const text = (s, x, y, size, rot, align, valign) => {
+    const w = textWidth(s) * size, dx = align === "center" ? -w / 2 : align === "right" ? -w : 0;
+    const dy = valign === "top" ? -CAP * size : valign === "middle" ? -CAP * size / 2 : valign === "bottom" ? DESC * size : 0;
+    const c = Math.cos(rot), sn = Math.sin(rot), tx = x + dx * c - dy * sn, ty = y + dx * sn + dy * c;
+    ops.push(`BT /F1 ${n(size)} Tf ${n(c)} ${n(sn)} ${n(-sn)} ${n(c)} ${n(tx)} ${n(ty)} Tm ${pdfString(s)} Tj ET`);
+  };
+  for (const t of texts) {
+    setFill(colourOf(t));
+    text(t.text, X(t.at.x), Y(t.at.y), t.height * k * MM / CAP, (t.rotationDeg ?? 0) * Math.PI / 180, t.align ?? "left", t.valign ?? "baseline");
+  }
+  if (opts.title) {
+    setFill([0, 0, 0]);
+    text(`${opts.title} \xB7 1:${scale}`, margin * MM, (Hmm - margin - 4) * MM, 3.5 / CAP * MM, 0, "left", "baseline");
+  }
+  if (foot) {
+    const want = (x1 - x0) * unit / 5, nice = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1e3].find((v) => v >= want / 4) ?? 1e3;
+    const steps = 4, len = nice * steps, bx = margin, by = margin, bw = len / unit * k, bh = 1.5;
+    ops.push("[] 0 d");
+    dash = "[] 0 d";
+    setStroke([0, 0, 0]);
+    for (let i = 0; i < steps; i++) {
+      setFill(i % 2 ? [1, 1, 1] : [0, 0, 0]);
+      ops.push(`${n((bx + bw * i / steps) * MM)} ${n(by * MM)} ${n(bw / steps * MM)} ${n(bh * MM)} re B`);
+    }
+    setFill([0, 0, 0]);
+    for (let i = 0; i <= steps; i++) text(`${+(nice * i).toFixed(3)}${i === steps ? " m" : ""}`, (bx + bw * i / steps) * MM, (by + bh + 1) * MM, 2.2 / CAP * MM, 0, "center", "baseline");
+  }
+  const body = ops.join("\n");
+  const objs = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${n(Wmm * MM)} ${n(Hmm * MM)}] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    `<< /Length ${body.length} >>
+stream
+${body}
+endstream`
+  ];
+  let out = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
+  const offsets = [];
+  objs.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj
+${o}
+endobj
+`;
+  });
+  const xref = out.length;
+  out += `xref
+0 ${objs.length + 1}
+0000000000 65535 f 
+` + offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n 
+`).join("");
+  out += `trailer
+<< /Size ${objs.length + 1} /Root 1 0 R >>
+startxref
+${xref}
+%%EOF
+`;
+  const bytes = new Uint8Array(out.length);
+  for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+  return bytes;
+}
+
+// src/io/index.ts
+function emptyMeshData() {
+  return { positions: [], normals: [], uvs: [], faces: [], groups: [] };
+}
+var ObjFile = {
+  /**
+   * Parses an OBJ string into MeshData: v/vt/vn/f lines, `g` groups and `usemtl` materials
+   * (`mtllib` is skipped — the .mtl is a separate file). A `g` or a `usemtl` that changes the
+   * material starts a new group run; as in OBJ, a material carries over into the next `g`,
+   * and a `usemtl` before any `g` runs under `"default"`. `groups` stays unset when the file
+   * has neither.
+   */
+  parse(source) {
+    const result = emptyMeshData();
+    const rawPositions = [];
+    const rawUVs = [];
+    const rawNormals = [];
+    const indexCache = /* @__PURE__ */ new Map();
+    let runName = null;
+    let runMaterial;
+    let runFaceStart = 0;
+    const flushRun = () => {
+      if (runName === null) return;
+      const count = result.faces.length - runFaceStart;
+      if (count > 0) {
+        result.groups.push({
+          name: runName,
+          faceStart: runFaceStart,
+          faceCount: count,
+          ...runMaterial !== void 0 ? { material: runMaterial } : {}
+        });
+      }
+    };
+    const startRun = (name, material) => {
+      flushRun();
+      runName = name;
+      runMaterial = material;
+      runFaceStart = result.faces.length;
+    };
+    for (const line of source.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0 || trimmed[0] === "#") continue;
+      const parts = trimmed.split(/\s+/);
+      const type = parts[0];
+      if (type === "g" && parts.length >= 2) {
+        startRun(parts.slice(1).join(" "), runMaterial);
+        continue;
+      }
+      if (type === "usemtl" && parts.length >= 2) {
+        const material = parts.slice(1).join(" ");
+        if (runName === null || material !== runMaterial) startRun(runName ?? "default", material);
+        continue;
+      }
+      if (type === "mtllib") continue;
+      if (type === "v" && parts.length >= 4) {
+        rawPositions.push(new Vec3(
+          parseFloat(parts[1]),
+          parseFloat(parts[2]),
+          parseFloat(parts[3])
+        ));
+      } else if (type === "vt" && parts.length >= 3) {
+        rawUVs.push(new Vec2(
+          parseFloat(parts[1]),
+          parseFloat(parts[2])
+        ));
+      } else if (type === "vn" && parts.length >= 4) {
+        rawNormals.push(new Vec3(
+          parseFloat(parts[1]),
+          parseFloat(parts[2]),
+          parseFloat(parts[3])
+        ));
+      } else if (type === "f" && parts.length >= 4) {
+        const faceIndices = [];
+        for (let i = 1; i < parts.length; i++) {
+          const block = parts[i];
+          const key = block;
+          let finalIndex = indexCache.get(key);
+          if (finalIndex === void 0) {
+            const { p, t, n } = parseObjIndex(block, rawPositions.length, rawUVs.length, rawNormals.length);
+            result.positions.push(rawPositions[p]);
+            if (t >= 0) result.uvs.push(rawUVs[t]);
+            else if (result.uvs.length > 0) result.uvs.push(Vec2.zero());
+            if (n >= 0) result.normals.push(rawNormals[n]);
+            else if (result.normals.length > 0) result.normals.push(new Vec3(0, 1, 0));
+            finalIndex = result.positions.length - 1;
+            indexCache.set(key, finalIndex);
+          }
+          faceIndices.push(finalIndex);
+        }
+        result.faces.push(faceIndices);
+      }
+    }
+    flushRun();
+    if (result.groups.length === 0) result.groups = void 0;
+    return result;
+  },
+  /**
+   * Serializes MeshData to an OBJ format string. `mtllib` names the .mtl file the materials
+   * are in (see `serializeMtl`). Faces in no group come first, then each group as a
+   * `g <name>` line, `usemtl <material>` when it has one, and its faces, in the order of
+   * `groups` — so `parse` gives the same groups back. Whitespace in group and material names
+   * becomes `_` (OBJ names are single tokens). OBJ cannot turn a material off: a group without
+   * one, written after a group with one, reads back with that material.
+   */
+  serialize(data, options = {}) {
+    const lines = [];
+    lines.push("# Exported by Tekto");
+    lines.push(`# Vertices: ${data.positions.length}`);
+    lines.push(`# Faces: ${data.faces.length}`);
+    if (options.mtllib) lines.push(`mtllib ${options.mtllib}`);
+    for (const v of data.positions)
+      lines.push(`v ${f(v.x)} ${f(v.y)} ${f(v.z)}`);
+    for (const vt of data.uvs)
+      lines.push(`vt ${f(vt.x)} ${f(vt.y)}`);
+    for (const vn of data.normals)
+      lines.push(`vn ${f(vn.x)} ${f(vn.y)} ${f(vn.z)}`);
+    const hasUV = data.uvs.length > 0;
+    const hasNorm = data.normals.length > 0;
+    const faceLine = (face) => {
+      let line = "f";
+      for (const idx of face) {
+        const val = idx + 1;
+        if (hasUV && hasNorm) line += ` ${val}/${val}/${val}`;
+        else if (hasUV) line += ` ${val}/${val}`;
+        else if (hasNorm) line += ` ${val}//${val}`;
+        else line += ` ${val}`;
+      }
+      return line;
+    };
+    const groups = data.groups ?? [];
+    const grouped = new Uint8Array(data.faces.length);
+    for (const g of groups) {
+      const end = g.faceStart + g.faceCount;
+      if (!(Number.isInteger(g.faceStart) && Number.isInteger(g.faceCount) && g.faceStart >= 0 && g.faceCount >= 0 && end <= data.faces.length)) {
+        throw new Error(`ObjFile.serialize: group "${g.name}" covers faces ${g.faceStart}..${end - 1}, but there are ${data.faces.length} faces`);
+      }
+      for (let i = g.faceStart; i < end; i++) {
+        if (grouped[i]) throw new Error(`ObjFile.serialize: face ${i} is in group "${g.name}" and in an earlier one`);
+        grouped[i] = 1;
+      }
+    }
+    for (let i = 0; i < data.faces.length; i++) if (!grouped[i]) lines.push(faceLine(data.faces[i]));
+    for (const g of groups) {
+      if (g.faceCount === 0) continue;
+      lines.push(`g ${objName(g.name)}`);
+      if (g.material !== void 0) lines.push(`usemtl ${objName(g.material)}`);
+      for (let i = g.faceStart; i < g.faceStart + g.faceCount; i++) lines.push(faceLine(data.faces[i]));
+    }
+    return lines.join("\n") + "\n";
+  },
+  /**
+   * The .mtl file for an OBJ's materials: per material `newmtl`, a small ambient `Ka` (a tenth
+   * of the colour), the colour as `Kd` and the opacity as `d`. Names get the same `_` for
+   * whitespace as in `serialize`. Throws on a colour that is neither CSS hex nor [r, g, b] in
+   * 0..1, or an opacity outside 0..1.
+   *
+   *   ObjFile.serializeMtl([{ name: "glass", color: "#9cc8e8", opacity: 0.45 }]);
+   */
+  serializeMtl(materials) {
+    const AMBIENT = 0.1;
+    const lines = ["# Exported by Tekto", `# Materials: ${materials.length}`];
+    for (const m of materials) {
+      const rgb = typeof m.color === "string" ? parseHex(m.color) : m.color;
+      if (!rgb || rgb.length !== 3 || !rgb.every((c) => Number.isFinite(c) && c >= 0 && c <= 1)) {
+        throw new Error(`ObjFile.serializeMtl: material "${m.name}" has the colour ${JSON.stringify(m.color)}; give CSS hex ("#rrggbb") or [r, g, b] in 0..1`);
+      }
+      const opacity = m.opacity ?? 1;
+      if (!(opacity >= 0 && opacity <= 1)) throw new Error(`ObjFile.serializeMtl: material "${m.name}" has the opacity ${m.opacity}; give 0..1`);
+      lines.push(
+        "",
+        `newmtl ${objName(m.name)}`,
+        `Ka ${rgb.map((c) => f(c * AMBIENT)).join(" ")}`,
+        `Kd ${rgb.map(f).join(" ")}`,
+        `d ${f(opacity)}`
+      );
+    }
+    return lines.join("\n") + "\n";
+  }
+};
+function colorMaterial(color, opacity = 1) {
+  const NOT_HEX = "#808080";
+  const rgb = parseHex(color);
+  const hex = rgb ? rgb.map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("") : objName(color);
+  const alpha = opacity < 1 ? `_a${Math.round(opacity * 100)}` : "";
+  return { name: `c_${hex}${alpha}`, color: rgb ? color : NOT_HEX, opacity };
+}
+function f(v) {
+  return v.toFixed(6).replace(/\.?0+$/, "");
+}
+function objName(name) {
+  return name.trim().replace(/\s+/g, "_") || "default";
+}
+function parseObjIndex(block, pCount, tCount, nCount) {
+  const bits = block.split("/");
+  let p = parseInt(bits[0], 10);
+  let t = -1;
+  let n = -1;
+  if (bits.length > 1 && bits[1] !== "") t = parseInt(bits[1], 10);
+  if (bits.length > 2 && bits[2] !== "") n = parseInt(bits[2], 10);
+  if (p < 0) p = pCount + p;
+  else p--;
+  if (t < 0) t = tCount + t;
+  else if (t > 0) t--;
+  if (n < 0) n = nCount + n;
+  else if (n > 0) n--;
+  return { p, t, n };
 }
 
 // src/scene/Scene.ts
@@ -1736,14 +2293,34 @@ var Scene = class _Scene {
     return this.all().filter((o) => o.type === type);
   }
   // ── Export ──
-  /** Merges all visible mesh geometry into a single MeshData for OBJ export. */
-  toMeshData() {
+  /**
+   * The visible mesh geometry (meshes, flat meshes, segments with a `tubeRadius`; not
+   * `noExport`) merged into one `ObjMeshData` for `ObjFile.serialize`. Without options the
+   * faces come in object order, ungrouped.
+   *
+   * `groupBy` keeps the objects apart in the OBJ as `g` groups, for Rhino or Cinema 4D:
+   * - `"object"`: one group per object, named by its `key` (the record it shows; objects of
+   *   one record share the name) or else its id (`"mesh_3"`);
+   * - `"layer"`: one group per `style.layer` (`"default"` without one), each layer's faces one
+   *   contiguous block, layers in the order they first appear.
+   *
+   * Each group's `material` is named by its colour, `c_rrggbb` (`_a45` appended below full
+   * opacity), and `materials` lists them for `ObjFile.serializeMtl`. A layer whose objects
+   * differ in colour is split into consecutive runs of the same name, one per material — what
+   * `usemtl` does within an OBJ group.
+   *
+   *   const data = scene.toMeshData({ groupBy: "layer" });
+   *   download(ObjFile.serializeMtl(data.materials!), "model.mtl");
+   *   download(ObjFile.serialize(data, { mtllib: "model.mtl" }), "model.obj");
+   */
+  toMeshData(options = {}) {
     const positions = [];
     const normals = [];
-    const faces = [];
+    const parts = [];
     for (const obj of this.objects.values()) {
       if (!obj.style.visible) continue;
       if (obj.style.noExport) continue;
+      const faces2 = [];
       if (obj.mesh) {
         const nodeMap = /* @__PURE__ */ new Map();
         const offset = positions.length;
@@ -1753,7 +2330,7 @@ var Scene = class _Scene {
           normals.push(node.normal ?? Vec3.unitY());
         }
         for (const face of obj.mesh.facesArray()) {
-          faces.push(face.nodes.map((n) => nodeMap.get(n)));
+          faces2.push(face.nodes.map((n) => nodeMap.get(n)));
         }
       } else if (obj.flatMeshData) {
         const fd = obj.flatMeshData;
@@ -1764,13 +2341,40 @@ var Scene = class _Scene {
           normals.push(new Vec3(fd.normals[i * 3], fd.normals[i * 3 + 1], fd.normals[i * 3 + 2]));
         }
         for (let i = 0; i < fd.indices.length; i += 3) {
-          faces.push([fd.indices[i] + offset, fd.indices[i + 1] + offset, fd.indices[i + 2] + offset]);
+          faces2.push([fd.indices[i] + offset, fd.indices[i + 1] + offset, fd.indices[i + 2] + offset]);
         }
       } else if (obj.type === "segment" && obj.start && obj.end && obj.style.tubeRadius) {
-        _Scene._addTubeMesh(positions, normals, faces, obj.start, obj.end, obj.style.tubeRadius, 6);
+        _Scene._addTubeMesh(positions, normals, faces2, obj.start, obj.end, obj.style.tubeRadius, 6);
       }
+      if (faces2.length > 0) parts.push({ obj, faces: faces2 });
     }
-    return { positions, normals, uvs: [], faces };
+    const { groupBy } = options;
+    if (!groupBy) return { positions, normals, uvs: [], faces: parts.flatMap((p) => p.faces) };
+    let runs = parts.map(({ obj, faces: faces2 }) => ({
+      name: groupBy === "layer" ? obj.style.layer || "default" : obj.key ?? obj.id,
+      material: colorMaterial(obj.style.color, obj.style.opacity),
+      faces: faces2
+    }));
+    if (groupBy === "layer") {
+      const layers = /* @__PURE__ */ new Map();
+      for (const run of runs) {
+        const layer = layers.get(run.name) ?? /* @__PURE__ */ new Map();
+        layers.set(run.name, layer);
+        const same = layer.get(run.material.name);
+        if (same) for (const face of run.faces) same.faces.push(face);
+        else layer.set(run.material.name, { ...run, faces: [...run.faces] });
+      }
+      runs = [...layers.values()].flatMap((layer) => [...layer.values()]);
+    }
+    const faces = [];
+    const groups = [];
+    const materials = /* @__PURE__ */ new Map();
+    for (const run of runs) {
+      groups.push({ name: run.name, faceStart: faces.length, faceCount: run.faces.length, material: run.material.name });
+      for (const face of run.faces) faces.push(face);
+      if (!materials.has(run.material.name)) materials.set(run.material.name, run.material);
+    }
+    return { positions, normals, uvs: [], faces, groups, materials: [...materials.values()] };
   }
   /** Generate a cylinder tube mesh between two points. */
   static _addTubeMesh(positions, normals, faces, a, b, radius, segs) {
@@ -1846,5 +2450,7 @@ export {
   Triangle,
   Mesh,
   SunPosition,
+  writePdf2D,
+  ObjFile,
   Scene
 };

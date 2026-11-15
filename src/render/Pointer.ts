@@ -20,6 +20,7 @@ export interface PickInfo { shiftKey: boolean; metaKey: boolean; ctrlKey: boolea
 export class Pointer {
   private raycaster = new THREE.Raycaster();
   private pickEnabled = false;
+  private pickFilter: ((id: string) => boolean) | null = null;
   private pickListeners = new Set<(id: string | null, info: PickInfo) => void>();
   private transformControls: TransformControls | null = null;
   private gizmoMode: GizmoMode = "translate";
@@ -42,6 +43,9 @@ export class Pointer {
   private hoverListeners = new Set<(id: string | null) => void>();
   private hovered: string | null = null;
   private hoverAt = 0;
+
+  /** The hand is on (CameraRig.setHandMode): the left button drags the view, over drag handles too. */
+  handMode = false;
 
   constructor(private core: RendererCore, private builder: ObjectBuilder, private marks: Marks) {}
 
@@ -67,7 +71,7 @@ export class Pointer {
 
   private onPointerDown = (e: PointerEvent) => {
     // Drag handle pick? — start dragging it, don't fire normal pick.
-    const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
+    const handleName = this.handMode ? null : this.dragHandleHitTest(e.clientX, e.clientY);
     if (handleName) {
       e.preventDefault();
       this.activeDragHandle = handleName;
@@ -300,9 +304,15 @@ export class Pointer {
       if (this.marks.cutAway(h.point) || !shown(h.object)) continue;
       let cur: THREE.Object3D | null = h.object;
       while (cur && !cur.userData.geomId) cur = cur.parent;
-      if (cur?.userData.geomId) return cur.userData.geomId as string;
+      const id = cur?.userData.geomId as string | undefined;
+      // A filtered-out object (e.g. on a locked layer) lets the pick through to what is behind it.
+      if (id && (!this.pickFilter || this.pickFilter(id))) return id;
     }
     return null;
+  }
+
+  setPickFilter(filter: ((id: string) => boolean) | null): void {
+    this.pickFilter = filter;
   }
 
   hitAt(clientX: number, clientY: number): { id: string; point: Vec3 } | null {

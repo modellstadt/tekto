@@ -73,6 +73,7 @@ const GROUPS: PageGroup[] = [
     { slug: "lines-points", label: "Lines & Points", load: () => import("./pages/lines-points") },
     { slug: "shape-modes",  label: "Shape Modes",    load: () => import("./pages/shape-modes") },
     { slug: "colors",       label: "Colors",         load: () => import("./pages/colors") },
+    { slug: "layers",       label: "Layers",         load: () => import("./pages/layers") },
   ]},
   { name: "Geometry", pages: [
     { slug: "mesh-factory",   label: "MeshFactory",     load: () => import("./pages/mesh-factory") },
@@ -87,10 +88,13 @@ const GROUPS: PageGroup[] = [
     { slug: "sdf",          label: "SDF + Marching", load: () => import("./pages/sdf") },
     { slug: "graph",        label: "Graph",          load: () => import("./pages/graph") },
     { slug: "planar-graph", label: "Planar Graph",   load: () => import("./pages/planar-graph") },
+    { slug: "voronoi",      label: "Voronoi",        load: () => import("./pages/voronoi") },
+    { slug: "steps", label: "Steps (a program as a graph)", load: () => import("./pages/steps") },
     { slug: "voxel-2d",     label: "Voxel Grid 2D",  load: () => import("./pages/voxel-2d") },
   ]},
   { name: "Motion & Camera", pages: [
     { slug: "particles", label: "Particles 2D", load: () => import("./pages/particles") },
+    { slug: "circle-packing", label: "Circle Packing", load: () => import("./pages/circle-packing") },
     { slug: "camera",    label: "Camera",       load: () => import("./pages/camera") },
     { slug: "gizmo",     label: "Pick & Gizmo", load: () => import("./pages/gizmo") },
     { slug: "shared-editing", label: "Shared Editing", load: () => import("./pages/shared-editing") },

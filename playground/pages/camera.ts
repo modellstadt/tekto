@@ -1,5 +1,7 @@
 /**
- * Camera — Reference cubes showing axis orientation.
+ * Camera — Reference cubes showing axis orientation, in the viewer header layout
+ * (`shadingBar: "header"`): the page's own view buttons in the header's left slot, the
+ * shading icons and ✎ Markup on its right, the axis widget and the zoom column top right.
  * Port of HDGEO CameraTestPage (Y-up adaptation).
  */
 import { sketch, SketchInstance } from "../../src";
@@ -34,10 +36,24 @@ export default function (container: HTMLElement): SketchInstance {
     lab.log("Green", "+Y (0, 4, 0)");
     lab.log("Blue", "+Z (0, 0, 4)");
     lab.info("Y-up orientation (Three.js)");
+
+    // The app's own controls go in the header's left slot — added once, they persist across re-runs.
+    const left = lab.viewerHeader?.left;
+    if (left && !left.childElementCount) {
+      for (const [label, view] of [["Top", "top"], ["Front", "front"], ["Iso", "iso"]] as const) {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.style.cssText = "font:11px system-ui,sans-serif;padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#cfd3e0;cursor:pointer;";
+        b.onclick = () => lab.setView(view);
+        left.appendChild(b);
+      }
+    }
   }, {
     container,
     title: "Camera",
     background: 0x0a0b14,
+    shadingBar: "header",
+    navGizmo: true,
     camera: [6, 6, 8],
     target: [0, 1, 0],
   });

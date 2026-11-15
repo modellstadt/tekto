@@ -546,31 +546,76 @@ declare class Mesh {
  * Mirrors HDGEO.Core.IO.ObjFile.
  */
 
-/** A polygon mesh as OBJ holds it (exported as `ObjMeshData`; not `Mesh`'s typed-array `MeshData`): parallel per-vertex positions, uvs and normals (the last two may be empty), 0-based `faces` into them, and optional `g` group ranges. */
+/** A polygon mesh as OBJ holds it (exported as `ObjMeshData`; not `Mesh`'s typed-array `MeshData`): parallel per-vertex positions, uvs and normals (the last two may be empty), 0-based `faces` into them, and optional `g` group ranges with their `usemtl` materials. */
 interface MeshData {
     positions: Vec3[];
     normals: Vec3[];
     uvs: Vec2[];
     faces: number[][];
     /**
-     * Optional OBJ group ranges. Populated by `ObjFile.parse` whenever the
-     * file contains `g <name>` directives. Each entry is a contiguous run
-     * of face indices that share the named group — used by consumers
-     * (e.g. the stair app's FEM/streamline pipeline) to keep sub-meshes
-     * separable after the file is loaded.
+     * Optional OBJ group runs: each a contiguous range of faces under one `g` name and, when
+     * set, one `usemtl` material. `ObjFile.parse` fills it whenever the file has `g` or
+     * `usemtl` lines (a material change starts a new run under the same name), and
+     * `ObjFile.serialize` writes it back — used by consumers (e.g. the stair app's
+     * FEM/streamline pipeline, a CAD import) to keep sub-meshes separable after the file is
+     * loaded. Several runs may share a name.
      */
     groups?: {
         name: string;
         faceStart: number;
         faceCount: number;
+        material?: string;
     }[];
+    /**
+     * The materials the groups name, with their colours, for `ObjFile.serializeMtl`.
+     * `Scene.toMeshData({ groupBy })` fills it; `parse` leaves it unset (it reads no .mtl
+     * file) and `serialize` doesn't write it.
+     */
+    materials?: ObjMaterial[];
 }
-/** Wavefront OBJ text to and from `ObjMeshData`: `parse` reads v/vt/vn/f lines and `g` groups, `serialize` writes them back; coordinates pass through unchanged (no axis swap, no unit scaling). */
+/** A material of an OBJ's .mtl file, for `ObjFile.serializeMtl`: its name (as a group's `material` gives it), its colour as CSS hex (`"#9cc8e8"`) or [r, g, b] in 0..1, and its opacity, 1 by default. */
+interface ObjMaterial {
+    name: string;
+    color: string | [number, number, number];
+    opacity?: number;
+}
+/**
+ * Wavefront OBJ text to and from `ObjMeshData` with its `g` groups and `usemtl` materials, plus
+ * the .mtl (`serializeMtl`); coordinates pass through unchanged (no axis swap or unit scaling).
+ *
+ *   const data = scene.toMeshData({ groupBy: "layer" });
+ *   download(ObjFile.serializeMtl(data.materials!), "model.mtl");
+ *   download(ObjFile.serialize(data, { mtllib: "model.mtl" }), "model.obj");
+ */
 declare const ObjFile: {
-    /** Parses an OBJ string into MeshData. Handles v/vt/vn/f lines. */
+    /**
+     * Parses an OBJ string into MeshData: v/vt/vn/f lines, `g` groups and `usemtl` materials
+     * (`mtllib` is skipped — the .mtl is a separate file). A `g` or a `usemtl` that changes the
+     * material starts a new group run; as in OBJ, a material carries over into the next `g`,
+     * and a `usemtl` before any `g` runs under `"default"`. `groups` stays unset when the file
+     * has neither.
+     */
     parse(source: string): MeshData;
-    /** Serializes MeshData to an OBJ format string. */
-    serialize(data: MeshData): string;
+    /**
+     * Serializes MeshData to an OBJ format string. `mtllib` names the .mtl file the materials
+     * are in (see `serializeMtl`). Faces in no group come first, then each group as a
+     * `g <name>` line, `usemtl <material>` when it has one, and its faces, in the order of
+     * `groups` — so `parse` gives the same groups back. Whitespace in group and material names
+     * becomes `_` (OBJ names are single tokens). OBJ cannot turn a material off: a group without
+     * one, written after a group with one, reads back with that material.
+     */
+    serialize(data: MeshData, options?: {
+        mtllib?: string;
+    }): string;
+    /**
+     * The .mtl file for an OBJ's materials: per material `newmtl`, a small ambient `Ka` (a tenth
+     * of the colour), the colour as `Kd` and the opacity as `d`. Names get the same `_` for
+     * whitespace as in `serialize`. Throws on a colour that is neither CSS hex nor [r, g, b] in
+     * 0..1, or an opacity outside 0..1.
+     *
+     *   ObjFile.serializeMtl([{ name: "glass", color: "#9cc8e8", opacity: 0.45 }]);
+     */
+    serializeMtl(materials: ObjMaterial[]): string;
 };
 
 /**
@@ -871,8 +916,29 @@ declare class Scene {
     setHover(id: string | null): void;
     getHover(): string | null;
     byType(type: SceneObjectType): SceneObject[];
-    /** Merges all visible mesh geometry into a single MeshData for OBJ export. */
-    toMeshData(): MeshData;
+    /**
+     * The visible mesh geometry (meshes, flat meshes, segments with a `tubeRadius`; not
+     * `noExport`) merged into one `ObjMeshData` for `ObjFile.serialize`. Without options the
+     * faces come in object order, ungrouped.
+     *
+     * `groupBy` keeps the objects apart in the OBJ as `g` groups, for Rhino or Cinema 4D:
+     * - `"object"`: one group per object, named by its `key` (the record it shows; objects of
+     *   one record share the name) or else its id (`"mesh_3"`);
+     * - `"layer"`: one group per `style.layer` (`"default"` without one), each layer's faces one
+     *   contiguous block, layers in the order they first appear.
+     *
+     * Each group's `material` is named by its colour, `c_rrggbb` (`_a45` appended below full
+     * opacity), and `materials` lists them for `ObjFile.serializeMtl`. A layer whose objects
+     * differ in colour is split into consecutive runs of the same name, one per material — what
+     * `usemtl` does within an OBJ group.
+     *
+     *   const data = scene.toMeshData({ groupBy: "layer" });
+     *   download(ObjFile.serializeMtl(data.materials!), "model.mtl");
+     *   download(ObjFile.serialize(data, { mtllib: "model.mtl" }), "model.obj");
+     */
+    toMeshData(options?: {
+        groupBy?: "object" | "layer";
+    }): MeshData;
     /** Generate a cylinder tube mesh between two points. */
     private static _addTubeMesh;
     toJSON(): SceneJSON;
@@ -883,4 +949,4 @@ interface SceneJSON {
     objects: any[];
 }
 
-export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type Projection as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, type SectionRequest as b, type MeshData$1 as c, type LegacyMeshJSON as d, type LightSpec as e, Mat4 as f, type MeshEdge as g, type MeshFace as h, type MeshJSON as i, type MeshNode as j, type MeshValidation as k, type MeshData as l, type SceneEvent as m, type SceneEventListener as n, type SceneJSON as o, type SceneObjectType as p, type StandardView as q, Vec2 as r, Vec4 as s, type VisualStyle as t };
+export { AABB as A, type FlatMeshData as F, type LightingMode as L, Mesh as M, ObjFile as O, type Projection as P, type RenderMode as R, Scene as S, Triangle as T, Vec3 as V, type SceneObject as a, type SectionRequest as b, type StandardView as c, type MeshData$1 as d, type LegacyMeshJSON as e, type LightSpec as f, Mat4 as g, type MeshEdge as h, type MeshFace as i, type MeshJSON as j, type MeshNode as k, type MeshValidation as l, type ObjMaterial as m, type MeshData as n, type SceneEvent as o, type SceneEventListener as p, type SceneJSON as q, type SceneObjectType as r, Vec2 as s, Vec4 as t, type VisualStyle as u };

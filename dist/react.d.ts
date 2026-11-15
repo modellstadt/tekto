@@ -1,10 +1,11 @@
-import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Doc-CaIknIs8.js';
+import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues } from './Doc-hpBJxom8.js';
 import * as React from 'react';
 import React__default, { ReactNode, CSSProperties, SVGProps } from 'react';
-import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-BHniJuab.js';
-import { T as ThreeRenderer, a as TopBarOptions, b as Theme, M as MarkupRenderer, N as NotesLayer } from './Markup-MQFyllX1.js';
+import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-BsOKEQXC.js';
+import { T as ThreeRenderer, a as TopBarOptions, b as Theme, M as MarkupRenderer, N as NotesLayer } from './Markup-DEJlyiKP.js';
 import 'three';
 import 'three/examples/jsm/controls/OrbitControls.js';
+import './ShadingBar-r-eRrCKI.js';
 
 /**
  * The `Scene` of the enclosing `<TektoApp>`; throws outside one.

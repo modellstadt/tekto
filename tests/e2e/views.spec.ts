@@ -55,6 +55,16 @@ test("the axis widget turns the view; its projection toggle and the Cam control 
   expect(errors).toEqual([]);
 });
 
+test("the axis widget hides in a strict-2D view and comes back with rotation", async ({ page }) => {
+  await openShell(page);
+  const widget = page.locator("svg").filter({ has: page.locator("text", { hasText: /^X$/ }) });
+  await expect(widget).toBeVisible();
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setOrbitRotateEnabled(false));
+  await expect(widget).toBeHidden();
+  await page.evaluate(() => (window as any).__tekto.owner.renderer.setOrbitRotateEnabled(true));
+  await expect(widget).toBeVisible();
+});
+
 test("a sketch() has no axis widget unless it asks for one", async ({ page }) => {
   await page.goto("/testbench.html?page=mesh-factory");
   await page.waitForFunction(() => (window as any).__tekto?.harness === "sketch", null, { timeout: 15_000 });

@@ -5,16 +5,16 @@ import {
   createRandom,
   noise,
   pickPrim
-} from "./chunk-BESWYJWB.mjs";
+} from "./chunk-TR2ZDYFK.mjs";
 import {
   getTheme,
   installAgentBridge,
   plainBundle
-} from "./chunk-FPI463DX.mjs";
+} from "./chunk-OZQQS4QH.mjs";
 import {
   MathUtils,
   Vec2
-} from "./chunk-QLUI3675.mjs";
+} from "./chunk-56LGGW6L.mjs";
 
 // src/gui/ControlPanel.ts
 var DEFAULT_GROUP = "Parameters";
@@ -95,13 +95,6 @@ var ControlPanel = class {
     }
     if (hasTabs) this.el.appendChild(this.buildTabBar(tabOrder));
     const activeExtra = hasTabs ? this.extraTabs.find((et) => et.name === this.activeTab) : void 0;
-    if (activeExtra) {
-      const host = document.createElement("div");
-      activeExtra.render(host);
-      this.el.appendChild(host);
-      this.el.appendChild(this.footer);
-      return;
-    }
     const inTab = (tab, menu) => !menu && (hasTabs ? !!tab && tab === this.activeTab : true);
     const groups = /* @__PURE__ */ new Map();
     const groupOf = (name) => {
@@ -114,6 +107,11 @@ var ControlPanel = class {
     for (const r of customRows) if (inTab(r.tab)) groupOf(r.group).rows.push(r);
     for (const [name, content] of groups) {
       this.el.appendChild(this.buildSection(name, content));
+    }
+    if (activeExtra) {
+      const host = document.createElement("div");
+      activeExtra.render(host);
+      this.el.appendChild(host);
     }
     this.el.appendChild(this.footer);
   }

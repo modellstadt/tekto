@@ -15,6 +15,7 @@ export const NO_TURN = new THREE.Quaternion();
 
 export class CameraRig {
   private _isOrtho = false;
+  private _rotateEnabled = true;
   // Camera position at the previous renderIfNeeded(), to follow orbit damping
   // below OrbitControls' change threshold (see settleDamping).
   private _lastCamPos = new THREE.Vector3(NaN, NaN, NaN);
@@ -28,18 +29,22 @@ export class CameraRig {
   // Standing inside (walkTo): the lens the camera had outside, given back on the way out.
   private outsideFov: number | null = null;
   private projectionListeners = new Set<(projection: "perspective" | "orthographic") => void>();
+  // The hand (setHandMode): what the left button and one finger did before it took them.
+  private handPrev: { left: THREE.MOUSE | null; one: THREE.TOUCH | null } | null = null;
 
   constructor(
     private core: RendererCore,
     readonly camera: THREE.PerspectiveCamera,
     private _orthoCam: THREE.OrthographicCamera,
     gizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right",
+    gizmoTop = 0,   // a header strip's height: the widget goes top-right, under it
   ) {
     // The reader outranks an animation: a view turn that fights an orbit is worse than none.
     core.controls?.addEventListener("start", () => { this.cameraMove = null; });
     if (gizmo) {
       this.navGizmo = new NavGizmo(core.container, {
-        corner: typeof gizmo === "string" ? gizmo : "bottom-right",
+        corner: typeof gizmo === "string" ? gizmo : gizmoTop ? "top-right" : "bottom-right",
+        offsetTop: gizmoTop,
         onAxis: (direction) => this.orbitTo(direction),
         onDrag: (dx, dy) => this.orbitBy(dx, dy),
         onSnap: () => this.orbitTo(nearestAxis(this._viewOffset())),
@@ -64,7 +69,64 @@ export class CameraRig {
   }
 
   setOrbitRotateEnabled(enabled: boolean): void {
+    this._rotateEnabled = enabled;
     if (this.core.controls) (this.core.controls as { enableRotate?: boolean }).enableRotate = enabled;
+    this.navGizmo?.setVisible(enabled);   // a flat sheet has no axes to turn to
+    if (enabled) this.setHandMode(false);  // the hand is a flat sheet's tool
+  }
+
+  /** The hand, a strict-2D view's tool: on, the left button (and one finger) drags the view along
+   *  under a grab cursor. Off again when the view turns 3D. */
+  setHandMode(on: boolean): void {
+    const c = this.core.controls;
+    on = on && !this._rotateEnabled && !!c;
+    if (on === this.handMode) return;
+    const dom = this.core.renderer.domElement;
+    if (on) {
+      this.handPrev = { left: c!.mouseButtons.LEFT ?? null, one: c!.touches.ONE ?? null };
+      c!.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      c!.touches.ONE = THREE.TOUCH.PAN;
+      dom.style.cursor = "grab";
+      dom.addEventListener("pointerdown", this.onHandDown);
+      dom.addEventListener("pointerup", this.onHandUp);
+      dom.addEventListener("pointercancel", this.onHandUp);
+    } else {
+      c!.mouseButtons.LEFT = this.handPrev!.left;
+      c!.touches.ONE = this.handPrev!.one;
+      this.handPrev = null;
+      dom.style.cursor = "";
+      dom.removeEventListener("pointerdown", this.onHandDown);
+      dom.removeEventListener("pointerup", this.onHandUp);
+      dom.removeEventListener("pointercancel", this.onHandUp);
+    }
+  }
+
+  /** Whether the hand is on (see `setHandMode`). */
+  get handMode(): boolean { return this.handPrev !== null; }
+
+  private onHandDown = () => { this.core.renderer.domElement.style.cursor = "grabbing"; };
+  private onHandUp = () => { if (this.handMode) this.core.renderer.domElement.style.cursor = "grab"; };
+
+  /** The axis widget's element, or null without one. */
+  get navGizmoEl(): HTMLElement | null { return this.navGizmo?.el ?? null; }
+
+  /** False in a strict-2D view: pan and zoom only. */
+  get orbitRotateEnabled(): boolean { return this._rotateEnabled; }
+
+  /** Zoom in (`factor` > 1) or out (< 1) about the target: closer in perspective, a larger zoom in orthographic. */
+  zoomBy(factor: number, opts: { animate?: boolean } = {}): void {
+    if (!(factor > 0)) throw new Error(`zoomBy: factor must be > 0 (got ${factor})`);
+    const target = this.core.controls?.target.clone() ?? new THREE.Vector3();
+    const offset = this.activeCamera.position.clone().sub(target);
+    const dist = this._isOrtho ? offset.length() : offset.length() / factor;
+    const zoom = this._isOrtho ? this._orthoCam.zoom * factor : this._orthoCam.zoom;
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      if (this._isOrtho) { this._orthoCam.zoom = zoom; this._orthoCam.updateProjectionMatrix(); }
+      this._placeCamera(target, offset.setLength(dist));
+      return;
+    }
+    this._moveCamera(offset.normalize(), target, dist, zoom);
   }
 
   cameraState(): { projection: "perspective" | "orthographic"; position: number[]; target: number[]; up: number[]; fov: number } {
@@ -241,6 +303,11 @@ export class CameraRig {
   fitTo(objects: readonly string[], opts: { margin?: number; animate?: boolean } = {}): void {
     const box = new THREE.Box3();
     for (const t of this.core.resolve(objects)) box.expandByObject(t);
+    this.fitBox(box, opts);
+  }
+
+  /** Frame a world-space box, as `fitTo` frames objects. */
+  fitBox(box: THREE.Box3, opts: { margin?: number; animate?: boolean } = {}): void {
     if (box.isEmpty()) return;
     const out = this._leaveInside();
     if (out) this._setFov(out.fov);                // framed with the outside lens

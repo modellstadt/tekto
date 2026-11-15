@@ -62,6 +62,8 @@ export interface CustomRow {
 }
 
 /** A tab whose content the owner renders itself (e.g. sketch's Info tab). */
+/** A tab whose content its owner renders (the sketch's Info: the log). Controls declared with the
+ *  same `tab` show above that content. */
 export interface ExtraTab {
   name: string;
   render: (container: HTMLElement) => void;
@@ -195,15 +197,9 @@ export class ControlPanel {
     }
     if (hasTabs) this.el.appendChild(this.buildTabBar(tabOrder));
 
-    // Extra tab active → owner renders the content, skip sections
+    // An extra tab (the sketch's Info) renders its own content, below the controls declared in
+    // that tab if there are any — so a sketch can put settings beside its log.
     const activeExtra = hasTabs ? this.extraTabs.find(et => et.name === this.activeTab) : undefined;
-    if (activeExtra) {
-      const host = document.createElement("div");
-      activeExtra.render(host);
-      this.el.appendChild(host);
-      this.el.appendChild(this.footer);
-      return;
-    }
 
     // ── Sections (accordion groups), filtered to the active tab. With tabs present, tab-less controls
     //    are in the pinned strip above — exclude them here. ──
@@ -222,6 +218,11 @@ export class ControlPanel {
 
     for (const [name, content] of groups) {
       this.el.appendChild(this.buildSection(name, content));
+    }
+    if (activeExtra) {
+      const host = document.createElement("div");
+      activeExtra.render(host);
+      this.el.appendChild(host);
     }
 
     this.el.appendChild(this.footer);

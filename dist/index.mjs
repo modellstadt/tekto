@@ -6,13 +6,16 @@ import {
   ensureSliderStyle,
   fitSheet,
   sketch2d
-} from "./chunk-7HKE2KJ6.mjs";
+} from "./chunk-RPHIMVGY.mjs";
 import {
   Algo,
   ArcCurve,
+  BUILDING_COLLECTIONS,
+  BUILDING_SCHEMA,
   BalloonFrame,
   BlobDetect,
   BspTree,
+  Building,
   Capsule2D,
   CltConstruction,
   CubicBezierCurve,
@@ -20,7 +23,6 @@ import {
   CurveUtils,
   Delaunay2D,
   DistanceTransform,
-  Doc,
   ExtrudedRibbon,
   FloodFill,
   Graph,
@@ -45,11 +47,11 @@ import {
   NoFitPolygon,
   NurbsCurve,
   NurbsSurface,
-  ObjFile,
   OpeningType,
   PGFace,
   PGHalfEdge,
   PGVertex,
+  Particles2D,
   PixelView,
   PlanarGraph,
   PlanarGraphCleanup,
@@ -62,6 +64,7 @@ import {
   RibbonOpening,
   RibbonSystem,
   RigidBody2D,
+  Roof,
   SdfBlend,
   SdfBoundedExtrude,
   SdfBox,
@@ -93,8 +96,6 @@ import {
   SdfUnion,
   SdfUtils,
   SdfVoronoi,
-  Selection,
-  SharedStore,
   Slab,
   SlabOpening,
   SlabType,
@@ -106,7 +107,9 @@ import {
   SpringSystem3D,
   Stair,
   StairType,
+  StepTrace,
   StreamlineTracer,
+  Voronoi2D,
   VoxelGrid,
   VoxelGrid2D,
   Wall,
@@ -114,16 +117,17 @@ import {
   WallOpening,
   WallSystem,
   WallType,
-  bindScene,
+  bindBuilding,
   boundingWalls,
   boxOf,
   buildCutList,
+  buildingSchema,
   chooseJoistDirection,
   clampedUniformKnots,
   cltLayers,
-  collabColor,
   contactBetween,
-  devServerAdapter,
+  defaultBuildingTypes,
+  describeValue,
   edgeOutwardVisibility,
   findAdjacent,
   holzrahmenbauLayers,
@@ -131,21 +135,18 @@ import {
   joistDirectionFromPCA,
   joistDirectionFromSupports,
   lineClipPolygon,
-  localAdapter,
-  memoryAdapter,
   neighboursOf,
+  openingFill,
   perpVisibility,
   perpVisibilityOfPolys,
   polygonFromVertices,
   realize,
+  realizeBuilding,
   realizeSlab,
   repelBodies,
   reverse,
-  selectOnClick,
-  shareSelection,
-  supabaseAdapter,
-  writePdf2D
-} from "./chunk-IX3YNGZP.mjs";
+  validateBuilding
+} from "./chunk-5HDWJPWQ.mjs";
 import {
   DASH_PATTERNS,
   OBB2D,
@@ -154,20 +155,14 @@ import {
   PolygonBool,
   Sheet,
   SheetView,
-  _resolveLayers,
-  _sanLayer,
-  _writeR12Prologue,
-  aciFromHex,
   createLayout,
   createParams,
   createRandom,
   noise,
   pickPrim,
   polygonIntersection,
-  setClipSnap,
-  writeDxf2D,
-  writeDxf3D
-} from "./chunk-BESWYJWB.mjs";
+  setClipSnap
+} from "./chunk-TR2ZDYFK.mjs";
 import {
   MarkupOverlay,
   VIEW_MODE_ICON_CORNERS,
@@ -176,9 +171,11 @@ import {
   viewModeIconShapes,
   viewModeIconSvg,
   viewerToolbar
-} from "./chunk-GWINOG4X.mjs";
+} from "./chunk-Y4TQNWTE.mjs";
 import {
   addOverlay,
+  agentDoc,
+  callSite,
   describeSceneObject,
   downloadSnapshot,
   getTheme,
@@ -186,29 +183,50 @@ import {
   plainBundle,
   sceneSummary,
   snapshotWithOverlays
-} from "./chunk-FPI463DX.mjs";
+} from "./chunk-OZQQS4QH.mjs";
 import {
   Mesh,
+  ObjFile,
   Plane,
   Scene,
   SunPosition,
-  Triangle
-} from "./chunk-Z6BOOQ26.mjs";
+  Triangle,
+  writePdf2D
+} from "./chunk-F764YID7.mjs";
 import {
   AABB,
+  Doc,
   HMath,
   Mat4,
   MathUtils,
   Segment,
+  Selection,
+  SharedStore,
   Vec2,
   Vec3,
   Vec4,
   VecMath,
+  _resolveLayers,
+  _sanLayer,
+  _writeR12Prologue,
+  aciFromHex,
+  applyPatch,
+  bindScene,
+  checkRecord,
   closestPointOnSegment,
+  collabColor,
+  devServerAdapter,
   download,
+  localAdapter,
+  memoryAdapter,
   segmentSegmentClosest,
-  stampName
-} from "./chunk-QLUI3675.mjs";
+  selectOnClick,
+  shareSelection,
+  stampName,
+  supabaseAdapter,
+  writeDxf2D,
+  writeDxf3D
+} from "./chunk-56LGGW6L.mjs";
 
 // src/io/IdBufferHiddenLine.ts
 import * as THREE from "three";
@@ -1897,6 +1915,28 @@ function surfaceAppearance(mode, base) {
   }
   return { colour: base, opacity: 1, depthWrite: true, polygonOffset: false };
 }
+function flatLights(style) {
+  if (style === "plain") {
+    const { sky, sun } = lightBalance("shaded", false);
+    return { ambient: 0, sky, skyColour: 16777215, groundColour: 8952234, sun };
+  }
+  return { ambient: 0.5, sky: 0.4, skyColour: 4482730, groundColour: 3351057, sun: 0.7 };
+}
+function studioLights(style) {
+  if (style === "plain") {
+    const { sky, sun } = lightBalance("shaded", true);
+    return { ambient: 0, sky, skyColour: 16777215, groundColour: 8952234, sun, toneMapped: false };
+  }
+  const sketch2 = flatLights("sketch");
+  return {
+    ambient: 0.35,
+    sky: 0.3,
+    skyColour: sketch2.skyColour,
+    groundColour: sketch2.groundColour,
+    sun: 2.8,
+    toneMapped: true
+  };
+}
 function lightBalance(mode, shadows) {
   const shadowed = shadows && mode !== "ghost";
   return {
@@ -1910,20 +1950,20 @@ function lightBalance(mode, shadows) {
 }
 var POLE = 1e-3;
 function standardOrbit(view) {
-  const H = Math.PI / 2;
+  const H2 = Math.PI / 2;
   switch (view) {
     case "top":
       return { phi: POLE, theta: 0 };
     case "bottom":
       return { phi: Math.PI - POLE, theta: 0 };
     case "front":
-      return { phi: H, theta: 0 };
+      return { phi: H2, theta: 0 };
     case "back":
-      return { phi: H, theta: Math.PI };
+      return { phi: H2, theta: Math.PI };
     case "right":
-      return { phi: H, theta: H };
+      return { phi: H2, theta: H2 };
     case "left":
-      return { phi: H, theta: -H };
+      return { phi: H2, theta: -H2 };
     default:
       return { phi: Math.PI / 3, theta: Math.PI / 4 };
   }
@@ -2058,6 +2098,23 @@ function occludes(material) {
   const m = Array.isArray(material) ? material[0] : material;
   return !!m && m.visible !== false && m.depthWrite !== false;
 }
+function rayTargets(objects) {
+  const out = [];
+  for (const top of objects) {
+    if (!top.visible) continue;
+    top.traverse((o) => {
+      const mesh = o;
+      if (!mesh.isMesh) return;
+      const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      if (m?.wireframe) return;
+      out.push(mesh);
+    });
+  }
+  return out;
+}
+function cameraKey(...matrices) {
+  return matrices.map((m) => Array.from(m, (e) => String(Math.round(e * 1e6))).join()).join("|");
+}
 function luminance(colour) {
   const c = new THREE3.Color(colour);
   return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
@@ -2112,13 +2169,13 @@ var ObjectBuilder = class {
   _stripeTexture(layerH) {
     let tex = this._stripeTexCache.get(layerH);
     if (tex) return tex;
-    const H = 64;
+    const H2 = 64;
     const cv = document.createElement("canvas");
     cv.width = 2;
-    cv.height = H;
+    cv.height = H2;
     const ctx = cv.getContext("2d");
-    for (let y = 0; y < H; y++) {
-      const t = y / H;
+    for (let y = 0; y < H2; y++) {
+      const t = y / H2;
       const crown = Math.sin(Math.PI * t);
       const v = Math.round(150 + 105 * Math.pow(crown, 0.7));
       ctx.fillStyle = `rgb(${v},${v},${v})`;
@@ -2307,6 +2364,8 @@ var ObjectBuilder = class {
     geo.setAttribute("position", new THREE4.BufferAttribute(data.positions, 3));
     geo.setAttribute("normal", new THREE4.BufferAttribute(data.normals, 3));
     geo.setIndex(new THREE4.BufferAttribute(data.indices, 1));
+    const hasColors = !!data.colors?.length;
+    if (hasColors) geo.setAttribute("color", new THREE4.BufferAttribute(data.colors, 4));
     const pipeUV = gmesh.__pipeUV;
     if (pipeUV && pipeUV.sides > 0) {
       const n = data.positions.length / 3;
@@ -2318,7 +2377,7 @@ var ObjectBuilder = class {
       }
       geo.setAttribute("uv", new THREE4.BufferAttribute(uv, 2));
     }
-    return this.buildMeshGroup(geo, s);
+    return this.buildMeshGroup(geo, s, hasColors);
   }
   /** Convert flat mesh data (with optional per-vertex colors) → Three.js group */
   convertFlatMesh(data, s) {
@@ -2695,8 +2754,6 @@ var Lighting = class {
   /** Back to the plain balance of the current mode. */
   _resetDaylight() {
     this.dirLight.color.setHex(16777215);
-    this.hemiLight.color.setHex(4482730);
-    this.hemiLight.groundColor.setHex(3351057);
     if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE5.Color(this.core.config.backgroundColor);
     this.applyMode(this.currentLighting);
   }
@@ -2709,26 +2766,30 @@ var Lighting = class {
     const studio = mode === "studio";
     this.core.renderer.shadowMap.enabled = studio;
     this.core.renderer.shadowMap.type = parseInt(THREE5.REVISION, 10) >= 180 ? THREE5.PCFShadowMap : THREE5.PCFSoftShadowMap;
-    this.core.renderer.toneMapping = studio ? THREE5.ACESFilmicToneMapping : THREE5.NoToneMapping;
+    const studioBalance = studioLights(this.core.config.studioLighting);
+    this.core.renderer.toneMapping = studio && studioBalance.toneMapped ? THREE5.ACESFilmicToneMapping : THREE5.NoToneMapping;
     this.core.renderer.toneMappingExposure = 1;
     this.core.renderer.outputColorSpace = THREE5.SRGBColorSpace;
     if (studio) {
-      this.ambientLight.intensity = 0.35;
-      this.hemiLight.intensity = 0.3;
-      this.dirLight.intensity = 2.8;
+      this.hemiLight.color.setHex(studioBalance.skyColour);
+      this.hemiLight.groundColor.setHex(studioBalance.groundColour);
+      this.ambientLight.intensity = studioBalance.ambient;
+      this.hemiLight.intensity = studioBalance.sky;
+      this.dirLight.intensity = studioBalance.sun;
       this.dirLight.castShadow = true;
       this.dirLight.shadow.mapSize.set(2048, 2048);
       this.dirLight.shadow.bias = -5e-4;
       this.sunDirty = true;
     } else {
-      this.ambientLight.intensity = 0.5;
-      this.hemiLight.intensity = 0.4;
-      this.dirLight.intensity = 0.7;
+      const flat = flatLights(this.core.config.flatLighting);
+      this.ambientLight.intensity = flat.ambient;
+      this.hemiLight.intensity = flat.sky;
+      this.hemiLight.color.setHex(flat.skyColour);
+      this.hemiLight.groundColor.setHex(flat.groundColour);
+      this.dirLight.intensity = flat.sun;
       this.dirLight.castShadow = false;
       if (this.daylightOn) {
         this.dirLight.color.setHex(16777215);
-        this.hemiLight.color.setHex(4482730);
-        this.hemiLight.groundColor.setHex(3351057);
         if (!(this.envBackground && this.envSourceTex)) this.core.threeScene.background = new THREE5.Color(this.core.config.backgroundColor);
       }
     }
@@ -2840,13 +2901,13 @@ var Lighting = class {
       pmremSrc.dispose();
       return envSrc;
     }
-    const W = 16, H = 256;
-    const data = new Uint8Array(W * H * 4);
+    const W2 = 16, H2 = 256;
+    const data = new Uint8Array(W2 * H2 * 4);
     const sky = [0.85, 0.88, 0.95];
     const horizon = [0.55, 0.55, 0.55];
     const ground = [0.12, 0.12, 0.13];
-    for (let y = 0; y < H; y++) {
-      const t = y / (H - 1);
+    for (let y = 0; y < H2; y++) {
+      const t = y / (H2 - 1);
       let r, g, b;
       if (t < 0.5) {
         const k = t / 0.5;
@@ -2859,15 +2920,15 @@ var Lighting = class {
         g = horizon[1] + (sky[1] - horizon[1]) * k;
         b = horizon[2] + (sky[2] - horizon[2]) * k;
       }
-      for (let x = 0; x < W; x++) {
-        const i = (y * W + x) * 4;
+      for (let x = 0; x < W2; x++) {
+        const i = (y * W2 + x) * 4;
         data[i] = Math.round(r * 255);
         data[i + 1] = Math.round(g * 255);
         data[i + 2] = Math.round(b * 255);
         data[i + 3] = 255;
       }
     }
-    const tex = new THREE5.DataTexture(data, W, H, THREE5.RGBAFormat);
+    const tex = new THREE5.DataTexture(data, W2, H2, THREE5.RGBAFormat);
     tex.mapping = THREE5.EquirectangularReflectionMapping;
     tex.colorSpace = THREE5.SRGBColorSpace;
     tex.needsUpdate = true;
@@ -2917,7 +2978,7 @@ var NavGizmo = class {
     const corner = opts.corner ?? "bottom-right";
     const inset = `${opts.inset ?? 12}px`;
     this.root.style.cssText = `position:absolute;width:${this.size}px;
-      ${corner.includes("top") ? "top" : "bottom"}:${inset};
+      ${corner.includes("top") ? `top:${(opts.inset ?? 12) + (opts.offsetTop ?? 0)}px` : `bottom:${inset}`};
       ${corner.includes("left") ? "left" : "right"}:${inset};
       cursor:grab;touch-action:none;user-select:none;z-index:5;
       display:flex;flex-direction:column;align-items:center;gap:2px`;
@@ -3087,6 +3148,10 @@ var NavGizmo = class {
   setVisible(on) {
     this.root.style.display = on ? "" : "none";
   }
+  /** The widget's element (axes and the projection toggle). */
+  get el() {
+    return this.root;
+  }
   dispose() {
     this.listeners.abort();
     this.root.remove();
@@ -3096,11 +3161,12 @@ var NavGizmo = class {
 // src/render/CameraRig.ts
 var NO_TURN = new THREE7.Quaternion();
 var CameraRig = class {
-  constructor(core, camera, _orthoCam, gizmo) {
+  constructor(core, camera, _orthoCam, gizmo, gizmoTop = 0) {
     this.core = core;
     this.camera = camera;
     this._orthoCam = _orthoCam;
     this._isOrtho = false;
+    this._rotateEnabled = true;
     // Camera position at the previous renderIfNeeded(), to follow orbit damping
     // below OrbitControls' change threshold (see settleDamping).
     this._lastCamPos = new THREE7.Vector3(NaN, NaN, NaN);
@@ -3110,12 +3176,21 @@ var CameraRig = class {
     // Standing inside (walkTo): the lens the camera had outside, given back on the way out.
     this.outsideFov = null;
     this.projectionListeners = /* @__PURE__ */ new Set();
+    // The hand (setHandMode): what the left button and one finger did before it took them.
+    this.handPrev = null;
+    this.onHandDown = () => {
+      this.core.renderer.domElement.style.cursor = "grabbing";
+    };
+    this.onHandUp = () => {
+      if (this.handMode) this.core.renderer.domElement.style.cursor = "grab";
+    };
     core.controls?.addEventListener("start", () => {
       this.cameraMove = null;
     });
     if (gizmo) {
       this.navGizmo = new NavGizmo(core.container, {
-        corner: typeof gizmo === "string" ? gizmo : "bottom-right",
+        corner: typeof gizmo === "string" ? gizmo : gizmoTop ? "top-right" : "bottom-right",
+        offsetTop: gizmoTop,
         onAxis: (direction) => this.orbitTo(direction),
         onDrag: (dx, dy) => this.orbitBy(dx, dy),
         onSnap: () => this.orbitTo(nearestAxis(this._viewOffset())),
@@ -3140,7 +3215,65 @@ var CameraRig = class {
     return { x, y, visible };
   }
   setOrbitRotateEnabled(enabled) {
+    this._rotateEnabled = enabled;
     if (this.core.controls) this.core.controls.enableRotate = enabled;
+    this.navGizmo?.setVisible(enabled);
+    if (enabled) this.setHandMode(false);
+  }
+  /** The hand, a strict-2D view's tool: on, the left button (and one finger) drags the view along
+   *  under a grab cursor. Off again when the view turns 3D. */
+  setHandMode(on) {
+    const c = this.core.controls;
+    on = on && !this._rotateEnabled && !!c;
+    if (on === this.handMode) return;
+    const dom = this.core.renderer.domElement;
+    if (on) {
+      this.handPrev = { left: c.mouseButtons.LEFT ?? null, one: c.touches.ONE ?? null };
+      c.mouseButtons.LEFT = THREE7.MOUSE.PAN;
+      c.touches.ONE = THREE7.TOUCH.PAN;
+      dom.style.cursor = "grab";
+      dom.addEventListener("pointerdown", this.onHandDown);
+      dom.addEventListener("pointerup", this.onHandUp);
+      dom.addEventListener("pointercancel", this.onHandUp);
+    } else {
+      c.mouseButtons.LEFT = this.handPrev.left;
+      c.touches.ONE = this.handPrev.one;
+      this.handPrev = null;
+      dom.style.cursor = "";
+      dom.removeEventListener("pointerdown", this.onHandDown);
+      dom.removeEventListener("pointerup", this.onHandUp);
+      dom.removeEventListener("pointercancel", this.onHandUp);
+    }
+  }
+  /** Whether the hand is on (see `setHandMode`). */
+  get handMode() {
+    return this.handPrev !== null;
+  }
+  /** The axis widget's element, or null without one. */
+  get navGizmoEl() {
+    return this.navGizmo?.el ?? null;
+  }
+  /** False in a strict-2D view: pan and zoom only. */
+  get orbitRotateEnabled() {
+    return this._rotateEnabled;
+  }
+  /** Zoom in (`factor` > 1) or out (< 1) about the target: closer in perspective, a larger zoom in orthographic. */
+  zoomBy(factor, opts = {}) {
+    if (!(factor > 0)) throw new Error(`zoomBy: factor must be > 0 (got ${factor})`);
+    const target = this.core.controls?.target.clone() ?? new THREE7.Vector3();
+    const offset = this.activeCamera.position.clone().sub(target);
+    const dist = this._isOrtho ? offset.length() : offset.length() / factor;
+    const zoom = this._isOrtho ? this._orthoCam.zoom * factor : this._orthoCam.zoom;
+    if (opts.animate === false) {
+      this.cameraMove = null;
+      if (this._isOrtho) {
+        this._orthoCam.zoom = zoom;
+        this._orthoCam.updateProjectionMatrix();
+      }
+      this._placeCamera(target, offset.setLength(dist));
+      return;
+    }
+    this._moveCamera(offset.normalize(), target, dist, zoom);
   }
   cameraState() {
     const c = this.activeCamera;
@@ -3296,6 +3429,10 @@ var CameraRig = class {
   fitTo(objects, opts = {}) {
     const box = new THREE7.Box3();
     for (const t of this.core.resolve(objects)) box.expandByObject(t);
+    this.fitBox(box, opts);
+  }
+  /** Frame a world-space box, as `fitTo` frames objects. */
+  fitBox(box, opts = {}) {
     if (box.isEmpty()) return;
     const out = this._leaveInside();
     if (out) this._setFov(out.fov);
@@ -3447,6 +3584,7 @@ var Pointer = class {
     this.marks = marks;
     this.raycaster = new THREE8.Raycaster();
     this.pickEnabled = false;
+    this.pickFilter = null;
     this.pickListeners = /* @__PURE__ */ new Set();
     this.transformControls = null;
     this.gizmoMode = "translate";
@@ -3467,8 +3605,10 @@ var Pointer = class {
     this.hoverListeners = /* @__PURE__ */ new Set();
     this.hovered = null;
     this.hoverAt = 0;
+    /** The hand is on (CameraRig.setHandMode): the left button drags the view, over drag handles too. */
+    this.handMode = false;
     this.onPointerDown = (e) => {
-      const handleName = this.dragHandleHitTest(e.clientX, e.clientY);
+      const handleName = this.handMode ? null : this.dragHandleHitTest(e.clientX, e.clientY);
       if (handleName) {
         e.preventDefault();
         this.activeDragHandle = handleName;
@@ -3687,9 +3827,13 @@ var Pointer = class {
       if (this.marks.cutAway(h.point) || !shown(h.object)) continue;
       let cur = h.object;
       while (cur && !cur.userData.geomId) cur = cur.parent;
-      if (cur?.userData.geomId) return cur.userData.geomId;
+      const id = cur?.userData.geomId;
+      if (id && (!this.pickFilter || this.pickFilter(id))) return id;
     }
     return null;
+  }
+  setPickFilter(filter) {
+    this.pickFilter = filter;
   }
   hitAt(clientX, clientY) {
     const rect = this.core.renderer.domElement.getBoundingClientRect();
@@ -4374,7 +4518,6 @@ var Marks = class {
     const pending = this.calloutPending;
     if (!pending) return;
     const cam = this.core.activeCamera;
-    const meshes = [...this.core.objectMap.values()].filter((t) => t.visible);
     const ray = new THREE9.Raycaster();
     const eye = cam.getWorldPosition(new THREE9.Vector3());
     const view = cam.getWorldDirection(new THREE9.Vector3());
@@ -4403,7 +4546,7 @@ var Marks = class {
           ray.far = dir.length();
           ray.set(eye, dir.normalize());
         }
-        const hit = ray.intersectObjects(meshes, true).find((h) => h.object.isMesh && occludes(h.object.material) && !this.cutAway(h.point));
+        const hit = ray.intersectObjects(pending.targets, false).find((h) => h.object.isMesh && occludes(h.object.material) && !this.cutAway(h.point));
         let owner = hit?.object ?? null;
         while (owner && !own.has(owner)) owner = owner.parent;
         if (!hit || owner || hit.distance >= ray.far - 1e-3) {
@@ -4431,8 +4574,7 @@ var Marks = class {
     const now = performance.now();
     const cam = this.core.activeCamera;
     cam.updateMatrixWorld();
-    const key = (m) => m.elements.map((e) => e.toFixed(6)).join();
-    const at = `${key(cam.matrixWorld)}|${key(cam.projectionMatrix)}|${w}|${h}`;
+    const at = `${cameraKey(cam.matrixWorld.elements, cam.projectionMatrix.elements)}|${w}|${h}`;
     if (at !== this.calloutCamera) {
       this.calloutCamera = at;
       this.calloutStillSince = now;
@@ -4441,7 +4583,14 @@ var Marks = class {
     }
     if (this.calloutCheckDirty && !this.calloutPending) {
       if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
-        this.calloutPending = { queue: [...this.calloutAnchors.keys()].reverse(), skipped: [], left: 0, right: 0, capacity: marginCapacity(h) };
+        this.calloutPending = {
+          queue: [...this.calloutAnchors.keys()].reverse(),
+          skipped: [],
+          left: 0,
+          right: 0,
+          capacity: marginCapacity(h),
+          targets: rayTargets(this.core.objectMap.values())
+        };
         this.calloutCheckDirty = false;
       } else if (!this.calloutRecheck) {
         this.calloutRecheck = window.setTimeout(
@@ -4585,21 +4734,38 @@ var SHADING_ICONS = {
   snapshot: svg(`<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/>`),
   // A box with a slice through it.
   section: svg(`<path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5z"/><path d="M4 12.5 12 16l8-3.5M4 12.5 12 9l8 3.5" fill="currentColor" fill-opacity="0.35"/>`),
-  flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`)
+  flip: svg(`<path d="M8 4v15M5 7l3-3 3 3M16 20V5M13 17l3 3 3-3"/>`),
+  // Zoom in / out: a magnifier with a plus or a minus.
+  zoomIn: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/>`),
+  zoomOut: svg(`<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5"/>`),
+  // The hand: four fingers up, the thumb out to the left.
+  hand: svg(`<path d="M7 14V7.3a1.3 1.3 0 0 1 2.6 0V11M9.6 11V5.3a1.3 1.3 0 0 1 2.6 0V11M12.2 11V6.3a1.3 1.3 0 0 1 2.6 0V11M14.8 11.5V8.3a1.3 1.3 0 0 1 2.6 0V15a6 6 0 0 1-6 6h-1a5 5 0 0 1-3.9-1.9L3.6 15.4a1.4 1.4 0 0 1 2.1-1.8L7 15"/>`)
 };
+var ZOOM_STEP = 1.25;
 var MODES = [["solid", "Solid"], ["wireframe", "Wireframe"], ["hiddenline", "Hidden line"], ["ghost", "Ghost"]];
 var LIGHTS = [["flat", "Flat lighting"], ["studio", "Studio lighting: soft shadows"]];
 var SUNS = [["morning", "Morning"], ["noon", "Noon"], ["sunset", "Sunset"]];
 var OVERLAY_LABELS = { grid: "Grid", axes: "Axes", wireframe: "Wireframe", labels: "Labels", notes: "Notes" };
+var VIEWER_HEADER_H = 34;
 var ShadingBar = class {
-  constructor(core, lighting, marks, ao, view, corner = "top-left") {
+  constructor(core, lighting, marks, ao, view, placement = "top-left", headerHost = null) {
     this.core = core;
     this.lighting = lighting;
     this.marks = marks;
     this.ao = ao;
     this.view = view;
     this.root = document.createElement("div");
+    // Two palettes, one shown: the 3D one (style, lighting, sun, section, overlays) and, in a
+    // strict-2D view, the 2D one (the hand, zoom in, zoom out, zoom to bounds).
+    this.full = document.createElement("div");
+    this.flat = document.createElement("div");
+    this.group = this.full;
     this.openPop = null;
+    /** The header layout's slots: the app's controls (left, right) and where ✎ Markup goes (end). */
+    this.header = null;
+    // The header layout's nav column (zoom in / out / to bounds; the hand in 2D), under the axis widget.
+    this.nav = null;
+    this.openers = /* @__PURE__ */ new Map();
     // Storeys for the section: a chip each (a plan cut `cutHeight` above its floor), ticks on the slider.
     this.levels = [];
     this.cutHeight = 1.2;
@@ -4610,9 +4776,35 @@ var ShadingBar = class {
     this.paints = [];
     const host = core.container;
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
+    const rootHost = placement === "header" && headerHost ? headerHost : host;
+    if (rootHost !== host && getComputedStyle(rootHost).position === "static") rootHost.style.position = "relative";
+    const isHeader = placement === "header";
+    const corner = isHeader ? "top-left" : placement;
     const [v, h] = [corner.startsWith("top") ? "top" : "bottom", corner.endsWith("left") ? "left" : "right"];
-    this.root.style.cssText = `position:absolute;${v}:10px;${h}:10px;z-index:5;display:flex;align-items:center;gap:2px;padding:3px;border-radius:7px;background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);box-shadow:0 2px 8px rgba(0,0,0,.3);user-select:none;`;
     this.root.dataset.tektoShadingBar = "";
+    this.full.style.display = "contents";
+    this.flat.style.display = "contents";
+    if (isHeader) {
+      this.root.style.cssText = `position:absolute;top:0;left:0;right:0;height:${VIEWER_HEADER_H}px;box-sizing:border-box;z-index:23;display:flex;align-items:center;gap:2px;padding:0 6px;background:rgba(16,18,26,.9);border-bottom:1px solid rgba(255,255,255,.08);user-select:none;`;
+      this.root.dataset.tektoViewerHeader = "";
+      const slot = () => {
+        const d = document.createElement("div");
+        d.style.cssText = "display:flex;align-items:center;gap:6px;";
+        return d;
+      };
+      const left = slot(), right = slot(), end = slot(), spacer = document.createElement("div");
+      spacer.style.cssText = "flex:1;min-width:8px;";
+      right.style.marginLeft = end.style.marginLeft = "8px";
+      this.header = { left, right, end };
+      this.root.append(left, spacer, this.full, this.flat, right, end);
+      this.nav = document.createElement("div");
+      this.nav.dataset.tektoNavColumn = "";
+      this.nav.style.cssText = "position:absolute;z-index:5;display:flex;flex-direction:column;gap:2px;padding:3px;border-radius:7px;background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);user-select:none;";
+      host.appendChild(this.nav);
+    } else {
+      this.root.style.cssText = `position:absolute;${v}:10px;${h}:10px;z-index:5;display:flex;align-items:center;gap:2px;padding:3px;border-radius:7px;background:rgba(16,18,26,.78);border:1px solid rgba(255,255,255,.08);box-shadow:0 2px 8px rgba(0,0,0,.3);user-select:none;`;
+      this.root.append(this.full, this.flat);
+    }
     const scene = core.gScene;
     for (const [mode, label] of MODES) this.button(viewModeIconSvg(mode, 16), label, () => scene.renderMode === mode, () => scene.setRenderMode(mode));
     this.separator();
@@ -4621,6 +4813,7 @@ var ShadingBar = class {
     this.separator();
     const sunPop = this.popover(v, h);
     const sun = this.button(SHADING_ICONS.noon, "Sun: morning, noon, sunset", () => this.openPop === sunPop, () => this.toggle(sunPop));
+    this.openers.set(sunPop, sun);
     this.paints.push(() => {
       sun.innerHTML = SHADING_ICONS[this.lighting.currentSunPreset ?? "noon"];
     });
@@ -4643,13 +4836,13 @@ var ShadingBar = class {
     const cutPop = this.popover(v, h);
     cutPop.style.flexDirection = "column";
     cutPop.style.gap = "6px";
-    this.button(SHADING_ICONS.section, "Section: cut the model", () => this.openPop === cutPop || !!this.marks.section, () => this.toggle(cutPop));
+    this.openers.set(cutPop, this.button(SHADING_ICONS.section, "Section: cut the model", () => this.openPop === cutPop || !!this.marks.section, () => this.toggle(cutPop)));
     this.sectionControls(cutPop);
     this.separator();
     const overlayPop = this.popover(v, h);
     overlayPop.style.flexDirection = "column";
     overlayPop.style.minWidth = "120px";
-    this.button(SHADING_ICONS.overlays, "Overlays: grid, axes, wireframe, labels, notes", () => this.openPop === overlayPop, () => this.toggle(overlayPop));
+    this.openers.set(overlayPop, this.button(SHADING_ICONS.overlays, "Overlays: grid, axes, wireframe, labels, notes", () => this.openPop === overlayPop, () => this.toggle(overlayPop)));
     let listed = "";
     this.paints.push(() => {
       const names = Object.keys(this.view.overlays);
@@ -4684,9 +4877,34 @@ var ShadingBar = class {
     this.paints.push(() => {
       for (const p of this.overlayPaints) p();
     });
-    this.button(SHADING_ICONS.frame, "Frame: the selection, or everything", () => false, () => this.view.frame());
+    if (!isHeader) this.button(SHADING_ICONS.frame, "Frame: the selection, or everything", () => false, () => this.view.frame());
     this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
-    host.appendChild(this.root);
+    this.group = this.flat;
+    if (isHeader) this.button(SHADING_ICONS.snapshot, "Snapshot: save the view as a PNG", () => false, () => this.view.saveSnapshot());
+    this.group = this.nav ?? this.flat;
+    const hand = this.button(
+      SHADING_ICONS.hand,
+      "Hand: drag the view along (click again to stop)",
+      () => this.view.handMode,
+      () => this.view.setHandMode(!this.view.handMode)
+    );
+    this.button(SHADING_ICONS.zoomIn, "Zoom in", () => false, () => this.view.zoomBy(ZOOM_STEP));
+    this.button(SHADING_ICONS.zoomOut, "Zoom out", () => false, () => this.view.zoomBy(1 / ZOOM_STEP));
+    this.button(SHADING_ICONS.frame, "Zoom to bounds: the selection, or everything", () => false, () => this.view.frame());
+    this.paints.push(() => {
+      const flat = !this.view.orbitRotateEnabled;
+      this.root.dataset.palette = flat ? "2d" : "3d";
+      this.full.style.display = flat ? "none" : "contents";
+      this.flat.style.display = flat ? "contents" : "none";
+      hand.style.display = flat ? "flex" : "none";
+      if (flat && this.openPop) {
+        this.openPop.style.display = "none";
+        this.openPop = null;
+      }
+      if (this.nav) this.placeNav();
+    });
+    rootHost.appendChild(this.root);
+    if (this.nav) requestAnimationFrame(() => this.placeNav());
     this.off = scene.on((e) => {
       if (e.type === "scene:renderMode" || e.type === "scene:lightingMode") this.paint();
     });
@@ -4695,6 +4913,13 @@ var ShadingBar = class {
   /** Redraw which buttons are on (after a change made elsewhere, such as the sun moved in code). */
   paint() {
     for (const p of this.paints) p();
+  }
+  /** The nav column under the axis widget, or right under the header without one (a strict-2D view). */
+  placeNav() {
+    const nav = this.nav, g = this.view.navGizmoEl;
+    const under = !!g && g.style.display !== "none" && g.offsetHeight > 0;
+    nav.style.top = `${under ? g.offsetTop + g.offsetHeight + 6 : VIEWER_HEADER_H + 8}px`;
+    nav.style.right = `${under ? 12 + Math.max(0, (g.offsetWidth - nav.offsetWidth) / 2) : 12}px`;
   }
   /** A popover under the bar (above it when the bar sits at the bottom). */
   popover(v, h) {
@@ -4708,6 +4933,10 @@ var ShadingBar = class {
     const next = pop && this.openPop !== pop ? pop : null;
     if (this.openPop) this.openPop.style.display = "none";
     if (next) next.style.display = "flex";
+    const opener = next && this.header ? this.openers.get(next) : void 0;
+    if (next && opener) {
+      next.style.left = `${Math.max(0, Math.min(opener.offsetLeft, this.root.clientWidth - next.offsetWidth - 4))}px`;
+    }
     this.openPop = next;
     this.paint();
   }
@@ -4874,7 +5103,7 @@ var ShadingBar = class {
     }
     this.paint();
   }
-  button(icon, title, on, run, parent = this.root, paints = this.paints) {
+  button(icon, title, on, run, parent = this.group, paints = this.paints) {
     const b = document.createElement("button");
     b.type = "button";
     b.title = title;
@@ -4902,12 +5131,13 @@ var ShadingBar = class {
   separator() {
     const s = document.createElement("div");
     s.style.cssText = "width:1px;height:18px;margin:0 3px;background:rgba(255,255,255,.14);";
-    this.root.appendChild(s);
+    this.group.appendChild(s);
   }
   dispose() {
     this.off();
     this.marks.showSectionPlane(false);
     this.root.remove();
+    this.nav?.remove();
   }
 };
 function escapeHtml(s) {
@@ -5009,7 +5239,10 @@ var DEFAULTS = {
   up: "y",
   navGizmo: false,
   shadingBar: false,
-  units: null
+  units: null,
+  headerHost: null,
+  flatLighting: "sketch",
+  studioLighting: "filmic"
 };
 var EDGE_BUDGET_MS = 8;
 var ThreeRenderer = class {
@@ -5026,6 +5259,7 @@ var ThreeRenderer = class {
     this.gridHelper = null;
     this.fadingGrid = null;
     this.shadingBar = null;
+    this.frameBounds = null;
     this.overlayState = { grid: true, axes: true, wireframe: true, labels: true };
     this.overlayExtra = /* @__PURE__ */ new Map();
     this.gridDirty = true;
@@ -5080,7 +5314,6 @@ var ThreeRenderer = class {
     this.lighting = new Lighting(this.core);
     this.marks = new Marks(this.core);
     this.ao = new AmbientOcclusion(this.core);
-    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar);
     this.lighting.applyMode(this.gScene.lightingMode);
     this.builder = new ObjectBuilder(this.core, this.lighting);
     if (cfg.showGrid && cfg.gridStyle === "fading") {
@@ -5104,8 +5337,9 @@ var ThreeRenderer = class {
       this.controls.target.set(...cfg.cameraTarget);
       this.controls.addEventListener("change", () => this.requestRender());
     }
-    this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo);
+    this.rig = new CameraRig(this.core, this.camera, orthoCam, cfg.navGizmo, cfg.shadingBar === "header" ? VIEWER_HEADER_H : 0);
     this.pointer = new Pointer(this.core, this.builder, this.marks);
+    if (cfg.shadingBar) this.shadingBar = new ShadingBar(this.core, this.lighting, this.marks, this.ao, this, cfg.shadingBar === true ? "top-left" : cfg.shadingBar, cfg.headerHost);
     this.renderer.domElement.addEventListener("webglcontextrestored", () => this.requestRender());
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -5355,12 +5589,25 @@ var ThreeRenderer = class {
       this.shadingBar?.paint();
     };
   }
-  /** Frame the selection (the highlighted objects), or everything when nothing is selected:
-   *  Blender's Frame Selected / Home. Animated. */
+  /** Frame the selection (the highlighted objects), or everything when nothing is selected —
+   *  or the frame bounds, when set (`setFrameBounds`): Blender's Frame Selected / Home. Animated. */
   frame() {
     const sel = this.marks.highlighted.filter((id) => this.objectMap.has(id));
+    if (!sel.length && this.frameBounds) {
+      this.rig.fitBox(this.frameBounds.clone(), { margin: 1.3 });
+      return;
+    }
     const ids = sel.length ? sel : [...this.objectMap.keys()].filter((id) => this.isObjectShown(id));
     if (ids.length) this.rig.fitTo(ids, sel.length ? {} : { margin: 1.3 });
+  }
+  /** What Frame — the shading bar's, its 2D palette's zoom to bounds — frames when nothing is
+   *  selected: this box (world coordinates) instead of everything shown, say the model without
+   *  its site. `null`: everything shown again. */
+  setFrameBounds(bounds) {
+    this.frameBounds = bounds && new THREE12.Box3(
+      new THREE12.Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
+      new THREE12.Vector3(bounds.max.x, bounds.max.y, bounds.max.z)
+    );
   }
   /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named
    *  `fileName` with a date-time stamp. */
@@ -5666,9 +5913,42 @@ var ThreeRenderer = class {
   worldToScreen(world) {
     return this.rig.worldToScreen(world);
   }
-  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
+  /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view: the shading bar
+   *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
   setOrbitRotateEnabled(enabled) {
     this.rig.setOrbitRotateEnabled(enabled);
+    this.pointer.handMode = this.rig.handMode;
+    this.shadingBar?.paint();
+  }
+  /** The hand, a strict-2D view's tool (the 2D palette has its button): on, the left button drags
+   *  the view along — over drag handles too — under a grab cursor; a click still picks. Off again
+   *  when the view turns 3D; ignored in a 3D view. */
+  setHandMode(on) {
+    this.rig.setHandMode(on);
+    this.pointer.handMode = this.rig.handMode;
+    this.shadingBar?.paint();
+  }
+  /** Whether the hand is on (see `setHandMode`). */
+  get handMode() {
+    return this.rig.handMode;
+  }
+  /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
+  get orbitRotateEnabled() {
+    return this.rig.orbitRotateEnabled;
+  }
+  /** The axis widget's element, or null without one (`navGizmo`). */
+  get navGizmoEl() {
+    return this.rig.navGizmoEl;
+  }
+  /** With `shadingBar: "header"`: the header strip's slots — `left` and `right` for the app's own
+   *  controls (view tabs, tools, who is here), `end` where ✎ Markup goes. Null otherwise. */
+  get viewerHeader() {
+    return this.shadingBar?.header ?? null;
+  }
+  /** Zoom in (`factor` > 1) or out (< 1) about the view's target, animated unless
+   *  `animate: false`: closer in perspective, a larger zoom in orthographic. */
+  zoomBy(factor, opts) {
+    this.rig.zoomBy(factor, opts);
   }
   /** The camera as plain numbers, enough to reproduce the view. */
   cameraState() {
@@ -5761,6 +6041,11 @@ var ThreeRenderer = class {
   /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
   pickAt(clientX, clientY) {
     return this.pointer.pickAt(clientX, clientY);
+  }
+  /** Only objects `filter` accepts can be picked or hovered; a rejected one lets the pick
+   *  through to what is behind it (a sketch rejects objects on locked layers). `null` clears it. */
+  setPickFilter(filter) {
+    this.pointer.setPickFilter(filter);
   }
   /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
    *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
@@ -6116,6 +6401,21 @@ var SVGRenderer = class {
 };
 
 // src/gui/LayerPanel.ts
+var DEFAULT_COLOR = "#888888";
+var defaultState = (node) => ({
+  visible: node.defaultVisible ?? true,
+  color: node.defaultColor ?? DEFAULT_COLOR,
+  locked: node.defaultLocked ?? false
+});
+var stateIn = (node, value) => ({ ...defaultState(node), ...value[node.id] });
+function pathTo(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return [node];
+    const below = node.children ? pathTo(node.children, id) : [];
+    if (below.length) return [node, ...below];
+  }
+  return [];
+}
 function computeEffectiveVisibility(nodes, value) {
   const result = {};
   const walk = (node, parentEffective) => {
@@ -6127,67 +6427,172 @@ function computeEffectiveVisibility(nodes, value) {
   nodes.forEach((node) => walk(node, true));
   return result;
 }
+function computeEffectiveLock(nodes, value) {
+  const result = {};
+  const walk = (node, parentLocked) => {
+    const own = value[node.id]?.locked ?? (node.defaultLocked ?? false);
+    const effective = parentLocked || own;
+    result[node.id] = effective;
+    node.children?.forEach((child) => walk(child, effective));
+  };
+  nodes.forEach((node) => walk(node, false));
+  return result;
+}
+function layerDefaults(nodes) {
+  const result = {};
+  const walk = (node) => {
+    result[node.id] = defaultState(node);
+    node.children?.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return result;
+}
+function activateLayer(nodes, value, id) {
+  const updates = {};
+  for (const node of pathTo(nodes, id)) {
+    const state = stateIn(node, value);
+    if (!state.visible || state.locked) updates[node.id] = { ...state, visible: true, locked: false };
+  }
+  return updates;
+}
+function defaultActiveLayer(nodes, value) {
+  const on = computeEffectiveVisibility(nodes, value);
+  const locked = computeEffectiveLock(nodes, value);
+  const ids = Object.keys(on);
+  return ids.find((id) => on[id] && !locked[id]) ?? ids[0] ?? "";
+}
+function keepActiveOn(nodes, active, updates) {
+  const guarded = new Set(pathTo(nodes, active).map((n) => n.id));
+  const result = {};
+  for (const [id, patch] of Object.entries(updates)) {
+    if (!guarded.has(id)) {
+      result[id] = patch;
+      continue;
+    }
+    const { visible, locked, ...kept } = patch;
+    if (visible) kept.visible = true;
+    if (locked === false) kept.locked = false;
+    result[id] = kept;
+  }
+  return result;
+}
+var SWATCH_STYLE_ID = "tekto-swatch-style";
+function ensureSwatchStyle(doc) {
+  if (doc.getElementById(SWATCH_STYLE_ID)) return;
+  const el = doc.createElement("style");
+  el.id = SWATCH_STYLE_ID;
+  el.textContent = `
+    .tekto-swatch{-webkit-appearance:none;appearance:none;width:12px;height:12px;padding:0;margin:0 2px 0 0;border:1px solid var(--tekto-swatch-border,#9ca3af);border-radius:0;background:none;cursor:pointer;flex-shrink:0;outline:none;}
+    .tekto-swatch::-webkit-color-swatch-wrapper{padding:0;}
+    .tekto-swatch::-webkit-color-swatch{border:none;border-radius:0;}
+    .tekto-swatch::-moz-color-swatch{border:none;border-radius:0;}
+  `;
+  doc.head.appendChild(el);
+}
+var svg2 = (body) => `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">${body}</svg>`;
+var BULB_GLASS = "M8 1.5a4.5 4.5 0 0 0-2.7 8.1c.5.4.7.9.7 1.4v.5h4v-.5c0-.5.2-1 .7-1.4A4.5 4.5 0 0 0 8 1.5z";
+var BULB_BASE = `<path d="M6.2 13.5h3.6M6.8 15h2.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>`;
+var ICON = {
+  check: svg2(`<path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`),
+  bulbOn: svg2(`<path d="${BULB_GLASS}" fill="currentColor"/>${BULB_BASE}`),
+  bulbOff: svg2(`<path d="${BULB_GLASS}" fill="none" stroke="currentColor" stroke-width="1.2"/>${BULB_BASE}`),
+  lockClosed: svg2(`<rect x="3.5" y="7" width="9" height="7" rx="1" fill="currentColor"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.4"/>`),
+  lockOpen: svg2(`<rect x="3.5" y="7" width="9" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0" fill="none" stroke="currentColor" stroke-width="1.2"/>`)
+};
 var LayerPanel = class {
   constructor(opts) {
     this._nodes = [];
     this._value = {};
     this._collapsed = /* @__PURE__ */ new Set();
+    this._active = "";
+    /** The active layer and its parents: they can't be turned off or locked. */
+    this._activePath = /* @__PURE__ */ new Set();
     this._isDark = opts.isDark ?? true;
     this._onChange = opts.onChange;
+    this._columns = { active: true, locked: true, color: true, ...opts.columns };
+    this._active = opts.active ?? "";
+    ensureSwatchStyle(document);
     this.el = document.createElement("div");
     this.el.style.cssText = "overflow-y:auto;max-height:300px;";
     this.update(opts.nodes, opts.value);
   }
+  /** The active layer's id: "" for an empty tree, or with the active column hidden (`columns.active: false`),
+   *  where the tree has no active layer and nothing is kept on. */
+  get active() {
+    return this._active;
+  }
   /**
-   * Re-render with new nodes/value.
-   * Scroll position and collapsed state are preserved.
+   * Re-render with new nodes/value, and optionally another active layer (an
+   * id not in `nodes` is ignored). Scroll position and collapsed state are
+   * preserved. If the active layer leaves the tree, the first layer that is on
+   * and unlocked becomes active.
    */
-  update(nodes, value) {
+  update(nodes, value, active) {
     this._nodes = nodes;
     this._value = value;
-    const scroll = this.el.scrollTop;
-    this.el.innerHTML = "";
-    for (const node of this._nodes) this._renderNode(node, 0, true);
-    this.el.scrollTop = scroll;
+    if (!this._columns.active) this._active = "";
+    else {
+      if (active !== void 0 && pathTo(nodes, active).length) this._active = active;
+      if (!pathTo(nodes, this._active).length) this._active = defaultActiveLayer(nodes, value);
+    }
+    this._rebuild();
   }
   // ── Private helpers ──
-  _stateOf(node) {
-    return this._value[node.id] ?? {
-      visible: node.defaultVisible ?? true,
-      color: node.defaultColor ?? "#888888"
-    };
-  }
   _rebuild() {
+    this._activePath = new Set(pathTo(this._nodes, this._active).map((n) => n.id));
     const scroll = this.el.scrollTop;
     this.el.innerHTML = "";
-    for (const node of this._nodes) this._renderNode(node, 0, true);
+    for (const node of this._nodes) this._renderNode(node, 0, true, false);
     this.el.scrollTop = scroll;
   }
+  _iconButton(opts) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = opts.icon;
+    b.title = opts.title;
+    b.setAttribute("role", opts.role);
+    b.setAttribute("aria-label", opts.label);
+    b.setAttribute("aria-checked", String(opts.checked));
+    b.disabled = !!opts.disabled;
+    b.style.cssText = `
+      all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;
+      width:14px;height:14px;flex-shrink:0;color:${opts.color};opacity:${opts.opacity ?? 1};
+      cursor:${opts.disabled ? "default" : "pointer"};
+    `;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      opts.onClick();
+    });
+    return b;
+  }
   /**
-   * @param ancestorVisible — whether all ancestors are currently visible.
-   *   Used only for visual dimming; does NOT affect stored state.
+   * @param ancestorVisible — whether all ancestors are currently on.
+   * @param ancestorLocked — whether any ancestor is locked.
+   *   Both are used only for visual dimming; they do NOT affect stored state.
    */
-  _renderNode(node, depth, ancestorVisible) {
-    const state = this._stateOf(node);
+  _renderNode(node, depth, ancestorVisible, ancestorLocked) {
+    const state = stateIn(node, this._value);
     const hasChildren = !!node.children?.length;
     const isCollapsed = this._collapsed.has(node.id);
     const effectiveVisible = ancestorVisible && state.visible;
+    const effectiveLocked = ancestorLocked || !!state.locked;
+    const isActive = node.id === this._active;
+    const guarded = this._activePath.has(node.id);
     const d = this._isDark;
     const labelColor = d ? effectiveVisible ? "#b8bdd4" : "#3a3f5a" : effectiveVisible ? "#2a2d3a" : "#b0b4c0";
     const arrowColor = d ? "#3a3f5a" : "#b0b4c0";
     const hoverBg = d ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.04)";
+    const iconOn = d ? "#b8bdd4" : "#2a2d3a";
+    const iconOff = d ? "#3a3f5a" : "#b0b4c0";
+    const bulbOn = d ? "#fbbf24" : "#d97706";
+    const checkColor = d ? "#ffffff" : "#16182c";
     const row = document.createElement("div");
+    row.dataset.layer = node.id;
     row.style.cssText = `
       display:flex;align-items:center;gap:5px;
       padding:3px 6px 3px ${6 + depth * 14}px;
       border-radius:3px;cursor:default;transition:background .1s;min-height:22px;
     `;
-    row.addEventListener("mouseenter", () => {
-      row.style.background = hoverBg;
-    });
-    row.addEventListener("mouseleave", () => {
-      row.style.background = "";
-    });
     const arrow = document.createElement("span");
     arrow.style.cssText = `width:10px;font-size:7px;flex-shrink:0;line-height:1;color:${arrowColor};user-select:none;`;
     if (hasChildren) {
@@ -6200,15 +6605,6 @@ var LayerPanel = class {
       });
     }
     row.appendChild(arrow);
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = state.visible;
-    cb.style.cssText = `cursor:pointer;width:11px;height:11px;flex-shrink:0;accent-color:${d ? "#ffffff" : "#16182c"};margin:0;opacity:${ancestorVisible ? "1" : "0.35"};`;
-    cb.addEventListener("change", (e) => {
-      e.stopPropagation();
-      this._onChange({ [node.id]: { ...state, visible: cb.checked } });
-    });
-    row.appendChild(cb);
     const lbl = document.createElement("span");
     lbl.textContent = node.label;
     lbl.style.cssText = `
@@ -6216,23 +6612,77 @@ var LayerPanel = class {
       user-select:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
     `;
     row.appendChild(lbl);
-    const cp = document.createElement("input");
-    cp.type = "color";
-    cp.value = state.color;
-    cp.title = "Layer color";
-    cp.style.cssText = `
-      width:16px;height:13px;border:1px solid ${d ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.15)"};
-      border-radius:2px;padding:0;cursor:pointer;flex-shrink:0;outline:none;background:none;
-    `;
-    cp.addEventListener("change", (e) => {
-      e.stopPropagation();
-      this._onChange({ [node.id]: { ...state, color: cp.value } });
+    let activeBtn = null;
+    if (this._columns.active) {
+      activeBtn = this._iconButton({
+        icon: ICON.check,
+        role: "radio",
+        checked: isActive,
+        label: `Active: ${node.label}`,
+        title: isActive ? "Active layer" : "Make active",
+        color: checkColor,
+        opacity: isActive ? 1 : 0,
+        onClick: () => {
+          if (isActive) return;
+          const updates = activateLayer(this._nodes, this._value, node.id);
+          this._active = node.id;
+          this._onChange(updates, node.id);
+        }
+      });
+      row.appendChild(activeBtn);
+    }
+    row.addEventListener("mouseenter", () => {
+      row.style.background = hoverBg;
+      if (activeBtn && !isActive) activeBtn.style.opacity = "0.35";
     });
-    row.appendChild(cp);
+    row.addEventListener("mouseleave", () => {
+      row.style.background = "";
+      if (activeBtn && !isActive) activeBtn.style.opacity = "0";
+    });
+    const which = isActive ? "The active layer" : "A parent of the active layer";
+    row.appendChild(this._iconButton({
+      icon: state.visible ? ICON.bulbOn : ICON.bulbOff,
+      role: "checkbox",
+      checked: state.visible,
+      label: `On: ${node.label}`,
+      title: guarded ? `${which} can't be turned off` : state.visible ? "Turn off" : "Turn on",
+      color: state.visible ? bulbOn : iconOff,
+      opacity: ancestorVisible ? 1 : 0.35,
+      disabled: guarded,
+      // Only update this node's own state — children are NOT touched (non-destructive mask)
+      onClick: () => this._onChange({ [node.id]: { ...state, visible: !state.visible } })
+    }));
+    if (this._columns.locked) {
+      row.appendChild(this._iconButton({
+        icon: state.locked ? ICON.lockClosed : ICON.lockOpen,
+        role: "checkbox",
+        checked: !!state.locked,
+        label: `Locked: ${node.label}`,
+        title: guarded ? `${which} can't be locked` : state.locked ? "Unlock" : "Lock",
+        color: state.locked ? iconOn : iconOff,
+        opacity: ancestorLocked ? 0.35 : 1,
+        disabled: guarded,
+        onClick: () => this._onChange({ [node.id]: { ...state, locked: !state.locked } })
+      }));
+    }
+    if (this._columns.color) {
+      const cp = document.createElement("input");
+      cp.type = "color";
+      cp.value = state.color;
+      cp.title = "Layer color";
+      cp.setAttribute("aria-label", `Color: ${node.label}`);
+      cp.className = "tekto-swatch";
+      cp.style.setProperty("--tekto-swatch-border", d ? "#9ca3af" : "#6b7280");
+      cp.addEventListener("change", (e) => {
+        e.stopPropagation();
+        this._onChange({ [node.id]: { ...state, color: cp.value } });
+      });
+      row.appendChild(cp);
+    }
     this.el.appendChild(row);
     if (hasChildren && !isCollapsed) {
       for (const child of node.children) {
-        this._renderNode(child, depth + 1, effectiveVisible);
+        this._renderNode(child, depth + 1, effectiveVisible, effectiveLocked);
       }
     }
   }
@@ -6823,6 +7273,303 @@ function shapeHandle(scene, obj) {
   return handle;
 }
 
+// src/sketch/StepsPanel.ts
+var W = 172;
+var H = 60;
+var GAP_X = 60;
+var GAP_Y = 14;
+var PAD = 16;
+var StepsPanel = class {
+  constructor(host, opts) {
+    this.host = host;
+    this.opts = opts;
+    this.el = document.createElement("div");
+    this.pill = document.createElement("button");
+    this.graph = document.createElement("div");
+    this.details = document.createElement("div");
+    this.summaryEl = document.createElement("span");
+    this.saveBtn = document.createElement("button");
+    this.trace = null;
+    this.selected = null;
+    this.marks = [];
+    this.open = false;
+    const t = opts.theme;
+    this.pill.type = "button";
+    this.pill.dataset.tektoSteps = "pill";
+    this.pill.style.cssText = `position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:20;display:none;
+      padding:5px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.18);background:rgba(7,8,14,.85);
+      backdrop-filter:blur(8px);color:${t.text};font:500 11px/1.2 ${t.font};cursor:pointer;`;
+    this.pill.addEventListener("click", () => this.setOpen(true));
+    this.el.dataset.tektoSteps = "panel";
+    this.el.style.cssText = `position:absolute;left:0;right:0;bottom:0;height:38%;min-height:200px;max-height:340px;z-index:20;
+      display:none;flex-direction:column;background:rgba(7,8,14,.92);backdrop-filter:blur(8px);
+      border-top:1px solid rgba(255,255,255,.12);color:${t.textDim};font:11px/1.45 ${t.font};`;
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;gap:10px;padding:6px 10px 6px 14px;border-bottom:1px solid rgba(255,255,255,.08);";
+    const title = document.createElement("b");
+    title.textContent = "Steps";
+    title.style.color = t.text;
+    this.summaryEl.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    this.saveBtn.type = "button";
+    this.saveBtn.style.cssText = button(t);
+    this.saveBtn.addEventListener("click", () => void this.save());
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "\xD7";
+    close.title = "Hide steps";
+    close.style.cssText = button(t) + "font-size:14px;padding:0 8px;";
+    close.addEventListener("click", () => this.setOpen(false));
+    head.append(title, this.summaryEl, this.saveBtn, close);
+    const body = document.createElement("div");
+    body.style.cssText = "flex:1;min-height:0;display:flex;";
+    this.graph.style.cssText = "flex:1;min-width:0;overflow:auto;position:relative;";
+    this.details.style.cssText = `width:280px;flex:none;overflow:auto;padding:10px 12px;border-left:1px solid rgba(255,255,255,.08);`;
+    body.append(this.graph, this.details);
+    this.el.append(head, body);
+    host.append(this.pill, this.el);
+  }
+  /** Show a run's steps (`null` or no steps: nothing to show, the panel and its button go). */
+  show(trace) {
+    this.trace = trace && trace.steps.length ? trace : null;
+    if (this.selected && !this.trace?.steps.some((s) => s.id === this.selected)) this.selected = null;
+    this.paint();
+  }
+  /** Pick a step (from a click on its geometry), opening the panel. */
+  select(id) {
+    this.selected = id;
+    if (id) this.open = true;
+    this.paint();
+    this.notifySelect();
+  }
+  /** The step that drew an object (its top-level step), if any. */
+  stepOfObject(objectId) {
+    const s = this.trace?.steps.find((r) => r.objects.includes(objectId));
+    return s ? this.topOf(s.id) : void 0;
+  }
+  get isOpen() {
+    return this.open && !!this.trace;
+  }
+  /** The marks not yet saved. */
+  get pendingMarks() {
+    return this.marks;
+  }
+  dispose() {
+    this.pill.remove();
+    this.el.remove();
+  }
+  // ── Drawing ──
+  setOpen(on) {
+    this.open = on;
+    if (!on && this.selected) {
+      this.selected = null;
+      this.notifySelect();
+    }
+    this.paint();
+  }
+  topOf(id) {
+    const byId = new Map(this.trace?.steps.map((s2) => [s2.id, s2]) ?? []);
+    let s = byId.get(id);
+    while (s?.parent && byId.has(s.parent)) s = byId.get(s.parent);
+    return s?.id ?? id;
+  }
+  paint() {
+    const t = this.opts.theme;
+    const trace = this.trace;
+    this.pill.style.display = trace && !this.open ? "block" : "none";
+    this.el.style.display = trace && this.open ? "flex" : "none";
+    if (!trace) return;
+    const a = trace.analysis;
+    const top = trace.steps.filter((s) => !s.parent);
+    this.pill.textContent = `Steps \xB7 ${top.length}${a.errors.length ? ` \xB7 ${a.errors.length} error${a.errors.length > 1 ? "s" : ""}` : ""}`;
+    const slow = a.slowest[0];
+    this.summaryEl.textContent = [
+      `${top.length} steps`,
+      `${a.totalMs.toFixed(1)} ms`,
+      slow ? `slowest ${slow.id} (${Math.round(slow.share * 100)} %)` : "",
+      a.unused.length ? `${a.unused.length} unused` : "",
+      a.errors.length ? `${a.errors.length} errors` : ""
+    ].filter(Boolean).join(" \xB7 ");
+    this.saveBtn.style.display = this.marks.length ? "" : "none";
+    this.saveBtn.textContent = `Save ${this.marks.length} mark${this.marks.length > 1 ? "s" : ""} for agent`;
+    const topIds = new Set(top.map((s) => s.id));
+    const edges = /* @__PURE__ */ new Map();
+    for (const e of trace.edges) {
+      if (!topIds.has(e.to)) continue;
+      const from = this.topOf(e.from);
+      if (from !== e.to) edges.set(`${from}>${e.to}>${e.input}`, { from, to: e.to, input: e.input });
+    }
+    const depth = /* @__PURE__ */ new Map();
+    for (const s of top) {
+      let d = 0;
+      for (const e of edges.values()) if (e.to === s.id) d = Math.max(d, (depth.get(e.from) ?? 0) + 1);
+      depth.set(s.id, d);
+    }
+    const lift = (e) => {
+      const span = (depth.get(e.to) ?? 0) - (depth.get(e.from) ?? 0);
+      return span > 1 ? 40 + (span - 2) * 8 : 0;
+    };
+    const top0 = PAD + Math.min(90, Math.max(0, ...[...edges.values()].map(lift)));
+    const rows = /* @__PURE__ */ new Map();
+    const at = /* @__PURE__ */ new Map();
+    for (const s of top) {
+      const d = depth.get(s.id), r = rows.get(d) ?? 0;
+      rows.set(d, r + 1);
+      at.set(s.id, { x: PAD + d * (W + GAP_X), y: top0 + r * (H + GAP_Y) });
+    }
+    const width = PAD * 2 + (Math.max(...depth.values()) + 1) * (W + GAP_X) - GAP_X;
+    const height = top0 + PAD + Math.max(...rows.values()) * (H + GAP_Y) - GAP_Y;
+    this.graph.textContent = "";
+    const canvas = document.createElement("div");
+    canvas.style.cssText = `position:relative;width:${width}px;height:${height}px;`;
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg3 = document.createElementNS(svgNS, "svg");
+    svg3.setAttribute("width", String(width));
+    svg3.setAttribute("height", String(height));
+    svg3.style.cssText = "position:absolute;left:0;top:0;pointer-events:none;";
+    for (const e of edges.values()) {
+      const a0 = at.get(e.from), b0 = at.get(e.to);
+      if (!a0 || !b0) continue;
+      const target = trace.steps.find((s) => s.id === e.to);
+      const linked = target.inputs.filter((i) => [...edges.values()].some((x) => x.to === e.to && x.input === i.name));
+      const k = Math.max(0, linked.findIndex((i) => i.name === e.input));
+      const y1 = a0.y + H / 2, y2 = b0.y + Math.min(H - 8, 14 + k * 12);
+      const x1 = a0.x + W, x2 = b0.x, dx = Math.max(28, (x2 - x1) / 2);
+      const hot = this.selected === e.from || this.selected === e.to;
+      const up = Math.min(90, lift(e));
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", up ? `M${x1},${y1} C${x1 + 40},${y1 - up * 1.33} ${x2 - 40},${y2 - up * 1.33} ${x2},${y2}` : `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", hot ? "#ffffff" : "rgba(255,255,255,.35)");
+      path.setAttribute("stroke-width", hot ? "1.6" : "1.1");
+      svg3.append(path);
+      const label = document.createElementNS(svgNS, "text");
+      label.setAttribute("x", String(x2 - 5));
+      label.setAttribute("y", String(y2 - 3));
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("fill", hot ? "#ffffff" : "rgba(232,235,240,.55)");
+      label.setAttribute("font-size", "9.5");
+      label.textContent = e.input;
+      svg3.append(label);
+    }
+    canvas.append(svg3);
+    const own = new Map(a.slowest.map((s) => [s.id, s.share]));
+    const unused = new Set(a.unused);
+    for (const s of top) {
+      const p = at.get(s.id);
+      const node = document.createElement("button");
+      node.type = "button";
+      node.dataset.step = s.id;
+      const sel = this.selected === s.id;
+      const share = own.get(s.id) ?? (a.totalMs > 0 ? s.ms / a.totalMs : 0);
+      node.style.cssText = `position:absolute;left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px;text-align:left;cursor:pointer;
+        padding:6px 9px;border-radius:6px;background:${sel ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)"};
+        border:1px ${unused.has(s.id) ? "dashed" : "solid"} ${s.error ? "#e5484d" : sel ? "#ffffff" : "rgba(255,255,255,.18)"};
+        color:${t.textDim};font:11px/1.35 ${t.font};overflow:hidden;opacity:${unused.has(s.id) ? 0.6 : 1};`;
+      const marked = this.marks.some((m) => m.step === s.id) ? " \u270E" : "";
+      const inner = trace.steps.filter((c) => c.parent === s.id).length;
+      node.innerHTML = `<div style="display:flex;gap:6px;color:${s.error ? "#ff8c8f" : t.text}"><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></b><span></span></div><div class="out" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div><div style="position:absolute;left:9px;right:9px;bottom:6px;height:3px;background:rgba(255,255,255,.08);border-radius:2px"><div style="height:100%;width:${Math.min(100, Math.max(2, share * 100)).toFixed(0)}%;background:#ffb020;border-radius:2px"></div></div>`;
+      node.querySelector("b").textContent = s.id + marked;
+      node.querySelector("span").textContent = `${s.ms.toFixed(1)} ms`;
+      node.querySelector(".out").textContent = s.error ? `\u2715 ${s.error}` : `\u2192 ${s.output}${inner ? ` \xB7 ${inner} inside` : ""}`;
+      node.title = [`${s.id}: ${s.output}`, ...s.inputs.map((i) => `  ${i.name} = ${i.summary}${i.from ? ` \u2190 ${i.from.join(", ")}` : ""}`)].join("\n");
+      node.addEventListener("click", () => this.select(this.selected === s.id ? null : s.id));
+      canvas.append(node);
+    }
+    this.graph.append(canvas);
+    const picked = this.selected ? canvas.querySelector(`[data-step="${CSS.escape(this.selected)}"]`) : null;
+    if (picked) {
+      const g = this.graph, left = picked.offsetLeft, right = left + picked.offsetWidth;
+      if (left < g.scrollLeft || right > g.scrollLeft + g.clientWidth) g.scrollLeft = Math.max(0, left - (g.clientWidth - picked.offsetWidth) / 2);
+    }
+    this.paintDetails();
+  }
+  paintDetails() {
+    const t = this.opts.theme;
+    const d = this.details;
+    d.textContent = "";
+    const step = this.trace?.steps.find((s) => s.id === this.selected);
+    if (!step) {
+      d.style.color = t.textFaint;
+      d.textContent = "Click a step for its inputs, output and code, and to leave a note for the agent. Click geometry to find the step that made it.";
+      return;
+    }
+    d.style.color = t.textDim;
+    const line = (label, value, strong = false) => {
+      const row = document.createElement("div");
+      row.style.cssText = "margin-bottom:3px;word-break:break-word;";
+      const k = document.createElement("span");
+      k.textContent = `${label} `;
+      k.style.color = t.textFaint;
+      const v = document.createElement("span");
+      v.textContent = value;
+      if (strong) v.style.color = t.text;
+      row.append(k, v);
+      d.append(row);
+    };
+    const h = document.createElement("div");
+    h.textContent = step.id;
+    h.style.cssText = `color:${t.text};font-weight:600;margin-bottom:6px;`;
+    d.append(h);
+    if (step.src) line("code", shortSrc(step.src));
+    line("time", `${step.ms.toFixed(2)} ms`);
+    for (const i of step.inputs) line(`in ${i.name}`, `${i.summary}${i.from ? ` \u2190 ${i.from.join(", ")}` : ""}`);
+    line("out", step.error ? `threw: ${step.error}` : step.output, true);
+    const inner = this.trace.steps.filter((c) => c.parent === step.id);
+    if (inner.length) line("inside", `${inner.length} steps (${[...new Set(inner.map((c) => c.name))].join(", ")})`);
+    if (step.objects.length) line("drew", `${step.objects.length} objects`);
+    const note = document.createElement("textarea");
+    note.placeholder = "What should change in this step?";
+    note.rows = 3;
+    const existing = this.marks.find((m) => m.step === step.id);
+    note.value = existing?.note ?? "";
+    note.style.cssText = `width:100%;box-sizing:border-box;margin-top:8px;resize:vertical;background:rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.15);border-radius:5px;color:${t.text};font:11px/1.4 ${t.font};padding:5px 7px;`;
+    note.addEventListener("keydown", (e) => e.stopPropagation());
+    const mark = document.createElement("button");
+    mark.type = "button";
+    mark.textContent = existing ? "Update note" : "Mark step for agent";
+    mark.style.cssText = button(t) + "margin-top:6px;";
+    mark.addEventListener("click", () => {
+      const text = note.value.trim();
+      this.marks = this.marks.filter((m) => m.step !== step.id);
+      if (text) this.marks.push({ step: step.id, note: text, name: step.name, inputs: step.inputs, output: step.output, ms: step.ms, ...step.src ? { src: step.src } : {} });
+      this.paint();
+    });
+    d.append(note, mark);
+  }
+  async save() {
+    if (!this.marks.length) return;
+    this.saveBtn.disabled = true;
+    try {
+      const where = await this.opts.onSave(this.marks);
+      this.marks = [];
+      this.paint();
+      this.summaryEl.textContent = where ? `Saved for the agent: ${where}` : "Saved for the agent";
+    } finally {
+      this.saveBtn.disabled = false;
+    }
+  }
+  notifySelect() {
+    const trace = this.trace;
+    if (!trace || !this.selected) {
+      this.opts.onSelect(null, []);
+      return;
+    }
+    const step = trace.steps.find((s) => s.id === this.selected) ?? null;
+    const ids = /* @__PURE__ */ new Set([this.selected]);
+    for (const s of trace.steps) if (s.parent && ids.has(s.parent)) ids.add(s.id);
+    this.opts.onSelect(step, trace.steps.filter((s) => ids.has(s.id)).flatMap((s) => s.objects));
+  }
+};
+function button(t) {
+  return `cursor:pointer;padding:3px 9px;border-radius:5px;border:1px solid rgba(255,255,255,.18);background:transparent;
+    color:${t.text};font:11px/1.4 ${t.font};`;
+}
+function shortSrc(src) {
+  const m = /([^/?#]+?)(?:\?[^:]*)?:(\d+):\d+$/.exec(src);
+  return m ? `${m[1]}:${m[2]}` : src;
+}
+
 // src/sketch/Sketch.ts
 function spaceToConstrain(space) {
   switch (space.kind) {
@@ -6947,6 +7694,11 @@ var SketchInstance = class {
     // records the user-code line that created it, so a mark can point at source.
     this.markup = null;
     this.bridge = null;
+    /** This run's steps (`lab.step`), drawn in the steps panel once a run has any. */
+    this._trace = new StepTrace();
+    this._stepsPanel = null;
+    /** Notes on steps on their way into a snapshot (`saveStepMarks`). */
+    this._stepMarks = [];
     // Export ▾ / Import ▾ in the sketch's own header (a shell's top bar does it otherwise).
     this._fileMenusEl = null;
     this._fileMenusSig = "";
@@ -6973,10 +7725,18 @@ var SketchInstance = class {
     // scopes, keyed by layer name. Reset every run — ids don't survive clear().
     this._viewLayerStack = [];
     this._viewLayerObjects = /* @__PURE__ */ new Map();
+    // Which of the view's style settings the last run read (lab.renderMode / lab.lightingMode):
+    // a change to one of them — from the shading bar, a shell or code — re-runs the sketch.
+    this._readsStyle = /* @__PURE__ */ new Set();
+    this._objectViewLayer = /* @__PURE__ */ new Map();
+    // Layer ids locked in any layer tree (own or a parent's lock): objects on
+    // them — by `.layer()` name or view layer — can't be picked or hovered.
+    this._lockedLayers = /* @__PURE__ */ new Set();
     this.fn = fn;
     this.config = config;
     this.scene = new Scene();
     this.scene.on((e) => {
+      if (e.type === "object:add") this._trace.current?.objects.push(e.id);
       if (e.type === "object:add" && this._trackSource) {
         const site = callSite();
         if (site) this._srcById.set(e.id, site);
@@ -6984,6 +7744,7 @@ var SketchInstance = class {
       if (e.type === "object:add" && this._viewLayerStack.length > 0) {
         const name = this._viewLayerStack[this._viewLayerStack.length - 1];
         this._viewLayerObjects.get(name).push(e.id);
+        this._objectViewLayer.set(e.id, name);
       }
     });
     if (typeof config.container === "string") {
@@ -6995,6 +7756,10 @@ var SketchInstance = class {
     }
     this.buildDOM();
     this.initRenderer();
+    this.renderer.setPickFilter((id) => !this.onLockedLayer(id));
+    this.scene.on((e) => {
+      if (!this._running && (e.type === "scene:renderMode" && this._readsStyle.has("renderMode") || e.type === "scene:lightingMode" && this._readsStyle.has("lightingMode"))) this.runSketch();
+    });
     this.commands.add(viewCommands(this.renderer));
     this._unbindCommandKeys = this.commands.bindKeys();
     this.wireInput();
@@ -7047,7 +7812,10 @@ var SketchInstance = class {
       cameraTarget: this.config.target ?? [0, 0, 0],
       up: this.config.up ?? "y",
       navGizmo: this.config.navGizmo ?? false,
-      shadingBar: this.config.shadingBar ?? false,
+      // On by default; a shell with its own bar (the testbench's data-shell) turns it off.
+      shadingBar: this.config.shadingBar ?? (this.container.dataset.shell == null ? "header" : false),
+      headerHost: this.viewportWrap,
+      // above overlay() layers and ✎ Markup's drawing layer
       units: this.config.units ?? null
     });
   }
@@ -7103,6 +7871,23 @@ var SketchInstance = class {
       this._pickUnsub = null;
       this.setSelected(null);
     }
+  }
+  /** Recompute which layer ids are locked, and drop a selection that is now on one. */
+  refreshLocks() {
+    this._lockedLayers.clear();
+    for (const lt of this.layerTrees.values()) {
+      const locked = computeEffectiveLock(lt.nodes, lt.value);
+      for (const id in locked) if (locked[id]) this._lockedLayers.add(id);
+    }
+    if (!this._running && this._selectedId && this.onLockedLayer(this._selectedId)) this.setSelected(null);
+  }
+  /** Whether scene object `id` is on a locked layer: its `.layer()` name or its view layer is a locked layer id. */
+  onLockedLayer(id) {
+    if (this._lockedLayers.size === 0) return false;
+    const layer = this.scene.get(id)?.style.layer;
+    if (layer && this._lockedLayers.has(layer)) return true;
+    const view = this._objectViewLayer.get(id);
+    return !!view && this._lockedLayers.has(view);
   }
   setGizmoMode(mode) {
     this.renderer.setGizmoMode(mode);
@@ -7173,6 +7958,7 @@ var SketchInstance = class {
   // ── Run Sketch ──
   runSketch() {
     const __runT0 = performance.now();
+    this._trace = new StepTrace();
     this.scene.clear();
     this._srcById.clear();
     this.buttons = [];
@@ -7196,10 +7982,13 @@ var SketchInstance = class {
     this._displayKeys.clear();
     this._viewLayerStack = [];
     this._viewLayerObjects.clear();
+    this._objectViewLayer.clear();
     this._dragHandleSeq = 0;
     this.renderer.beginDragHandleSweep();
     const usedParams = /* @__PURE__ */ new Set();
     const lab = this.buildLab(usedParams);
+    this._readsStyle.clear();
+    this.renderer.setFrameBounds(null);
     this._running = true;
     try {
       this.fn(lab);
@@ -7209,6 +7998,7 @@ var SketchInstance = class {
     }
     this._running = false;
     this.renderer.endDragHandleSweep();
+    this.showSteps();
     for (const key of this.store.keys()) {
       if (!usedParams.has(key)) {
         this.store.remove(key);
@@ -7218,6 +8008,7 @@ var SketchInstance = class {
     for (const key of this.layerTrees.keys()) {
       if (!usedParams.has(key)) this.layerTrees.delete(key);
     }
+    this.refreshLocks();
     const hasTabControls = [...this.items.values()].some((it) => it.tab) || this.buttons.some((b) => b.tab) || [...this.layerTrees.values()].some((lt) => lt.tab);
     const hasInfoTab = hasTabControls && this.logs.length > 0;
     const fingerprint = [
@@ -7231,7 +8022,7 @@ var SketchInstance = class {
       this.panelRender(hasInfoTab);
     }
     if (this._selectedId) {
-      if (this.scene.has(this._selectedId)) {
+      if (this.scene.has(this._selectedId) && !this.onLockedLayer(this._selectedId)) {
         this.renderer.setSelectionHighlight(this._selectedId);
         this.renderer.attachGizmo(this._selectedId);
       } else {
@@ -7331,10 +8122,15 @@ var SketchInstance = class {
         const key = `layertree:${opts?.group ?? ""}:${label}`;
         usedParams.add(key);
         let lt = self.layerTrees.get(key);
+        const changed = (state2) => {
+          self.refreshLocks();
+          if (state2.display && self._onDisplayFns.length > 0) self.runDisplayPass();
+          else self.runSketch();
+        };
         if (!lt) {
           const state2 = {
             key,
-            value: {},
+            value: layerDefaults(nodes),
             nodes,
             group: opts?.group ?? "Layers",
             tab: opts?.tab ?? "",
@@ -7342,20 +8138,23 @@ var SketchInstance = class {
           };
           state2.panel = new LayerPanel({
             nodes,
-            value: {},
+            value: state2.value,
             isDark: self.theme.isDark,
-            onChange: (updates) => {
+            active: opts?.active,
+            columns: opts?.columns,
+            onChange: (updates, active) => {
               state2.value = { ...state2.value, ...updates };
-              state2.panel.update(state2.nodes, state2.value);
-              if (state2.display && self._onDisplayFns.length > 0) self.runDisplayPass();
-              else self.runSketch();
+              state2.panel.update(state2.nodes, state2.value, active);
+              changed(state2);
             }
           });
           lt = state2;
           self.layerTrees.set(key, state2);
+          self.refreshLocks();
         } else {
           lt.nodes = nodes;
           lt.display = !!opts?.display;
+          lt.value = { ...layerDefaults(nodes), ...lt.value };
           lt.panel.update(nodes, lt.value);
         }
         const state = lt;
@@ -7363,14 +8162,32 @@ var SketchInstance = class {
           get value() {
             return state.value;
           },
+          get active() {
+            return state.panel.active;
+          },
           set(update) {
             const next = { ...state.value };
-            for (const [id, v] of Object.entries(update)) next[id] = { ...next[id], ...v };
+            for (const [id, v] of Object.entries(keepActiveOn(state.nodes, state.panel.active, update))) {
+              next[id] = { ...next[id], ...v };
+            }
             state.value = next;
             state.panel.update(state.nodes, state.value);
-            if (self._running) return;
-            if (state.display && self._onDisplayFns.length > 0) self.runDisplayPass();
-            else self.runSketch();
+            if (self._running) {
+              self.refreshLocks();
+              return;
+            }
+            changed(state);
+          },
+          setActive(id) {
+            if (opts?.columns?.active === false) return;
+            if (id === state.panel.active || !(id in layerDefaults(state.nodes))) return;
+            state.value = { ...state.value, ...activateLayer(state.nodes, state.value, id) };
+            state.panel.update(state.nodes, state.value, id);
+            if (self._running) {
+              self.refreshLocks();
+              return;
+            }
+            changed(state);
           }
         };
       },
@@ -7485,6 +8302,10 @@ var SketchInstance = class {
       },
       cameraUp(x, y, z) {
         self.renderer.setCameraUp(x, y, z);
+      },
+      // ── Steps ──
+      step(name, inputs, fn) {
+        return self._trace.step(name, inputs, fn, { src: callSite() });
       },
       // ── Info ──
       log(label, value) {
@@ -7611,6 +8432,21 @@ var SketchInstance = class {
       },
       get activeTab() {
         return self.panel.getActiveTab();
+      },
+      get viewerHeader() {
+        const h = self.renderer.viewerHeader;
+        return h ? { left: h.left, right: h.right } : null;
+      },
+      get renderMode() {
+        self._readsStyle.add("renderMode");
+        return self.scene.renderMode;
+      },
+      get lightingMode() {
+        self._readsStyle.add("lightingMode");
+        return self.scene.lightingMode;
+      },
+      frameBounds(min, max) {
+        self.renderer.setFrameBounds({ min, max });
       },
       onTabChange(fn) {
         self._onTabChange = fn;
@@ -8027,6 +8863,8 @@ var SketchInstance = class {
       snapshotPng: () => snapshotWithOverlays(this.renderer, this.viewportWrap),
       describe: (id) => this.describeObject(id),
       context: () => this.markupContext(),
+      buttonHost: this.renderer.viewerHeader?.end,
+      top: this.renderer.viewerHeader ? VIEWER_HEADER_H : 0,
       setTracking(on) {
         if (on === self._trackSource) return;
         self._trackSource = on;
@@ -8042,8 +8880,46 @@ var SketchInstance = class {
       camera: (pos, target) => {
         this.renderer.setCameraPosition(pos[0], pos[1], pos[2]);
         if (target) this.renderer.lookAt(target[0], target[1], target[2]);
-      }
+      },
+      section: (cut) => this.renderer.setSection(cut),
+      steps: () => this._trace.steps.length ? { ...this._trace.toJSON(), marks: [...this._stepsPanel?.pendingMarks ?? []] } : null
     });
+  }
+  /** The run's steps in the panel (made the first time a run records any), and a click on geometry finds its step. */
+  showSteps() {
+    if (!this._trace.steps.length && !this._stepsPanel) return;
+    if (!this._stepsPanel) {
+      this._stepsPanel = new StepsPanel(this.viewportWrap, {
+        theme: this.theme,
+        onSelect: (_step, objects) => this.renderer.setSelectionHighlight(objects.length ? objects : null),
+        onSave: (marks) => this.saveStepMarks(marks)
+      });
+      let down = null;
+      const canvas = this.renderer.canvasEl;
+      canvas.addEventListener("pointerdown", (e) => {
+        down = { x: e.clientX, y: e.clientY };
+      });
+      canvas.addEventListener("pointerup", (e) => {
+        const panel = this._stepsPanel;
+        if (!down || !panel?.isOpen || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+        const hit = this.renderer.hitAt(e.clientX, e.clientY);
+        const step = hit ? panel.stepOfObject(hit.id) : void 0;
+        if (step) panel.select(step);
+      });
+    }
+    this._stepsPanel.show(this._trace.steps.length ? this._trace.toJSON() : null);
+  }
+  /** A snapshot for the agent carrying the notes on steps (markup.json `stepMarks`). */
+  async saveStepMarks(marks) {
+    if (!this.markup) return void 0;
+    this._stepMarks = [...marks];
+    try {
+      const n = marks.length;
+      const bundle = await this.markup.capture({ note: `${n} note${n > 1 ? "s" : ""} on steps`, label: "steps" });
+      return bundle.dir;
+    } finally {
+      this._stepMarks = [];
+    }
   }
   describeObject(id) {
     return describeSceneObject(this.scene, id, this._srcById.get(id));
@@ -8057,7 +8933,9 @@ var SketchInstance = class {
       params: this.store.getAll(),
       logs: this.logs.map((l) => ({ ...l })),
       errors: this.bridge?.errors() ?? [],
-      commands: this.commands.list()
+      commands: this.commands.list(),
+      ...this._trace.steps.length ? { steps: this._trace.toJSON() } : {},
+      ...this._stepMarks.length ? { stepMarks: this._stepMarks } : {}
     };
   }
   /** Rebuild the header's Export / Import menus when the registered names change. */
@@ -8093,23 +8971,10 @@ var SketchInstance = class {
     this.renderer.dispose();
   }
 };
-function callSite() {
-  const limit = Error.stackTraceLimit;
-  Error.stackTraceLimit = 40;
-  const stack = new Error().stack ?? "";
-  Error.stackTraceLimit = limit;
-  for (const line of stack.split("\n").slice(1)) {
-    const m = line.match(/(https?:\/\/[^\s)]+):(\d+):(\d+)/) ?? line.match(/@(\S+):(\d+):(\d+)$/);
-    if (!m) continue;
-    const url = m[1];
-    if (/\/tekto\/(src|dist)\/|node_modules|\/@vite\/|\/@fs\/.*\/tekto\/src\//.test(url)) continue;
-    return `${url}:${m[2]}:${m[3]}`;
-  }
-  return void 0;
-}
 
 // src/sketch/Notes.ts
 var INK = "#ffb020";
+var DONE = "#9aa0aa";
 var NotesLayer = class {
   constructor(renderer, doc, opts = {}) {
     this.renderer = renderer;
@@ -8122,6 +8987,7 @@ var NotesLayer = class {
     this.shown = true;
     this.offs = [];
     this.collection = opts.collection ?? "notes";
+    this.author = opts.author;
     const host = opts.host ?? renderer.canvasEl.parentElement;
     if (!host) throw new Error("notesLayer: the renderer's canvas is not in the page yet (or pass opts.host)");
     if (getComputedStyle(host).position === "static") host.style.position = "relative";
@@ -8137,6 +9003,7 @@ var NotesLayer = class {
     this.offs.push(doc.onChange((changes) => {
       if (!changes.some((c) => c.collection === this.collection)) return;
       if (this.openId && !doc.has(this.collection, this.openId)) this.closeCard();
+      else if (this.openId && changes.some((c) => c.collection === this.collection && c.id === this.openId)) this.openCard(this.openId);
       renderer.requestRender();
     }));
     renderer.requestRender();
@@ -8148,6 +9015,35 @@ var NotesLayer = class {
   /** Keep a note: one undo step. Returns its id. */
   add(note) {
     return this.doc.add(this.collection, note, { label: "Add note" });
+  }
+  /** The notes as a list reads them (an agent's `tekto_notes`): the open ones, or all. */
+  describe(status = "open") {
+    return this.list().map(([id, n], i) => ({
+      id,
+      key: `${this.collection}/${id}`,
+      n: i + 1,
+      text: n.text,
+      ...n.author ? { author: n.author } : {},
+      createdAt: n.createdAt,
+      status: n.status ?? "open",
+      keys: n.keys,
+      pin: n.pin,
+      replies: n.replies ?? []
+    })).filter((n) => status === "all" || n.status === "open");
+  }
+  /** Answer a note: one undo step. Throws if the note does not exist. */
+  reply(id, text, author) {
+    const r = { text, ...author ? { author } : {}, at: (/* @__PURE__ */ new Date()).toISOString() };
+    this.doc.update(this.collection, id, (n) => ({ ...n, replies: [...n.replies ?? [], r] }), { label: "Reply to note" });
+  }
+  /** Mark a note done, with a last reply saying what was done if `text` is given: one undo step. */
+  resolve(id, text, author) {
+    const r = text ? { text, ...author ? { author } : {}, at: (/* @__PURE__ */ new Date()).toISOString() } : null;
+    this.doc.update(this.collection, id, (n) => ({ ...n, status: "done", ...r ? { replies: [...n.replies ?? [], r] } : {} }), { label: "Resolve note" });
+  }
+  /** Open a done note again. */
+  reopen(id) {
+    this.doc.update(this.collection, id, (n) => ({ ...n, status: "open" }), { label: "Reopen note" });
   }
   /** Keep several notes as one undo step ("Keep as notes"). Returns their ids. */
   keep(notes) {
@@ -8207,7 +9103,7 @@ var NotesLayer = class {
         g.strokeStyle = colour;
         g.fillStyle = colour;
         g.lineWidth = width;
-        for (const [, n] of notes) for (const s of n.strokes) {
+        for (const [, n] of notes) for (const s of n.status === "done" ? [] : n.strokes) {
           if (s.length === 1) {
             const q = project(s[0]);
             if (q.visible) {
@@ -8237,8 +9133,12 @@ var NotesLayer = class {
       seen.add(id);
       const q = at(n.pin);
       const pin = this.pins.get(id) ?? this.makePin(id);
+      const done = n.status === "done";
       pin.textContent = String(i + 1);
-      pin.title = n.text || "(no text)";
+      pin.title = `${done ? "Done: " : ""}${n.text || "(no text)"}`;
+      pin.dataset.status = done ? "done" : "open";
+      pin.style.background = done ? DONE : INK;
+      pin.style.opacity = done ? "0.75" : "1";
       pin.style.display = q.visible ? "flex" : "none";
       pin.style.left = `${q.x - 11}px`;
       pin.style.top = `${q.y - 11}px`;
@@ -8292,8 +9192,41 @@ var NotesLayer = class {
       });
       return b;
     };
-    row.append(btn("Go to view", () => this.goTo(id)), btn("Delete", () => this.remove(id)), btn("Close", () => this.closeCard()));
-    card.append(text, meta, row);
+    const done = n.status === "done";
+    const replies = document.createElement("div");
+    replies.dataset.noteReplies = "";
+    for (const r of n.replies ?? []) {
+      const line = document.createElement("div");
+      line.style.cssText = "margin:0 0 6px;padding-left:8px;border-left:2px solid rgba(255,255,255,.18);white-space:pre-wrap;";
+      const who = document.createElement("span");
+      who.textContent = `${r.author ?? "Reply"}: `;
+      who.style.color = "rgba(232,235,240,.55)";
+      line.append(who, document.createTextNode(r.text));
+      replies.appendChild(line);
+    }
+    const answer = document.createElement("input");
+    answer.placeholder = "Reply\u2026";
+    answer.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:4px 7px;border-radius:5px;font:11px system-ui,sans-serif;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);color:#e8ebf0;";
+    const send = () => {
+      const t = answer.value.trim();
+      if (t) this.reply(id, t, this.author);
+    };
+    answer.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") send();
+    });
+    row.style.flexWrap = "wrap";
+    row.append(
+      done ? btn("Reopen", () => this.reopen(id)) : btn("Done", () => {
+        const t = answer.value.trim();
+        this.resolve(id, t || void 0, this.author);
+      }),
+      btn("Go to view", () => this.goTo(id)),
+      btn("Delete", () => this.remove(id)),
+      btn("Close", () => this.closeCard())
+    );
+    if (done) meta.textContent = `Done \xB7 ${meta.textContent}`;
+    card.append(text, meta, replies, answer, row);
     this.pinLayer.appendChild(card);
     this.renderer.requestRender();
   }
@@ -8349,17 +9282,59 @@ function appShell(config) {
   viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
   vpWrap.appendChild(viewportEl);
   const statusEl = document.createElement("div");
+  statusEl.dataset.tektoStatus = "";
   statusEl.style.cssText = `
     position:absolute; bottom:12px; left:12px;
-    padding:8px 12px; border-radius:6px;
+    border-radius:6px;
     background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
     font-size:11px; line-height:1.7; color:${t.textDim};
     pointer-events:none; max-width:340px;
     border:1px solid rgba(22,24,42,.8);
-    white-space:pre; font-family:${t.font};
-    display:none;
+    font-family:${t.font};
+    display:none; align-items:flex-start;
   `;
+  const statusTextEl = document.createElement("div");
+  statusTextEl.style.cssText = "white-space:pre;overflow:hidden;text-overflow:ellipsis;padding:8px 2px 8px 12px;";
+  const statusToggle = document.createElement("button");
+  statusToggle.type = "button";
+  statusToggle.style.cssText = `
+    pointer-events:auto; cursor:pointer; flex:none; border:none; background:transparent;
+    color:${t.textDim}; font:600 11px/1 ${t.font}; padding:0; width:22px; height:22px;
+    margin:4px 4px 0 0; border-radius:4px;
+  `;
+  statusToggle.addEventListener("pointerenter", () => {
+    statusToggle.style.color = t.text;
+  });
+  statusToggle.addEventListener("pointerleave", () => {
+    statusToggle.style.color = t.textDim;
+  });
+  statusEl.append(statusTextEl, statusToggle);
   vpWrap.appendChild(statusEl);
+  const statusKey = `tekto.appShell.statusCollapsed.${config.title ?? "app"}`;
+  let statusCollapsed = config.statusCollapsed ?? false;
+  try {
+    const stored = localStorage.getItem(statusKey);
+    if (stored !== null) statusCollapsed = stored === "1";
+  } catch {
+  }
+  const paintStatus = () => {
+    statusTextEl.style.display = statusCollapsed ? "none" : "";
+    statusToggle.style.margin = statusCollapsed ? "2px" : "4px 4px 0 0";
+    statusToggle.textContent = statusCollapsed ? "i" : "\u2013";
+    statusToggle.title = statusCollapsed ? `Show status${statusTextEl.textContent ? `: ${statusTextEl.textContent}` : ""}` : "Hide status";
+    statusToggle.setAttribute("aria-label", statusCollapsed ? "Show status" : "Hide status");
+    statusToggle.setAttribute("aria-expanded", String(!statusCollapsed));
+  };
+  statusToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    statusCollapsed = !statusCollapsed;
+    try {
+      localStorage.setItem(statusKey, statusCollapsed ? "1" : "0");
+    } catch {
+    }
+    paintStatus();
+  });
+  paintStatus();
   root.appendChild(vpWrap);
   config.container.appendChild(root);
   const params = new ParamStore(config.params);
@@ -8382,6 +9357,8 @@ function appShell(config) {
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
     shadingBar: config.shadingBar ?? false,
+    headerHost: vpWrap,
+    // the viewer header (shadingBar: "header") above overlays and ✎ Markup
     units: config.units ?? null,
     ...config.renderer
   });
@@ -8391,15 +9368,30 @@ function appShell(config) {
   const toolbar = config.topBar === false ? null : viewerToolbar(scene, renderer, { ...config.topBar === true || config.topBar === void 0 ? {} : config.topBar, theme: t });
   if (toolbar) header.appendChild(toolbar.el);
   const notesCfg = config.notes ? "doc" in config.notes ? config.notes : { doc: config.notes } : null;
-  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, { collection: notesCfg.collection, host: vpWrap }) : null;
+  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, {
+    collection: notesCfg.collection,
+    host: vpWrap,
+    ..."author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}
+  }) : null;
   let buildFn = null;
   let displayFn = null;
+  let trace = new StepTrace();
+  let stepsPanel = null;
+  let stepMarks = [];
+  scene.on((e) => {
+    if (e.type === "object:add") trace.current?.objects.push(e.id);
+  });
+  const build = () => {
+    trace = new StepTrace();
+    buildFn?.();
+    showSteps();
+  };
   params.onChange((key) => {
     const def = params.getDef(key);
     if (def?.display) {
       displayFn?.();
     } else {
-      buildFn?.();
+      build();
       displayFn?.();
     }
   });
@@ -8440,14 +9432,16 @@ function appShell(config) {
       displayFn = fn;
     },
     rebuild() {
-      buildFn?.();
+      build();
       displayFn?.();
     },
+    step: (name, inputs, fn) => trace.step(name, inputs, fn, { src: callSite() }),
     status(text) {
       statusText = text;
       if (text) {
-        statusEl.textContent = text;
-        statusEl.style.display = "block";
+        statusTextEl.textContent = text;
+        statusEl.style.display = "flex";
+        paintStatus();
       } else {
         statusEl.style.display = "none";
       }
@@ -8475,7 +9469,9 @@ function appShell(config) {
     params: params.getAll(),
     logs: statusText ? [{ label: "status", value: statusText }] : [],
     commands: commands.list(),
-    errors: bridge.errors()
+    errors: bridge.errors(),
+    ...trace.steps.length ? { steps: trace.toJSON() } : {},
+    ...stepMarks.length ? { stepMarks } : {}
   });
   const markup2 = config.markup === false ? null : new MarkupOverlay({
     viewport: vpWrap,
@@ -8487,9 +9483,8 @@ function appShell(config) {
     context,
     setTracking: () => {
     },
-    ...notes ? { keep: (ns) => {
-      notes.keep(ns);
-    } } : {},
+    ...renderer.viewerHeader ? { buttonHost: renderer.viewerHeader.end, top: VIEWER_HEADER_H } : {},
+    ...notes ? { keep: (ns) => notes.keep(ns).map((id) => `${notes.collection}/${id}`) } : {},
     ...notesCfg && "author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}
   });
   const bridge = installAgentBridge({
@@ -8508,9 +9503,42 @@ function appShell(config) {
     camera: (pos, target) => {
       renderer.setCameraPosition(pos[0], pos[1], pos[2]);
       if (target) renderer.lookAt(target[0], target[1], target[2]);
-    }
+    },
+    section: (cut) => renderer.setSection(cut),
+    notes: () => notes,
+    steps: () => trace.steps.length ? { ...trace.toJSON(), marks: [...stepsPanel?.pendingMarks ?? []] } : null
   });
   return instance;
+  function showSteps() {
+    if (!trace.steps.length && !stepsPanel) return;
+    if (!stepsPanel) {
+      stepsPanel = new StepsPanel(vpWrap, {
+        theme: t,
+        onSelect: (_step, objects) => renderer.setSelectionHighlight(objects.length ? objects : null),
+        onSave: async (marks) => {
+          if (!markup2) return void 0;
+          stepMarks = [...marks];
+          try {
+            const n = marks.length;
+            return (await markup2.capture({ note: `${n} note${n > 1 ? "s" : ""} on steps`, label: "steps" })).dir;
+          } finally {
+            stepMarks = [];
+          }
+        }
+      });
+      let down = null;
+      renderer.canvasEl.addEventListener("pointerdown", (e) => {
+        down = { x: e.clientX, y: e.clientY };
+      });
+      renderer.canvasEl.addEventListener("pointerup", (e) => {
+        if (!down || !stepsPanel?.isOpen || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+        const hit = renderer.hitAt(e.clientX, e.clientY);
+        const step = hit ? stepsPanel.stepOfObject(hit.id) : void 0;
+        if (step) stepsPanel.select(step);
+      });
+    }
+    stepsPanel.show(trace.steps.length ? trace.toJSON() : null);
+  }
 }
 
 // src/collab/PresenceBar.ts
@@ -8566,15 +9594,29 @@ var PresenceBar = class {
       b.title = `${p.user.name}${me ? " (you)" : ""}${what ? ` \u2014 ${what}` : ""}`;
       this.people.appendChild(b);
     }
+    for (const p of this.store.presence) {
+      const agent = p.state.agent;
+      if (!agent?.name) continue;
+      const b = document.createElement("span");
+      b.dataset.agent = agent.name;
+      b.style.cssText = "height:22px;padding:0 6px;border-radius:5px;display:inline-flex;align-items:center;font:600 10px system-ui,sans-serif;color:#14161e;background:#ffb020;white-space:nowrap;";
+      b.textContent = agent.name;
+      const me = p.session === this.store.session;
+      b.title = `${agent.name}, through ${me ? "your" : `${p.user.name}'s`} window${agent.doing ? `: ${agent.doing}` : ""}`;
+      this.people.appendChild(b);
+    }
   }
 };
 export {
   AABB,
   Algo,
   ArcCurve,
+  BUILDING_COLLECTIONS,
+  BUILDING_SCHEMA,
   BalloonFrame,
   BlobDetect,
   BspTree,
+  Building,
   Callouts,
   Capsule2D,
   CltConstruction,
@@ -8627,6 +9669,7 @@ export {
   PGHalfEdge,
   PGVertex,
   ParamStore,
+  Particles2D,
   PixelView,
   PlanarGraph,
   PlanarGraphCleanup,
@@ -8643,6 +9686,7 @@ export {
   RibbonOpening,
   RibbonSystem,
   RigidBody2D,
+  Roof,
   SVGRenderer,
   Scene,
   SdfBlend,
@@ -8695,6 +9739,8 @@ export {
   SpringSystem3D,
   Stair,
   StairType,
+  StepTrace,
+  StepsPanel,
   StreamlineTracer,
   SunPosition,
   ThreeRenderer,
@@ -8705,6 +9751,7 @@ export {
   Vec3,
   Vec4,
   VecMath,
+  Voronoi2D,
   VoxelGrid,
   VoxelGrid2D,
   Wall,
@@ -8713,21 +9760,30 @@ export {
   WallSystem,
   WallType,
   aciFromHex,
+  activateLayer,
+  agentDoc,
   appShell,
+  applyPatch,
+  bindBuilding,
   bindScene,
   boundingWalls,
   boxOf,
   buildCutList,
+  buildingSchema,
+  checkRecord,
   chooseJoistDirection,
   clampedUniformKnots,
   closestPointOnSegment,
   cltLayers,
   collabColor,
+  computeEffectiveLock,
   computeEffectiveVisibility,
   contactBetween,
   createLayout,
   createParams,
   createRandom,
+  defaultBuildingTypes,
+  describeValue,
   devServerAdapter,
   download,
   drawSheet,
@@ -8738,6 +9794,7 @@ export {
   findAdjacent,
   fitRadius,
   fitSheet,
+  flatLights,
   formatKeys,
   getTheme,
   groundAppearance,
@@ -8748,6 +9805,7 @@ export {
   joistDirectionFromSupports,
   keyMatches,
   labelWidthFor,
+  layerDefaults,
   layoutLabels,
   lightBalance,
   lineClipPolygon,
@@ -8759,6 +9817,7 @@ export {
   neighboursOf,
   noise,
   notesLayer,
+  openingFill,
   orbitFor,
   orthoFrustum,
   perpVisibility,
@@ -8769,6 +9828,7 @@ export {
   polylinesToSVG,
   processWorkerRequest,
   realize,
+  realizeBuilding,
   realizeSlab,
   repelBodies,
   reverse as reverseContact,
@@ -8783,8 +9843,10 @@ export {
   sketch2d,
   stampName,
   standardOrbit,
+  studioLights,
   supabaseAdapter,
   surfaceAppearance,
+  validateBuilding,
   viewCommands,
   viewModeIconShapes,
   viewModeIconSvg,

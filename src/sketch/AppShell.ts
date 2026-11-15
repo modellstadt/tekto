@@ -42,9 +42,12 @@ import { ThreeRenderer, ThreeRendererConfig } from "../render/ThreeRenderer";
 import { ParamStore, ParamSchema } from "../gui/Params";
 import { ControlPanel, ControlItem } from "../gui/ControlPanel";
 import { getTheme, Theme } from "../gui/theme";
-import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays } from "./AgentBridge";
+import { installAgentBridge, plainBundle, sceneSummary, describeSceneObject, addOverlay, snapshotWithOverlays, callSite } from "./AgentBridge";
+import { StepTrace } from "../core/steps/StepTrace";
+import { StepsPanel, type StepMark } from "./StepsPanel";
 import { Commands, viewCommands } from "../gui/Commands";
 import { viewerToolbar, type TopBarOptions } from "./ViewerToolbar";
+import { VIEWER_HEADER_H } from "../render/ShadingBar";
 import { NotesLayer, type Note } from "./Notes";
 import type { Doc } from "../collab/Doc";
 import { MarkupOverlay, type MarkupCaptureOptions } from "./Markup";
@@ -74,9 +77,15 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   topBar?: boolean | TopBarOptions;
   /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
   markup?: boolean;
+  /**
+   * Start with the status line collapsed to an ⓘ in the corner of the view. Its button folds
+   * and unfolds it, and a person's choice is remembered for this app (by its title). Default false.
+   */
+  statusCollapsed?: boolean;
   /** Notes that live with the model: the doc whose `notes` collection keeps them (or
-   *  `{ doc, collection, author }`). Markup then offers "Keep as notes", and the notes are
-   *  drawn over the view with a pin each (`app.notes`). */
+   *  `{ doc, collection, author }`). Markup then offers "Keep as notes" (and Save keeps the
+   *  marks as notes too), the notes are drawn over the view with a pin each (`app.notes`), and
+   *  an agent lists, answers and resolves them (`__tekto.notes`). */
   notes?: Doc<any> | { doc: Doc<any>; collection?: string; author?: string };
   /** The axis widget in a viewport corner (`true` = bottom right): click an axis for a plan
    *  or an elevation, toggle persp/ortho under it. Default `false` — an app may have its own
@@ -84,7 +93,7 @@ export interface AppShellConfig<S extends ParamSchema = ParamSchema> {
   navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
   /** The shading bar in a viewport corner (`true` = top left): icons for the render style, the
    *  lighting and the sun (morning, noon, sunset). Default `false`. */
-  shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right" | "header";
   /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset: relative to
    *  the content's extent. */
   units?: string;
@@ -135,6 +144,11 @@ export interface AppShellInstance<S extends ParamSchema = ParamSchema> {
 
   /** Update the status overlay text (cheap — just sets textContent) */
   status(text: string): void;
+  /**
+   * Run `fn(inputs)` as a named step of the build and record it (see `lab.step`): the steps
+   * panel draws the build as a graph of its steps, and a snapshot carries them for an agent.
+   */
+  step<I extends Record<string, unknown>, T>(name: string, inputs: I, fn: (inputs: I) => T): T;
 
   /**
    * A new layer over the 3D view, under the status line and ✎ Markup — mount a 2D view
@@ -204,19 +218,54 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
   viewportEl.style.cssText = "width:100%;height:100%;isolation:isolate;";
   vpWrap.appendChild(viewportEl);
 
-  // Status overlay
+  // Status overlay: the app's status line, folded to an ⓘ by its button (remembered per app).
+  // Clicks pass through it to the view, except on the button.
   const statusEl = document.createElement("div");
+  statusEl.dataset.tektoStatus = "";
   statusEl.style.cssText = `
     position:absolute; bottom:12px; left:12px;
-    padding:8px 12px; border-radius:6px;
+    border-radius:6px;
     background:rgba(7,8,14,.85); backdrop-filter:blur(8px);
     font-size:11px; line-height:1.7; color:${t.textDim};
     pointer-events:none; max-width:340px;
     border:1px solid rgba(22,24,42,.8);
-    white-space:pre; font-family:${t.font};
-    display:none;
+    font-family:${t.font};
+    display:none; align-items:flex-start;
   `;
+  const statusTextEl = document.createElement("div");
+  statusTextEl.style.cssText = "white-space:pre;overflow:hidden;text-overflow:ellipsis;padding:8px 2px 8px 12px;";
+  const statusToggle = document.createElement("button");
+  statusToggle.type = "button";
+  statusToggle.style.cssText = `
+    pointer-events:auto; cursor:pointer; flex:none; border:none; background:transparent;
+    color:${t.textDim}; font:600 11px/1 ${t.font}; padding:0; width:22px; height:22px;
+    margin:4px 4px 0 0; border-radius:4px;
+  `;
+  statusToggle.addEventListener("pointerenter", () => { statusToggle.style.color = t.text; });
+  statusToggle.addEventListener("pointerleave", () => { statusToggle.style.color = t.textDim; });
+  statusEl.append(statusTextEl, statusToggle);
   vpWrap.appendChild(statusEl);
+  const statusKey = `tekto.appShell.statusCollapsed.${config.title ?? "app"}`;
+  let statusCollapsed = config.statusCollapsed ?? false;
+  try {
+    const stored = localStorage.getItem(statusKey);
+    if (stored !== null) statusCollapsed = stored === "1";
+  } catch { /* storage blocked: the default */ }
+  const paintStatus = () => {
+    statusTextEl.style.display = statusCollapsed ? "none" : "";
+    statusToggle.style.margin = statusCollapsed ? "2px" : "4px 4px 0 0";
+    statusToggle.textContent = statusCollapsed ? "i" : "–";
+    statusToggle.title = statusCollapsed ? `Show status${statusTextEl.textContent ? `: ${statusTextEl.textContent}` : ""}` : "Hide status";
+    statusToggle.setAttribute("aria-label", statusCollapsed ? "Show status" : "Hide status");
+    statusToggle.setAttribute("aria-expanded", String(!statusCollapsed));
+  };
+  statusToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    statusCollapsed = !statusCollapsed;
+    try { localStorage.setItem(statusKey, statusCollapsed ? "1" : "0"); } catch { /* noop */ }
+    paintStatus();
+  });
+  paintStatus();
 
   root.appendChild(vpWrap);
   config.container.appendChild(root);
@@ -247,6 +296,7 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     up: config.up ?? "z",
     navGizmo: config.navGizmo ?? false,
     shadingBar: config.shadingBar ?? false,
+    headerHost: vpWrap,   // the viewer header (shadingBar: "header") above overlays and ✎ Markup
     units: config.units ?? null,
     ...config.renderer,
   });
@@ -263,7 +313,9 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
   // ── Notes that live with the model (a Doc collection), drawn over the view ──
   const notesCfg = config.notes ? ("doc" in config.notes ? config.notes : { doc: config.notes }) : null;
-  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, { collection: notesCfg.collection, host: vpWrap }) : null;
+  const notes = notesCfg ? new NotesLayer(renderer, notesCfg.doc, {
+    collection: notesCfg.collection, host: vpWrap, ...("author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}),
+  }) : null;
 
   // ── Build / display passes ──
   // Two-tier invalidation: params flagged `display: true` only re-run the
@@ -271,13 +323,23 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
   let buildFn: (() => void) | null = null;
   let displayFn: (() => void) | null = null;
+  // The build's steps (`app.step`): a fresh record each build, the objects drawn in a step its own.
+  let trace = new StepTrace();
+  let stepsPanel: StepsPanel | null = null;
+  let stepMarks: StepMark[] = [];
+  scene.on((e) => { if (e.type === "object:add") trace.current?.objects.push(e.id); });
+  const build = () => {
+    trace = new StepTrace();
+    buildFn?.();
+    showSteps();
+  };
 
   params.onChange((key) => {
     const def = params.getDef(key as any) as { display?: boolean } | undefined;
     if (def?.display) {
       displayFn?.();
     } else {
-      buildFn?.();
+      build();
       displayFn?.();
     }
   });
@@ -321,13 +383,15 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
 
     onBuild(fn) { buildFn = fn; },
     onDisplay(fn) { displayFn = fn; },
-    rebuild() { buildFn?.(); displayFn?.(); },
+    rebuild() { build(); displayFn?.(); },
+    step: (name, inputs, fn) => trace.step(name, inputs, fn, { src: callSite() }),
 
     status(text: string) {
       statusText = text;
       if (text) {
-        statusEl.textContent = text;
-        statusEl.style.display = "block";
+        statusTextEl.textContent = text;
+        statusEl.style.display = "flex";
+        paintStatus();
       } else {
         statusEl.style.display = "none";
       }
@@ -360,6 +424,8 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     logs: statusText ? [{ label: "status", value: statusText }] : [],
     commands: commands.list(),
     errors: bridge.errors(),
+    ...(trace.steps.length ? { steps: trace.toJSON() } : {}),
+    ...(stepMarks.length ? { stepMarks } : {}),
   });
   const markup = config.markup === false ? null : new MarkupOverlay({
     viewport: vpWrap,
@@ -370,7 +436,8 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
     describe: (id) => describeSceneObject(scene, id),
     context,
     setTracking: () => { /* retained scenes aren't re-run: objects carry their record key instead */ },
-    ...(notes ? { keep: (ns: Note[]) => { notes.keep(ns); } } : {}),
+    ...(renderer.viewerHeader ? { buttonHost: renderer.viewerHeader.end, top: VIEWER_HEADER_H } : {}),
+    ...(notes ? { keep: (ns: Note[]) => notes.keep(ns).map((id) => `${notes.collection}/${id}`) } : {}),
     ...(notesCfg && "author" in notesCfg && notesCfg.author ? { author: notesCfg.author } : {}),
   });
 
@@ -394,6 +461,38 @@ export function appShell<S extends ParamSchema>(config: AppShellConfig<S>): AppS
       if (target) renderer.lookAt(target[0], target[1], target[2]);
     },
     section: (cut) => renderer.setSection(cut),
+    notes: () => notes,
+    steps: () => (trace.steps.length ? { ...trace.toJSON(), marks: [...(stepsPanel?.pendingMarks ?? [])] } : null),
   });
   return instance;
+
+  /** The build's steps in the panel (made the first time a build records any); a click on geometry finds its step. */
+  function showSteps(): void {
+    if (!trace.steps.length && !stepsPanel) return;
+    if (!stepsPanel) {
+      stepsPanel = new StepsPanel(vpWrap, {
+        theme: t,
+        onSelect: (_step, objects) => renderer.setSelectionHighlight(objects.length ? objects : null),
+        onSave: async (marks) => {
+          if (!markup) return undefined;
+          stepMarks = [...marks];
+          try {
+            const n = marks.length;
+            return (await markup.capture({ note: `${n} note${n > 1 ? "s" : ""} on steps`, label: "steps" })).dir;
+          } finally {
+            stepMarks = [];
+          }
+        },
+      });
+      let down: { x: number; y: number } | null = null;
+      renderer.canvasEl.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
+      renderer.canvasEl.addEventListener("pointerup", (e) => {
+        if (!down || !stepsPanel?.isOpen || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+        const hit = renderer.hitAt(e.clientX, e.clientY);
+        const step = hit ? stepsPanel.stepOfObject(hit.id) : undefined;
+        if (step) stepsPanel.select(step);
+      });
+    }
+    stepsPanel.show(trace.steps.length ? trace.toJSON() : null);
+  }
 }

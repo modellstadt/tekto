@@ -1,19 +1,25 @@
-import { q as StandardView, M as Mesh, t as VisualStyle, V as Vec3, F as FlatMeshData, r as Vec2, e as LightSpec, b as SectionRequest, S as Scene } from './Scene-BHniJuab.js';
-import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-Bi8_jJSw.js';
+import { c as StandardView, M as Mesh, u as VisualStyle, V as Vec3, F as FlatMeshData, s as Vec2, f as LightSpec, b as SectionRequest, R as RenderMode, L as LightingMode, S as Scene } from './Scene-BsOKEQXC.mjs';
+import { A as Algo, u as MeshFactory, M as MathUtils, G as SheetPrim, C as Sheet, y as Pt } from './download-BLqzq-jW.mjs';
+import { S as ShadingBarPlacement } from './ShadingBar-r-eRrCKI.mjs';
 
 /**
- * LayerPanel — reusable tree-based layer/visibility panel.
+ * LayerPanel — reusable tree-based layer panel, laid out like Rhino's:
+ * name · active (✓) · on (bulb) · lock · colour swatch.
  *
  * Pure DOM, no framework dependency. Embeds in the Sketch API via
  * lab.layerTree(), or use standalone by appending .el to any container.
  *
- * Parent visibility works as a NON-DESTRUCTIVE MASK:
- *   - Hiding a parent dims its children visually but does NOT change their
- *     stored state. Re-enabling the parent restores children as they were.
- *   - Use computeEffectiveVisibility() to get the resolved visibility for
- *     each node (own state AND all ancestor states combined).
+ * Parent visibility and lock work as a NON-DESTRUCTIVE MASK:
+ *   - Turning a parent off (or locking it) dims its children's icons but does
+ *     NOT change their stored state. Undoing it restores children as they were.
+ *   - Use computeEffectiveVisibility() / computeEffectiveLock() to get the
+ *     resolved state of each node (own state AND all ancestor states combined).
+ *
+ * One layer is ACTIVE (Rhino: "current") — the one new objects go on. It is
+ * always on and unlocked: making a layer active turns it and its parents on
+ * and unlocks them (activateLayer), and their bulbs and locks are disabled.
  */
-/** One layer in a `LayerPanel` tree: id, label, initial visibility and colour (a colour shows a picker), and child layers. */
+/** One layer in a `LayerPanel` tree: id, label, initial visibility, lock and colour, and child layers. */
 interface LayerNode {
     /** Unique identifier — used as key in LayerMap */
     id: string;
@@ -21,18 +27,31 @@ interface LayerNode {
     label: string;
     /** Initial visibility (default: true) */
     defaultVisible?: boolean;
-    /** Initial color. When defined, a color picker is shown next to the label. */
+    /** Initial lock (default: false) */
+    defaultLocked?: boolean;
+    /** Initial color (default: #888888) */
     defaultColor?: string;
     /** Child nodes */
     children?: LayerNode[];
 }
-/** A layer's own stored state: its visibility toggle and colour (not ancestor-aware — see `computeEffectiveVisibility`). */
+/** A layer's own stored state: on/off, colour and lock (not ancestor-aware — see `computeEffectiveVisibility` / `computeEffectiveLock`). */
 interface LayerState {
     visible: boolean;
     color: string;
+    /** Locked: its objects are drawn but can't be picked or hovered. */
+    locked?: boolean;
 }
 /** Flat map of node id → stored state (own toggle only, not ancestor-aware) */
 type LayerMap = Record<string, LayerState>;
+/** Which of the optional columns a `LayerPanel` shows — all of them unless switched off. */
+interface LayerColumns {
+    /** The active-layer check (✓). Off: the tree has no active layer (a viewer's tree), so none is kept on. */
+    active?: boolean;
+    /** The padlock. */
+    locked?: boolean;
+    /** The colour swatch. */
+    color?: boolean;
+}
 /**
  * Traverse a layer tree and return a map of id → effective visibility,
  * where a node is effectively visible only when it AND all its ancestors
@@ -43,8 +62,23 @@ type LayerMap = Record<string, LayerState>;
  */
 declare function computeEffectiveVisibility(nodes: LayerNode[], value: LayerMap): Record<string, boolean>;
 /**
- * A tree of layers with a visibility checkbox (and optional colour picker) per node; hiding a parent dims its children without changing their stored state.
- * Used by `lab.layerTree()`, or standalone by appending `.el`; `onChange` receives only the changed node, and `update(nodes, value)` re-renders.
+ * The lock counterpart of `computeEffectiveVisibility`: a node is effectively
+ * locked when it OR any of its ancestors is locked.
+ */
+declare function computeEffectiveLock(nodes: LayerNode[], value: LayerMap): Record<string, boolean>;
+/** Every node's initial state (from `defaultVisible` / `defaultLocked` / `defaultColor`): the full map a layer tree starts from. */
+declare function layerDefaults(nodes: LayerNode[]): LayerMap;
+/**
+ * The state changes that make `id` the active layer, as in Rhino: it and its
+ * parents turn on and unlock. Returns only the nodes that change (empty when
+ * none do, or `id` isn't in the tree); merge them into your `LayerMap`.
+ */
+declare function activateLayer(nodes: LayerNode[], value: LayerMap, id: string): LayerMap;
+/**
+ * A Rhino-style layer tree: per node an active-layer check, an on/off bulb, a lock and a
+ * colour swatch; turning a parent off (or locking it) dims its children without changing their stored state.
+ * Used by `lab.layerTree()`, or standalone by appending `.el`; `onChange` receives only the changed nodes
+ * (and the new active id when it changed), and `update(nodes, value)` re-renders.
  */
 declare class LayerPanel {
     /** Mount this element anywhere in your UI */
@@ -54,22 +88,36 @@ declare class LayerPanel {
     private _onChange;
     private _collapsed;
     private _isDark;
+    private _columns;
+    private _active;
+    /** The active layer and its parents: they can't be turned off or locked. */
+    private _activePath;
     constructor(opts: {
         nodes: LayerNode[];
         value: LayerMap;
-        onChange: (updates: LayerMap) => void;
+        /** `active` is set when the user made another layer active; `updates` then turn it (and its parents) on and unlock them. */
+        onChange: (updates: LayerMap, active?: string) => void;
         isDark?: boolean;
+        /** The initial active layer (default: the first one that is on and unlocked). */
+        active?: string;
+        columns?: LayerColumns;
     });
+    /** The active layer's id: "" for an empty tree, or with the active column hidden (`columns.active: false`),
+     *  where the tree has no active layer and nothing is kept on. */
+    get active(): string;
     /**
-     * Re-render with new nodes/value.
-     * Scroll position and collapsed state are preserved.
+     * Re-render with new nodes/value, and optionally another active layer (an
+     * id not in `nodes` is ignored). Scroll position and collapsed state are
+     * preserved. If the active layer leaves the tree, the first layer that is on
+     * and unlocked becomes active.
      */
-    update(nodes: LayerNode[], value: LayerMap): void;
-    private _stateOf;
+    update(nodes: LayerNode[], value: LayerMap, active?: string): void;
     private _rebuild;
+    private _iconButton;
     /**
-     * @param ancestorVisible — whether all ancestors are currently visible.
-     *   Used only for visual dimming; does NOT affect stored state.
+     * @param ancestorVisible — whether all ancestors are currently on.
+     * @param ancestorLocked — whether any ancestor is locked.
+     *   Both are used only for visual dimming; they do NOT affect stored state.
      */
     private _renderNode;
 }
@@ -202,11 +250,16 @@ interface SketchConfig {
     /** Show the ✎ Markup button (draw instructions on the view; see Markup.ts). Default `true`. */
     markup?: boolean;
     /** The axis widget in the viewport corner: click an axis for a plan or an elevation,
-     *  toggle persp/ortho under it. Default `false`. */
+     *  toggle persp/ortho under it; hidden in a strict-2D view. Default `false`. */
     navGizmo?: boolean;
-    /** The shading bar in the view's top-left corner: icons for the render style, the lighting
-     *  and the sun (morning, noon, sunset). Default `false`. */
-    shadingBar?: boolean;
+    /** The view's controls. `"header"` (the default): a strip across the top of the view, as
+     *  Blender's viewport header — the app's own controls on its left (`lab.viewerHeader`), the
+     *  render style, lighting, sun, section, overlays, snapshot and ✎ Markup on its right; the axis
+     *  widget (`navGizmo`) top right under it and zoom in / out / to bounds below. In a strict-2D view
+     *  (`lab.setOrbitRotateEnabled(false)`) the header keeps the snapshot and ✎ Markup, the column the
+     *  zoom. A corner (`true` = top left) is the compact bar instead; `false` hides it. Off by default
+     *  inside a shell with its own bar (the testbench). */
+    shadingBar?: boolean | ShadingBarPlacement;
     /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset (default):
      *  relative to the content's extent. */
     units?: string;
@@ -234,6 +287,15 @@ interface ImportRegistration {
 interface Reactive<T, S = T> {
     readonly value: T;
     set(value: S): void;
+}
+/** What `lab.layerTree` returns: the layers' state, plus the active layer. */
+interface LayerTree extends Reactive<LayerMap, Record<string, Partial<LayerState>>> {
+    /** The active layer's id (Rhino: the current layer) — the one new objects go on; "" for an empty tree
+     *  or one created with `columns: { active: false }`, which has no active layer. */
+    readonly active: string;
+    /** Make `id` the active layer: it and its parents turn on and unlock. Ignores an id not in the tree,
+     *  and does nothing in a tree without an active layer. */
+    setActive(id: string): void;
 }
 /** Options for slider */
 interface SliderOpts {
@@ -396,19 +458,29 @@ interface Lab {
         display?: boolean;
     }): Reactive<string>;
     /**
-     * Render a scrollable layer-tree panel — checkboxes, collapse/expand, and
-     * optional per-node color pickers. Returns a reactive `LayerMap`
-     * (`Record<id, { visible, color }>`).
+     * Render a scrollable, Rhino-style layer tree — per layer an active-layer
+     * check, an on/off bulb, a lock and a colour swatch, collapse/expand. `.value`
+     * is a `LayerMap` with every layer's own state (`{ visible, color, locked }`,
+     * starting from the nodes' defaults); combine parents with
+     * `computeEffectiveVisibility`. `.set({ beams: { visible: false } })` updates
+     * layers in place (partial per layer).
      *
-     * The panel instance is persistent: collapsed state and scroll position
-     * survive sketch re-runs. Nodes can change between runs (e.g. async loads).
+     * Objects on a locked layer — tagged `.layer(id)` or drawn inside
+     * `lab.viewLayer(id, …)` — are drawn but can't be picked or hovered. `.active`
+     * is the active layer (Rhino: current), the one new objects go on; it and its
+     * parents stay on and unlocked. Pass `active` for the initial one (default:
+     * the first layer that is on), `columns` to hide the active, lock or colour column.
+     *
+     * The panel instance is persistent: collapsed state, scroll position and the
+     * active layer survive sketch re-runs. Nodes can change between runs (e.g. async loads).
      */
-    /** `.set({ beams: { visible: false } })` updates layers in place (partial per layer). */
     layerTree(label: string, nodes: LayerNode[], opts?: {
         group?: string;
         tab?: string;
         display?: boolean;
-    }): Reactive<LayerMap, Record<string, Partial<LayerState>>>;
+        active?: string;
+        columns?: LayerColumns;
+    }): LayerTree;
     /** `display: true` marks a display-only action (camera preset, restyle):
      *  the sketch is NOT re-run after it — the click costs only the action itself. */
     button(label: string, action: () => void, opts?: {
@@ -537,6 +609,17 @@ interface Lab {
      * Use (0,0,1) to restore Z-up for elevation/side views.
      */
     cameraUp(x: number, y: number, z: number): void;
+    /**
+     * Run `fn(inputs)` as a named step of the program and record it: its inputs, what it
+     * produced, how long it took, an error, the line that called it and the objects it drew.
+     * Which step fed which is read off the values (`inputs` holding an earlier step's output), so
+     * the steps panel draws the program as a graph — click a step to light up its geometry, click
+     * geometry to find its step, leave a note on a step for the agent. Returns what `fn` returns.
+     *
+     *   const seeds = lab.step("seeds", { count }, ({ count }) => scatter(count));
+     *   const cells = lab.step("cells", { seeds, site }, ({ seeds, site }) => Voronoi2D.cells(seeds, { clip: site }));
+     */
+    step<I extends Record<string, unknown>, T>(name: string, inputs: I, fn: (inputs: I) => T): T;
     log(label: string, value?: string | number): void;
     info(text: string): void;
     /**
@@ -638,6 +721,21 @@ interface Lab {
     onDisplay(fn: () => void): void;
     /** The panel's currently active tab name ("" when the panel has no tabs). */
     readonly activeTab: string;
+    /** With the viewer header (`shadingBar: "header"`): its slots for the app's own controls — view
+     *  tabs, tools, who is here. Append to them once (they persist across re-runs). Null otherwise. */
+    readonly viewerHeader: {
+        left: HTMLElement;
+        right: HTMLElement;
+    } | null;
+    /** The render style the view draws in — chosen in the shading bar, by a host shell or in
+     *  code. A sketch that reads it is re-run when it changes, so a build can follow the style
+     *  (e.g. leave out line work when shaded). */
+    readonly renderMode: RenderMode;
+    /** The lighting, Flat or Studio — as `renderMode`: reading it re-runs the sketch when it changes. */
+    readonly lightingMode: LightingMode;
+    /** What zoom to bounds (the shading bar's Frame, with nothing selected) frames: this box instead of
+     *  everything shown — the model without its site, say. Declared per run, like the controls. */
+    frameBounds(min: Vec3, max: Vec3): void;
     /**
      * Register a callback for tab switches (per run, like other callbacks).
      * Tab clicks re-render only the panel — the sketch does NOT re-run — so use
@@ -668,7 +766,8 @@ interface Lab {
      * other than "none" is active). Default: disabled.
      */
     enablePicking(enabled?: boolean): void;
-    /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view. */
+    /** Enable/disable orbit rotation (pan + zoom stay). Off → a strict-2D view: the shading bar
+     *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
     setOrbitRotateEnabled(enabled: boolean): void;
     /** Register a callback invoked on every click pick. `id` is null for background clicks. */
     onPick(fn: (id: string | null, pick?: {
@@ -1068,4 +1167,4 @@ declare class SheetCanvas {
     private wire;
 }
 
-export { type AnimateFn as A, sketch2d as B, Commands as C, type DrawFn as D, type ExportRegistration as E, viewCommands as F, type ImportRegistration as I, type Lab as L, type MeshHandle as M, type PointHandle as P, type Reactive as R, type SketchConfig as S, type ViewControl as V, type Command as a, type CommandInfo as b, type DrawSheetOptions as c, type Lab2D as d, type LayerMap as e, type LayerNode as f, LayerPanel as g, type LayerState as h, type LineHandle as i, type Pointer2D as j, type PointerFn as k, type SelectOpts as l, type ShapeHandle as m, type ShapeMode as n, SheetCanvas as o, type SheetCanvasOptions as p, type SheetTransform as q, type Sketch2DConfig as r, type Sketch2DFn as s, Sketch2DInstance as t, type SliderOpts as u, computeEffectiveVisibility as v, drawSheet as w, fitSheet as x, formatKeys as y, keyMatches as z };
+export { type AnimateFn as A, drawSheet as B, Commands as C, type DrawFn as D, type ExportRegistration as E, fitSheet as F, formatKeys as G, keyMatches as H, type ImportRegistration as I, layerDefaults as J, sketch2d as K, type Lab as L, type MeshHandle as M, viewCommands as N, type PointHandle as P, type Reactive as R, type SketchConfig as S, type ViewControl as V, type Command as a, type CommandInfo as b, type DrawSheetOptions as c, type Lab2D as d, type LayerColumns as e, type LayerMap as f, type LayerNode as g, LayerPanel as h, type LayerState as i, type LayerTree as j, type LineHandle as k, type Pointer2D as l, type PointerFn as m, type SelectOpts as n, type ShapeHandle as o, type ShapeMode as p, SheetCanvas as q, type SheetCanvasOptions as r, type SheetTransform as s, type Sketch2DConfig as t, type Sketch2DFn as u, Sketch2DInstance as v, type SliderOpts as w, activateLayer as x, computeEffectiveLock as y, computeEffectiveVisibility as z };
