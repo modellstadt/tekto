@@ -1,4 +1,4 @@
-import { S as Scene } from './Scene-BHniJuab.mjs';
+import { S as Scene } from './Scene-BsOKEQXC.js';
 
 /**
  * Tekto Parameter System
@@ -394,6 +394,48 @@ declare function supabaseAdapter(client: SupabaseLike, opts?: {
 }): CollabAdapter;
 
 /**
+ * The part of JSON Schema that tekto checks records against. One schema per collection
+ * serves three readers: `checkRecord` validates what a person, a script or an agent writes,
+ * an agent's tool definition takes it as its input schema as it is, and the docs show it.
+ *
+ *   const issues = checkRecord({ x: "4" }, { type: "object", properties: { x: { type: "number" } } });
+ *   // → [{ path: "x", message: 'expected a number, got "4"' }]
+ *
+ * Covered: `type`, `properties`, `required`, `additionalProperties: false`, `items`,
+ * `minItems` / `maxItems`, `enum`, `minimum` / `maximum` / `exclusiveMinimum`. Anything else
+ * (`description`, `default`, `examples`) is documentation and passes through.
+ */
+/** A JSON Schema, in the part `checkRecord` understands. */
+interface RecordSchema {
+    type?: "object" | "array" | "string" | "number" | "integer" | "boolean";
+    description?: string;
+    properties?: Record<string, RecordSchema>;
+    required?: readonly string[];
+    /** `false`: a property the schema does not name is an issue (a misspelt field). */
+    additionalProperties?: boolean;
+    items?: RecordSchema;
+    minItems?: number;
+    maxItems?: number;
+    enum?: readonly (string | number | boolean)[];
+    minimum?: number;
+    maximum?: number;
+    exclusiveMinimum?: number;
+    default?: unknown;
+    examples?: readonly unknown[];
+}
+/** One way a value breaks its schema: where (`"path[2]"`, `"openings[0].width"`) and what. */
+interface SchemaIssue {
+    path: string;
+    message: string;
+}
+/**
+ * Check `value` against `schema`. Returns every issue, each with the path to the bad value
+ * and a message that names the expected and the actual value, so whoever wrote it (often an
+ * agent) can fix it without reading the schema again. An empty list: the value fits.
+ */
+declare function checkRecord(value: unknown, schema: RecordSchema, path?: string): SchemaIssue[];
+
+/**
  * Doc — the document of a retained CAD app: typed records with stable ids, undo/redo,
  * save/open, and (through SharedStore) persistence and shared editing.
  *
@@ -542,6 +584,46 @@ declare function localAdapter(opts?: {
     prefix?: string;
     storage?: Pick<Storage, "getItem" | "setItem">;
 }): CollabAdapter;
+/**
+ * Edits to a document as data: what an agent (or a script, or another app) sends. Records
+ * are named `"collection/id"`. `set` adds a record or replaces it whole, `update` merges
+ * fields into one that exists, `remove` deletes.
+ */
+interface DocPatch {
+    set?: Record<string, object>;
+    update?: Record<string, object>;
+    remove?: string[];
+}
+/** What `applyPatch` did: everything, or (`ok: false`) nothing, and why. */
+interface PatchResult {
+    ok: boolean;
+    /** Why nothing was applied, by record: a schema issue, a missing record, a bad key. */
+    rejected: {
+        key: string;
+        message: string;
+    }[];
+    /** The records set, updated and removed. */
+    changed: {
+        set: string[];
+        updated: string[];
+        removed: string[];
+    };
+    /** The undo step it made ("Undo <label>"), when it changed something. */
+    undo?: string;
+}
+/**
+ * Apply a `DocPatch` as one undo step, or not at all. Every record is checked first: its key
+ * (`"collection/id"`), that an updated or removed record exists, and — when `schema` has the
+ * collection — the record (for an update, the record as it would be) against its
+ * `RecordSchema`. A collection the schema does not list is rejected when a schema is given.
+ *
+ *   applyPatch(doc, { set: { "walls/w9": { storey: "eg", path: [[0, 0], [4, 0]] } }, remove: ["openings/o2"] },
+ *              { schema: BUILDING_SCHEMA, label: "Agent: add a wall" });
+ */
+declare function applyPatch<S extends DocSchema>(doc: Doc<S>, patch: DocPatch, opts?: {
+    schema?: Partial<Record<string, RecordSchema>>;
+    label?: string;
+}): PatchResult;
 /** What `bindScene` returns: the record ↔ scene-object map, and a way out. */
 interface SceneBinding {
     readonly collection: string;
@@ -636,4 +718,4 @@ interface PresenceView {
  */
 declare function shareSelection(selection: Selection, store: SharedStore<any>, view?: PresenceView, scene?: Scene): () => void;
 
-export { bindScene as A, type BoolParam as B, type CollabAdapter as C, Doc as D, collabColor as E, type FloatParam as F, createLayout as G, createParams as H, type IntParam as I, devServerAdapter as J, localAdapter as K, memoryAdapter as L, selectOnClick as M, shareSelection as N, supabaseAdapter as O, ParamStore as P, SharedStore as S, type Vec3Param as V, type ParamLayout as a, type ParamSchema as b, type ParamValues as c, type Presence as d, type ButtonParam as e, type CollabEvents as f, type CollabStatus as g, type CollabUser as h, type ColorParam as i, type DocChange as j, type DocChangeSource as k, type DocEditOptions as l, type DocJSON as m, type DocOptions as n, type DocSchema as o, type ParamDef as p, type ParamFolder as q, type PickingView as r, type PresenceView as s, type SceneBinding as t, type SelectParam as u, Selection as v, type SharedRecord as w, type SharedStoreOptions as x, type StringParam as y, type SupabaseLike as z };
+export { type SharedStoreOptions as A, type BoolParam as B, type CollabAdapter as C, Doc as D, type StringParam as E, type FloatParam as F, type SupabaseLike as G, applyPatch as H, type IntParam as I, bindScene as J, checkRecord as K, collabColor as L, createLayout as M, createParams as N, devServerAdapter as O, ParamStore as P, localAdapter as Q, type RecordSchema as R, SharedStore as S, memoryAdapter as T, selectOnClick as U, type Vec3Param as V, shareSelection as W, supabaseAdapter as X, type ParamLayout as a, type ParamSchema as b, type ParamValues as c, type Presence as d, type DocPatch as e, type PatchResult as f, type ButtonParam as g, type CollabEvents as h, type CollabStatus as i, type CollabUser as j, type ColorParam as k, type DocChange as l, type DocChangeSource as m, type DocEditOptions as n, type DocJSON as o, type DocOptions as p, type DocSchema as q, type ParamDef as r, type ParamFolder as s, type PickingView as t, type PresenceView as u, type SceneBinding as v, type SchemaIssue as w, type SelectParam as x, Selection as y, type SharedRecord as z };

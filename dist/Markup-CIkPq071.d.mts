@@ -1,49 +1,211 @@
-import { b as SectionRequest, q as StandardView, S as Scene, V as Vec3 } from './Scene-BHniJuab.js';
+import { b as SectionRequest, c as StandardView, S as Scene, V as Vec3 } from './Scene-BsOKEQXC.mjs';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { D as Doc } from './Doc-CaIknIs8.js';
+import { S as ShadingBarPlacement } from './ShadingBar-r-eRrCKI.mjs';
+import { D as Doc } from './Doc-iuxjrmk7.mjs';
 
 /**
- * Tekto GUI theme — the single source of panel chrome colors.
- *
- * Every tekto panel (sketch, sketch2d, appShell, LayerPanel, ControlPanel)
- * derives its colors from here instead of re-declaring hex literals inline.
- *
- * Chrome is WHITE on the dark background by design: white slider accents and
- * value labels, white toggle tracks, plain white titles — no colored accents
- * in panel chrome. (Content colors — e.g. a colorPicker's default value — are
- * the sketch's business, not the theme's.)
+ * The rules a 3D view draws by — what each render mode paints, where a named view puts the
+ * camera, how far back to sit to fit, where a section cuts — as plain functions, so they
+ * can be tested without a GPU. `ThreeRenderer` draws by them.
  */
-/** The colours of tekto's panel chrome (white on dark by default), from `getTheme`; every panel reads them instead of its own hex literals. */
-interface Theme {
-    isDark: boolean;
-    /** App background behind the viewport */
-    bg: string;
-    /** Panel / header background */
-    panelBg: string;
-    /** Elevated surface (dropdowns, popovers) */
-    popupBg: string;
-    /** Hairline borders between panel sections */
-    border: string;
-    /** Borders on individual controls (inputs, selects, buttons) */
-    controlBorder: string;
-    /** Primary text */
-    text: string;
-    /** Secondary text (control labels) */
-    textDim: string;
-    /** Tertiary text (group headers, disabled) */
-    textFaint: string;
-    /** Chrome accent — white on dark, near-black on light */
-    accent: string;
-    /** Hover wash for rows / buttons */
-    hoverBg: string;
-    /** Input field background (selects, text inputs) */
-    fieldBg: string;
-    /** Panel font stack */
-    font: string;
+
+/**
+ * How the content is drawn. Not decoration: each answers a different question.
+ *  shaded      what is it made of
+ *  ghost       where does this part sit in the whole, everything else stepped
+ *              back so the selection reads through the fabric
+ *  hidden-line the drawing convention: white surfaces, dark creases, occluded
+ *              lines hidden by the surfaces in front of them
+ */
+type ViewMode = "shaded" | "ghost" | "hidden-line";
+/** How one mesh is painted. Colours are hex integers, as three.js takes them. */
+interface Appearance {
+    colour: number;
+    opacity: number;
+    depthWrite: boolean;
+    polygonOffset: boolean;
 }
-/** The panel chrome colours for dark (default, white-on-dark) or light mode. */
-declare function getTheme(mode?: "dark" | "light"): Theme;
+/** The page shaded and hidden-line are drawn on, when the host names none. */
+declare const DEFAULT_BACKGROUND = 16119802;
+/** Crease colour and weight for a mode. Hidden line draws them at full strength
+ *  because in that mode the lines are the drawing. `background` (default: the dark ground
+ *  ghost brings with it) turns ghost's pale creases dark on a light page. */
+declare function edgeStyle(mode: ViewMode, background?: THREE.ColorRepresentation): {
+    colour: number;
+    opacity: number;
+};
+/**
+ * The page a mode is drawn on.
+ *
+ * Ghost inverts: pale edges over a dark ground read where dark edges over a
+ * pale one wash out, and a translucent surface adds light instead of
+ * subtracting it, so the parts stack up legibly instead of greying together.
+ * The other two keep the host's own background.
+ */
+declare function modeBackground(mode: ViewMode, base: number): number;
+/**
+ * How a cut face is drawn.
+ *
+ * Poché: solid and dark, and flat rather than lit. A section is a drawing
+ * convention before it is a picture, and the convention is that cut material
+ * reads as one mass so the eye separates what was sliced from what is merely
+ * seen beyond it. Shading the cut instead, which is what a lit material does,
+ * gives it highlights and gradients and it stops reading as a cut at all: it
+ * becomes another grey surface among the grey surfaces behind it.
+ *
+ * Ghost inverts, as it does everywhere else here. On its dark ground a black
+ * poché would be a hole rather than a solid, so the cut goes pale and the
+ * relationship survives.
+ */
+declare function sectionAppearance(mode: ViewMode): {
+    colour: number;
+};
+/**
+ * The visible plane the content stands on.
+ *
+ * Independent of whether the sun is casting: a building floating in a void
+ * with a smudge under it reads as floating, and the smudge alone was doing all
+ * the work of saying which way is down. Hidden in hidden line, where a grey
+ * plate is not what a drawing is. The tone is a step off the background rather
+ * than a colour of its own, so it reads as ground and not as a surface
+ * somebody modelled.
+ */
+declare function groundAppearance(mode: ViewMode): {
+    visible: boolean;
+    colour: number;
+    opacity: number;
+};
+/** How a mode paints a surface whose own colour is `base`. */
+declare function surfaceAppearance(mode: ViewMode, base: number): Appearance;
+/** How Flat lighting balances its lights; see `flatLights`. */
+type FlatLighting = "sketch" | "plain";
+/**
+ * Flat lighting's lights, as intensities and colours.
+ *
+ * `"sketch"`, the default, is a blue sky over a brown ground, dim, for a dark
+ * page: forms read, colours go darker and cooler. `"plain"` is the balance the
+ * old Viewport drew with, `lightBalance("shaded", false)` under a white sky: a
+ * face turned to the sky shows its own colour, so a model whose colours are a
+ * key (a legend beside it) can be read against the key. Lights divide by pi
+ * in three.js since r155, so a face toward the sky gets about
+ * (ambient + sky + sun * cos) / pi of its colour.
+ */
+declare function flatLights(style: FlatLighting): {
+    ambient: number;
+    sky: number;
+    skyColour: number;
+    groundColour: number;
+    sun: number;
+};
+/** How Studio lighting balances its lights; see `studioLights`. */
+type StudioLighting = "filmic" | "plain";
+/**
+ * Studio lighting's lights, and whether the frame is tone-mapped.
+ *
+ * `"filmic"`, the default: ACES tone mapping and a strong sun over a dim blue
+ * sky, a sunlit render. Contrasty, and the side of a model turned from the sun
+ * gets so little light that a saturated colour there goes nearly black.
+ * `"plain"`: the balance the old Viewport drew shadows with,
+ * `lightBalance("shaded", true)` under a white sky and without tone mapping.
+ * Shadows still fall; a face turned to the sun and sky shows about its own
+ * colour, and one turned away is a darker tone of it rather than black, for an
+ * app whose colours are a key beside the model. Daylight (`setDaylight`) still
+ * retints either when it is on.
+ */
+declare function studioLights(style: StudioLighting): {
+    ambient: number;
+    sky: number;
+    skyColour: number;
+    groundColour: number;
+    sun: number;
+    toneMapped: boolean;
+};
+/**
+ * Sun and sky intensity for a mode.
+ *
+ * Ghost is transparent throughout and a shadow cast by something you can see
+ * through reads as dirt on the drawing, so it never casts. With the sun doing
+ * the work the sky has to step back, or the shadows wash out.
+ */
+declare function lightBalance(mode: ViewMode, shadows: boolean): {
+    shadowed: boolean;
+    sun: number;
+    sky: number;
+    groundOpacity: number;
+};
+/**
+ * Where the camera sits for a named view, as three.js spherical angles: phi
+ * from +Y, theta around Y from +Z towards +X.
+ */
+declare function standardOrbit(view: StandardView): {
+    phi: number;
+    theta: number;
+};
+/**
+ * Where the camera sits to look down `direction`, which points from the subject
+ * towards the camera. The inverse of what the tick loop does with a spherical.
+ *
+ * Clamped off the poles like the named views, so clicking the gizmo's Y ball
+ * lands on the same well-defined orientation that `setView("top")` does rather
+ * than on a plan whose north is whatever floating point decided.
+ */
+declare function orbitFor(direction: {
+    x: number;
+    y: number;
+    z: number;
+}): {
+    phi: number;
+    theta: number;
+};
+/**
+ * The end angle to interpolate towards so a turn takes the short way round.
+ *
+ * Without this, orbiting from theta 3.0 to -3.0 (a tenth of a turn apart on the
+ * screen) spins the building almost the whole way about instead, which reads as
+ * the viewport having lost its place rather than as a view change.
+ */
+declare function shortestTurn(from: number, to: number): number;
+/**
+ * Whichever of the six axis directions a view is already closest to. What a
+ * double click on the gizmo snaps to: the reader is nearly at an elevation and
+ * wants to be exactly at one, without having to work out which.
+ */
+declare function nearestAxis(direction: {
+    x: number;
+    y: number;
+    z: number;
+}): THREE.Vector3;
+/**
+ * The clipping plane for a section, in the frame `axisWorld` was given in (the content's
+ * axis turned into the scene's). Three.js keeps what lies on the plane's positive side, so
+ * the plane faces back down the axis: everything below the cut stays, or above with `flip`.
+ * Null when the cut is a fraction (`at`) and there is no content to measure.
+ */
+declare function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box: THREE.Box3 | null): THREE.Plane | null;
+/** A named sun for the shading bar: where it stands, as azimuth (degrees clockwise from
+ *  north) and altitude (degrees above the horizon). */
+type SunPreset = "morning" | "noon" | "sunset";
+/** Smoothstep. A camera that starts and stops abruptly reads as a cut, and a
+ *  cut is exactly what an animated view change exists to avoid. */
+declare function easeInOut(t: number): number;
+/**
+ * How far back to sit so a sphere of `boundingRadius` fits, on the tighter of
+ * the two field-of-view axes. A portrait panel clips a wide building on the
+ * horizontal, which is exactly the case a vertical-only fit gets wrong.
+ */
+declare function fitRadius(boundingRadius: number, fovDeg: number, aspect: number, margin?: number): number;
+/**
+ * The orthographic frustum that frames what a perspective camera would see at
+ * the same distance, so switching projection changes the drawing convention
+ * and not the subject.
+ */
+declare function orthoFrustum(distance: number, fovDeg: number, aspect: number): {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+};
 
 /** What the host wants said about one thing in the scene. */
 interface CalloutItem {
@@ -173,181 +335,6 @@ declare class Callouts {
 }
 
 /**
- * The rules a 3D view draws by — what each render mode paints, where a named view puts the
- * camera, how far back to sit to fit, where a section cuts — as plain functions, so they
- * can be tested without a GPU. `ThreeRenderer` draws by them.
- */
-
-/**
- * How the content is drawn. Not decoration: each answers a different question.
- *  shaded      what is it made of
- *  ghost       where does this part sit in the whole, everything else stepped
- *              back so the selection reads through the fabric
- *  hidden-line the drawing convention: white surfaces, dark creases, occluded
- *              lines hidden by the surfaces in front of them
- */
-type ViewMode = "shaded" | "ghost" | "hidden-line";
-/** How one mesh is painted. Colours are hex integers, as three.js takes them. */
-interface Appearance {
-    colour: number;
-    opacity: number;
-    depthWrite: boolean;
-    polygonOffset: boolean;
-}
-/** The page shaded and hidden-line are drawn on, when the host names none. */
-declare const DEFAULT_BACKGROUND = 16119802;
-/** Crease colour and weight for a mode. Hidden line draws them at full strength
- *  because in that mode the lines are the drawing. `background` (default: the dark ground
- *  ghost brings with it) turns ghost's pale creases dark on a light page. */
-declare function edgeStyle(mode: ViewMode, background?: THREE.ColorRepresentation): {
-    colour: number;
-    opacity: number;
-};
-/**
- * The page a mode is drawn on.
- *
- * Ghost inverts: pale edges over a dark ground read where dark edges over a
- * pale one wash out, and a translucent surface adds light instead of
- * subtracting it, so the parts stack up legibly instead of greying together.
- * The other two keep the host's own background.
- */
-declare function modeBackground(mode: ViewMode, base: number): number;
-/**
- * How a cut face is drawn.
- *
- * Poché: solid and dark, and flat rather than lit. A section is a drawing
- * convention before it is a picture, and the convention is that cut material
- * reads as one mass so the eye separates what was sliced from what is merely
- * seen beyond it. Shading the cut instead, which is what a lit material does,
- * gives it highlights and gradients and it stops reading as a cut at all: it
- * becomes another grey surface among the grey surfaces behind it.
- *
- * Ghost inverts, as it does everywhere else here. On its dark ground a black
- * poché would be a hole rather than a solid, so the cut goes pale and the
- * relationship survives.
- */
-declare function sectionAppearance(mode: ViewMode): {
-    colour: number;
-};
-/**
- * The visible plane the content stands on.
- *
- * Independent of whether the sun is casting: a building floating in a void
- * with a smudge under it reads as floating, and the smudge alone was doing all
- * the work of saying which way is down. Hidden in hidden line, where a grey
- * plate is not what a drawing is. The tone is a step off the background rather
- * than a colour of its own, so it reads as ground and not as a surface
- * somebody modelled.
- */
-declare function groundAppearance(mode: ViewMode): {
-    visible: boolean;
-    colour: number;
-    opacity: number;
-};
-/** How a mode paints a surface whose own colour is `base`. */
-declare function surfaceAppearance(mode: ViewMode, base: number): Appearance;
-/**
- * Sun and sky intensity for a mode.
- *
- * Ghost is transparent throughout and a shadow cast by something you can see
- * through reads as dirt on the drawing, so it never casts. With the sun doing
- * the work the sky has to step back, or the shadows wash out.
- */
-declare function lightBalance(mode: ViewMode, shadows: boolean): {
-    shadowed: boolean;
-    sun: number;
-    sky: number;
-    groundOpacity: number;
-};
-/**
- * Where the camera sits for a named view, as three.js spherical angles: phi
- * from +Y, theta around Y from +Z towards +X.
- */
-declare function standardOrbit(view: StandardView): {
-    phi: number;
-    theta: number;
-};
-/**
- * Where the camera sits to look down `direction`, which points from the subject
- * towards the camera. The inverse of what the tick loop does with a spherical.
- *
- * Clamped off the poles like the named views, so clicking the gizmo's Y ball
- * lands on the same well-defined orientation that `setView("top")` does rather
- * than on a plan whose north is whatever floating point decided.
- */
-declare function orbitFor(direction: {
-    x: number;
-    y: number;
-    z: number;
-}): {
-    phi: number;
-    theta: number;
-};
-/**
- * The end angle to interpolate towards so a turn takes the short way round.
- *
- * Without this, orbiting from theta 3.0 to -3.0 (a tenth of a turn apart on the
- * screen) spins the building almost the whole way about instead, which reads as
- * the viewport having lost its place rather than as a view change.
- */
-declare function shortestTurn(from: number, to: number): number;
-/**
- * Whichever of the six axis directions a view is already closest to. What a
- * double click on the gizmo snaps to: the reader is nearly at an elevation and
- * wants to be exactly at one, without having to work out which.
- */
-declare function nearestAxis(direction: {
-    x: number;
-    y: number;
-    z: number;
-}): THREE.Vector3;
-/**
- * The clipping plane for a section, in the frame `axisWorld` was given in (the content's
- * axis turned into the scene's). Three.js keeps what lies on the plane's positive side, so
- * the plane faces back down the axis: everything below the cut stays, or above with `flip`.
- * Null when the cut is a fraction (`at`) and there is no content to measure.
- */
-declare function sectionPlane(req: SectionRequest, axisWorld: THREE.Vector3, box: THREE.Box3 | null): THREE.Plane | null;
-/** A named sun for the shading bar: where it stands, as azimuth (degrees clockwise from
- *  north) and altitude (degrees above the horizon). */
-type SunPreset = "morning" | "noon" | "sunset";
-/** Smoothstep. A camera that starts and stops abruptly reads as a cut, and a
- *  cut is exactly what an animated view change exists to avoid. */
-declare function easeInOut(t: number): number;
-/**
- * How far back to sit so a sphere of `boundingRadius` fits, on the tighter of
- * the two field-of-view axes. A portrait panel clips a wide building on the
- * horizontal, which is exactly the case a vertical-only fit gets wrong.
- */
-declare function fitRadius(boundingRadius: number, fovDeg: number, aspect: number, margin?: number): number;
-/**
- * The orthographic frustum that frames what a perspective camera would see at
- * the same distance, so switching projection changes the drawing convention
- * and not the subject.
- */
-declare function orthoFrustum(distance: number, fovDeg: number, aspect: number): {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-};
-
-/**
- * What a pointer does in a ThreeRenderer's viewport: picking (a click, the object under a
- * point, the ground under a point), hover, drag handles, and the transform gizmo that moves
- * an object and writes its transform back to the Scene.
- */
-
-type GizmoMode = "translate" | "rotate" | "scale" | "none";
-/** Modifier keys held during a pick (a click on the viewport). */
-interface PickInfo {
-    shiftKey: boolean;
-    metaKey: boolean;
-    ctrlKey: boolean;
-    altKey: boolean;
-}
-
-/**
  * Ambient occlusion over a ThreeRenderer's frame, with three's GTAO: darkening where
  * surfaces meet and close in (corners, reveals, under decks and steps). The frame is drawn
  * as the renderer draws it, its tone mapping, background, grid, antialiasing and section as
@@ -363,8 +350,62 @@ interface AmbientOcclusionOptions {
     intensity?: number;
 }
 
-/** Corner of the view the bar sits in. */
-type ShadingBarCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+/**
+ * Tekto GUI theme — the single source of panel chrome colors.
+ *
+ * Every tekto panel (sketch, sketch2d, appShell, LayerPanel, ControlPanel)
+ * derives its colors from here instead of re-declaring hex literals inline.
+ *
+ * Chrome is WHITE on the dark background by design: white slider accents and
+ * value labels, white toggle tracks, plain white titles — no colored accents
+ * in panel chrome. (Content colors — e.g. a colorPicker's default value — are
+ * the sketch's business, not the theme's.)
+ */
+/** The colours of tekto's panel chrome (white on dark by default), from `getTheme`; every panel reads them instead of its own hex literals. */
+interface Theme {
+    isDark: boolean;
+    /** App background behind the viewport */
+    bg: string;
+    /** Panel / header background */
+    panelBg: string;
+    /** Elevated surface (dropdowns, popovers) */
+    popupBg: string;
+    /** Hairline borders between panel sections */
+    border: string;
+    /** Borders on individual controls (inputs, selects, buttons) */
+    controlBorder: string;
+    /** Primary text */
+    text: string;
+    /** Secondary text (control labels) */
+    textDim: string;
+    /** Tertiary text (group headers, disabled) */
+    textFaint: string;
+    /** Chrome accent — white on dark, near-black on light */
+    accent: string;
+    /** Hover wash for rows / buttons */
+    hoverBg: string;
+    /** Input field background (selects, text inputs) */
+    fieldBg: string;
+    /** Panel font stack */
+    font: string;
+}
+/** The panel chrome colours for dark (default, white-on-dark) or light mode. */
+declare function getTheme(mode?: "dark" | "light"): Theme;
+
+/**
+ * What a pointer does in a ThreeRenderer's viewport: picking (a click, the object under a
+ * point, the ground under a point), hover, drag handles, and the transform gizmo that moves
+ * an object and writes its transform back to the Scene.
+ */
+
+type GizmoMode = "translate" | "rotate" | "scale" | "none";
+/** Modifier keys held during a pick (a click on the viewport). */
+interface PickInfo {
+    shiftKey: boolean;
+    metaKey: boolean;
+    ctrlKey: boolean;
+    altKey: boolean;
+}
 
 /**
  * Tekto Three.js Renderer — the one 3D renderer under `sketch()` and `appShell()`.
@@ -409,8 +450,11 @@ interface ThreeRendererConfig {
     navGizmo: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
     /** The shading bar in a corner of the view (`true` = top left): minimal icons for the
      *  render style, the lighting and the sun (morning, noon, sunset), as Blender has in its
-     *  viewport header. The renderer draws it, so an app only switches it on. */
-    shadingBar: boolean | ShadingBarCorner;
+     *  viewport header. The renderer draws it, so an app only switches it on. `"header"`: a strip
+     *  across the top of the view (Blender's viewport header) with slots for the app's controls
+     *  (`viewerHeader`), the axis widget top right under it and zoom in / out / to bounds below that
+     *  (and, in a strict-2D view, the hand). */
+    shadingBar: boolean | ShadingBarPlacement;
     /**
      * The scene's unit, as a label (`"m"`, `"mm"`, `"ft"`): readouts such as the shading bar's
      * section show coordinates in it, and a cut stays at its coordinate. Unset (null, the
@@ -418,6 +462,21 @@ interface ThreeRendererConfig {
      * share of the content as the content changes. An app that knows its units says so.
      */
     units: string | null;
+    /** Where the viewer header goes (`shadingBar: "header"`): default the container. A sketch passes its
+     *  viewport wrapper, so the header stays above the overlay() layers and ✎ Markup's drawing layer. */
+    headerHost: HTMLElement | null;
+    /**
+     * How Flat lighting is balanced (`flatLights`). `"sketch"` (the default): a dim blue sky,
+     * for a dark page. `"plain"`: a white sky bright enough that a face toward it shows its own
+     * colour, for an app whose colours are a key beside the model. Studio is unaffected.
+     */
+    flatLighting: FlatLighting;
+    /**
+     * How Studio lighting is balanced (`studioLights`). `"filmic"` (the default): ACES tone
+     * mapping, a strong sun, a dim sky. `"plain"`: shadows under a white sky without tone
+     * mapping, so a colour stays readable against a key on the side turned from the sun too.
+     */
+    studioLighting: StudioLighting;
 }
 /**
  * The one 3D renderer under `sketch()` and `appShell()`: keeps a three.js scene in step with a tekto `Scene` and draws it on demand.
@@ -442,6 +501,7 @@ declare class ThreeRenderer {
     private gridHelper;
     private fadingGrid;
     private shadingBar;
+    private frameBounds;
     private overlayState;
     private overlayExtra;
     private ao;
@@ -500,9 +560,16 @@ declare class ThreeRenderer {
      * shows or hides it. Returns the unregister.
      */
     registerOverlay(name: string, apply: (on: boolean) => void, on?: boolean): () => void;
-    /** Frame the selection (the highlighted objects), or everything when nothing is selected:
-     *  Blender's Frame Selected / Home. Animated. */
+    /** Frame the selection (the highlighted objects), or everything when nothing is selected —
+     *  or the frame bounds, when set (`setFrameBounds`): Blender's Frame Selected / Home. Animated. */
     frame(): void;
+    /** What Frame — the shading bar's, its 2D palette's zoom to bounds — frames when nothing is
+     *  selected: this box (world coordinates) instead of everything shown, say the model without
+     *  its site. `null`: everything shown again. */
+    setFrameBounds(bounds: {
+        min: Vec3;
+        max: Vec3;
+    } | null): void;
     /** Save the view as a PNG, as a person sees it (with notes and drawings over it), named
      *  `fileName` with a date-time stamp. */
     saveSnapshot(fileName?: string): void;
@@ -650,8 +717,31 @@ declare class ThreeRenderer {
         y: number;
         visible: boolean;
     };
-    /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view. */
+    /** Enable/disable orbit ROTATION (pan + zoom stay). Off → a strict-2D view: the shading bar
+     *  shows its 2D palette (the hand, zoom in, zoom out, zoom to bounds) and the axis widget hides. */
     setOrbitRotateEnabled(enabled: boolean): void;
+    /** The hand, a strict-2D view's tool (the 2D palette has its button): on, the left button drags
+     *  the view along — over drag handles too — under a grab cursor; a click still picks. Off again
+     *  when the view turns 3D; ignored in a 3D view. */
+    setHandMode(on: boolean): void;
+    /** Whether the hand is on (see `setHandMode`). */
+    get handMode(): boolean;
+    /** False in a strict-2D view (see `setOrbitRotateEnabled`). */
+    get orbitRotateEnabled(): boolean;
+    /** The axis widget's element, or null without one (`navGizmo`). */
+    get navGizmoEl(): HTMLElement | null;
+    /** With `shadingBar: "header"`: the header strip's slots — `left` and `right` for the app's own
+     *  controls (view tabs, tools, who is here), `end` where ✎ Markup goes. Null otherwise. */
+    get viewerHeader(): {
+        left: HTMLElement;
+        right: HTMLElement;
+        end: HTMLElement;
+    } | null;
+    /** Zoom in (`factor` > 1) or out (< 1) about the view's target, animated unless
+     *  `animate: false`: closer in perspective, a larger zoom in orthographic. */
+    zoomBy(factor: number, opts?: {
+        animate?: boolean;
+    }): void;
     /** The camera as plain numbers, enough to reproduce the view. */
     cameraState(): {
         projection: "perspective" | "orthographic";
@@ -731,6 +821,9 @@ declare class ThreeRenderer {
     onPick(listener: (id: string | null, info: PickInfo) => void): () => void;
     /** Raycast at viewport coordinates and return the topmost pickable scene id (or null). */
     pickAt(clientX: number, clientY: number): string | null;
+    /** Only objects `filter` accepts can be picked or hovered; a rejected one lets the pick
+     *  through to what is behind it (a sketch rejects objects on locked layers). `null` clears it. */
+    setPickFilter(filter: ((id: string) => boolean) | null): void;
     /** Like `pickAt`, but also returns the world-space hit point, and skips hidden objects
      *  (the raycaster alone tests invisible ones too). Used by the markup overlay. */
     hitAt(clientX: number, clientY: number): {
@@ -879,6 +972,11 @@ declare function viewerToolbar(scene: Scene, renderer: ThreeRenderer, opts?: Top
  * "Delete". Markup's "Keep as notes" turns marks into notes (`markup(…, { notes })`,
  * `appShell({ notes: doc })`).
  *
+ * A note is also how a person tells an agent what to change: it is open until someone marks
+ * it done, and it carries the replies to it. An agent lists the open notes, answers and
+ * resolves them (`__tekto.notes`, the MCP tools `tekto_notes` / `tekto_note_reply` /
+ * `tekto_note_resolve`); with a shared document everyone sees the note, the reply and the tick.
+ *
  *   const notes = notesLayer(renderer, doc);              // the doc's "notes" collection
  *   markup(renderer, scene, { notes, author: "BD" });
  */
@@ -903,6 +1001,33 @@ interface Note {
         target: number[];
         projection?: "perspective" | "orthographic";
     };
+    /** Open (the default) until a person or an agent marks it done. */
+    status?: "open" | "done";
+    /** The answers to it, oldest first: what was changed, a question back. */
+    replies?: NoteReply[];
+}
+/** An answer to a note. */
+interface NoteReply {
+    text: string;
+    author?: string;
+    /** When, as an ISO date. */
+    at: string;
+}
+/** A note as an agent (or a list) reads it: its number in the view, its record key and state. */
+interface NoteInfo {
+    id: string;
+    /** The record: `"notes/k3f9x2"`. */
+    key: string;
+    /** The number on its pin. */
+    n: number;
+    text: string;
+    author?: string;
+    createdAt: string;
+    status: "open" | "done";
+    /** The records it is about. */
+    keys: string[];
+    pin: [number, number, number];
+    replies: NoteReply[];
 }
 /** What a `NotesLayer` needs from a renderer: structurally a `ThreeRenderer`. */
 interface NotesRenderer {
@@ -934,14 +1059,25 @@ declare class NotesLayer {
     private openId;
     private shown;
     private offs;
+    /** Who answers from the note's card. */
+    private author?;
     constructor(renderer: NotesRenderer, doc: Doc<any>, opts?: {
         collection?: string;
         host?: HTMLElement;
+        author?: string;
     });
     /** The notes, oldest first, with their ids: the order of their numbers. */
     list(): [string, Note][];
     /** Keep a note: one undo step. Returns its id. */
     add(note: Note): string;
+    /** The notes as a list reads them (an agent's `tekto_notes`): the open ones, or all. */
+    describe(status?: "open" | "all"): NoteInfo[];
+    /** Answer a note: one undo step. Throws if the note does not exist. */
+    reply(id: string, text: string, author?: string): void;
+    /** Mark a note done, with a last reply saying what was done if `text` is given: one undo step. */
+    resolve(id: string, text?: string, author?: string): void;
+    /** Open a done note again. */
+    reopen(id: string): void;
     /** Keep several notes as one undo step ("Keep as notes"). Returns their ids. */
     keep(notes: readonly Note[]): string[];
     remove(id: string): void;
@@ -1067,4 +1203,4 @@ declare function markup(renderer: MarkupRenderer, scene: Scene, opts?: {
     dispose(): void;
 };
 
-export { type AmbientOcclusionOptions as A, orthoFrustum as B, type CalloutItem as C, DEFAULT_BACKGROUND as D, sectionAppearance as E, sectionPlane as F, shortestTurn as G, standardOrbit as H, surfaceAppearance as I, viewerToolbar as J, type LayoutOptions as L, type MarkupRenderer as M, NotesLayer as N, type PickInfo as P, type ShadingBarCorner as S, ThreeRenderer as T, type ViewMode as V, type TopBarOptions as a, type Theme as b, type ThreeRendererConfig as c, type Appearance as d, Callouts as e, type MarkKind as f, type MarkupBundle as g, type MarkupCaptureOptions as h, type MarkupObjectRef as i, type Note as j, type NotesRenderer as k, type Placement as l, type SunPreset as m, easeInOut as n, edgeStyle as o, fitRadius as p, getTheme as q, groundAppearance as r, labelWidthFor as s, layoutLabels as t, lightBalance as u, markup as v, modeBackground as w, nearestAxis as x, notesLayer as y, orbitFor as z };
+export { type AmbientOcclusionOptions as A, nearestAxis as B, type CalloutItem as C, DEFAULT_BACKGROUND as D, notesLayer as E, type FlatLighting as F, orbitFor as G, orthoFrustum as H, sectionAppearance as I, sectionPlane as J, shortestTurn as K, type LayoutOptions as L, type MarkupRenderer as M, NotesLayer as N, standardOrbit as O, type PickInfo as P, studioLights as Q, surfaceAppearance as R, type StudioLighting as S, ThreeRenderer as T, viewerToolbar as U, type ViewMode as V, type TopBarOptions as a, type Theme as b, type ThreeRendererConfig as c, type NoteInfo as d, type Appearance as e, Callouts as f, type MarkKind as g, type MarkupBundle as h, type MarkupCaptureOptions as i, type MarkupObjectRef as j, type Note as k, type NoteReply as l, type NotesRenderer as m, type Placement as n, type SunPreset as o, easeInOut as p, edgeStyle as q, fitRadius as r, flatLights as s, getTheme as t, groundAppearance as u, labelWidthFor as v, layoutLabels as w, lightBalance as x, markup as y, modeBackground as z };

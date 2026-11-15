@@ -1,8 +1,9 @@
-import { V as Vec3, r as Vec2, f as Mat4, T as Triangle, A as AABB, M as Mesh, c as MeshData } from './Scene-BHniJuab.mjs';
-export { F as ColoredMeshData, d as LegacyMeshJSON, e as LightSpec, L as LightingMode, g as MeshEdge, h as MeshFace, i as MeshJSON, j as MeshNode, k as MeshValidation, O as ObjFile, l as ObjMeshData, P as Projection, R as RenderMode, S as Scene, m as SceneEvent, n as SceneEventListener, o as SceneJSON, a as SceneObject, p as SceneObjectType, b as SectionRequest, q as StandardView, s as Vec4, t as VisualStyle } from './Scene-BHniJuab.mjs';
-import { z as Ring2, v as MultiPoly2, g as Dxf2DContent } from './download--iWpT4l7.mjs';
-export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download--iWpT4l7.mjs';
-export { B as BoolParam, e as ButtonParam, C as CollabAdapter, f as CollabEvents, g as CollabStatus, h as CollabUser, i as ColorParam, D as Doc, j as DocChange, k as DocChangeSource, l as DocEditOptions, m as DocJSON, n as DocOptions, o as DocSchema, F as FloatParam, I as IntParam, p as ParamDef, q as ParamFolder, a as ParamLayout, b as ParamSchema, P as ParamStore, r as PickingView, d as Presence, s as PresenceView, t as SceneBinding, u as SelectParam, v as Selection, w as SharedRecord, S as SharedStore, x as SharedStoreOptions, y as StringParam, z as SupabaseLike, V as Vec3Param, A as bindScene, E as collabColor, G as createLayout, H as createParams, J as devServerAdapter, K as localAdapter, L as memoryAdapter, M as selectOnClick, N as shareSelection, O as supabaseAdapter } from './Doc-QTiSEVwH.mjs';
+import { V as Vec3, s as Vec2, g as Mat4, T as Triangle, A as AABB, M as Mesh, d as MeshData, S as Scene } from './Scene-BsOKEQXC.mjs';
+export { F as ColoredMeshData, e as LegacyMeshJSON, f as LightSpec, L as LightingMode, h as MeshEdge, i as MeshFace, j as MeshJSON, k as MeshNode, l as MeshValidation, O as ObjFile, m as ObjMaterial, n as ObjMeshData, P as Projection, R as RenderMode, o as SceneEvent, p as SceneEventListener, q as SceneJSON, a as SceneObject, r as SceneObjectType, b as SectionRequest, c as StandardView, t as Vec4, u as VisualStyle } from './Scene-BsOKEQXC.mjs';
+import { z as Ring2, v as MultiPoly2, S as SeededRandom, g as Dxf2DContent, B as Segment } from './download-BLqzq-jW.mjs';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, D as DxfLayerDef, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-BLqzq-jW.mjs';
+import { R as RecordSchema, D as Doc } from './Doc-iuxjrmk7.mjs';
+export { B as BoolParam, g as ButtonParam, C as CollabAdapter, h as CollabEvents, i as CollabStatus, j as CollabUser, k as ColorParam, l as DocChange, m as DocChangeSource, n as DocEditOptions, o as DocJSON, p as DocOptions, e as DocPatch, q as DocSchema, F as FloatParam, I as IntParam, r as ParamDef, s as ParamFolder, a as ParamLayout, b as ParamSchema, P as ParamStore, f as PatchResult, t as PickingView, d as Presence, u as PresenceView, v as SceneBinding, w as SchemaIssue, x as SelectParam, y as Selection, z as SharedRecord, S as SharedStore, A as SharedStoreOptions, E as StringParam, G as SupabaseLike, V as Vec3Param, H as applyPatch, J as bindScene, K as checkRecord, L as collabColor, M as createLayout, N as createParams, O as devServerAdapter, Q as localAdapter, T as memoryAdapter, U as selectOnClick, W as shareSelection, X as supabaseAdapter } from './Doc-iuxjrmk7.mjs';
 
 /**
  * Tekto VecMath — Static vector/geometry utility functions.
@@ -1093,6 +1094,7 @@ declare const GridGraph: {
  *   - Angle-based radial edge ordering at vertices
  *   - Face construction via half-edge loop traversal
  *   - Cleanup: dead-end removal, linear vertex dissolution
+ *   - Delaunay triangulation, and its dual: clipped Voronoi / power diagrams (Voronoi2D)
  */
 
 /** Vertex in a 2D planar graph (DCEL). */
@@ -1196,6 +1198,67 @@ declare const PlanarGraphCleanup: {
 declare const Delaunay2D: {
     /** Triangulates 2D points and returns a PlanarGraph with Delaunay faces. */
     triangulate(points: Vec2[]): PlanarGraph;
+};
+/**
+ * One cell of a `Voronoi2D` diagram: the part of the clip region nearer to its site than to any other site (by power distance when radii are given).
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
+interface VoronoiCell {
+    /** Index of the site in the input array. */
+    site: number;
+    /** The outline, counter-clockwise, first point not repeated; empty when the clip leaves nothing of the cell. */
+    polygon: Vec2[];
+    /** One entry per edge polygon[k] → polygon[k+1]: the site whose cell lies across that edge, or -1 where the clip boundary bounds the cell. */
+    neighbors: number[];
+}
+/**
+ * Options for `Voronoi2D.cells`: the region to clip the diagram to, and a radius per site for a power diagram.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
+interface VoronoiOptions {
+    /** The region to clip to: a simple polygon ring, convex or not, either winding, first point not repeated. Default: the sites' bounding rectangle grown by half its larger side on every side. */
+    clip?: Vec2[];
+    /** A radius per site: a power (Laguerre) diagram, in which the boundary between two touching circles runs through their contact point. Default: plain Voronoi. */
+    radii?: number[];
+}
+/**
+ * Voronoi and power (Laguerre) diagrams of 2D points, clipped to a region, with the site across every cell edge — the dual of `Delaunay2D`.
+ *
+ *   const cells = Voronoi2D.cells(sites, { clip: outline });   // cells[i].site === i
+ *   const adj = Voronoi2D.neighbors(cells, sites.length);       // adj[i]: the sites next to i
+ *
+ * Exact half-plane clipping: each cell is cut only by the sites a uniform grid and a security
+ * radius say can reach it, so 5,000 sites take a few tens of milliseconds. It does not use
+ * `Delaunay2D`; every site gets its cell, also coincident and collinear ones.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
+declare const Voronoi2D: {
+    /**
+     * The cells of `sites` within `options.clip`. Result order: `cells[i].site === i` for every
+     * `i < sites.length`, and that entry is the piece of site i's cell that contains the site (if
+     * the site lies outside the clip: its largest piece; an empty polygon when nothing is left).
+     * A concave clip can cut one cell into several pieces; any further pieces are appended after
+     * the first `sites.length` entries, each carrying its `site`. So `cells.length >= sites.length`,
+     * and the pieces together cover the clip region exactly.
+     *
+     * Each polygon is counter-clockwise and `neighbors[k]` names the site across its edge k (`-1`
+     * on the clip boundary). With `options.radii` the diagram is a power diagram (a small circle
+     * among large ones can have an empty cell, or a cell that misses its own centre). Of sites
+     * that coincide, the one with the larger radius (then the lower index) keeps the cell; the
+     * others get an empty one and are nobody's neighbour. Throws, naming the value, on a
+     * non-finite site, a `radii` array of the wrong length or with a negative entry, or a clip
+     * ring that encloses no area.
+     */
+    cells(sites: Vec2[], options?: VoronoiOptions): VoronoiCell[];
+    /**
+     * For each site, the sites whose cells share an edge with it — ascending, no duplicates,
+     * symmetric — read from the `neighbors` labels of `cells` (any pieces, any order).
+     * `siteCount` is `sites.length` of the call that made `cells`.
+     */
+    neighbors(cells: VoronoiCell[], siteCount: number): number[][];
 };
 
 /**
@@ -1923,6 +1986,112 @@ declare class Spring2D {
 declare function repelBodies(a: RigidBody2D, b: RigidBody2D, stiffness?: number): void;
 
 /**
+ * Tekto Particles2D — circles in the plane relaxed by position-based steps.
+ *
+ * Overlapping circles push apart (pairs found with a uniform spatial hash), springs pull
+ * pairs toward a rest length, a boundary ring keeps every circle inside. Each step gathers
+ * the overlap and spring corrections first and moves every circle once (Jacobi), then the
+ * boundary takes each circle back on its own, so the circles' order does not matter.
+ * `pack` is the circle packing of the 2008 office-building applet.
+ */
+
+/**
+ * A spring between circles i and j of a Particles2D: pulls (or pushes) them toward `rest` centre distance; stiffness 0..1
+ * is the fraction of the error corrected per step.
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
+interface Particles2DSpring {
+    i: number;
+    j: number;
+    rest: number;
+    stiffness: number;
+}
+/**
+ * Circles in the plane that push apart where they overlap, springs that pull pairs toward a rest length, and an optional
+ * boundary ring that keeps every circle inside — position-based relaxation for circle packing and bubble diagrams.
+ * Each `step` gathers every overlap and spring correction first and then moves all circles at once, and the boundary
+ * then takes each circle back on its own, so the result does not depend on the order of the circles; with the same
+ * input it is deterministic.
+ *
+ *   const sim = new Particles2D();
+ *   const a = sim.add(new Vec2(0, 0), 3), b = sim.add(new Vec2(1, 0), 2);
+ *   sim.addSpring(a, b, 5);
+ *   sim.relax(500);
+ *
+ * @experimental No app uses this yet; it may still change.
+ */
+declare class Particles2D {
+    /** Circle centres; `step` replaces them with new vectors. */
+    positions: Vec2[];
+    /** Circle radii, one per position. */
+    radii: number[];
+    /** A pinned circle never moves; whatever it meets takes the whole correction. */
+    pinned: boolean[];
+    /** Springs between pairs of circles (`addSpring`). */
+    springs: Particles2DSpring[];
+    /** Keep every circle inside this ring (any simple polygon, either winding), or null. */
+    boundary: Vec2[] | null;
+    /** Fraction of each overlap resolved per step (0..1). Default 0.8. */
+    overlapStiffness: number;
+    /** Fraction of a boundary violation corrected per step (0..1). Default 1. */
+    boundaryStiffness: number;
+    /** Extra gap kept between circles (default 0). */
+    gap: number;
+    private xs;
+    private ys;
+    private dx;
+    private dy;
+    /** Add a circle; returns its index. */
+    add(position: Vec2, radius: number): number;
+    /** Link circles `i` and `j` by a spring; `rest` defaults to their current centre distance, `stiffness` (0..1) to 0.5. */
+    addSpring(i: number, j: number, rest?: number, stiffness?: number): void;
+    /** Pin circle `i` in place (or release it with `pinned = false`). */
+    pin(i: number, pinned?: boolean): void;
+    /**
+     * One relaxation step; returns the largest distance any circle moved.
+     *
+     * An overlap o = rᵢ + rⱼ + gap − d moves each circle o/2 × `overlapStiffness` apart; a spring moves each end
+     * (d − rest)/2 × its stiffness toward the other; a pinned circle's partner takes the whole correction. All of them
+     * are summed, then every circle moves. With a `boundary`, each moved circle is then corrected on its own (scaled by
+     * `boundaryStiffness`): a centre outside the ring goes to the nearest point on it, and a circle closer than its
+     * radius to edges is moved to lie its radius inside them — the average over those edges, repeated a few times, so it
+     * settles into a corner and ends up centred where the ring is too narrow for it.
+     */
+    step(): number;
+    /**
+     * Steps until the largest move is no more than `tolerance` or `maxSteps` is reached; returns the number of steps run.
+     * `tolerance` defaults to a thousandth of the largest radius.
+     */
+    relax(maxSteps: number, tolerance?: number): number;
+    /** Total overlap between circles (sum over overlapping pairs), a convergence diagnostic. */
+    overlap(): number;
+    /** `count` seeded-random points inside a ring (rejection sampling in its bounding box). */
+    static scatter(ring: Vec2[], count: number, random: SeededRandom): Vec2[];
+    /**
+     * Fills a ring with circles of radius r the way the 2008 applet did: scatter area/(2√3 r²) points, relax them for
+     * `steps` steps (default 200) inside the ring, drop any left outside; returns the centres.
+     * The points come from `random`, else from `createRandom(seed)` (default seed 1), so a seed always packs the same.
+     */
+    static pack(ring: Vec2[], radius: number, options?: {
+        random?: SeededRandom;
+        seed?: number;
+        steps?: number;
+    }): Vec2[];
+    private checkIndex;
+    private checkSettings;
+    /** Copy the centres into the scratch arrays (grown as needed). */
+    private load;
+    /**
+     * Visit every overlapping pair once (i < j), with j − i as (ex, ey), the centre distance d and the overlap o.
+     * Circles go into a uniform spatial hash (cell = 2 × the largest radius + gap), so overlapping centres are in the
+     * same or a neighbouring cell; a bucket two neighbour cells share is read once.
+     */
+    private forEachOverlap;
+    private prepareBoundary;
+}
+
+/**
  * Vector PDF of a 2D drawing — the same content `writeDxf2D` takes (polylines, lines, circles, arcs,
  * texts, solids on named layers), drawn at a true scale on one page sized to the drawing, with an
  * optional title and scale bar. No dependency: a single uncompressed content stream, the standard
@@ -2603,6 +2772,125 @@ declare function realize(wall: Wall, ctx?: WallContext): RealizedWall;
  */
 declare function buildCutList(parts: readonly Pick<WallPart, "material" | "profile" | "length" | "role">[], roundMm?: number): CutListItem[];
 
+/**
+ * Steps: a program read as the steps it ran. Code that wraps its parts in `step(name, inputs,
+ * fn)` — by hand, or as an AI writes it — gets recorded as it runs: each step's inputs, what it
+ * produced, how long it took, an error, where in the code it was called, and (in an app) the
+ * objects it drew. Which step's output fed which step's input is read off the values themselves,
+ * so the graph needs no parsing and no declared wiring.
+ *
+ *   const trace = new StepTrace();
+ *   const seeds = trace.step("seeds", { count: 40 }, ({ count }) => scatter(count));
+ *   const cells = trace.step("cells", { seeds }, ({ seeds }) => Voronoi2D.cells(seeds));
+ *   trace.edges();      // [{ from: "seeds", to: "cells", input: "seeds" }]
+ *   trace.analyse();    // slowest steps, the slowest chain, outputs nobody used, errors
+ *
+ * The record is what a person and an agent read together: the steps panel draws it, and a
+ * snapshot (markup.json) carries it, with the notes a person left on steps for the agent.
+ */
+/** One input of a step: its name, what it was, and the step that produced it (if one did). */
+interface StepInput {
+    name: string;
+    /** What the value was: `"Array(240) of Vec2"`, `"Mesh, 1,204 faces"`, `"0.8"`. */
+    summary: string;
+    /** The id of the step whose output this is (or contains). */
+    from?: string[];
+}
+/** A step as it ran. */
+interface StepRecord {
+    /** Unique in the run: the name, and `#2`, `#3` … when the same name runs again. */
+    id: string;
+    name: string;
+    inputs: StepInput[];
+    /** What it produced, as `describeValue` says it. */
+    output: string;
+    /** Wall time, milliseconds, including the steps inside it. */
+    ms: number;
+    /** The message, when it threw (the error is thrown on to the caller). */
+    error?: string;
+    /** Where it was called: "url:line:col", which the dev server turns into "file.ts:line". */
+    src?: string;
+    /** Scene ids of the objects drawn while it ran (and not inside a step within it). */
+    objects: string[];
+    /** The step it ran inside. */
+    parent?: string;
+}
+/** A link in the graph: `from`'s output went into `to`'s input `input`. */
+interface StepEdge {
+    from: string;
+    to: string;
+    input: string;
+}
+/** What `StepTrace.analyse()` finds. */
+interface StepAnalysis {
+    /** Wall time of the top-level steps together, milliseconds. */
+    totalMs: number;
+    /** The three slowest steps (own time: without the steps inside them), with their share of the total. */
+    slowest: {
+        id: string;
+        ms: number;
+        share: number;
+    }[];
+    /** The chain of linked steps that takes longest, and its time. */
+    slowestChain: {
+        ids: string[];
+        ms: number;
+    };
+    /** Steps whose output (an object) no later step used and which drew nothing: work for nothing, or a missing link. */
+    unused: string[];
+    errors: {
+        id: string;
+        error: string;
+    }[];
+}
+/** The whole record, as plain JSON: what a snapshot and an agent get. */
+interface StepTraceJSON {
+    steps: StepRecord[];
+    edges: StepEdge[];
+    analysis: StepAnalysis;
+}
+/**
+ * Records the steps of one run. Make a new one for each run (the harnesses do: `lab.step`,
+ * `app.step`). Steps can sit inside steps.
+ */
+declare class StepTrace {
+    readonly steps: StepRecord[];
+    private byOutput;
+    /** Steps whose output was an object, so a later use of it can be seen (a number can't be followed). */
+    private followed;
+    private running;
+    private counts;
+    /**
+     * Run `fn(inputs)` as the step `name` and record it. Name the inputs (`{ seeds, spacing }`):
+     * they are the step's ports, and an input that is (or holds) an earlier step's output links
+     * the two. Returns what `fn` returns; an error is recorded and thrown on.
+     */
+    step<I extends Record<string, unknown>, T>(name: string, inputs: I, fn: (inputs: I) => T, opts?: {
+        src?: string;
+    }): T;
+    /** The step running now (the innermost), if any: a harness gives it the objects drawn now. */
+    get current(): StepRecord | undefined;
+    /** Every link: which step's output went into which step's input. */
+    edges(): StepEdge[];
+    /** The slowest steps and chain, unused outputs and errors. */
+    analyse(): StepAnalysis;
+    toJSON(): StepTraceJSON;
+    /**
+     * Remember an output (and the objects in it, one level down) as this step's. The latest step
+     * to hand a value on owns it: a point a filter passed through links from the filter, not from
+     * the step that first made it.
+     */
+    private claim;
+    /** The steps a value came from: itself, or (for an array) the values in it. */
+    private originsOf;
+}
+/**
+ * A value in a few words, as a step's port shows it: `"0.8"`, `"Array(240) of Vec2"`,
+ * `"Mesh, 1,204 faces"`, `"{ cells, sites }"`. Never the data itself: it must stay short
+ * whatever the size.
+ */
+declare function describeValue(v: unknown): string;
+
 /** Mechanical connection class. Influences fastener listing / structural calc. */
 type ConnectionType = "screwed" | "nailed" | "glued" | "mortise" | "metalBracket" | "boltedPlate" | "unspecified";
 /** Options for `new WallJoint(...)`: the geometric `RibbonJoint` it wraps, the walls that meet there, and connection type, fastener count and Psets for IFC export. */
@@ -2652,6 +2940,16 @@ interface OpeningTypeOptions {
     material?: string;
     description?: string;
     /**
+     * The frame's section: `width` in the face of the wall, `depth` through it (m). Default
+     * 0.07 × 0.08 for a window, 0.06 × 0.10 for a door.
+     */
+    frame?: {
+        width?: number;
+        depth?: number;
+    };
+    /** Where the fill sits across the wall, from its centreline to its left face (m, + left). Default 0. */
+    offset?: number;
+    /**
      * Open Pset map. Recognised keys map to `Pset_DoorCommon` /
      * `Pset_WindowCommon` (e.g. `fireRating`, `acousticRating`, `uValue`,
      * `isExternal`, `securityRating`); anything else passes through.
@@ -2672,12 +2970,32 @@ declare class OpeningType {
     material?: string;
     description?: string;
     properties: PropertyMap;
+    frame?: {
+        width?: number;
+        depth?: number;
+    };
+    offset?: number;
     constructor(opts: OpeningTypeOptions);
     /** Convenience: a swinging interior/exterior door type. */
     static door(name: string, opts?: Omit<OpeningTypeOptions, "name" | "kind">): OpeningType;
     /** Convenience: a window type. */
     static window(name: string, opts?: Omit<OpeningTypeOptions, "name" | "kind">): OpeningType;
 }
+/** One part of what fills an opening, in world coordinates. */
+interface OpeningFillPart {
+    name: string;
+    role: "frame" | "glazing" | "leaf";
+    mesh: Mesh;
+    material?: string;
+}
+/**
+ * What fills a wall opening: `opening.fill` when the app made its own, else built from the
+ * opening's type — a window's frame with mullions or a transom by its partitioning and a pane
+ * in each panel; a door's frame (jambs and head) and one leaf, or two for a double door. Each
+ * part is a closed mesh in world coordinates, centred in the wall unless the type's `offset`
+ * moves it.
+ */
+declare function openingFill(wall: Wall, opening: WallOpening): OpeningFillPart[];
 
 /**
  * A rectangular opening (door or window) in a wall, positioned along the
@@ -2717,6 +3035,11 @@ declare class WallOpening {
     type?: OpeningType;
     /** Instance-level Pset overrides, merged on top of `type.properties`. */
     properties?: PropertyMap;
+    /**
+     * What fills the opening, made by the app (e.g. a supplier's window), in world coordinates.
+     * Unset: `openingFill` builds a frame, glass or leaves from the type.
+     */
+    fill?: OpeningFillPart[];
     constructor(centerlinePosition: number, width?: number, sillHeight?: number, headHeight?: number, name?: string);
     /** True if sillHeight is effectively zero (door-type opening). */
     get isDoor(): boolean;
@@ -3047,7 +3370,7 @@ declare class Space {
  */
 declare function boundingWalls(space: Space, walls: Wall[], tol?: number): Wall[];
 
-/** Overall stair shape — maps to `IfcStairTypeEnum`. */
+/** Overall stair shape — maps to `IfcStairTypeEnum`. `Stair` builds the first four; "spiral" and "not_defined" name a type only. */
 type StairShape = "straight_run" | "two_straight_run" | "quarter_turn" | "half_turn" | "spiral" | "not_defined";
 /** Options for `new StairType(...)`: name, overall shape (default "straight_run"), material, description and Psets. */
 interface StairTypeOptions {
@@ -3082,28 +3405,64 @@ interface StairFlight {
     riserHeight: number;
     treadDepth: number;
 }
-/** Options for `new Stair(...)`: a straight run from `start` (Z-up, metres) along `direction`, climbing `totalRise` in even risers near `riserHeight` (default 0.18) with `treadDepth` goings (default 0.27). */
+/**
+ * Options for `new Stair(...)`: from `start` (Z-up, metres) along `direction`, climbing `totalRise` in even
+ * risers near `riserHeight` (default 0.18) with `treadDepth` goings (default 0.27); `shape` straight, two runs in
+ * line, quarter turn (L) or half turn (U), the last three with a landing after riser `landingAfter`.
+ */
 interface StairOptions {
     name?: string;
-    /** Bottom of the stair: centre of the flight width at floor level. */
+    /** Bottom of the stair: centre of the first flight's width at its first riser, at floor level. */
     start: Vec3;
-    /** Horizontal travel direction (need not be unit). Default +X. */
+    /** Horizontal travel direction of the first flight (need not be unit). Default +X. */
     direction?: Vec2;
     /** Flight width. Default 1.0 m. */
     width?: number;
-    /** Floor-to-floor height the flight climbs. Required. */
+    /** Floor-to-floor height the stair climbs. Required. */
     totalRise: number;
     /** Target riser height; the actual riser divides `totalRise` evenly. Default 0.18 m. */
     riserHeight?: number;
     /** Going (horizontal tread depth). Default 0.27 m. */
     treadDepth?: number;
+    /**
+     * Plan shape: "straight_run" (one flight), "two_straight_run" (two flights in line), "quarter_turn"
+     * (L: the second flight leaves the landing sideways) or "half_turn" (U: the second flight runs back
+     * beside the first). Default: the type's shape, else "straight_run".
+     */
+    shape?: StairShape;
+    /** Which way a quarter or half turn turns, seen walking up the first flight. Default "left". */
+    turn?: "left" | "right";
+    /** The landing comes after this riser, the first flight's last. Default: half the risers, rounded up. */
+    landingAfter?: number;
+    /**
+     * Length of the landing along the first flight. Default `width`. A quarter turn needs at least
+     * `width`: the second flight leaves from its side, flush with its far edge.
+     */
+    landingDepth?: number;
+    /** Thickness of the landing slab under its top. Default 0.2 m, at most down to the stair's base. */
+    landingThickness?: number;
+    /** Clear gap between the two flights of a half turn. Default 0.1 m. */
+    gap?: number;
     type?: StairType;
     properties?: PropertyMap;
 }
+/** Options for `Stair.slabOpening`: the headroom to keep (default 2.0 m) and the opening's name. */
+interface StairOpeningOptions {
+    /** Headroom over every tread and the landing, up to the slab's underside. Default 2.0 m; `Infinity` opens over the whole stair. */
+    clearance?: number;
+    /** Default: the stair's name + " well". */
+    name?: string;
+}
 /**
- * A stair — the IFC `IfcStair` analogue. Holds the parameters and computes
- * its flight geometry on demand via `flights()`. Both the IFC exporter and
- * any renderer consume the same `StairFlight` structs.
+ * A stair — the IFC `IfcStair` analogue: one flight, or two with a landing between them (two in
+ * line, a quarter turn, a half turn). A flight of n risers has n − 1 treads; its last riser arrives
+ * at the landing or the floor above. Every step stands on the stair's base level, so the flights are
+ * solid below. `flights()` and `landing()` give the geometry, `footprint()` the plan outline and
+ * `slabOpening(slab)` the well the floor above needs; the IFC exporter and any renderer consume the
+ * same structs.
+ *
+ *   const stair = new Stair({ start: new Vec3(1, 1, 0), totalRise: 2.8, shape: "half_turn" });
+ *   floor.openings.push(stair.slabOpening(floor)!);
  */
 declare class Stair {
     name: string;
@@ -3113,6 +3472,13 @@ declare class Stair {
     totalRise: number;
     riserHeight: number;
     treadDepth: number;
+    shape: StairShape;
+    turn: "left" | "right";
+    /** The first flight's risers; undefined splits the risers evenly, the first flight taking an odd one. */
+    landingAfter?: number;
+    landingDepth: number;
+    landingThickness: number;
+    gap: number;
     type?: StairType;
     properties: PropertyMap;
     constructor(opts: StairOptions);
@@ -3121,11 +3487,164 @@ declare class Stair {
     /** Actual riser height (`totalRise` split evenly). */
     get actualRiser(): number;
     /**
-     * Compute the flight geometry. A straight run is a single flight built as
-     * a stepped solid: step i is a box spanning going [i·tread, (i+1)·tread],
-     * rising from the floor to (i+1)·riser, across the full width.
+     * Compute the flight geometry: one flight per run, each built as a
+     * stepped solid. Tread i of a flight is a box spanning going
+     * [i·tread, (i+1)·tread] across the full width, from the stair's base
+     * level up to its walking surface, (i+1) risers above the flight's start.
      */
     flights(): StairFlight[];
+    /**
+     * The landing between the two flights as a `Slab` (written as an `IfcSlab` LANDING): its top
+     * `landingAfter` risers above the base, `landingThickness` thick, its plan the rectangle between the
+     * flights (across both flights and the gap for a half turn). `null` for a straight run.
+     */
+    landing(): Slab | null;
+    /**
+     * The stair's outline in plan: an open, counter-clockwise ring around the flights and the landing.
+     * A half turn's gap between its flights counts as part of it.
+     */
+    footprint(): Vec2[];
+    /**
+     * The opening the slab above needs over this stair, as a `SlabOpening` for `slab.openings`: the
+     * rectangle that covers every tread, and the landing, with less than `clearance` (default 2.0 m)
+     * of headroom under the slab — measured vertically from the tread's top to the slab's underside
+     * (`elevation − thickness`). The rectangle is laid out in the frame `slab.openingRings()` uses by
+     * default (the slab's `joistDirection`, else the one its bounds suggest), so a stair not aligned
+     * with that frame gets the bounds of those treads in it, larger than the flights. `null` when no
+     * tread comes that close, as under a slab well above the stair.
+     *
+     *   floor.openings.push(stair.slabOpening(floor)!);
+     */
+    slabOpening(slab: Slab, opts?: StairOpeningOptions): SlabOpening | null;
+    /** The flights in plan, the landing between them and the outline, checking the inputs on the way. */
+    private plan;
+}
+
+/** The roof forms `Roof` builds: flat (any footprint), shed (mono-pitch), gable and hip (rectangular footprints). */
+type RoofKind = "flat" | "shed" | "gable" | "hip";
+/**
+ * Options for `new Roof(...)` — plain data, so a JSON record can describe a roof.
+ *
+ * The footprint is the outside face of the walls, at the eaves. For a shed, gable
+ * or hip roof it is a rectangle of 4 corners (open or closed, either winding):
+ *   • gable — the first edge (corner 0 → 1) is an eave: the ridge runs parallel
+ *     to it over the middle of the span; edges 1 and 3 are the gables.
+ *   • shed — the first edge is the low eave; the roof rises across to edge 2,
+ *     the high side; edges 1 and 3 are the gables.
+ *   • hip — all four edges are eaves; the ridge runs along the longer side
+ *     (a square gives a pyramid).
+ * A flat roof takes any simple polygon.
+ */
+interface RoofOptions {
+    kind: RoofKind;
+    /** Outside face of the walls in the XY plane (metres): `Vec2`s or plain `{ x, y }`. */
+    footprint: readonly {
+        x: number;
+        y: number;
+    }[];
+    /** Roof pitch in degrees, above 0 and at most 80. Default 30; a flat roof ignores it (default 0). */
+    pitch?: number;
+    /** Eaves elevation in world Z: the top of the walls, where the underside of the roof meets their outside face. */
+    eavesElevation: number;
+    /** Horizontal overhang beyond the eaves (all round for flat and hip). Default 0.5 m. */
+    overhang?: number;
+    /** Horizontal overhang beyond the gables (shed, gable). Default: `overhang`. */
+    gableOverhang?: number;
+    /** Build-up thickness, measured square to the roof plane. Default 0.3 m. */
+    thickness?: number;
+    name?: string;
+    /** Open Pset map → `Pset_RoofCommon` at IFC export. */
+    properties?: PropertyMap;
+}
+/** One roof plane from `Roof.planes()`: its top surface as a 3D polygon and its build-up as a closed slab mesh. */
+interface RoofPlane {
+    name: string;
+    /** Top surface, counter-clockwise seen from above (world coordinates). */
+    outline: Vec3[];
+    /** Unit normal of the top surface, pointing up and out over its eave. */
+    normal: Vec3;
+    /** Area of the top surface, overhangs included (m²). */
+    area: number;
+    /** The footprint edge (index into `footprint`) the plane drains to; -1 for a flat roof. */
+    edge: number;
+    /** The plane's build-up as a closed solid: cut plumb at its eave, verges, ridge and hips. */
+    mesh: Mesh;
+}
+/**
+ * The wall infill a roof needs above an end wall, from `Roof.gables(thickness)`: a
+ * triangle under a gable roof, a right triangle at the sides of a shed and a strip
+ * over its high side. Its top follows the underside of the roof; its bottom is the
+ * eaves elevation (the top of the walls).
+ */
+interface RoofGable {
+    name: string;
+    /** The footprint edge (index into `footprint`) the infill stands on. */
+    edge: number;
+    /** Centreline in plan, half the thickness in from the footprint, in the edge's direction. */
+    start: Vec2;
+    end: Vec2;
+    thickness: number;
+    /** Highest point above the eaves elevation (m). */
+    height: number;
+    /** Area of its outside face (m²). */
+    area: number;
+    /** Closed solid, world coordinates. */
+    mesh: Mesh;
+}
+/**
+ * A roof over a house — the IFC `IfcRoof` analogue: flat, shed (mono-pitch), gable or
+ * hip, from plain data (see `RoofOptions` for how the footprint orients it). Values
+ * are checked on construction; an error names the input. Z-up, metres.
+ *
+ * @example
+ *   const roof = new Roof({
+ *     kind: "gable", pitch: 35, eavesElevation: 6, overhang: 0.6, gableOverhang: 0.3,
+ *     footprint: [new Vec2(0, 0), new Vec2(10, 0), new Vec2(10, 8), new Vec2(0, 8)],
+ *   });
+ *   scene.addMesh(roof.toMesh());
+ *   for (const g of roof.gables(0.3)) scene.addMesh(g.mesh);
+ *   ifc.addRoof(roof, { storey: top, gableThickness: 0.3 });
+ */
+declare class Roof {
+    readonly kind: RoofKind;
+    readonly footprint: Vec2[];
+    readonly pitch: number;
+    readonly eavesElevation: number;
+    readonly overhang: number;
+    readonly gableOverhang: number;
+    readonly thickness: number;
+    readonly name: string;
+    readonly properties: PropertyMap;
+    constructor(opts: RoofOptions);
+    /** The build-up's vertical thickness: `thickness` square to a plane at the pitch. */
+    private get rise();
+    /** The roof planes, each with its top surface and its slab: one for flat and shed, two for gable, four for hip. */
+    planes(): RoofPlane[];
+    /** The roof build-up as one mesh: every plane's slab (each a closed solid). */
+    toMesh(): Mesh;
+    /**
+     * The ridge along the top of the build-up: over the middle of the span for a gable
+     * (verge to verge), between the hips for a hip roof (a point for a pyramid), the top
+     * edge of the high side for a shed. A flat roof has none: `null`.
+     */
+    ridge(): Segment | null;
+    /**
+     * The highest point of the roof: the top of the build-up at the ridge (gable, hip),
+     * along the high side's edge (shed), or the top of a flat roof. For a gable that is
+     * `eavesElevation + span / 2 · tan(pitch) + thickness / cos(pitch)`.
+     */
+    ridgeHeight(): number;
+    /**
+     * The wall infill above the end walls, for walls `wallThickness` thick standing inside the
+     * footprint: under a gable roof a triangle on each gable (base: the span; height:
+     * `span / 2 · tan(pitch)`); under a shed a right triangle on each side and a strip over the
+     * high side, between them; none under a flat or hip roof. Each comes with its centreline
+     * in plan, so an app can draw it and export it as a wall.
+     */
+    gables(wallThickness: number): RoofGable[];
+    private checkFootprint;
+    private frame;
+    private flatPlane;
 }
 
 /** Options for `new IfcWriter(...)`: project, site, building and default-storey names, that storey's elevation (m), the author and application written into the file, and the MVD (default DesignTransferView_V1.0). */
@@ -3143,6 +3662,11 @@ interface IfcWriterOptions {
     applicationVersion?: string;
     /** Default: ViewDefinition [DesignTransferView_V1.0] — the round-trippable MVD. */
     viewDefinition?: string;
+    /**
+     * Write a door's or window's frame, glass and leaves as its body (`openingFill`: the app's
+     * own parts, else built from its type). `false`: the opening's box, as before. Default true.
+     */
+    openingFills?: boolean;
 }
 /** Options for `IfcWriter.addWallSystem`: whether to emit framed members, joint relations, openings and material layer sets (all default true). */
 interface AddWallSystemOptions {
@@ -3183,7 +3707,7 @@ declare class IfcWriter {
     private elementsByStorey;
     private partRefs;
     private wallRefs;
-    private wallByObject;
+    private segmentsByWall;
     private slabRefs;
     private slabTypeRefs;
     private slabDefinesByTypeBatches;
@@ -3204,6 +3728,13 @@ declare class IfcWriter {
      * Populated by `computeWallTrims` before `writeStraightWall` consumes it.
      */
     private wallTrimMap;
+    /**
+     * Per-wall end cuts from the other joints (mitred L / Y / X, and the stem of
+     * a mitred T): the joint's own trim lines, the ones the 3D mesh is cut by.
+     * Populated by `computeWallTrims`; `writeStraightWall` draws such an end as
+     * an arbitrary profile.
+     */
+    private wallMitreMap;
     private readonly opts;
     constructor(opts?: IfcWriterOptions);
     /**
@@ -3241,6 +3772,10 @@ declare class IfcWriter {
      * Add one wall — returns its IFC line id. Used internally by
      * `addWallSystem`; can also be called directly for one-off walls.
      *
+     * A polyline wall becomes one IfcWallStandardCase per centreline segment,
+     * each typed, with its material layers and properties; the id returned is
+     * the first segment's.
+     *
      * `opts.storey` selects which storey to attach the wall to. Defaults
      * to the bootstrap storey.
      */
@@ -3252,6 +3787,9 @@ declare class IfcWriter {
      * Add an opening (door or window) on the given wall. Emits
      * IfcOpeningElement + IfcRelVoidsElement (carving the wall) and
      * IfcDoor or IfcWindow + IfcRelFillsElement (filling the void).
+     *
+     * `wallRef` is what `addWall` returned. On a polyline wall the opening
+     * voids the segment its `centerlinePosition` falls on.
      */
     addOpening(wall: Wall, wallRef: number, opening: WallOpening, storeyRef?: number): {
         openingRef: number;
@@ -3285,6 +3823,14 @@ declare class IfcWriter {
     }, opts?: {
         storey?: number;
     }): number;
+    /** A mesh as an IfcTriangulatedFaceSet over an IfcCartesianPointList3D (IFC indices are 1-based). */
+    private faceSet;
+    /**
+     * A door's or window's body: its fill parts (`openingFill`) as one tessellated
+     * representation, placed relative to the building as the parts are in world coordinates.
+     * Null when there is nothing to fill.
+     */
+    private fillShape;
     /**
      * Add a wall-to-wall joint as IfcRelConnectsPathElements. The joint's
      * style + throughWall hint are exposed in a custom Pset attached to the
@@ -3318,17 +3864,32 @@ declare class IfcWriter {
      *   const deck = ifc.addSlab(roofSlab, { predefinedType: "ROOF", storey: top });
      *   const rafters = rafterParts.map((p) => ifc.addMember(0, p));
      *   ifc.addRoof([deck, ...rafters], { storey: top, predefinedType: "GABLE_ROOF" });
+     *
+     * Pass a `Roof` instead of refs and the writer makes the parts: one `IfcSlab`
+     * .ROOF. per roof plane (tessellated, its build-up), gathered under the
+     * `IfcRoof` (name and predefined type from the roof unless given), and
+     * `Pset_RoofCommon` from its properties. With `gableThickness`, its gables
+     * (`roof.gables(gableThickness)`) are written as tessellated, external
+     * `IfcWall`s contained in the same storey — walls, not roof parts.
+     *
+     *   ifc.addRoof(roof, { storey: top, gableThickness: 0.3 });
      */
-    addRoof(parts: readonly number[], opts?: {
+    addRoof(parts: readonly number[] | Roof, opts?: {
         name?: string;
         storey?: number;
         predefinedType?: "FLAT_ROOF" | "SHED_ROOF" | "GABLE_ROOF" | "HIP_ROOF" | "HIPPED_GABLE_ROOF" | "GAMBREL_ROOF" | "MANSARD_ROOF" | "BARREL_ROOF" | "RAINBOW_ROOF" | "BUTTERFLY_ROOF" | "PAVILION_ROOF" | "DOME_ROOF" | "FREEFORM" | "NOTDEFINED";
+        /** A `Roof` only: the thickness of the walls under its gables; leave out to write no gable walls. */
+        gableThickness?: number;
     }): number;
+    /** `addRoof(roof)`: each roof plane as an `IfcSlab` .ROOF. part, then the gables as walls beside the roof. */
+    private addRoofElement;
     /**
      * Add a stair as an `IfcStair` that aggregates one `IfcStairFlight` per
-     * computed flight. The stair is contained in its storey; flights carry the
-     * tessellated step geometry and the riser/tread metrics. A `StairType`
-     * links via `IfcRelDefinesByType`; `properties` go on `Pset_StairCommon`.
+     * computed flight and, between two flights, the landing as an `IfcSlab`
+     * LANDING. The stair is contained in its storey, its parts are not;
+     * flights carry the tessellated step geometry and the riser/tread metrics.
+     * The type's material goes on every part. A `StairType` links via
+     * `IfcRelDefinesByType`; `properties` go on `Pset_StairCommon`.
      */
     addStair(stair: Stair, opts?: {
         storey?: number;
@@ -3383,7 +3944,8 @@ declare class IfcWriter {
      *   - Through wall, end at joint   → endDelta   positive (extend fwd)
      *   - Butting wall, start at joint → startDelta positive (shorten in)
      *   - Butting wall, end at joint   → endDelta   negative (shorten in)
-     * Mitered joints leave deltas at 0 — both walls meet at centerline.
+     * Mitered joints leave deltas at 0 and record the joint's trim lines in
+     * `wallMitreMap` instead: those ends are cut on a slant, not shortened.
      */
     private computeWallTrims;
     private writeStraightWall;
@@ -3391,6 +3953,7 @@ declare class IfcWriter {
     private flushDefinesByType;
     private ensureMaterial;
     private writeMaterialLayerSet;
+    /** One usage for all of a wall's segments: they share its thickness and axis. */
     private writeMaterialLayerSetUsage;
     /** The set on its own, with no relationship: what a type holds directly. */
     private writePsetEntity;
@@ -3725,6 +4288,339 @@ interface JoistedSlabOptions {
  */
 declare function JoistedSlab(options?: JoistedSlabOptions): SlabConstruction;
 
+/** A point in the ground plane, `[x, y]` in metres. */
+type XY = [number, number];
+/** A storey: the level its walls stand on, and the height to the next one. */
+interface StoreyRecord {
+    name: string;
+    /** Top of this storey's floor, where its walls stand (world Z, m). */
+    elevation: number;
+    /** Floor to floor: from this storey's floor to the next storey's floor (m). */
+    height: number;
+}
+/** A wall on a storey, along a centreline. */
+interface WallRecord {
+    /** The storey's id. */
+    storey: string;
+    /** Centreline, two or more points; a closed loop repeats its first point. */
+    path: XY[];
+    /** A wall type of the `BuildingTypes` (default "exterior"). */
+    type?: string;
+    /** Overrides the type's thickness (m). */
+    thickness?: number;
+    /** Overrides the height: by default up to the underside of the floor above (m). */
+    height?: number;
+    name?: string;
+}
+/** A door or window in a wall. */
+interface OpeningRecord {
+    /** The wall's id. */
+    wall: string;
+    kind: "door" | "window";
+    /** Where its centre is: the distance along the wall's path from its first point (m). */
+    at: number;
+    width: number;
+    /** Bottom above the wall's base (m); default 0 for a door, 0.9 for a window. */
+    sill?: number;
+    /** Top above the wall's base (m); default 2.1 for a door, 2.2 for a window. */
+    head?: number;
+    /** An opening type of the `BuildingTypes` (default: the kind, "door" or "window"). */
+    type?: string;
+    name?: string;
+}
+/** A rectangular hole in a slab (a stair well, a shaft): centre and size along world X and Y. */
+interface SlabOpeningRecord {
+    x: number;
+    y: number;
+    /** Along world X (m). */
+    width: number;
+    /** Along world Y (m). */
+    depth: number;
+    name?: string;
+}
+/** A slab: the floor of a storey (its top at the storey's elevation), or the top of one (a flat roof). */
+interface SlabRecord {
+    /** The storey's id. */
+    storey: string;
+    /** Footprint, three or more points (not repeating the first). */
+    boundary: XY[];
+    /** "floor" (default): its top is the storey's elevation. "top": its top is the storey's top, a flat roof. */
+    level?: "floor" | "top";
+    /** A slab type of the `BuildingTypes` (default "floor"). */
+    type?: string;
+    /** Overrides the type's thickness (m). */
+    thickness?: number;
+    openings?: SlabOpeningRecord[];
+    name?: string;
+}
+/** A room on a storey. */
+interface SpaceRecord {
+    /** The storey's id. */
+    storey: string;
+    name: string;
+    /** Floor outline, three or more points (not repeating the first). */
+    boundary: XY[];
+    /**
+     * What the room is for: "living", "kitchen", "bedroom", "bath", "hall" … Lower-cased, it names
+     * a space type of the `BuildingTypes` (its colour, whether it needs daylight or a door); any other use is fine too.
+     */
+    use?: string;
+}
+/** A roof on a storey's walls: its eaves sit on their top. */
+interface RoofRecord {
+    /** The storey it covers. */
+    storey: string;
+    kind: "flat" | "shed" | "gable" | "hip";
+    /**
+     * The outside face of the walls under it. For a shed, gable or hip roof a rectangle whose
+     * first edge is an eave: a gable's ridge runs along it, a shed is low on it. A flat roof takes any outline.
+     */
+    footprint: XY[];
+    /** Degrees; default 30 (0 for flat). */
+    pitch?: number;
+    /** Past the walls at the eaves (m); default 0.5. */
+    overhang?: number;
+    /** Past the gable walls (m); default the overhang. */
+    gableOverhang?: number;
+    /** Build-up (m); default 0.3. */
+    thickness?: number;
+    name?: string;
+}
+/** A stair from a storey's floor to the next storey's floor. */
+interface StairRecord {
+    /** The storey it starts on: it climbs that storey's height. */
+    storey: string;
+    /** Centre of the first flight's width at its first riser. */
+    at: XY;
+    /** Which way the first flight climbs; default [1, 0]. */
+    direction?: XY;
+    /** Default "straight_run"; "quarter_turn" (L) and "half_turn" (U) have a landing. */
+    shape?: "straight_run" | "two_straight_run" | "quarter_turn" | "half_turn";
+    /** Which way an L or U turns, seen walking up; default "left". */
+    turn?: "left" | "right";
+    /** Flight width (m); default 1.0. */
+    width?: number;
+    /** Target riser height (m); default 0.18, the actual one divides the storey height evenly. */
+    riser?: number;
+    /** Tread depth (m); default 0.27. */
+    going?: number;
+    /** Landing depth (m); default the width. */
+    landingDepth?: number;
+    /** Gap between the flights of a U (m); default 0.1. */
+    gap?: number;
+    /** Cut the well in the floor above; default true. */
+    well?: boolean;
+    name?: string;
+}
+/** The collections of a building and the record each holds: a `Doc` schema (`new Doc<BuildingRecords>`). */
+type BuildingRecords = {
+    storeys: StoreyRecord;
+    walls: WallRecord;
+    openings: OpeningRecord;
+    slabs: SlabRecord;
+    spaces: SpaceRecord;
+    roofs: RoofRecord;
+    stairs: StairRecord;
+};
+/** A building's collection names. */
+type BuildingCollection = keyof BuildingRecords;
+/** A building as data: each collection maps record ids to records, as `doc.toJSON().collections` holds them. */
+type BuildingData = {
+    [C in BuildingCollection]?: Record<string, BuildingRecords[C]>;
+};
+/** The building's collections, in the order they depend on each other. */
+declare const BUILDING_COLLECTIONS: readonly BuildingCollection[];
+/**
+ * The JSON Schema of each building collection, for the default types: what `validateBuilding`
+ * checks and what an agent's tool takes as input. References between records (`storey`,
+ * `wall`) are checked by `validateBuilding`. `buildingSchema(types)` gives it for other types.
+ */
+declare const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema>;
+/**
+ * `BUILDING_SCHEMA` for these types: each record's `type` lists the names it may take, and its
+ * description says what each one is (wall and slab thicknesses), so whoever writes records can
+ * choose without guessing. A space's `use` stays free text; its description lists the known
+ * uses and what each needs (a window, no door).
+ *
+ *   agentDoc(doc, { schema: buildingSchema(types), check: () => house.issues });
+ */
+declare function buildingSchema(types?: BuildingTypes): Record<BuildingCollection, RecordSchema>;
+/** A wall type a record can name, with its thickness and the colour it is drawn in. */
+interface BuildingWallType {
+    type: WallType;
+    thickness: number;
+    colour?: string;
+}
+/** A slab type a record can name, with its thickness. */
+interface BuildingSlabType {
+    type: SlabType;
+    thickness: number;
+    colour?: string;
+}
+/** A room use a space record names (`SpaceRecord.use`): the colour it is drawn in and what the room needs. */
+interface BuildingSpaceType {
+    /** The colour `bindBuilding` draws the room's floor in. */
+    colour?: string;
+    /** The room wants daylight: a window on its outline (else `space-no-window`). Default false. */
+    daylight?: boolean;
+    /**
+     * The room needs a door on its outline when its storey has other rooms (else `space-no-door`).
+     * False for a room you walk into without one, e.g. an open-plan office cell. Default true.
+     */
+    door?: boolean;
+}
+/** The types building records name: wall, slab and opening types by name, and room uses. */
+interface BuildingTypes {
+    walls: Record<string, BuildingWallType>;
+    slabs: Record<string, BuildingSlabType>;
+    openings: Record<string, OpeningType>;
+    /**
+     * Room uses by the lower-cased `SpaceRecord.use`; a use not listed is drawn in a neutral
+     * colour, needs a door and no window. Default `defaultBuildingTypes().spaces`; to add uses,
+     * spread those: `{ ...defaultBuildingTypes().spaces, canteen: { colour: "#e8a07a", daylight: true } }`.
+     */
+    spaces?: Record<string, BuildingSpaceType>;
+}
+/**
+ * Timber construction for a house: "exterior" (Holzrahmenbau, insulated, ~0.25 m),
+ * "interior" (a framed partition, 0.125 m) and "solid" (0.2 m) walls; "floor" (joisted,
+ * 0.26 m), "ground" (concrete, 0.25 m) and "roof" (joisted flat roof, 0.3 m) slabs; a
+ * "door" and a "window"; and the rooms of a house, each with its colour, the ones people
+ * stay in (living, kitchen, dining, bedroom, office, study) wanting daylight.
+ */
+declare function defaultBuildingTypes(): BuildingTypes;
+/**
+ * Something wrong with a building, on the records it concerns. An `"error"` keeps a record
+ * from being built (or builds it wrongly); a `"warning"` builds but is likely a mistake.
+ */
+interface BuildingIssue {
+    severity: "error" | "warning";
+    /** Stable kind: "schema", "unknown-storey", "opening-outside-wall", "wall-end-free", … */
+    code: string;
+    /** Says what is wrong with the values it found, so whoever wrote them can fix them. */
+    message: string;
+    /** The records concerned, as `"collection/id"` (what `Doc`, `Selection` and Markup call them). */
+    keys: string[];
+}
+/**
+ * Check building records before they are built: each record against `BUILDING_SCHEMA`, every
+ * reference (`storey`, `wall`) to a record that exists, every type name to the `types`, and
+ * the geometry a schema cannot say (a path with a zero-length segment, an empty outline).
+ */
+declare function validateBuilding(data: BuildingData, types?: BuildingTypes): BuildingIssue[];
+/** One storey, built: its walls as one `WallSystem` (they meet at their joints), slabs and spaces. */
+interface RealizedStorey {
+    id: string;
+    record: StoreyRecord;
+    /** Wall id → wall, its openings attached. */
+    walls: Map<string, Wall>;
+    /** The storey's walls together, so their joints trim. */
+    system: WallSystem;
+    /** Opening id → the opening in its wall. */
+    openings: Map<string, WallOpening>;
+    /** Slab id → slab: the storey's floor, and a flat roof over it. */
+    slabs: Map<string, Slab>;
+    /** Space id → space. */
+    spaces: Map<string, Space>;
+    /** Roof id → the roof on this storey's walls. */
+    roofs: Map<string, Roof>;
+    /** Stair id → the stair up from this storey. */
+    stairs: Map<string, Stair>;
+}
+/** The building made from its records: elements by record id, and what could not be built. */
+declare class Building {
+    readonly data: BuildingData;
+    readonly types: BuildingTypes;
+    /** Storeys from the lowest up. */
+    readonly storeys: RealizedStorey[];
+    /** What validation found and what could not be built (those records are left out). */
+    readonly issues: BuildingIssue[];
+    private framing;
+    constructor(data: BuildingData, types?: BuildingTypes);
+    /** The storey a record is on, by the storey's id. */
+    storey(id: string): RealizedStorey | undefined;
+    /** The levels, for `renderer.setSectionLevels(building.levels())`. */
+    levels(): {
+        name: string;
+        elevation: number;
+    }[];
+    /** A storey's walls with their framing, trimmed at the joints (`WallSystem.realize()`), built once. */
+    realizedWalls(storeyId: string): RealizedWall[];
+    /**
+     * How tall a storey's walls are unless a wall says otherwise: up to the underside of the
+     * floor above (the next storey's floor slab, or this storey's flat roof), else the storey's height.
+     */
+    wallHeight(s: RealizedStorey): number;
+    /** How thick a roof's gable walls are: as the storey's thickest wall (its outside walls). */
+    gableThickness(s: RealizedStorey): number;
+    private slabType;
+    /**
+     * What is wrong with the building, by record: the `issues` (validation, records that could
+     * not be built) and the checks — openings that leave their wall, overlap or reach above it;
+     * wall ends that meet no other wall; storeys that do not stack; a storey without a floor;
+     * rooms that are tiny or overlap, have no door (unless their space type needs none), or no
+     * window where their space type wants daylight (by default living, kitchen, dining, bedroom,
+     * office, study); uncomfortable stairs and wells that leave the floor. An empty list: nothing found.
+     */
+    check(): BuildingIssue[];
+    /** Floor area of the spaces, in m², per storey id and in total. */
+    areas(): {
+        total: number;
+        byStorey: Record<string, number>;
+    };
+    /**
+     * The building as an IFC file: a storey each, with its walls (framing, openings, joints),
+     * slabs (joists) and spaces (bounded by their walls). `members: false` leaves the framing
+     * out for a lighter file.
+     */
+    toIfc(opts?: {
+        projectName?: string;
+        members?: boolean;
+    }): string;
+}
+/**
+ * Build the BIM elements of a building from its records. Records with errors are left out and
+ * reported in `building.issues`; `building.check()` adds what the built geometry shows.
+ */
+declare function realizeBuilding(data: BuildingData, types?: BuildingTypes): Building;
+/** How `bindBuilding` draws: the walls' envelope (default), or their framing members. */
+type BuildingDetail = "envelope" | "framing";
+/** Options for `bindBuilding`: the types records name, and how much to draw. */
+interface BindBuildingOptions {
+    types?: BuildingTypes;
+    detail?: BuildingDetail;
+}
+/** What `bindBuilding` returns: the building as last built, its issues, and the record ↔ object map. */
+interface BuildingBinding {
+    /** The building as last built from the document. */
+    readonly building: Building;
+    /** `building.check()` as of the last build. */
+    readonly issues: BuildingIssue[];
+    /** The record a scene object draws (`"walls/w3"`), or undefined. */
+    recordOf(sceneId: string): string | undefined;
+    /** The scene ids that draw a record. */
+    objectsOf(key: string): string[];
+    /** Draw the envelope or the framing. */
+    setDetail(detail: BuildingDetail): void;
+    /** Called after each build (and once now) with the building and its issues. */
+    onBuild(cb: (building: Building, issues: BuildingIssue[]) => void): () => void;
+    /** Build and draw again. */
+    refresh(): void;
+    dispose(): void;
+}
+/**
+ * Keep a scene in step with the building records of a document. Every change to a building
+ * collection rebuilds the building (a storey's walls trim at their joints, so one wall's edit
+ * can move its neighbours' corners) and redraws it, each object keyed by its record
+ * (`"walls/w3"`, `"openings/o1"`), so selection, Markup and callouts name records. Changes in
+ * one turn of the event loop build once.
+ *
+ *   const doc = new Doc<BuildingRecords>({ name: "house" });
+ *   const house = bindBuilding(doc, app.scene);
+ *   house.onBuild((b, issues) => app.status(`${issues.length} issues`));
+ */
+declare function bindBuilding(doc: Doc<any>, scene: Scene, opts?: BindBuildingOptions): BuildingBinding;
+
 /**
  * Which elements touch which, worked out from geometry.
  *
@@ -3834,4 +4730,4 @@ declare function neighboursOf(id: number, all: Adjacency[]): {
     tolerance: number;
 }[];
 
-export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, ArcCurve, type Axis, BalloonFrame, type BalloonFrameOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, Capsule2D, CltConstruction, type CltOptions, type ConnectionType, type Contact, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, type DoorOperation, Dxf2DContent, ExtrudedRibbon, type ExtrudedRibbonOptions, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type LatticeType, type LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, type MicroPatternType, MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, type Pdf2DOptions, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, PolylineCurve, type PropertyMap, Ray, type RealizedSlab, type RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, Ring2, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOptions, type SlabPart, type SlabPartRole, SlabType, type SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOptions, type StairShape, StairType, type StairTypeOptions, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, WallSystem, WallType, type WindowPartitioning, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, contactBetween, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverse as reverseContact, writePdf2D };
+export { AABB, type AddWallSystemOptions, type Adjacency, type AdjacencyOptions, ArcCurve, type Axis, BUILDING_COLLECTIONS, BUILDING_SCHEMA, BalloonFrame, type BalloonFrameOptions, type BindBuildingOptions, BlobDetect, type Box, type BspNode, type BspPolygon, BspTree, Building, type BuildingBinding, type BuildingCollection, type BuildingData, type BuildingDetail, type BuildingIssue, type BuildingRecords, type BuildingSlabType, type BuildingSpaceType, type BuildingTypes, type BuildingWallType, Capsule2D, CltConstruction, type CltOptions, type ConnectionType, type Contact, CubicBezierCurve, Curvature, CurveUtils, type CutListItem, Delaunay2D, DistanceTransform, Doc, type DoorOperation, Dxf2DContent, ExtrudedRibbon, type ExtrudedRibbonOptions, MeshData as FlatMeshData, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, type HolzrahmenBauOptions, type ICurve, type IMetricCurve, type ISdf, type IfcElementData, IfcFile, IfcModel, type IfcModelData, type IfcParseElementsOptions, type IfcParseOptions, type IfcRelations, type IfcSpatialNode, IfcWriter, type IfcWriterOptions, type Intersect2DResult, Intersections, type JointKind, type JointParticipant, type JointStyle, type JointTrim, type JoistOrientationOptions, JoistedSlab, type JoistedSlabOptions, type LatticeType, type LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, Mat4, type MaterialLayer, Mesh, MeshAnalysis, type MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, type MicroPatternType, MultiPoly2, NoFitPolygon, NurbsCurve, NurbsSurface, type OpeningFillPart, type OpeningRecord, OpeningType, type OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, type PartProfile, Particles2D, type Particles2DSpring, type Pdf2DOptions, type PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, type PointClassification, PolylineCurve, type PropertyMap, Ray, type RealizedSlab, type RealizedStorey, type RealizedWall, RecordSchema, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, type RigidBodyConfig, Ring2, Roof, type RoofGable, type RoofKind, type RoofOptions, type RoofPlane, type RoofRecord, Scene, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLine as SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlane as SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, SeededRandom, Segment, Slab, type SlabConstruction, type SlabContext, SlabOpening, type SlabOpeningRecord, type SlabOptions, type SlabPart, type SlabPartRole, type SlabRecord, SlabType, type SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, type SpaceOptions, type SpaceRecord, Sphere, type Spring, Spring2D, type SpringConfig, SpringSystem3D, Stair, type StairFlight, type StairOpeningOptions, type StairOptions, type StairRecord, type StairShape, StairType, type StairTypeOptions, type StepAnalysis, type StepEdge, type StepInput, type StepRecord, StepTrace, type StepTraceJSON, type StoreyRecord, type StreamlineOptions, StreamlineTracer, SunPosition, type SunPositionInput, type SunPositionResult, Triangle, type UpAxis, Vec2, Vec3, VecMath, type VertexCurvature, Voronoi2D, type VoronoiCell, type VoronoiOptions, VoxelGrid, VoxelGrid2D, Wall, type WallConstruction, WallJoint, type WallJointOptions, WallOpening, type WallOptions, type WallPart, type WallPartRole, type WallRecord, WallSystem, WallType, type WindowPartitioning, type XY, bindBuilding, boundingWalls, boxOf, buildCutList, buildingSchema, chooseJoistDirection, clampedUniformKnots, cltLayers, contactBetween, defaultBuildingTypes, describeValue, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, neighboursOf, openingFill, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeBuilding, realizeSlab, repelBodies, reverse as reverseContact, validateBuilding, writePdf2D };

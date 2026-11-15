@@ -6,6 +6,12 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.10.0 — 2026-11-15
+
+A building as data that an agent can write, read and correct in the app a person has open: building records with checks, roofs, stairs with landings and filled openings; an MCP server over the open tab; notes as the agent's to-do list; a program read as its steps. Also the viewer header and shading bar in every sketch, Rhino-style layers, Voronoi and particle relaxation in 2D.
+
+**Breaking:** a `Stair` flight draws `risers − 1` treads (see below). **Changed defaults:** `sketch()` shows the viewer header; `IfcWriter` writes doors and windows with their frame, glass and leaves (`openingFills: false` keeps the box).
+
 - **Notes are how a person tells an agent what to change**: a `Note` has a `status` (open
   until done) and `replies`; `NotesLayer` gains `reply`, `resolve`, `reopen` and `describe`
   (the notes as a list), and its card shows the replies with a reply box and Done / Reopen; a
