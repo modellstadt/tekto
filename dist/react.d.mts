@@ -2,7 +2,7 @@ import { P as ParamStore, a as ParamLayout, b as ParamSchema, c as ParamValues }
 import * as React from 'react';
 import React__default, { ReactNode, CSSProperties, SVGProps } from 'react';
 import { S as Scene, a as SceneObject, R as RenderMode } from './Scene-BsOKEQXC.mjs';
-import { T as ThreeRenderer, a as TopBarOptions, b as Theme, M as MarkupRenderer, N as NotesLayer } from './Markup-CIkPq071.mjs';
+import { T as ThreeRenderer, a as TopBarOptions, b as Theme, M as MarkupRenderer, N as NotesLayer } from './Markup-N4BViy-c.mjs';
 import 'three';
 import 'three/examples/jsm/controls/OrbitControls.js';
 import './ShadingBar-r-eRrCKI.mjs';
