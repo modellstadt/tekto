@@ -1,4 +1,4 @@
-import { M as Mesh, V as Vec3, r as Vec2, A as AABB } from './Scene-BHniJuab.mjs';
+import { M as Mesh, V as Vec3, s as Vec2, A as AABB } from './Scene-BsOKEQXC.mjs';
 
 /**
  * Tekto HMath — Scalar math utilities.

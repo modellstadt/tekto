@@ -1726,6 +1726,27 @@ var Mesh = class _Mesh {
   }
 };
 
+// src/io/PdfWriter.ts
+var MM = 72 / 25.4;
+var parseHex = (hex) => {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const h = m[1].length === 3 ? m[1].split("").map((c) => c + c).join("") : m[1];
+  return [parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255];
+};
+
+// src/io/index.ts
+function colorMaterial(color, opacity = 1) {
+  const NOT_HEX = "#808080";
+  const rgb = parseHex(color);
+  const hex = rgb ? rgb.map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("") : objName(color);
+  const alpha = opacity < 1 ? `_a${Math.round(opacity * 100)}` : "";
+  return { name: `c_${hex}${alpha}`, color: rgb ? color : NOT_HEX, opacity };
+}
+function objName(name) {
+  return name.trim().replace(/\s+/g, "_") || "default";
+}
+
 // src/scene/Scene.ts
 var DEFAULT_STYLE = {
   color: "#6ee7b7",
@@ -2024,14 +2045,34 @@ var Scene = class _Scene {
     return this.all().filter((o) => o.type === type);
   }
   // ── Export ──
-  /** Merges all visible mesh geometry into a single MeshData for OBJ export. */
-  toMeshData() {
+  /**
+   * The visible mesh geometry (meshes, flat meshes, segments with a `tubeRadius`; not
+   * `noExport`) merged into one `ObjMeshData` for `ObjFile.serialize`. Without options the
+   * faces come in object order, ungrouped.
+   *
+   * `groupBy` keeps the objects apart in the OBJ as `g` groups, for Rhino or Cinema 4D:
+   * - `"object"`: one group per object, named by its `key` (the record it shows; objects of
+   *   one record share the name) or else its id (`"mesh_3"`);
+   * - `"layer"`: one group per `style.layer` (`"default"` without one), each layer's faces one
+   *   contiguous block, layers in the order they first appear.
+   *
+   * Each group's `material` is named by its colour, `c_rrggbb` (`_a45` appended below full
+   * opacity), and `materials` lists them for `ObjFile.serializeMtl`. A layer whose objects
+   * differ in colour is split into consecutive runs of the same name, one per material — what
+   * `usemtl` does within an OBJ group.
+   *
+   *   const data = scene.toMeshData({ groupBy: "layer" });
+   *   download(ObjFile.serializeMtl(data.materials!), "model.mtl");
+   *   download(ObjFile.serialize(data, { mtllib: "model.mtl" }), "model.obj");
+   */
+  toMeshData(options = {}) {
     const positions = [];
     const normals = [];
-    const faces = [];
+    const parts = [];
     for (const obj of this.objects.values()) {
       if (!obj.style.visible) continue;
       if (obj.style.noExport) continue;
+      const faces2 = [];
       if (obj.mesh) {
         const nodeMap = /* @__PURE__ */ new Map();
         const offset = positions.length;
@@ -2041,7 +2082,7 @@ var Scene = class _Scene {
           normals.push(node.normal ?? Vec3.unitY());
         }
         for (const face of obj.mesh.facesArray()) {
-          faces.push(face.nodes.map((n) => nodeMap.get(n)));
+          faces2.push(face.nodes.map((n) => nodeMap.get(n)));
         }
       } else if (obj.flatMeshData) {
         const fd = obj.flatMeshData;
@@ -2052,13 +2093,40 @@ var Scene = class _Scene {
           normals.push(new Vec3(fd.normals[i * 3], fd.normals[i * 3 + 1], fd.normals[i * 3 + 2]));
         }
         for (let i = 0; i < fd.indices.length; i += 3) {
-          faces.push([fd.indices[i] + offset, fd.indices[i + 1] + offset, fd.indices[i + 2] + offset]);
+          faces2.push([fd.indices[i] + offset, fd.indices[i + 1] + offset, fd.indices[i + 2] + offset]);
         }
       } else if (obj.type === "segment" && obj.start && obj.end && obj.style.tubeRadius) {
-        _Scene._addTubeMesh(positions, normals, faces, obj.start, obj.end, obj.style.tubeRadius, 6);
+        _Scene._addTubeMesh(positions, normals, faces2, obj.start, obj.end, obj.style.tubeRadius, 6);
       }
+      if (faces2.length > 0) parts.push({ obj, faces: faces2 });
     }
-    return { positions, normals, uvs: [], faces };
+    const { groupBy } = options;
+    if (!groupBy) return { positions, normals, uvs: [], faces: parts.flatMap((p) => p.faces) };
+    let runs = parts.map(({ obj, faces: faces2 }) => ({
+      name: groupBy === "layer" ? obj.style.layer || "default" : obj.key ?? obj.id,
+      material: colorMaterial(obj.style.color, obj.style.opacity),
+      faces: faces2
+    }));
+    if (groupBy === "layer") {
+      const layers = /* @__PURE__ */ new Map();
+      for (const run of runs) {
+        const layer = layers.get(run.name) ?? /* @__PURE__ */ new Map();
+        layers.set(run.name, layer);
+        const same = layer.get(run.material.name);
+        if (same) for (const face of run.faces) same.faces.push(face);
+        else layer.set(run.material.name, { ...run, faces: [...run.faces] });
+      }
+      runs = [...layers.values()].flatMap((layer) => [...layer.values()]);
+    }
+    const faces = [];
+    const groups = [];
+    const materials = /* @__PURE__ */ new Map();
+    for (const run of runs) {
+      groups.push({ name: run.name, faceStart: faces.length, faceCount: run.faces.length, material: run.material.name });
+      for (const face of run.faces) faces.push(face);
+      if (!materials.has(run.material.name)) materials.set(run.material.name, run.material);
+    }
+    return { positions, normals, uvs: [], faces, groups, materials: [...materials.values()] };
   }
   /** Generate a cylinder tube mesh between two points. */
   static _addTubeMesh(positions, normals, faces, a, b, radius, segs) {
@@ -3411,11 +3479,11 @@ var MarkupOverlay = class {
     this.toggleBtn = document.createElement("button");
     this.toggleBtn.textContent = "\u270E Markup";
     this.toggleBtn.title = "Draw on the view to give instructions (saved as screenshot + JSON)";
-    this.toggleBtn.style.cssText = `position:absolute;top:10px;right:10px;z-index:22;${btnCss}`;
+    this.toggleBtn.style.cssText = host.buttonHost ? `${btnCss}padding:3px 9px;` : `position:absolute;top:10px;right:10px;z-index:22;${btnCss}`;
     this.toggleBtn.addEventListener("click", () => this.setActive(!this.active));
-    vp.appendChild(this.toggleBtn);
+    (host.buttonHost ?? vp).appendChild(this.toggleBtn);
     this.bar = document.createElement("div");
-    this.bar.style.cssText = "position:absolute;top:10px;right:100px;z-index:22;display:none;gap:6px;align-items:center;background:#fff;border:1px solid #d0d0d6;border-radius:7px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,.12);";
+    this.bar.style.cssText = `position:absolute;top:${(host.top ?? 0) + 10}px;right:${host.buttonHost ? 10 : 100}px;z-index:22;display:none;gap:6px;align-items:center;background:#fff;border:1px solid #d0d0d6;border-radius:7px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,.12);`;
     this.noteBox = document.createElement("input");
     this.noteBox.placeholder = "Instruction for the whole view\u2026";
     this.noteBox.style.cssText = "font:12px system-ui,sans-serif;width:260px;padding:5px 8px;border:1px solid #d0d0d6;border-radius:5px;";
@@ -3440,7 +3508,7 @@ var MarkupOverlay = class {
         this.marks = [];
         this.redraw();
       }),
-      mk("Save", "Save view.png + markup.json (\u2318S)", () => void this.save()),
+      mk("Save", host.keep ? "Save view.png + markup.json, and keep the marks as notes an agent can answer (\u2318S)" : "Save view.png + markup.json (\u2318S)", () => void this.save()),
       ...host.keep ? [mk("Keep as notes", "Keep the marks as notes with the model: saved, undoable, shared", () => this.keepNotes())] : [],
       this.status
     );
@@ -3533,12 +3601,27 @@ var MarkupOverlay = class {
       this.setStatus("Draw a mark first");
       return;
     }
+    const kept = this.marksToNotes();
+    if (!kept) {
+      this.setStatus("The marks lie on nothing to keep them on");
+      return;
+    }
+    this.marks = [];
+    this.noteBox.value = "";
+    this.redraw();
+    this.setStatus(`Kept ${kept} note${kept > 1 ? "s" : ""}`);
+  }
+  /** Keep the marks that lie on the model (or the ground) as notes; each remembers its note's key. Returns how many. */
+  marksToNotes() {
+    if (!this.host.keep) return 0;
     const r = this.canvas.getBoundingClientRect();
     const onModel = (p) => this.host.hitAt(r.left + p[0], r.top + p[1])?.point ?? this.host.groundAt(r.left + p[0], r.top + p[1]);
     const cam = this.host.context().camera ?? {};
     const instruction = this.noteBox.value.trim();
     const notes = [];
+    const from = [];
     for (const m of this.marks) {
+      if (m.noteKey) continue;
       const strokes = m.strokes.map((s) => (s.length === 1 ? s : resample(s, 6, 60)).map(onModel).filter((p) => !!p).map((p) => round3(p))).filter((s) => s.length > 0);
       if (!strokes.length) continue;
       const w = m.resolved?.world ?? {};
@@ -3552,16 +3635,14 @@ var MarkupOverlay = class {
         keys: [...new Set((m.resolved?.hits ?? []).map((h) => h.key).filter((k) => !!k))],
         view: { position: cam.position ?? [0, 0, 10], target: cam.target ?? [0, 0, 0], ...cam.projection ? { projection: cam.projection } : {} }
       });
+      from.push(m);
     }
-    if (!notes.length) {
-      this.setStatus("The marks lie on nothing to keep them on");
-      return;
-    }
-    this.host.keep(notes);
-    this.marks = [];
-    this.noteBox.value = "";
-    this.redraw();
-    this.setStatus(`Kept ${notes.length} note${notes.length > 1 ? "s" : ""}`);
+    if (!notes.length) return 0;
+    const keys = this.host.keep(notes);
+    if (keys) from.forEach((m, i) => {
+      m.noteKey = keys[i];
+    });
+    return notes.length;
   }
   /** A small input at the mark's badge; Enter keeps it, Escape leaves the mark without a note. */
   askNote(mark) {
@@ -3663,8 +3744,14 @@ var MarkupOverlay = class {
   async save() {
     this.setStatus("Saving\u2026");
     try {
+      const kept = this.marksToNotes();
       const b = await this.capture({ note: this.noteBox.value.trim() });
-      this.setStatus(b.dir ? `Saved \u2192 ${b.dir}` : "Downloaded (no dev-server plugin)");
+      if (kept) {
+        this.marks = this.marks.filter((m) => !m.noteKey);
+        this.redraw();
+      }
+      const notes = kept ? ` \xB7 kept ${kept} note${kept > 1 ? "s" : ""}` : "";
+      this.setStatus((b.dir ? `Saved \u2192 ${b.dir}` : "Downloaded (no dev-server plugin)") + notes);
     } catch (e) {
       this.setStatus(`Save failed: ${e}`);
     }
@@ -3688,6 +3775,7 @@ var MarkupOverlay = class {
         marks: this.marks.map((m) => ({
           n: m.n,
           note: m.note,
+          ...m.noteKey ? { noteKey: m.noteKey } : {},
           kind: m.resolved?.kind,
           summary: m.resolved?.summary,
           hits: m.resolved?.hits ?? [],
@@ -3922,9 +4010,7 @@ function markup(renderer, scene, opts = {}) {
     context: () => ({ ...sceneSummary(scene, renderer, describe), ...opts.context?.() ?? {} }),
     setTracking: () => {
     },
-    ...opts.notes ? { keep: (ns) => {
-      opts.notes.keep(ns);
-    } } : {},
+    ...opts.notes ? { keep: (ns) => opts.notes.keep(ns).map((id) => `${opts.notes.collection}/${id}`) } : {},
     ...opts.author ? { author: opts.author } : {}
   });
   return { capture: (o) => overlay.capture(o), dispose: () => overlay.dispose() };

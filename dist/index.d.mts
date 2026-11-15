@@ -1,15 +1,16 @@
-import { V as Vec3, M as Mesh, R as RenderMode, S as Scene, b as SectionRequest, L as LightingMode } from './Scene-BHniJuab.mjs';
-export { A as AABB, F as ColoredMeshData, c as FlatMeshData, d as LegacyMeshJSON, e as LightSpec, f as Mat4, g as MeshEdge, h as MeshFace, i as MeshJSON, j as MeshNode, k as MeshValidation, O as ObjFile, l as ObjMeshData, P as Projection, m as SceneEvent, n as SceneEventListener, o as SceneJSON, a as SceneObject, p as SceneObjectType, q as StandardView, T as Triangle, r as Vec2, s as Vec4, t as VisualStyle } from './Scene-BHniJuab.mjs';
-import { D as DxfLayerDef } from './download--iWpT4l7.mjs';
-export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download--iWpT4l7.mjs';
-import { BspTree } from './core.mjs';
-export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BalloonFrame, BalloonFrameOptions, BlobDetect, Box, BspNode, BspPolygon, Capsule2D, CltConstruction, CltOptions, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, Pdf2DOptions, PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PropertyMap, Ray, RealizedSlab, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOptions, SlabPart, SlabPartRole, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOptions, StairShape, StairType, StairTypeOptions, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, UpAxis, VecMath, VertexCurvature, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallSystem, WallType, WindowPartitioning, boundingWalls, boxOf, buildCutList, chooseJoistDirection, clampedUniformKnots, cltLayers, contactBetween, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, neighboursOf, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeSlab, repelBodies, reverseContact, writePdf2D } from './core.mjs';
-import { P as ParamStore, b as ParamSchema, D as Doc, S as SharedStore, d as Presence } from './Doc-QTiSEVwH.mjs';
-export { B as BoolParam, e as ButtonParam, C as CollabAdapter, f as CollabEvents, g as CollabStatus, h as CollabUser, i as ColorParam, j as DocChange, k as DocChangeSource, l as DocEditOptions, m as DocJSON, n as DocOptions, o as DocSchema, F as FloatParam, I as IntParam, p as ParamDef, q as ParamFolder, a as ParamLayout, r as PickingView, s as PresenceView, t as SceneBinding, u as SelectParam, v as Selection, w as SharedRecord, x as SharedStoreOptions, y as StringParam, z as SupabaseLike, V as Vec3Param, A as bindScene, E as collabColor, G as createLayout, H as createParams, J as devServerAdapter, K as localAdapter, L as memoryAdapter, M as selectOnClick, N as shareSelection, O as supabaseAdapter } from './Doc-QTiSEVwH.mjs';
-import { b as Theme, c as ThreeRendererConfig, a as TopBarOptions, T as ThreeRenderer, N as NotesLayer } from './Markup-TX1B78HF.mjs';
-export { A as AmbientOcclusionOptions, d as Appearance, C as CalloutItem, e as Callouts, D as DEFAULT_BACKGROUND, L as LayoutOptions, f as MarkKind, g as MarkupBundle, h as MarkupCaptureOptions, i as MarkupObjectRef, M as MarkupRenderer, j as Note, k as NotesRenderer, P as PickInfo, l as Placement, S as ShadingBarCorner, m as SunPreset, V as ViewMode, n as easeInOut, o as edgeStyle, p as fitRadius, q as getTheme, r as groundAppearance, s as labelWidthFor, t as layoutLabels, u as lightBalance, v as markup, w as modeBackground, x as nearestAxis, y as notesLayer, z as orbitFor, B as orthoFrustum, E as sectionAppearance, F as sectionPlane, G as shortestTurn, H as standardOrbit, I as surfaceAppearance, J as viewerToolbar } from './Markup-TX1B78HF.mjs';
-import { C as Commands, E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-BzNPWYHo.mjs';
-export { A as AnimateFn, a as Command, b as CommandInfo, D as DrawFn, c as DrawSheetOptions, d as Lab2D, e as LayerMap, f as LayerNode, g as LayerPanel, h as LayerState, i as LineHandle, M as MeshHandle, P as PointHandle, j as Pointer2D, k as PointerFn, l as SelectOpts, m as ShapeHandle, n as ShapeMode, o as SheetCanvas, p as SheetCanvasOptions, q as SheetTransform, r as Sketch2DConfig, s as Sketch2DFn, t as Sketch2DInstance, u as SliderOpts, V as ViewControl, v as computeEffectiveVisibility, w as drawSheet, x as fitSheet, y as formatKeys, z as keyMatches, B as sketch2d, F as viewCommands } from './2d-BzNPWYHo.mjs';
+import { V as Vec3, M as Mesh, R as RenderMode, S as Scene, b as SectionRequest, L as LightingMode } from './Scene-BsOKEQXC.mjs';
+export { A as AABB, F as ColoredMeshData, d as FlatMeshData, e as LegacyMeshJSON, f as LightSpec, g as Mat4, h as MeshEdge, i as MeshFace, j as MeshJSON, k as MeshNode, l as MeshValidation, O as ObjFile, m as ObjMaterial, n as ObjMeshData, P as Projection, o as SceneEvent, p as SceneEventListener, q as SceneJSON, a as SceneObject, r as SceneObjectType, c as StandardView, T as Triangle, s as Vec2, t as Vec4, u as VisualStyle } from './Scene-BsOKEQXC.mjs';
+import { D as DxfLayerDef } from './download-BLqzq-jW.mjs';
+export { A as Algo, a as DASH_PATTERNS, b as Dash, c as DimOptions, d as DrawOptions, e as Dxf2DArc, f as Dxf2DCircle, g as Dxf2DContent, h as Dxf2DLine, i as Dxf2DLook, j as Dxf2DPoint, k as Dxf2DPolyline, l as Dxf2DSolid, m as Dxf2DText, n as Dxf3DArc, o as Dxf3DCircle, p as Dxf3DContent, q as Dxf3DLine, r as Dxf3DPoint, s as Dxf3DPolyline, F as FilletResult, H as HMath, L as LevelOptions, t as LineStyle, M as MathUtils, u as MeshFactory, v as MultiPoly2, O as OBB2D, P as Poly2, w as Polygon2D, x as PolygonBool, y as Pt, R as ResolvedStyle, z as Ring2, S as SeededRandom, B as Segment, C as Sheet, E as SheetOptions, G as SheetPrim, I as SheetView, T as TextOptions, V as ViewOptions, J as aciFromHex, K as closestPointOnSegment, N as createRandom, Q as download, U as noise, W as pickPrim, X as polygonIntersection, Y as segmentSegmentClosest, Z as setClipSnap, _ as stampName, $ as writeDxf2D, a0 as writeDxf3D } from './download-BLqzq-jW.mjs';
+import { BspTree, StepRecord, StepTraceJSON } from './core.mjs';
+export { AddWallSystemOptions, Adjacency, AdjacencyOptions, ArcCurve, Axis, BUILDING_COLLECTIONS, BUILDING_SCHEMA, BalloonFrame, BalloonFrameOptions, BindBuildingOptions, BlobDetect, Box, BspNode, BspPolygon, Building, BuildingBinding, BuildingCollection, BuildingData, BuildingDetail, BuildingIssue, BuildingRecords, BuildingSlabType, BuildingSpaceType, BuildingTypes, BuildingWallType, Capsule2D, CltConstruction, CltOptions, ConnectionType, Contact, CubicBezierCurve, Curvature, CurveUtils, CutListItem, Delaunay2D, DistanceTransform, DoorOperation, ExtrudedRibbon, ExtrudedRibbonOptions, FloodFill, Graph, GridGraph, HelixCurve, HolzrahmenBau, HolzrahmenBauJointStyle, HolzrahmenBauOptions, ICurve, IMetricCurve, ISdf, IfcElementData, IfcFile, IfcModel, IfcModelData, IfcParseElementsOptions, IfcParseOptions, IfcRelations, IfcSpatialNode, IfcWriter, IfcWriterOptions, Intersect2DResult, Intersections, JointKind, JointParticipant, JointStyle, JointTrim, JoistOrientationOptions, JoistedSlab, JoistedSlabOptions, LatticeType, LayerPosition, LineCurve, MITER_LIMIT, MarchingCubes, MarchingSquares, MaterialLayer, MeshAnalysis, MeshBuffers, MeshCleanup, MeshSubdivide, MeshTransform, MicroPatternType, NoFitPolygon, NurbsCurve, NurbsSurface, OpeningFillPart, OpeningRecord, OpeningType, OpeningTypeOptions, PGFace, PGHalfEdge, PGVertex, PartProfile, Particles2D, Particles2DSpring, Pdf2DOptions, PerpSegment, PixelView, PlanarGraph, PlanarGraphCleanup, PlanarGraphRepair, Plane, PointClassification, PolylineCurve, PropertyMap, Ray, RealizedSlab, RealizedStorey, RealizedWall, RibbonEndTrim, RibbonFrame, RibbonJoint, RibbonOpening, RibbonSystem, RigidBody2D, RigidBodyConfig, Roof, RoofGable, RoofKind, RoofOptions, RoofPlane, RoofRecord, SdfBlend, SdfBoundedExtrude, SdfBox, SdfCapsule, SdfCone, SdfCylinder, SdfEllipsoid, SdfExtrude, SdfGradient, SdfIntersect, SdfLattice, SdfLineField, SdfMicrostructure, SdfMirror, SdfOffset, SdfOnion, SdfOps, SdfPlaneField, SdfRadialArray, SdfRevolution, SdfShell, SdfSmoothSubtract, SdfSmoothUnion, SdfSphere, SdfSubtract, SdfTorus, SdfTransform, SdfTwist, SdfUnion, SdfUtils, SdfVoronoi, Slab, SlabConstruction, SlabContext, SlabOpening, SlabOpeningRecord, SlabOptions, SlabPart, SlabPartRole, SlabRecord, SlabType, SlabTypeOptions, SolidConstruction, SolidSlabConstruction, Space, SpaceOptions, SpaceRecord, Sphere, Spring, Spring2D, SpringConfig, SpringSystem3D, Stair, StairFlight, StairOpeningOptions, StairOptions, StairRecord, StairShape, StairType, StairTypeOptions, StepAnalysis, StepEdge, StepInput, StepTrace, StoreyRecord, StreamlineOptions, StreamlineTracer, SunPosition, SunPositionInput, SunPositionResult, UpAxis, VecMath, VertexCurvature, Voronoi2D, VoronoiCell, VoronoiOptions, VoxelGrid, VoxelGrid2D, Wall, WallConstruction, WallJoint, WallJointOptions, WallOpening, WallOptions, WallPart, WallPartRole, WallRecord, WallSystem, WallType, WindowPartitioning, XY, bindBuilding, boundingWalls, boxOf, buildCutList, buildingSchema, chooseJoistDirection, clampedUniformKnots, cltLayers, contactBetween, defaultBuildingTypes, describeValue, edgeOutwardVisibility, findAdjacent, holzrahmenbauLayers, joistDirectionFromBounds, joistDirectionFromPCA, joistDirectionFromSupports, lineClipPolygon, neighboursOf, openingFill, perpVisibility, perpVisibilityOfPolys, polygonFromVertices, realize, realizeBuilding, realizeSlab, repelBodies, reverseContact, validateBuilding, writePdf2D } from './core.mjs';
+import { P as ParamStore, b as ParamSchema, D as Doc, S as SharedStore, d as Presence, R as RecordSchema, e as DocPatch, f as PatchResult } from './Doc-iuxjrmk7.mjs';
+export { B as BoolParam, g as ButtonParam, C as CollabAdapter, h as CollabEvents, i as CollabStatus, j as CollabUser, k as ColorParam, l as DocChange, m as DocChangeSource, n as DocEditOptions, o as DocJSON, p as DocOptions, q as DocSchema, F as FloatParam, I as IntParam, r as ParamDef, s as ParamFolder, a as ParamLayout, t as PickingView, u as PresenceView, v as SceneBinding, w as SchemaIssue, x as SelectParam, y as Selection, z as SharedRecord, A as SharedStoreOptions, E as StringParam, G as SupabaseLike, V as Vec3Param, H as applyPatch, J as bindScene, K as checkRecord, L as collabColor, M as createLayout, N as createParams, O as devServerAdapter, Q as localAdapter, T as memoryAdapter, U as selectOnClick, W as shareSelection, X as supabaseAdapter } from './Doc-iuxjrmk7.mjs';
+import { b as Theme, c as ThreeRendererConfig, a as TopBarOptions, T as ThreeRenderer, N as NotesLayer, d as NoteInfo } from './Markup-CIkPq071.mjs';
+export { A as AmbientOcclusionOptions, e as Appearance, C as CalloutItem, f as Callouts, D as DEFAULT_BACKGROUND, F as FlatLighting, L as LayoutOptions, g as MarkKind, h as MarkupBundle, i as MarkupCaptureOptions, j as MarkupObjectRef, M as MarkupRenderer, k as Note, l as NoteReply, m as NotesRenderer, P as PickInfo, n as Placement, S as StudioLighting, o as SunPreset, V as ViewMode, p as easeInOut, q as edgeStyle, r as fitRadius, s as flatLights, t as getTheme, u as groundAppearance, v as labelWidthFor, w as layoutLabels, x as lightBalance, y as markup, z as modeBackground, B as nearestAxis, E as notesLayer, G as orbitFor, H as orthoFrustum, I as sectionAppearance, J as sectionPlane, K as shortestTurn, O as standardOrbit, Q as studioLights, R as surfaceAppearance, U as viewerToolbar } from './Markup-CIkPq071.mjs';
+import { C as Commands, E as ExportRegistration, I as ImportRegistration, L as Lab, S as SketchConfig, R as Reactive } from './2d-CaS1ewQX.mjs';
+export { A as AnimateFn, a as Command, b as CommandInfo, D as DrawFn, c as DrawSheetOptions, d as Lab2D, e as LayerColumns, f as LayerMap, g as LayerNode, h as LayerPanel, i as LayerState, j as LayerTree, k as LineHandle, M as MeshHandle, P as PointHandle, l as Pointer2D, m as PointerFn, n as SelectOpts, o as ShapeHandle, p as ShapeMode, q as SheetCanvas, r as SheetCanvasOptions, s as SheetTransform, t as Sketch2DConfig, u as Sketch2DFn, v as Sketch2DInstance, w as SliderOpts, V as ViewControl, x as activateLayer, y as computeEffectiveLock, z as computeEffectiveVisibility, B as drawSheet, F as fitSheet, G as formatKeys, H as keyMatches, J as layerDefaults, K as sketch2d, N as viewCommands } from './2d-CaS1ewQX.mjs';
+export { a as ShadingBarCorner, S as ShadingBarPlacement } from './ShadingBar-r-eRrCKI.mjs';
 import * as THREE from 'three';
 import 'three/examples/jsm/controls/OrbitControls.js';
 
@@ -428,6 +429,8 @@ interface CustomRow {
     fullBleed?: boolean;
 }
 /** A tab whose content the owner renders itself (e.g. sketch's Info tab). */
+/** A tab whose content its owner renders (the sketch's Info: the log). Controls declared with the
+ *  same `tab` show above that content. */
 interface ExtraTab {
     name: string;
     render: (container: HTMLElement) => void;
@@ -568,6 +571,8 @@ interface NavGizmoOptions {
     corner?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
     /** Distance from the two edges of that corner, in pixels. */
     inset?: number;
+    /** Extra distance from the top edge (in a top corner), e.g. for a header strip across the view. */
+    offsetTop?: number;
     /**
      * Whether to show the projection toggle under the axes.
      *
@@ -626,6 +631,8 @@ declare class NavGizmo {
      */
     update(camera: THREE.Camera, contentRotation: THREE.Quaternion): void;
     setVisible(on: boolean): void;
+    /** The widget's element (axes and the projection toggle). */
+    get el(): HTMLElement;
     dispose(): void;
 }
 
@@ -711,6 +718,11 @@ declare class SketchInstance {
     private logEl;
     private markup;
     private bridge;
+    /** This run's steps (`lab.step`), drawn in the steps panel once a run has any. */
+    private _trace;
+    private _stepsPanel;
+    /** Notes on steps on their way into a snapshot (`saveStepMarks`). */
+    private _stepMarks;
     private _fileMenusEl;
     private _fileMenusSig;
     private _trackSource;
@@ -730,11 +742,18 @@ declare class SketchInstance {
     private _onTabChange;
     private _viewLayerStack;
     private _viewLayerObjects;
+    private _readsStyle;
+    private _objectViewLayer;
+    private _lockedLayers;
     constructor(fn: SketchFn, config: SketchConfig);
     private buildDOM;
     private initRenderer;
     private wireInput;
     enablePicking(enabled: boolean): void;
+    /** Recompute which layer ids are locked, and drop a selection that is now on one. */
+    private refreshLocks;
+    /** Whether scene object `id` is on a locked layer: its `.layer()` name or its view layer is a locked layer id. */
+    private onLockedLayer;
     setGizmoMode(mode: "translate" | "rotate" | "scale" | "none"): void;
     setSelected(id: string | null): void;
     /** Create or update a drag handle for this sketch run; returns a Reactive<Vec3>. */
@@ -853,6 +872,10 @@ declare class SketchInstance {
     onExportsChange(fn: () => void): () => void;
     onImportsChange(fn: () => void): () => void;
     private initMarkup;
+    /** The run's steps in the panel (made the first time a run records any), and a click on geometry finds its step. */
+    private showSteps;
+    /** A snapshot for the agent carrying the notes on steps (markup.json `stepMarks`). */
+    private saveStepMarks;
     private describeObject;
     /** Camera, params, logs, errors and a scene summary grouped by (layer, label, type, source line). */
     private markupContext;
@@ -938,9 +961,15 @@ interface AppShellConfig<S extends ParamSchema = ParamSchema> {
     topBar?: boolean | TopBarOptions;
     /** Show the ✎ Markup button (draw instructions on the view; marks name document records). Default `true`. */
     markup?: boolean;
+    /**
+     * Start with the status line collapsed to an ⓘ in the corner of the view. Its button folds
+     * and unfolds it, and a person's choice is remembered for this app (by its title). Default false.
+     */
+    statusCollapsed?: boolean;
     /** Notes that live with the model: the doc whose `notes` collection keeps them (or
-     *  `{ doc, collection, author }`). Markup then offers "Keep as notes", and the notes are
-     *  drawn over the view with a pin each (`app.notes`). */
+     *  `{ doc, collection, author }`). Markup then offers "Keep as notes" (and Save keeps the
+     *  marks as notes too), the notes are drawn over the view with a pin each (`app.notes`), and
+     *  an agent lists, answers and resolves them (`__tekto.notes`). */
     notes?: Doc<any> | {
         doc: Doc<any>;
         collection?: string;
@@ -952,7 +981,7 @@ interface AppShellConfig<S extends ParamSchema = ParamSchema> {
     navGizmo?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
     /** The shading bar in a viewport corner (`true` = top left): icons for the render style, the
      *  lighting and the sun (morning, noon, sunset). Default `false`. */
-    shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    shadingBar?: boolean | "top-left" | "top-right" | "bottom-left" | "bottom-right" | "header";
     /** The scene's unit (`"m"`, `"mm"`…): readouts show coordinates in it. Unset: relative to
      *  the content's extent. */
     units?: string;
@@ -996,6 +1025,11 @@ interface AppShellInstance<S extends ParamSchema = ParamSchema> {
     /** Update the status overlay text (cheap — just sets textContent) */
     status(text: string): void;
     /**
+     * Run `fn(inputs)` as a named step of the build and record it (see `lab.step`): the steps
+     * panel draws the build as a graph of its steps, and a snapshot carries them for an agent.
+     */
+    step<I extends Record<string, unknown>, T>(name: string, inputs: I, fn: (inputs: I) => T): T;
+    /**
      * A new layer over the 3D view, under the status line and ✎ Markup — mount a 2D view
      * there (`new SheetCanvas(app.overlay(), { sheet })`); hide it (`style.display = "none"`)
      * to show the 3D view again. Its canvases marked `data-tekto-overlay` are in snapshots.
@@ -1018,6 +1052,8 @@ declare function appShell<S extends ParamSchema>(config: AppShellConfig<S>): App
  * PresenceBar — who is online in a SharedStore document: a dot for the connection, one round
  * badge per person (their colour, initials or GitHub avatar; tooltip = name and what they are
  * on), and a Sign in / Sign out button. Sits in the viewport's top bar row, left of ✎ Markup.
+ * An agent working through someone's window (their presence `state.agent`, set by `agentDoc`)
+ * gets a square badge beside that person: "Claude, through Ana's window: Agent: east window".
  */
 
 /** Options for `PresenceBar`: where it sits and what each person's tooltip says. */
@@ -1044,4 +1080,147 @@ declare class PresenceBar {
     render(): void;
 }
 
-export { type AppShellConfig, type AppShellInstance, BspTree, Commands, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, Doc, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IconShape, type IdBufferOptions, ImportRegistration, Lab, LightingMode, Mesh, NavGizmo, type NavGizmoOptions, NotesLayer, type PanelButton, ParamSchema, ParamStore, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, Reactive, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SectionRequest, SharedStore, SketchConfig, SketchInstance, Theme, ThreeRenderer, ThreeRendererConfig, TopBarOptions, VIEW_MODE_ICON_CORNERS, VIEW_MODE_ICON_SVG, Vec3, type VisibilityOptions, type VisibilityResult, type VisibilityView, appShell, extractVisiblePolylines, hiddenLineIdBuffer, polylinesToSVG, processWorkerRequest, sketch, viewModeIconShapes, viewModeIconSvg };
+/**
+ * The agent bridge — `window.__tekto`, one per page.
+ *
+ * Agents drive a browser (tools/snap.mjs) and need the same handle on every kind of app:
+ * `sketch()`, `sketch2d()` and `appShell()` all install it. Through it an agent can read
+ * the controls (`schema`), set them by label (`setParams`), move the camera, and take a
+ * snapshot — the same bundle a person saves with ✎ Markup: `view.png`, `clean.png` and
+ * `markup.json`, which now also carries what the app logged and every error the page hit.
+ *
+ * An app that keeps a `Doc` shares it with `agentDoc(doc, { schema, check })`: then
+ * `__tekto.doc` reads the records and applies patches as one undo step, and with the markup
+ * dev-server plugin (`tekto/markup-vite`) every call here also reaches this tab from outside,
+ * through `POST /__tekto/agent/call` — what `tools/mcp.mjs` gives an agent as tools. The notes
+ * people leave on the model (`__tekto.notes`) are the agent's to-do list: it lists the open
+ * ones, answers and resolves them. While it works, a chip in the page and a badge in the
+ * presence bar say so.
+ *
+ * No three.js here (`sketch2d` and `tekto/2d` use it): the 3D harnesses pass in what the
+ * renderer knows through small structural interfaces.
+ */
+
+/** Something an app's check found: how bad, what, and on which records (`"walls/w3"`). */
+interface AgentIssue {
+    severity: "error" | "warning";
+    code?: string;
+    message: string;
+    keys?: string[];
+}
+/**
+ * The notes on a model as an agent works through them: structurally a `NotesLayer`.
+ * `appShell({ notes })` shares its layer by itself; an app with its own UI passes its layer
+ * to `agentDoc(doc, { notes })`.
+ */
+interface AgentNotes {
+    /** The open notes (or all), with their number, record key, the records they are about and their replies. */
+    describe(status?: "open" | "all"): NoteInfo[];
+    reply(id: string, text: string, author?: string): void;
+    resolve(id: string, text?: string, author?: string): void;
+}
+/** What an app shares with agents through `agentDoc`. */
+interface AgentDocOptions {
+    /** Each collection's JSON Schema: a patch with a record that breaks it is rejected whole. */
+    schema?: Record<string, RecordSchema>;
+    /** What is wrong now, e.g. `() => house.issues`; asked after every patch. */
+    check?: () => readonly AgentIssue[];
+    /** The app's notes layer, when it is not an `appShell`'s (which shares its own). */
+    notes?: AgentNotes;
+}
+/** `__tekto.doc`: the document an app shares, as an agent reads and edits it. */
+interface AgentDocApi {
+    readonly name: string;
+    /** Collection → number of records. */
+    collections(): Record<string, number>;
+    /** The schema the app gave, or null. */
+    schema(): Record<string, RecordSchema> | null;
+    /** Collection → id → record; one collection, or all. */
+    records(collection?: string): Record<string, Record<string, unknown>>;
+    /** Apply a patch as one undo step (or nothing, with the reasons), then run the app's check. */
+    apply(patch: DocPatch, label?: string): Promise<PatchResult & {
+        issues: AgentIssue[];
+    }>;
+    /** The app's check, once the document's changes have been drawn. */
+    check(): Promise<AgentIssue[]>;
+    undo(): boolean;
+    redo(): boolean;
+}
+/**
+ * Share a document with agents: `window.__tekto.doc` reads its records and applies patches
+ * (`{ set, update, remove }` by `"collection/id"`) as one undo step — checked against
+ * `schema` first, answered with `check()`'s issues after. With `tekto/markup-vite` in the dev
+ * server, the same calls reach this tab from outside (`tools/mcp.mjs`). Returns a function
+ * that stops sharing. One document per page: the last call wins.
+ *
+ *   agentDoc(doc, { schema: BUILDING_SCHEMA, check: () => house.issues });
+ */
+declare function agentDoc(doc: Doc<any>, opts?: AgentDocOptions): () => void;
+
+/**
+ * The steps panel: a program's run (`StepTrace`) as a graph over the bottom of a view. Steps
+ * read left to right as the values flow; each shows its time, what it produced and its share
+ * of the run; an error is red, a step whose output nobody used is dashed. Click a step for its
+ * inputs, output and code location, its geometry lights up in the view, and a note on it goes
+ * to the agent with the next snapshot ("Save for agent"). Steps run inside a step are folded
+ * into it.
+ *
+ * Mounted by `sketch()` and `appShell()` when a run recorded steps (`lab.step`, `app.step`).
+ */
+
+/** A person's note on a step, for the agent: the step as it ran, and what to change. */
+interface StepMark {
+    step: string;
+    note: string;
+    name: string;
+    inputs: StepRecord["inputs"];
+    output: string;
+    ms: number;
+    src?: string;
+}
+/** What the panel asks of the app around it. */
+interface StepsPanelOptions {
+    theme: Theme;
+    /** A step was picked (or none): light up its objects in the view. */
+    onSelect(step: StepRecord | null, objects: string[]): void;
+    /** Save the marks for the agent (a snapshot carries them). Resolves to where it went, if anywhere. */
+    onSave(marks: StepMark[]): Promise<string | undefined>;
+}
+/**
+ * A run's steps (`StepTraceJSON`) as a graph over the bottom of a view, with a button to open
+ * it. `sketch()` and `appShell()` mount one; an app with its own view mounts it in the view's
+ * element and calls `show(trace.toJSON())` after each run.
+ */
+declare class StepsPanel {
+    private host;
+    private opts;
+    readonly el: HTMLDivElement;
+    private pill;
+    private graph;
+    private details;
+    private summaryEl;
+    private saveBtn;
+    private trace;
+    private selected;
+    private marks;
+    private open;
+    constructor(host: HTMLElement, opts: StepsPanelOptions);
+    /** Show a run's steps (`null` or no steps: nothing to show, the panel and its button go). */
+    show(trace: StepTraceJSON | null): void;
+    /** Pick a step (from a click on its geometry), opening the panel. */
+    select(id: string | null): void;
+    /** The step that drew an object (its top-level step), if any. */
+    stepOfObject(objectId: string): string | undefined;
+    get isOpen(): boolean;
+    /** The marks not yet saved. */
+    get pendingMarks(): readonly StepMark[];
+    dispose(): void;
+    private setOpen;
+    private topOf;
+    private paint;
+    private paintDetails;
+    private save;
+    private notifySelect;
+}
+
+export { type AgentDocApi, type AgentDocOptions, type AgentIssue, type AgentNotes, type AppShellConfig, type AppShellInstance, BspTree, Commands, type ControlItem, ControlPanel, type ControlPanelConfig, type CustomRow, Doc, DocPatch, type DxfEdgeOptions, DxfExporter, DxfLayerDef, type DxfMeshOptions, type DxfSegment, type DxfView, type DxfWorkerRequest, type DxfWriteOptions, ExportRegistration, type ExtraTab, type IconShape, type IdBufferOptions, ImportRegistration, Lab, LightingMode, Mesh, NavGizmo, type NavGizmoOptions, NoteInfo, NotesLayer, type PanelButton, ParamSchema, ParamStore, PatchResult, Presence, PresenceBar, type PresenceBarOptions, type ProjectedSegment, Reactive, RecordSchema, RenderMode, type SVGOptions, SVGRenderer, type SVGRendererConfig, Scene, SectionRequest, SharedStore, SketchConfig, SketchInstance, type StepMark, StepRecord, StepTraceJSON, StepsPanel, type StepsPanelOptions, Theme, ThreeRenderer, ThreeRendererConfig, TopBarOptions, VIEW_MODE_ICON_CORNERS, VIEW_MODE_ICON_SVG, Vec3, type VisibilityOptions, type VisibilityResult, type VisibilityView, agentDoc, appShell, extractVisiblePolylines, hiddenLineIdBuffer, polylinesToSVG, processWorkerRequest, sketch, viewModeIconShapes, viewModeIconSvg };

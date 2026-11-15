@@ -5,10 +5,10 @@ import {
   sceneSummary,
   slug,
   snapshotWithOverlays
-} from "./chunk-FPI463DX.mjs";
+} from "./chunk-OZQQS4QH.mjs";
 import {
   SunPosition
-} from "./chunk-Z6BOOQ26.mjs";
+} from "./chunk-F764YID7.mjs";
 
 // src/gui/viewModeIcons.ts
 var A = [3, 7.5];
@@ -87,11 +87,11 @@ var MarkupOverlay = class {
     this.toggleBtn = document.createElement("button");
     this.toggleBtn.textContent = "\u270E Markup";
     this.toggleBtn.title = "Draw on the view to give instructions (saved as screenshot + JSON)";
-    this.toggleBtn.style.cssText = `position:absolute;top:10px;right:10px;z-index:22;${btnCss}`;
+    this.toggleBtn.style.cssText = host.buttonHost ? `${btnCss}padding:3px 9px;` : `position:absolute;top:10px;right:10px;z-index:22;${btnCss}`;
     this.toggleBtn.addEventListener("click", () => this.setActive(!this.active));
-    vp.appendChild(this.toggleBtn);
+    (host.buttonHost ?? vp).appendChild(this.toggleBtn);
     this.bar = document.createElement("div");
-    this.bar.style.cssText = "position:absolute;top:10px;right:100px;z-index:22;display:none;gap:6px;align-items:center;background:#fff;border:1px solid #d0d0d6;border-radius:7px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,.12);";
+    this.bar.style.cssText = `position:absolute;top:${(host.top ?? 0) + 10}px;right:${host.buttonHost ? 10 : 100}px;z-index:22;display:none;gap:6px;align-items:center;background:#fff;border:1px solid #d0d0d6;border-radius:7px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,.12);`;
     this.noteBox = document.createElement("input");
     this.noteBox.placeholder = "Instruction for the whole view\u2026";
     this.noteBox.style.cssText = "font:12px system-ui,sans-serif;width:260px;padding:5px 8px;border:1px solid #d0d0d6;border-radius:5px;";
@@ -116,7 +116,7 @@ var MarkupOverlay = class {
         this.marks = [];
         this.redraw();
       }),
-      mk("Save", "Save view.png + markup.json (\u2318S)", () => void this.save()),
+      mk("Save", host.keep ? "Save view.png + markup.json, and keep the marks as notes an agent can answer (\u2318S)" : "Save view.png + markup.json (\u2318S)", () => void this.save()),
       ...host.keep ? [mk("Keep as notes", "Keep the marks as notes with the model: saved, undoable, shared", () => this.keepNotes())] : [],
       this.status
     );
@@ -209,12 +209,27 @@ var MarkupOverlay = class {
       this.setStatus("Draw a mark first");
       return;
     }
+    const kept = this.marksToNotes();
+    if (!kept) {
+      this.setStatus("The marks lie on nothing to keep them on");
+      return;
+    }
+    this.marks = [];
+    this.noteBox.value = "";
+    this.redraw();
+    this.setStatus(`Kept ${kept} note${kept > 1 ? "s" : ""}`);
+  }
+  /** Keep the marks that lie on the model (or the ground) as notes; each remembers its note's key. Returns how many. */
+  marksToNotes() {
+    if (!this.host.keep) return 0;
     const r = this.canvas.getBoundingClientRect();
     const onModel = (p) => this.host.hitAt(r.left + p[0], r.top + p[1])?.point ?? this.host.groundAt(r.left + p[0], r.top + p[1]);
     const cam = this.host.context().camera ?? {};
     const instruction = this.noteBox.value.trim();
     const notes = [];
+    const from = [];
     for (const m of this.marks) {
+      if (m.noteKey) continue;
       const strokes = m.strokes.map((s) => (s.length === 1 ? s : resample(s, 6, 60)).map(onModel).filter((p) => !!p).map((p) => round3(p))).filter((s) => s.length > 0);
       if (!strokes.length) continue;
       const w = m.resolved?.world ?? {};
@@ -228,16 +243,14 @@ var MarkupOverlay = class {
         keys: [...new Set((m.resolved?.hits ?? []).map((h) => h.key).filter((k) => !!k))],
         view: { position: cam.position ?? [0, 0, 10], target: cam.target ?? [0, 0, 0], ...cam.projection ? { projection: cam.projection } : {} }
       });
+      from.push(m);
     }
-    if (!notes.length) {
-      this.setStatus("The marks lie on nothing to keep them on");
-      return;
-    }
-    this.host.keep(notes);
-    this.marks = [];
-    this.noteBox.value = "";
-    this.redraw();
-    this.setStatus(`Kept ${notes.length} note${notes.length > 1 ? "s" : ""}`);
+    if (!notes.length) return 0;
+    const keys = this.host.keep(notes);
+    if (keys) from.forEach((m, i) => {
+      m.noteKey = keys[i];
+    });
+    return notes.length;
   }
   /** A small input at the mark's badge; Enter keeps it, Escape leaves the mark without a note. */
   askNote(mark) {
@@ -339,8 +352,14 @@ var MarkupOverlay = class {
   async save() {
     this.setStatus("Saving\u2026");
     try {
+      const kept = this.marksToNotes();
       const b = await this.capture({ note: this.noteBox.value.trim() });
-      this.setStatus(b.dir ? `Saved \u2192 ${b.dir}` : "Downloaded (no dev-server plugin)");
+      if (kept) {
+        this.marks = this.marks.filter((m) => !m.noteKey);
+        this.redraw();
+      }
+      const notes = kept ? ` \xB7 kept ${kept} note${kept > 1 ? "s" : ""}` : "";
+      this.setStatus((b.dir ? `Saved \u2192 ${b.dir}` : "Downloaded (no dev-server plugin)") + notes);
     } catch (e) {
       this.setStatus(`Save failed: ${e}`);
     }
@@ -364,6 +383,7 @@ var MarkupOverlay = class {
         marks: this.marks.map((m) => ({
           n: m.n,
           note: m.note,
+          ...m.noteKey ? { noteKey: m.noteKey } : {},
           kind: m.resolved?.kind,
           summary: m.resolved?.summary,
           hits: m.resolved?.hits ?? [],
@@ -598,9 +618,7 @@ function markup(renderer, scene, opts = {}) {
     context: () => ({ ...sceneSummary(scene, renderer, describe), ...opts.context?.() ?? {} }),
     setTracking: () => {
     },
-    ...opts.notes ? { keep: (ns) => {
-      opts.notes.keep(ns);
-    } } : {},
+    ...opts.notes ? { keep: (ns) => opts.notes.keep(ns).map((id) => `${opts.notes.collection}/${id}`) } : {},
     ...opts.author ? { author: opts.author } : {}
   });
   return { capture: (o) => overlay.capture(o), dispose: () => overlay.dispose() };

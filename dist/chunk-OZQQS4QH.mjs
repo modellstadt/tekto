@@ -1,6 +1,7 @@
 import {
+  applyPatch,
   download
-} from "./chunk-QLUI3675.mjs";
+} from "./chunk-56LGGW6L.mjs";
 
 // src/gui/theme.ts
 var DARK = {
@@ -99,10 +100,22 @@ function installAgentBridge(host) {
       return r;
     },
     ...host.camera ? { camera: host.camera } : {},
+    ...host.section ? { section: host.section } : {},
+    // The program as the steps it ran: inputs, outputs, times, links, and a person's notes on steps.
+    steps: () => host.steps?.() ?? null,
     // What the app can do — undo, delete, the views … — by id, as a person would by key.
     commands: () => host.commands?.list() ?? [],
-    run: (id) => host.commands ? host.commands.run(id) : Promise.resolve(false)
+    run: (id) => host.commands ? host.commands.run(id) : Promise.resolve(false),
+    // The document the app shares (`agentDoc`), or undefined.
+    get doc() {
+      return sharedDoc ?? void 0;
+    },
+    // The notes people left on the model (the app's notes layer, or `agentDoc`'s), or undefined.
+    get notes() {
+      return host.notes?.() ?? sharedNotes ?? void 0;
+    }
   };
+  connectRelay();
   return {
     errors: () => [...errors],
     dispose() {
@@ -112,6 +125,179 @@ function installAgentBridge(host) {
       if (window.__tekto?.owner === host.owner) delete window.__tekto;
     }
   };
+}
+var sharedDoc = null;
+var sharedNotes = null;
+var announceAgent = null;
+var settled = () => new Promise((r) => setTimeout(r, 0));
+function agentDoc(doc, opts = {}) {
+  const collections = () => doc.toJSON().collections;
+  const api = {
+    name: doc.name,
+    collections: () => Object.fromEntries(Object.entries(collections()).map(([c, rows]) => [c, Object.keys(rows).length])),
+    schema: () => opts.schema ?? null,
+    records: (collection) => {
+      const all = collections();
+      return collection ? { [collection]: all[collection] ?? {} } : all;
+    },
+    apply: async (patch, label) => {
+      const result = applyPatch(doc, patch, { schema: opts.schema, label: label ?? "Agent edit" });
+      await settled();
+      return { ...result, issues: [...opts.check?.() ?? []] };
+    },
+    check: async () => {
+      await settled();
+      return [...opts.check?.() ?? []];
+    },
+    undo: () => doc.undo(),
+    redo: () => doc.redo()
+  };
+  sharedDoc = api;
+  if (opts.notes) sharedNotes = opts.notes;
+  const announce = (agent) => doc.store.setPresence({ agent });
+  announceAgent = announce;
+  return () => {
+    if (sharedDoc === api) sharedDoc = null;
+    if (sharedNotes === opts.notes) sharedNotes = null;
+    if (announceAgent === announce) announceAgent = null;
+  };
+}
+var AGENT_LINGER_MS = 8e3;
+var agentChip = null;
+var agentTimer;
+function showAgent(name, doing) {
+  if (!agentChip) {
+    agentChip = document.createElement("div");
+    agentChip.dataset.tektoAgent = "";
+    agentChip.style.cssText = "position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:1000;display:flex;gap:7px;align-items:center;max-width:340px;padding:6px 11px;border-radius:14px;background:rgba(17,19,26,.92);border:1px solid rgba(255,255,255,.18);color:#e8ebf0;font:500 11px/1.3 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none;";
+    const dot = document.createElement("span");
+    dot.style.cssText = "width:7px;height:7px;border-radius:50%;background:#ffb020;flex:none;";
+    const text = document.createElement("span");
+    text.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    agentChip.append(dot, text);
+  }
+  agentChip.lastChild.textContent = `${name} \xB7 ${doing}`;
+  if (!agentChip.isConnected) document.body.appendChild(agentChip);
+  announceAgent?.({ name, doing, at: Date.now() });
+  clearTimeout(agentTimer);
+  agentTimer = setTimeout(() => {
+    agentChip?.remove();
+    announceAgent?.(null);
+  }, AGENT_LINGER_MS);
+}
+function doingOf(op, args) {
+  switch (op) {
+    case "apply":
+      return typeof args.label === "string" && args.label ? args.label : "editing";
+    case "undo":
+      return "undo";
+    case "redo":
+      return "redo";
+    case "noteReply":
+      return "answering a note";
+    case "noteResolve":
+      return "resolving a note";
+    case "notes":
+      return "reading the notes";
+    case "snapshot":
+      return "looking at the view";
+    case "setParams":
+      return "setting controls";
+    case "run":
+      return `running ${String(args.id)}`;
+    default:
+      return "reading the model";
+  }
+}
+var relay = null;
+function connectRelay() {
+  if (relay || typeof document === "undefined" || typeof EventSource === "undefined") return;
+  const base = document.querySelector('meta[name="tekto-agent-relay"]')?.content;
+  if (!base) return;
+  if (navigator.webdriver && !/[?&]agent-relay\b/.test(location.search)) return;
+  relay = new EventSource(`${base}/events?title=${encodeURIComponent(document.title)}&url=${encodeURIComponent(location.href)}`);
+  relay.addEventListener("call", (e) => {
+    const { id, op, args, agent } = JSON.parse(e.data);
+    void runRelayed(op, args ?? {}, agent || "Agent").then(
+      (result) => ({ id, result }),
+      (err) => ({ id, error: err instanceof Error ? err.message : String(err) })
+    ).then((body) => fetch(`${base}/result`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).catch(() => {
+    });
+  });
+}
+async function runRelayed(op, args, agent) {
+  const t = window.__tekto;
+  if (!t) throw new Error("this page has no tekto app (no window.__tekto)");
+  const doc = t.doc;
+  const notes = t.notes;
+  const needDoc = () => {
+    if (!doc) throw new Error("this app shares no document (agentDoc)");
+    return doc;
+  };
+  const needNotes = () => {
+    if (!notes) throw new Error("this app keeps no notes (appShell({ notes }) or agentDoc(doc, { notes }))");
+    return notes;
+  };
+  const needText = () => {
+    const text = String(args.text ?? "").trim();
+    if (!text) throw new Error("text is required");
+    return text;
+  };
+  showAgent(agent, doingOf(op, args));
+  switch (op) {
+    case "info": {
+      const all = notes?.describe("all") ?? [];
+      return {
+        title: document.title,
+        url: location.href,
+        harness: t.harness,
+        doc: doc ? { name: doc.name, collections: doc.collections(), schema: doc.schema() } : null,
+        notes: notes ? { open: all.filter((n) => n.status === "open").length, done: all.filter((n) => n.status === "done").length } : null,
+        controls: t.schema(),
+        commands: t.commands(),
+        errors: t.errors()
+      };
+    }
+    case "notes":
+      return needNotes().describe(args.status === "all" ? "all" : "open");
+    case "noteReply":
+      needNotes().reply(String(args.id), needText(), agent);
+      return { ok: true };
+    case "noteResolve":
+      needNotes().resolve(String(args.id), String(args.text ?? "").trim() || void 0, agent);
+      return { ok: true, open: needNotes().describe("open").length };
+    case "records":
+      return needDoc().records(args.collection);
+    case "apply":
+      return needDoc().apply(args.patch, args.label);
+    case "check":
+      return needDoc().check();
+    case "undo":
+      return { undone: needDoc().undo() };
+    case "redo":
+      return { redone: needDoc().redo() };
+    case "setParams":
+      return t.setParams(args.params ?? {});
+    case "run":
+      return { ran: await t.run(String(args.id)) };
+    case "camera":
+      if (!t.camera) throw new Error("this app has no 3D camera");
+      t.camera(args.position, args.target);
+      return { ok: true };
+    case "steps":
+      return t.steps?.() ?? null;
+    case "section":
+      if (!t.section) throw new Error("this app has no 3D view to cut");
+      t.section(args.axis ? { axis: args.axis, at: args.at, coordinate: args.coordinate, flip: args.flip } : null);
+      return { ok: true };
+    case "snapshot": {
+      const b = await t.snapshot({ note: args.note, save: args.save === true, label: "agent" });
+      const m = b.markup;
+      return { viewPng: b.viewPng, camera: m.camera ?? null, scene: m.scene ?? null, logs: m.logs ?? [], errors: m.errors ?? [] };
+    }
+    default:
+      throw new Error(`unknown call "${op}" (info, records, apply, check, notes, noteReply, noteResolve, undo, redo, setParams, run, camera, section, steps, snapshot)`);
+  }
 }
 function paramSchema(store) {
   const schema = store.getSchema();
@@ -249,16 +435,32 @@ function safeJson(v) {
     return String(v);
   }
 }
+function callSite() {
+  const limit = Error.stackTraceLimit;
+  Error.stackTraceLimit = 40;
+  const stack = new Error().stack ?? "";
+  Error.stackTraceLimit = limit;
+  for (const line of stack.split("\n").slice(1)) {
+    const m = line.match(/(https?:\/\/[^\s)]+):(\d+):(\d+)/) ?? line.match(/@(\S+):(\d+):(\d+)$/);
+    if (!m) continue;
+    const url = m[1];
+    if (/\/tekto\/(src|dist)\/|node_modules|\/@vite\/|\/@fs\/.*\/tekto\/src\//.test(url)) continue;
+    return `${url}:${m[2]}:${m[3]}`;
+  }
+  return void 0;
+}
 
 export {
   getTheme,
   snapshotWithOverlays,
   downloadSnapshot,
   installAgentBridge,
+  agentDoc,
   describeSceneObject,
   sceneSummary,
   addOverlay,
   plainBundle,
   slug,
-  saveBundle
+  saveBundle,
+  callSite
 };
