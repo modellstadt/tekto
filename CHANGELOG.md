@@ -6,6 +6,10 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+## 0.10.1 — 2026-11-15
+
+Callouts as a key beside the model: one label with a leader to each thing it names, curved leaders, labels as a list, and leader ends for an app's own column (BuildGraph's products view).
+
 - **One callout, many leaders.** `CalloutItem.leaders: "each"` draws a leader from one label to
   each entry of `objects` (an object id, or a record key and everything drawn for it), and the
   label sits level with the middle of their ends. For a label that names what many elements

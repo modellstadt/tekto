@@ -1,8 +1,8 @@
-import { b as SectionRequest, c as StandardView, S as Scene, V as Vec3 } from './Scene-BsOKEQXC.js';
+import { b as SectionRequest, c as StandardView, S as Scene, V as Vec3 } from './Scene-BsOKEQXC.mjs';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { S as ShadingBarPlacement } from './ShadingBar-r-eRrCKI.js';
-import { D as Doc } from './Doc-hpBJxom8.js';
+import { S as ShadingBarPlacement } from './ShadingBar-r-eRrCKI.mjs';
+import { D as Doc } from './Doc-iuxjrmk7.mjs';
 
 /**
  * The rules a 3D view draws by — what each render mode paints, where a named view puts the
@@ -219,6 +219,52 @@ interface CalloutItem {
     /** What it points at: scene object ids, or record keys (`"walls/w1"`, which follow their
      *  record through rebuilds). The anchor is the centre of their combined bounds. */
     objects: readonly string[];
+    /**
+     * One leader to the centre of everything in `objects` (the default), or one to each entry
+     * of it: an object id, or a record key and everything drawn for it. "each" is for a label
+     * that names what many things share, a product or a material: the margin holds one label
+     * per thing rather than one per element, and every element still has its line. Only the
+     * entries the reader can see get one.
+     */
+    leaders?: "one" | "each";
+    /** The margin this label keeps to, rather than the one nearer its anchor: a column of
+     *  products down the left reads as a key. */
+    side?: "left" | "right";
+    /** The leader's shape: an elbow (the default), a level run and then a straight line, as a
+     *  drawing does; or a curve that leaves the label level and arrives level, as a diagram's
+     *  edges do, which stays readable where many leaders leave one label. */
+    leaderShape?: "elbow" | "curve";
+}
+/**
+ * How a set of callouts is laid out, and who hears about clicks and hovers on the labels.
+ *
+ * `stack: "anchors"` (the default) sets each label level with what it points at, pushed
+ * clear of its neighbours: the labels move with the model. `stack: "list"` stacks them from
+ * the top of their margin in the order given, on a column of their own headed by `title`,
+ * like a key: they stay put while the model turns and only the leaders move, and a label
+ * whose things are all hidden behind others stays in the list, without a leader.
+ */
+interface CalloutOptions {
+    onPick?: (id: string) => void;
+    onHover?: (id: string | null) => void;
+    stack?: "anchors" | "list";
+    /** the list's heading, with `stack: "list"` */
+    title?: string;
+    /**
+     * `false`: draw no labels, and report instead where each callout's leaders would end
+     * (`onEnds`), for an app that lists the labels itself, outside the view, and draws its own
+     * leaders into it. The visibility rule is the same: only the things the reader can see.
+     */
+    labels?: boolean;
+    /** Each callout's leader ends, in pixels within the view, after every frame drawn: only the
+     *  entries seen, none for a callout with nothing in sight. With `labels: false`. */
+    onEnds?: (ends: {
+        id: string;
+        ends: {
+            x: number;
+            y: number;
+        }[];
+    }[]) => void;
 }
 /** One label, placed. Pixel coordinates within the host. */
 interface Placement {
@@ -227,9 +273,14 @@ interface Placement {
     /** where the label's own box sits */
     x: number;
     y: number;
-    /** where its leader ends */
+    /** where its leader ends: for a label with several leaders, the middle of their ends */
     anchorX: number;
     anchorY: number;
+    /** each leader's end, for a label with `leaders: "each"` */
+    ends?: {
+        x: number;
+        y: number;
+    }[];
 }
 /**
  * How wide a label may be in a host of this width.
@@ -251,6 +302,10 @@ interface LayoutOptions {
     labelWidth?: number;
     /** clearance from the host's edges */
     inset?: number;
+    /** level with the anchors (the default), or listed from the top in the order given */
+    stack?: "anchors" | "list";
+    /** room kept at the top of each margin, for a list's title */
+    top?: number;
 }
 /** What a layout could place, and what it could not. */
 interface Layout {
@@ -278,7 +333,8 @@ interface Layout {
  *
  * Anchors on the left half of the screen get the left margin. Not because the
  * side matters, but because a leader that crosses the whole drawing to reach
- * the far margin passes over everything in between.
+ * the far margin passes over everything in between. An anchor that names its
+ * `side` keeps to it.
  *
  * More labels than rows is resolved by *input order*, which is the caller's
  * priority, and never by compressing the pitch: labels printed on top of each
@@ -288,6 +344,11 @@ declare function layoutLabels(anchors: {
     id: string;
     x: number;
     y: number;
+    side?: "left" | "right";
+    ends?: {
+        x: number;
+        y: number;
+    }[];
 }[], opts: LayoutOptions): Layout;
 /**
  * The DOM layer: labels, leaders, and clicks.
@@ -303,6 +364,12 @@ declare class Callouts {
     private items;
     private overflow;
     private labelWidth;
+    /** A list's column, per margin, and its title (`setList`). */
+    private columns;
+    private list;
+    /** Labels shown as the ones meant, and in what colour (`setHighlight`). */
+    private highlighted;
+    private highlightColour;
     constructor(host: HTMLElement, opts?: {
         labelWidth?: number;
         onPick?: (id: string) => void;
@@ -310,11 +377,27 @@ declare class Callouts {
     });
     /** What there is to say. Placements arrive separately, each frame. */
     setItems(items: CalloutItem[]): void;
+    /** Lay the labels out as a list, on a column of their own under `title`, or not. */
+    setList(on: boolean, title?: string): void;
+    /** The column behind a margin's list: full height, as wide as a label and its clearance. */
+    private column;
+    /**
+     * Show these labels, and their leaders, as the ones meant: what the pointer is over in the
+     * model, say, so a reader sees which label names it; null clears. Only the look changes.
+     */
+    setHighlight(ids: Iterable<string> | null, colour?: string): void;
+    private paint;
     /** Track the host's width, so labels stay a share of it rather than a
      *  constant that only suits one panel size. */
     setLabelWidth(px: number): void;
     /** The objects a caller must measure to anchor each callout. */
     objectsOf(id: string): readonly string[];
+    /** What each of a callout's leaders points at (`calloutGroups`). */
+    groupsOf(id: string): (readonly string[])[];
+    /** The margin a callout keeps to, if it names one. */
+    sideOf(id: string): "left" | "right" | undefined;
+    /** Whether a callout has a leader to each of its entries. */
+    fans(id: string): boolean;
     get ids(): string[];
     /**
      * Draw this frame's placements. Anything not placed is hidden, not removed:
@@ -915,12 +998,15 @@ declare class ThreeRenderer {
      * they never overlap and don't swim as the model turns; a label whose thing is hidden
      * behind other things is left out; what doesn't fit is counted, not dropped silently.
      * `objects` are scene ids or record keys (a key follows its record through rebuilds).
-     * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
+     * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels;
+     * `stack: "list"` lists them from the top on a column under `title`, like a key;
+     * `labels: false` draws none and reports where their leaders would end (`onEnds`), for an
+     * app that lists them outside the view.
      */
-    setCallouts(items: CalloutItem[], handlers?: {
-        onPick?: (id: string) => void;
-        onHover?: (id: string | null) => void;
-    }): void;
+    setCallouts(items: CalloutItem[], options?: CalloutOptions): void;
+    /** Show these callouts (by id), and their leaders, as the ones meant, in `colour`: the label
+     *  naming what the pointer is over, say. Null clears. Only the look changes. */
+    setCalloutHighlight(ids: readonly string[] | null, colour?: string): void;
     /** Crease lines still to be drawn (hidden line and ghost build them a frame at a time). */
     get pendingEdges(): number;
 }
@@ -1203,4 +1289,4 @@ declare function markup(renderer: MarkupRenderer, scene: Scene, opts?: {
     dispose(): void;
 };
 
-export { type AmbientOcclusionOptions as A, nearestAxis as B, type CalloutItem as C, DEFAULT_BACKGROUND as D, notesLayer as E, type FlatLighting as F, orbitFor as G, orthoFrustum as H, sectionAppearance as I, sectionPlane as J, shortestTurn as K, type LayoutOptions as L, type MarkupRenderer as M, NotesLayer as N, standardOrbit as O, type PickInfo as P, studioLights as Q, surfaceAppearance as R, type StudioLighting as S, ThreeRenderer as T, viewerToolbar as U, type ViewMode as V, type TopBarOptions as a, type Theme as b, type ThreeRendererConfig as c, type NoteInfo as d, type Appearance as e, Callouts as f, type MarkKind as g, type MarkupBundle as h, type MarkupCaptureOptions as i, type MarkupObjectRef as j, type Note as k, type NoteReply as l, type NotesRenderer as m, type Placement as n, type SunPreset as o, easeInOut as p, edgeStyle as q, fitRadius as r, flatLights as s, getTheme as t, groundAppearance as u, labelWidthFor as v, layoutLabels as w, lightBalance as x, markup as y, modeBackground as z };
+export { type AmbientOcclusionOptions as A, modeBackground as B, type CalloutItem as C, DEFAULT_BACKGROUND as D, nearestAxis as E, type FlatLighting as F, notesLayer as G, orbitFor as H, orthoFrustum as I, sectionAppearance as J, sectionPlane as K, type LayoutOptions as L, type MarkupRenderer as M, NotesLayer as N, shortestTurn as O, type PickInfo as P, standardOrbit as Q, studioLights as R, type StudioLighting as S, ThreeRenderer as T, surfaceAppearance as U, type ViewMode as V, viewerToolbar as W, type TopBarOptions as a, type Theme as b, type ThreeRendererConfig as c, type NoteInfo as d, type Appearance as e, type CalloutOptions as f, Callouts as g, type MarkKind as h, type MarkupBundle as i, type MarkupCaptureOptions as j, type MarkupObjectRef as k, type Note as l, type NoteReply as m, type NotesRenderer as n, type Placement as o, type SunPreset as p, easeInOut as q, edgeStyle as r, fitRadius as s, flatLights as t, getTheme as u, groundAppearance as v, labelWidthFor as w, layoutLabels as x, lightBalance as y, markup as z };

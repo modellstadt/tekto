@@ -4001,6 +4001,25 @@ import * as THREE9 from "three";
 
 // src/render/Callouts.ts
 var SVG2 = "http://www.w3.org/2000/svg";
+var LIST_TITLE_HEIGHT = 24;
+function calloutGroups(item) {
+  return item.leaders === "each" ? item.objects.map((o) => [o]) : [item.objects];
+}
+function leaderPath(p, labelWidth, shape = "elbow") {
+  const from = p.side === "left" ? p.x + labelWidth : p.x;
+  const knee = p.side === "left" ? from + 10 : from - 10;
+  const mid = p.y + 9;
+  const ends = p.ends ?? [{ x: p.anchorX, y: p.anchorY }];
+  if (!ends.length) return "";
+  if (shape === "curve") {
+    return ends.map((e) => {
+      const c = (from + e.x) / 2;
+      return `M${from},${mid} C${c},${mid} ${c},${e.y} ${e.x},${e.y}`;
+    }).join(" ");
+  }
+  const run = `M${from},${mid} L${knee},${mid}`;
+  return ends.length === 1 ? `${run} L${ends[0].x},${ends[0].y}` : run + ends.map((e) => ` M${knee},${mid} L${e.x},${e.y}`).join("");
+}
 function labelWidthFor(hostWidth) {
   return Math.round(Math.max(88, Math.min(170, hostWidth * 0.27)));
 }
@@ -4014,27 +4033,33 @@ function layoutLabels(anchors, opts) {
   const rowHeight = opts.rowHeight ?? 30;
   const labelWidth = opts.labelWidth ?? labelWidthFor(opts.width);
   const inset = opts.inset ?? 8;
-  const capacity = marginCapacity(opts.height, { rowHeight, inset });
+  const top = opts.top ?? 0;
+  const listed = opts.stack === "list";
+  const capacity = marginCapacity(opts.height - top, { rowHeight, inset });
   const placed = [];
   const dropped = [];
   for (const side of ["left", "right"]) {
-    const mine = anchors.filter((a) => a.x < opts.width / 2 === (side === "left"));
-    const keep = mine.slice(0, capacity).sort((a, b) => a.y - b.y);
+    const mine = anchors.filter((a) => (a.side ?? (a.x < opts.width / 2 ? "left" : "right")) === side);
+    const keep = listed ? mine.slice(0, capacity) : mine.slice(0, capacity).sort((a, b) => a.y - b.y);
     for (const a of mine.slice(capacity)) dropped.push(a.id);
     if (!keep.length) continue;
     const ys = [];
-    let previous = -Infinity;
-    for (const a of keep) {
-      const y = Math.max(a.y, previous + rowHeight, inset);
-      ys.push(y);
-      previous = y;
-    }
-    const overshoot = ys[ys.length - 1] + rowHeight - (opts.height - inset);
-    if (overshoot > 0) {
-      let floor = inset;
-      for (let i = 0; i < ys.length; i++) {
-        ys[i] = Math.max(ys[i] - overshoot, floor);
-        floor = ys[i] + rowHeight;
+    if (listed) {
+      keep.forEach((_, i) => ys.push(top + inset + i * rowHeight));
+    } else {
+      let previous = -Infinity;
+      for (const a of keep) {
+        const y = Math.max(a.y, previous + rowHeight, top + inset);
+        ys.push(y);
+        previous = y;
+      }
+      const overshoot = ys[ys.length - 1] + rowHeight - (opts.height - inset);
+      if (overshoot > 0) {
+        let floor = top + inset;
+        for (let i = 0; i < ys.length; i++) {
+          ys[i] = Math.max(ys[i] - overshoot, floor);
+          floor = ys[i] + rowHeight;
+        }
       }
     }
     keep.forEach((a, i) => placed.push({
@@ -4043,7 +4068,8 @@ function layoutLabels(anchors, opts) {
       x: side === "left" ? inset : opts.width - inset - labelWidth,
       y: ys[i],
       anchorX: a.x,
-      anchorY: a.y
+      anchorY: a.y,
+      ...a.ends ? { ends: a.ends } : {}
     }));
   }
   return { placed, dropped };
@@ -4054,6 +4080,12 @@ var Callouts = class {
     this.labels = /* @__PURE__ */ new Map();
     this.items = /* @__PURE__ */ new Map();
     this.overflow = null;
+    /** A list's column, per margin, and its title (`setList`). */
+    this.columns = /* @__PURE__ */ new Map();
+    this.list = { on: false };
+    /** Labels shown as the ones meant, and in what colour (`setHighlight`). */
+    this.highlighted = /* @__PURE__ */ new Set();
+    this.highlightColour = "#1f7ae0";
     this.labelWidth = opts.labelWidth ?? 150;
     this.root = document.createElement("div");
     this.root.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4";
@@ -4075,6 +4107,51 @@ var Callouts = class {
     }
     this.items = next;
   }
+  /** Lay the labels out as a list, on a column of their own under `title`, or not. */
+  setList(on, title) {
+    this.list = { on, title };
+    if (!on) {
+      for (const c of this.columns.values()) c.remove();
+      this.columns.clear();
+    }
+  }
+  /** The column behind a margin's list: full height, as wide as a label and its clearance. */
+  column(side, shown2) {
+    let c = this.columns.get(side);
+    if (!shown2) {
+      if (c) c.style.display = "none";
+      return;
+    }
+    if (!c) {
+      c = document.createElement("div");
+      c.style.cssText = `position:absolute;top:0;bottom:0;${side}:0;pointer-events:none;
+        box-sizing:border-box;background:rgba(248,250,252,.92);
+        border-${side === "left" ? "right" : "left"}:1px solid rgba(90,100,110,.18);
+        font:600 9.5px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+        letter-spacing:.08em;text-transform:uppercase;color:#8a949e;padding:9px 8px 0`;
+      this.root.insertBefore(c, this.svg);
+      this.columns.set(side, c);
+    }
+    c.style.display = "block";
+    c.style.width = `${this.labelWidth + 16}px`;
+    c.textContent = this.list.title ?? "";
+  }
+  /**
+   * Show these labels, and their leaders, as the ones meant: what the pointer is over in the
+   * model, say, so a reader sees which label names it; null clears. Only the look changes.
+   */
+  setHighlight(ids, colour) {
+    this.highlighted = new Set(ids ?? []);
+    if (colour) this.highlightColour = colour;
+    for (const [id, el] of this.labels) this.paint(id, el);
+  }
+  paint(id, el) {
+    const on = this.highlighted.has(id);
+    el.leader.setAttribute("stroke", on ? this.highlightColour : "#8a949e");
+    el.leader.setAttribute("stroke-width", on ? "1.75" : "1");
+    el.box.style.boxShadow = on ? `0 0 0 2px ${this.highlightColour}` : "0 1px 2px rgba(20,30,40,.12)";
+    if (on) this.svg.append(el.leader);
+  }
   /** Track the host's width, so labels stay a share of it rather than a
    *  constant that only suits one panel size. */
   setLabelWidth(px) {
@@ -4085,6 +4162,19 @@ var Callouts = class {
   /** The objects a caller must measure to anchor each callout. */
   objectsOf(id) {
     return this.items.get(id)?.objects ?? [];
+  }
+  /** What each of a callout's leaders points at (`calloutGroups`). */
+  groupsOf(id) {
+    const item = this.items.get(id);
+    return item ? calloutGroups(item) : [];
+  }
+  /** The margin a callout keeps to, if it names one. */
+  sideOf(id) {
+    return this.items.get(id)?.side;
+  }
+  /** Whether a callout has a leader to each of its entries. */
+  fans(id) {
+    return this.items.get(id)?.leaders === "each";
   }
   get ids() {
     return [...this.items.keys()];
@@ -4105,8 +4195,11 @@ var Callouts = class {
     for (const [id, el] of this.labels) {
       if (!placed.has(id)) {
         el.box.style.display = "none";
-        el.leader.setAttribute("points", "");
+        el.leader.setAttribute("d", "");
       }
+    }
+    if (this.list.on) {
+      for (const side of ["left", "right"]) this.column(side, placements.some((p) => p.side === side));
     }
     for (const p of placements) {
       const item = this.items.get(p.id);
@@ -4115,13 +4208,7 @@ var Callouts = class {
       el.box.style.display = "block";
       el.box.style.left = `${p.x}px`;
       el.box.style.top = `${p.y}px`;
-      const from = p.side === "left" ? p.x + this.labelWidth : p.x;
-      const knee = p.side === "left" ? from + 10 : from - 10;
-      const mid = p.y + 9;
-      el.leader.setAttribute(
-        "points",
-        `${from},${mid} ${knee},${mid} ${p.anchorX},${p.anchorY}`
-      );
+      el.leader.setAttribute("d", leaderPath(p, this.labelWidth, item.leaderShape));
     }
     this.showOverflow(unplaced, upTo);
   }
@@ -4142,7 +4229,7 @@ var Callouts = class {
     this.overflow.textContent = `${upTo ? "up to " : ""}${n} more not labelled: no room in the margins`;
   }
   make(id, item) {
-    const leader = document.createElementNS(SVG2, "polyline");
+    const leader = document.createElementNS(SVG2, "path");
     leader.setAttribute("fill", "none");
     leader.setAttribute("stroke", "#8a949e");
     leader.setAttribute("stroke-width", "1");
@@ -4179,6 +4266,7 @@ var Callouts = class {
     this.root.append(box);
     const el = { box, leader };
     this.labels.set(id, el);
+    this.paint(id, el);
     return el;
   }
   setVisible(on) {
@@ -4207,9 +4295,10 @@ var Marks = class {
     this.pocheMat = null;
     // ── Callouts (setCallouts) ──
     this.callouts = null;
-    /** Per callout, where to look for it: its centre, then points toward its box's corners. */
+    /** Per callout, per leader, where to look for it (its centre, then points toward its box's
+     *  corners) and what is its own, which cannot hide it. One leader unless `leaders: "each"`. */
     this.calloutAnchors = /* @__PURE__ */ new Map();
-    /** Per callout seen, the point its leader goes to. Redone only once the camera is still. */
+    /** Per callout seen, the point each seen leader goes to. Redone only once the camera is still. */
     this.calloutVisible = /* @__PURE__ */ new Map();
     /** Something that decides visibility changed since the last answer. */
     this.calloutCheckDirty = true;
@@ -4235,8 +4324,13 @@ var Marks = class {
     this.calloutsShown = true;
     this.outlineMat = null;
     this.sectionFrame = null;
+    this.calloutHighlight = { ids: null };
     this.outlineGroup.renderOrder = 999;
     core.threeScene.add(this.outlineGroup);
+  }
+  /** Room at the top of a margin for a list's title. */
+  calloutTop() {
+    return this.calloutHandlers.stack === "list" && this.calloutHandlers.title ? LIST_TITLE_HEIGHT : 0;
   }
   /** Keep outlines on their objects (a gizmo drag moves them without a rebuild), and hidden
    *  with them: a hidden object shows no outline. */
@@ -4479,13 +4573,22 @@ var Marks = class {
   cutAway(p) {
     return !!this.sectionClip && this.sectionClip.distanceToPoint(p) < -1e-9;
   }
+  /** Show these callouts, and their leaders, as the ones meant; null clears. */
+  setCalloutHighlight(ids, colour) {
+    this.calloutHighlight = { ids, colour };
+    this.callouts?.setHighlight(ids, colour);
+  }
   setCallouts(items, handlers = {}) {
     this.calloutHandlers = handlers;
     if (!items.length && !this.callouts) return;
-    this.callouts ?? (this.callouts = new Callouts(this.core.container, {
-      onPick: (id) => this.calloutHandlers.onPick?.(id),
-      onHover: (id) => this.calloutHandlers.onHover?.(id)
-    }));
+    if (!this.callouts) {
+      this.callouts = new Callouts(this.core.container, {
+        onPick: (id) => this.calloutHandlers.onPick?.(id),
+        onHover: (id) => this.calloutHandlers.onHover?.(id)
+      });
+      this.callouts.setHighlight(this.calloutHighlight.ids, this.calloutHighlight.colour);
+    }
+    this.callouts.setList(handlers.stack === "list", handlers.title);
     this.callouts.setVisible(this.calloutsShown);
     this.callouts.setItems(items);
     const ids = new Set(items.map((i) => i.id));
@@ -4494,15 +4597,21 @@ var Marks = class {
     this.calloutsDirty = true;
     this.core.requestRender();
   }
-  /** Re-measure where to look for each callout: points in its objects' bounds. */
+  /** Re-measure where to look for each callout: points in the bounds of what each of its
+   *  leaders points at. */
   _measureCallouts() {
     this.calloutsDirty = false;
     this.calloutAnchors.clear();
     const box = new THREE9.Box3();
     for (const id of this.callouts?.ids ?? []) {
-      box.makeEmpty();
-      for (const t of this.core.resolve(this.callouts.objectsOf(id))) if (t.visible) box.expandByObject(t);
-      if (!box.isEmpty()) this.calloutAnchors.set(id, calloutSamples(box));
+      const groups = [];
+      for (const objects of this.callouts.groupsOf(id)) {
+        const own = this.core.resolve(objects);
+        box.makeEmpty();
+        for (const t of own) if (t.visible) box.expandByObject(t);
+        if (!box.isEmpty()) groups.push({ samples: calloutSamples(box), own: new Set(own) });
+      }
+      if (groups.length) this.calloutAnchors.set(id, groups);
     }
     this.calloutPending = null;
     this.calloutCheckDirty = true;
@@ -4511,8 +4620,10 @@ var Marks = class {
    * Work on which callouts the reader can see, until `deadline`. Seen means any of its
    * sample points is: the centre first, the others only if it is hidden, and the leader goes
    * to the first one seen. Only a surface that writes depth hides it (`occludes`), its own
-   * objects don't count, nor does what the section removed. A margin that is full takes no
-   * more, so its side needs no rays, and the check ends when both are.
+   * objects don't count, nor does what the section removed. A callout with a leader to each
+   * of its entries is seen when any one is, and gets a leader only to those seen: an entry
+   * behind another, even one of its own, gets none. A margin that is full takes no more, so
+   * its side needs no rays, and the check ends when both are.
    */
   _checkCalloutVisibility(deadline) {
     const pending = this.calloutPending;
@@ -4524,47 +4635,72 @@ var Marks = class {
     const ortho = cam.isOrthographicCamera;
     const ndc = new THREE9.Vector3(), dir = new THREE9.Vector3();
     const full = () => pending.left >= pending.capacity && pending.right >= pending.capacity;
-    while (pending.queue.length && !full() && performance.now() < deadline) {
-      const id = pending.queue.pop();
-      const samples = this.calloutAnchors.get(id);
-      if (!samples) continue;
-      const side = ndc.copy(samples[0]).project(cam).x < 0 ? "left" : "right";
-      if (pending[side] >= pending.capacity) {
-        pending.skipped.push(id);
-        continue;
-      }
-      const own = new Set(this.core.resolve(this.callouts.objectsOf(id)));
-      let seen = null;
-      for (const point of samples) {
-        ndc.copy(point).project(cam);
-        if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;
-        if (ortho) {
-          ray.set(point.clone().addScaledVector(view, -1e4), view);
-          ray.far = 1e4;
-        } else {
-          dir.copy(point).sub(eye);
-          ray.far = dir.length();
-          ray.set(eye, dir.normalize());
+    const w = this.core.container.clientWidth || 1;
+    while ((pending.current || pending.queue.length) && !full() && performance.now() < deadline) {
+      if (!pending.current) {
+        const id = pending.queue.pop();
+        const groups2 = this.calloutAnchors.get(id);
+        if (!groups2) continue;
+        const side = this.calloutSide(id, cam);
+        if (pending[side] >= pending.capacity) {
+          pending.skipped.push(id);
+          continue;
         }
-        const hit = ray.intersectObjects(pending.targets, false).find((h) => h.object.isMesh && occludes(h.object.material) && !this.cutAway(h.point));
-        let owner = hit?.object ?? null;
-        while (owner && !own.has(owner)) owner = owner.parent;
-        if (!hit || owner || hit.distance >= ray.far - 1e-3) {
-          seen = point;
-          break;
+        pending.current = { id, side, group: 0, seen: [] };
+      }
+      const c = pending.current;
+      const groups = this.calloutAnchors.get(c.id) ?? [];
+      while (c.group < groups.length && performance.now() < deadline) {
+        const g = groups[c.group++];
+        for (const point of g.samples) {
+          ndc.copy(point).project(cam);
+          if (ndc.z > 1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;
+          const px = (ndc.x + 1) / 2 * w;
+          if (px < pending.bands.left || px > w - pending.bands.right || this.cutAway(point)) continue;
+          if (ortho) {
+            ray.set(point.clone().addScaledVector(view, -1e4), view);
+            ray.far = 1e4;
+          } else {
+            dir.copy(point).sub(eye);
+            ray.far = dir.length();
+            ray.set(eye, dir.normalize());
+          }
+          const hit = ray.intersectObjects(pending.targets, false).find((h) => h.object.isMesh && occludes(h.object.material) && !this.cutAway(h.point));
+          let owner = hit?.object ?? null;
+          while (owner && !g.own.has(owner)) owner = owner.parent;
+          if (!hit || owner || hit.distance >= ray.far - 1e-3) {
+            c.seen.push(point);
+            break;
+          }
         }
       }
-      if (seen) {
-        this.calloutVisible.set(id, seen);
-        pending[side]++;
-      } else this.calloutVisible.delete(id);
+      if (c.group < groups.length) break;
+      if (c.seen.length) {
+        this.calloutVisible.set(c.id, c.seen);
+        pending[c.side]++;
+      } else this.calloutVisible.delete(c.id);
+      pending.current = null;
     }
-    if (!pending.queue.length || full()) {
-      const unchecked = [...pending.queue, ...pending.skipped];
+    if (!pending.queue.length && !pending.current || full()) {
+      const unchecked = [...pending.queue, ...pending.skipped, ...pending.current ? [pending.current.id] : []];
       for (const id of unchecked) this.calloutVisible.delete(id);
       this.calloutUnchecked = unchecked.length;
       this.calloutPending = null;
     }
+  }
+  /**
+   * The margin a callout goes to: its own, or the one nearer the middle of what it points
+   * at, measured from where the things are rather than where they were last seen, so a
+   * listed label does not change columns as what is in sight of it changes.
+   */
+  calloutSide(id, cam) {
+    const forced = this.callouts?.sideOf(id);
+    if (forced) return forced;
+    const groups = this.calloutAnchors.get(id) ?? [];
+    const v = new THREE9.Vector3();
+    let x = 0;
+    for (const g of groups) x += v.copy(g.samples[0]).project(cam).x;
+    return groups.length && x / groups.length >= 0 ? "right" : "left";
   }
   /** Project, cull and lay out this frame's labels. */
   drawCallouts() {
@@ -4583,12 +4719,18 @@ var Marks = class {
     }
     if (this.calloutCheckDirty && !this.calloutPending) {
       if (now - this.calloutStillSince >= CALLOUT_SETTLE_MS) {
+        const list2 = this.calloutHandlers.stack === "list" && this.calloutHandlers.labels !== false;
+        const sides = new Set([...this.calloutAnchors.keys()].map((id) => this.calloutSide(id, cam)));
+        const band = labelWidthFor(w) + 16;
         this.calloutPending = {
+          current: null,
+          bands: { left: list2 && sides.has("left") ? band : 0, right: list2 && sides.has("right") ? band : 0 },
           queue: [...this.calloutAnchors.keys()].reverse(),
           skipped: [],
           left: 0,
           right: 0,
-          capacity: marginCapacity(h),
+          // with no labels there are no margins to fill: every callout is looked at
+          capacity: this.calloutHandlers.labels === false ? Infinity : marginCapacity(h - this.calloutTop()),
           targets: rayTargets(this.core.objectMap.values())
         };
         this.calloutCheckDirty = false;
@@ -4608,17 +4750,53 @@ var Marks = class {
     }
     const v = new THREE9.Vector3();
     const anchors = [];
+    if (this.calloutHandlers.labels === false) {
+      const out = [];
+      for (const id of this.calloutAnchors.keys()) {
+        const ends = [];
+        for (const point of this.calloutVisible.get(id) ?? []) {
+          v.copy(point).project(cam);
+          if (v.z > 1) continue;
+          ends.push({ x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
+        }
+        out.push({ id, ends });
+      }
+      this.callouts.update([], 0);
+      this.calloutHandlers.onEnds?.(out);
+      return;
+    }
+    const list = this.calloutHandlers.stack === "list";
     for (const id of this.calloutAnchors.keys()) {
-      const anchor = this.calloutVisible.get(id);
-      if (!anchor) continue;
-      v.copy(anchor).project(cam);
-      if (v.z > 1) continue;
-      anchors.push({ id, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
+      const seen = this.calloutVisible.get(id);
+      if (!seen && !list) continue;
+      const ends = [];
+      for (const point of seen ?? []) {
+        v.copy(point).project(cam);
+        if (v.z > 1) continue;
+        ends.push({ x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h });
+      }
+      if (!ends.length && !list) continue;
+      const x = ends.length ? ends.reduce((sum, e) => sum + e.x, 0) / ends.length : 0;
+      const y = ends.length ? ends.reduce((sum, e) => sum + e.y, 0) / ends.length : 0;
+      anchors.push({
+        id,
+        x,
+        y,
+        side: list ? this.calloutSide(id, cam) : this.callouts.sideOf(id),
+        ...this.callouts.fans(id) || list ? { ends } : {}
+      });
     }
     const labelWidth = labelWidthFor(w);
     this.callouts.setLabelWidth(labelWidth);
-    const { placed, dropped } = layoutLabels(anchors, { width: w, height: h, labelWidth });
-    this.callouts.update(placed, dropped.length + this.calloutUnchecked, this.calloutUnchecked > 0);
+    const { placed, dropped } = layoutLabels(
+      anchors,
+      { width: w, height: h, labelWidth, stack: list ? "list" : "anchors", top: this.calloutTop() }
+    );
+    this.callouts.update(
+      placed,
+      list ? dropped.length : dropped.length + this.calloutUnchecked,
+      !list && this.calloutUnchecked > 0
+    );
   }
   dispose() {
     this.pocheMat?.dispose();
@@ -6177,10 +6355,18 @@ var ThreeRenderer = class {
    * they never overlap and don't swim as the model turns; a label whose thing is hidden
    * behind other things is left out; what doesn't fit is counted, not dropped silently.
    * `objects` are scene ids or record keys (a key follows its record through rebuilds).
-   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels.
+   * Pass `[]` to clear. `onPick` / `onHover` hear clicks and hovers on the labels;
+   * `stack: "list"` lists them from the top on a column under `title`, like a key;
+   * `labels: false` draws none and reports where their leaders would end (`onEnds`), for an
+   * app that lists them outside the view.
    */
-  setCallouts(items, handlers = {}) {
-    this.marks.setCallouts(items, handlers);
+  setCallouts(items, options = {}) {
+    this.marks.setCallouts(items, options);
+  }
+  /** Show these callouts (by id), and their leaders, as the ones meant, in `colour`: the label
+   *  naming what the pointer is over, say. Null clears. Only the look changes. */
+  setCalloutHighlight(ids, colour) {
+    this.marks.setCalloutHighlight(ids, colour);
   }
   // ── Crease lines ──
   /** Crease lines still to be drawn (hidden line and ghost build them a frame at a time). */
