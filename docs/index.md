@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: tekto
-  text: CAD experiments in the browser, written with an AI
+  text: AI-first CAD experiments
   image:
     src: /shots/house.webp
     alt: A timber house built from records
