@@ -67,23 +67,51 @@ describe("views", () => {
     expect(s2.bounds()!.max.x).toBe(1);
   });
 
-  it("annotation keeps its paper size: 2.5 mm at 1:50, also in an enlarged detail", () => {
+  it("annotation keeps its paper size: 2 mm at 1:50, also in an enlarged detail", () => {
     const sheet = new Sheet({ scale: 50 });
     sheet.main.text("plan", [0, 0]);
     sheet.view("detail", { at: [10, 0], scale: 5 }).text("1:10", [0, 0]);
-    const [a, b] = texts(sheet.explode());
-    expect(a.height).toBeCloseTo(0.125, 12);         // 2.5 mm × 50 / 1000
-    expect(b.height).toBeCloseTo(0.125, 12);
+    sheet.main.dim([0, 1], [2, 1]);
+    const all = texts(sheet.explode());
+    const a = all.find((t) => t.text === "plan")!, b = all.find((t) => t.text === "1:10")!, dim = all.find((t) => t !== a && t !== b)!;
+    expect(a.height).toBeCloseTo(0.1, 12);           // 2 mm × 50 / 1000
+    expect(b.height).toBeCloseTo(0.1, 12);
+    expect(dim.height).toBeCloseTo(0.09, 12);        // dimensions are smaller: 1.8 mm
   });
 
-  it("a view title sits centred under the view", () => {
+  it("a view title sits above the view on the left, with its scale", () => {
     const sheet = new Sheet({ scale: 50 });
-    sheet.view("plan", { title: "Plan 1:50" }).rect(0, 0, 4, 2);
-    const t = texts(sheet.explode())[0];
-    expect(t.text).toBe("Plan 1:50");
-    expect(t.at.x).toBeCloseTo(2);
-    expect(t.at.y).toBeLessThan(0);
-    expect(t.align).toBe("center");
+    sheet.view("plan", { title: "Plan" }).rect(0, 0, 4, 2);
+    sheet.view("detail", { at: [10, 0], scale: 5, title: "Joint" }).rect(0, 0, 0.5, 0.5);
+    sheet.view("given", { at: [20, 0], title: "Section A-A 1:50" }).rect(0, 0, 1, 1);
+    sheet.view("bare", { at: [30, 0], title: "Key", titleScale: false }).rect(0, 0, 1, 1);
+    const [plan, detail, given, bare] = texts(sheet.explode());
+    expect([plan.text, detail.text, given.text, bare.text]).toEqual(["Plan 1:50", "Joint 1:10", "Section A-A 1:50", "Key"]);
+    expect(plan.at.x).toBeCloseTo(0);
+    expect(plan.at.y).toBeGreaterThan(2);
+    expect([plan.align, plan.baseline]).toEqual(["left", "bottom"]);
+    expect(plan.height).toBeCloseTo(0.175, 12);      // 3.5 mm
+  });
+
+  it("a title block sits left of the drawing, level with its top, and says what the drawing is", () => {
+    const sheet = new Sheet({ scale: 100 });
+    sheet.view("plan", { title: "Plan" }).rect(0, 0, 10, 6);
+    sheet.view("detail", { at: [12, 0], scale: 5, title: "Joint" }).rect(0, 0, 1, 1);
+    sheet.titleBlock({
+      office: "DBT ETH Zurich", project: "Pavilion", title: "Plans", phase: "Submission", number: "2471.012",
+      date: "16.11.2026", drawn: "BD", revisions: [{ index: "a", date: "20.11.2026", note: "Columns moved" }], notes: ["Timber C24."],
+    });
+    const prims = sheet.explode();
+    const said = texts(prims).map((t) => t.text);
+    for (const t of ["DBT ETH Zurich", "Pavilion", "Plans 1:100 / 1:20", "Submission", "PLAN NO.", "2471.012", "16.11.2026", "BD", "SCALE", "1:100 / 1:20", "INDEX", "Columns moved", "Timber C24."]) {
+      expect(said).toContain(t);
+    }
+    const block = texts(prims).filter((t) => t.text === "Pavilion")[0];
+    expect(block.at.x).toBeLessThan(0);              // left of the drawing
+    const top = Math.max(...texts(prims).filter((t) => t.text === "Plan 1:100").map((t) => t.at.y));
+    expect(texts(prims).find((t) => t.text === "DBT ETH Zurich")!.at.y).toBeCloseTo(top + 0.175 + 0, 0);
+    const svg = sheet.toSVG();
+    expect(svg).toContain(">2471.012<");
   });
 
   it("fills come first, under the lines", () => {
@@ -156,11 +184,16 @@ describe("annotations", () => {
     const sheet = new Sheet({ scale: 50 });
     sheet.main.leader([[0, 0], [1, 1], [2, 1]], "Oak, oiled");
     sheet.main.leader([[0, 0], [-1, 1]], "left");
-    const [right, left] = texts(sheet.explode());
+    const prims = sheet.explode();
+    const [right, left] = texts(prims);
     expect(right.align).toBe("left");
     expect(right.at.x).toBeGreaterThan(2);
+    expect(right.at.y).toBeCloseTo(1);
     expect(left.align).toBe("right");
-    expect(left.at.x).toBeLessThan(-1);
+    expect(left.at.x).toBeLessThan(-1.15);             // past a 3 mm shoulder (0.15 at 1:50) …
+    expect(left.at.y).toBeCloseTo(1);                  // … level with the leader's end
+    const ends = prims.flatMap((p) => (p.kind === "polyline" ? [p.points[p.points.length - 1]] : []));
+    expect(ends.some((e) => Math.abs(e.x + 1.15) < 1e-9 && e.y === 1)).toBe(true);   // the shoulder
   });
 
   it("a level mark writes the height with its sign, from the point or a value", () => {
@@ -169,7 +202,13 @@ describe("annotations", () => {
     east.level(new Vec3(0, 0, 2.45));
     east.level([0, 0]);
     east.level([0, 0], { value: -0.5 });
-    expect(texts(sheet.explode()).map(t => t.text)).toEqual(["+2.450", "±0.000", "-0.500"]);
+    const prims = sheet.explode();
+    expect(texts(prims).map(t => t.text)).toEqual(["+2.450", "±0.000", "-0.500"]);
+    // The text stands on a level line through the triangle's tip.
+    const t = texts(prims)[1];
+    expect([t.baseline, t.at.y > 0]).toEqual(["bottom", true]);
+    const line = prims.find((p) => p.kind === "polyline" && p.points.length === 2 && p.points[0].y === 0 && p.points[1].y === 0);
+    expect(line && line.kind === "polyline" && line.points[1].x).toBeGreaterThan(t.at.x);
   });
 });
 
@@ -238,10 +277,11 @@ describe("one source: SVG and DXF draw exactly the exploded primitives", () => {
     expect(dashes).toEqual([75, -50]);                                   // 1.5 mm and 1 mm on paper at 1:50, in mm
     const layerHidden = pv.findIndex(([c, v], j) => c === "2" && v === "hidden" && pv[j - 1][1] === "LAYER");
     expect(pv.slice(layerHidden, layerHidden + 8).find(([c]) => c === "6")?.[1]).toBe("HIDDEN");
-    const title = pv.findIndex(([c, v]) => c === "1" && v === "Plan");
+    const title = pv.findIndex(([c, v]) => c === "1" && v === "Plan 1:50");
     const t = pv.slice(title, title + pv.slice(title).findIndex(([c]) => c === "0"));
-    expect(t.find(([c]) => c === "72")?.[1]).toBe("1");                  // the view title: centred …
-    expect(t.find(([c]) => c === "73")?.[1]).toBe("3");                  // … hanging from its top
+    expect(t.find(([c]) => c === "1")?.[1]).toBe("Plan 1:50");          // the view title, with its scale …
+    expect(t.find(([c]) => c === "72")?.[1] ?? "0").toBe("0");          // … on the left …
+    expect(t.find(([c]) => c === "73")?.[1]).toBe("1");                  // … standing on its bottom
   });
 });
 

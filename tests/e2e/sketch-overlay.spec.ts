@@ -17,7 +17,7 @@ test("a sketch's drawing overlay: one layer across re-runs, shown in snapshots",
   await expect(overlay).toBeVisible();
 
   // A re-run rebuilds the sheet into the same layer: still one canvas.
-  await page.evaluate(() => (window as any).__tekto.setParams({ Steps: 16 }));
+  await page.evaluate(() => (window as any).__tekto.setParams({ Risers: 16 }));
   await page.waitForTimeout(100);
   await expect(overlay).toHaveCount(1);
 

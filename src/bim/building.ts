@@ -33,7 +33,7 @@ import { joistDirectionFromBounds } from "./slabs/orientation";
 import { Space, boundingWalls } from "./spaces";
 import { OpeningType, openingFill } from "./openings";
 import { Roof } from "./roofs";
-import { Stair, StairType } from "./stairs";
+import { Stair, StairType, type StairStructure } from "./stairs";
 import { IfcWriter } from "../io/IfcWriter";
 import { checkRecord, type RecordSchema } from "../collab/recordSchema";
 import type { Doc } from "../collab/Doc";
@@ -171,8 +171,18 @@ export interface StairRecord {
   gap?: number;
   /** Cut the well in the floor above; default true. */
   well?: boolean;
+  /** How it is built: "solid" (default), "concrete" (a waist slab), "timber" (treads between stringers), "steel" (a folded plate). */
+  structure?: StairStructure;
   name?: string;
 }
+
+/** What each stair structure is made of, for IFC, and the colour it is shown in. */
+const STAIR_MATERIAL: Record<StairStructure, { name?: string; colour: string }> = {
+  solid: { colour: "#c9a27a" },
+  concrete: { name: "Concrete", colour: "#c4c2bc" },
+  timber: { name: "Timber", colour: "#c9a27a" },
+  steel: { name: "Steel", colour: "#5d6166" },
+};
 
 /** The collections of a building and the record each holds: a `Doc` schema (`new Doc<BuildingRecords>`). */
 export type BuildingRecords = {
@@ -302,6 +312,7 @@ export const BUILDING_SCHEMA: Record<BuildingCollection, RecordSchema> = {
       landingDepth: LENGTH("Landing depth (m), default the width"),
       gap: { type: "number", minimum: 0, description: "Gap between the flights of a U (m), default 0.1" },
       well: { type: "boolean", description: "Cut the well in the floor above, default true" },
+      structure: { type: "string", enum: ["solid", "concrete", "timber", "steel"], description: "How it is built: solid (default: blocks down to the floor, a massing), concrete (the steps on a 160 mm waist slab), timber (50 mm treads between two stringers, open risers), steel (an 8 mm folded plate on two flat stringers)" },
       name: { type: "string" },
     },
   },
@@ -642,8 +653,8 @@ export class Building {
           name: r.name ?? id, start: new Vec3(r.at[0], r.at[1], s.record.elevation),
           direction: r.direction ? new Vec2(r.direction[0], r.direction[1]) : new Vec2(1, 0),
           width: r.width, totalRise: s.record.height, riserHeight: r.riser, treadDepth: r.going,
-          shape, turn: r.turn, landingDepth: r.landingDepth, gap: r.gap,
-          type: new StairType({ name: shape.replace(/_/g, " "), shape }),
+          shape, turn: r.turn, landingDepth: r.landingDepth, gap: r.gap, structure: r.structure,
+          type: new StairType({ name: shape.replace(/_/g, " "), shape, material: STAIR_MATERIAL[r.structure ?? "solid"].name }),
         });
         made.flights();                                     // throws for a stair that cannot be built
         return made;
@@ -1063,9 +1074,10 @@ export function bindBuilding(doc: Doc<any>, scene: Scene, opts: BindBuildingOpti
         for (const g of roof.gables(building.gableThickness(s))) add(keyOf("roofs", id), g.mesh, { color: wallColour, layer: "walls" });
       }
       for (const [id, st] of s.stairs) {
-        for (const f of st.flights()) add(keyOf("stairs", id), new Mesh(f.positions, f.indices), { color: "#c9a27a", flatShading: true, layer: "stairs" });
+        const color = STAIR_MATERIAL[st.structure].colour;
+        for (const f of st.flights()) add(keyOf("stairs", id), new Mesh(f.positions, f.indices), { color, flatShading: true, layer: "stairs" });
         const landing = st.landing();
-        if (landing) add(keyOf("stairs", id), landing.toMesh(), { color: "#c9a27a", layer: "stairs" });
+        if (landing) add(keyOf("stairs", id), landing.toMesh(), { color, layer: "stairs" });
       }
       for (const [id, slab] of s.slabs) {
         const rec = building.data.slabs?.[id];

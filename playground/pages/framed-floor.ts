@@ -5,12 +5,12 @@
  * writes the slab voided by the well, its members gathered under it, and the stair: its flights
  * and landing gathered under an IfcStair.
  *
- *   sliders   the stair's shape, turn and landing, the joist spacing, the joist direction
+ *   sliders   the stair's shape, turn, structure (timber, steel, concrete) and landing, the joist spacing and direction
  *   callouts  one per kind of member
  */
 import {
   appShell, download, IfcWriter, JoistedSlab, Mesh, realizeSlab, Slab, SlabType, Stair, Vec2, Vec3,
-  type CalloutItem, type SlabPart, type StairShape,
+  type CalloutItem, type SlabPart, type StairShape, type StairStructure,
 } from "../../src";
 
 /** Colour by framing role, the way a cut list groups them. */
@@ -19,12 +19,12 @@ const ROLE_COLOUR: Record<string, string> = {
   sheathing: "#e8dcc4", ceiling: "#eef0f2",
 };
 const ROLE_LABEL: Record<string, string> = { joist: "Joist", trimmer: "Trimmer", header: "Header", beam: "Rim joist" };
-const STAIR_COLOUR = "#c9c6c0";
+const STAIR_COLOUR: Record<StairStructure, string> = { solid: "#c9c6c0", concrete: "#c4c2bc", timber: "#c9a27a", steel: "#5d6166" };
 const LENGTH = 6, WIDTH = 4.5, LEVEL = 3;
 
 /** The stair from the ground to the floor, its footprint centred on the floor. */
-function buildStair(shape: StairShape, turn: "left" | "right", landingDepth: number, gap: number): Stair {
-  const opts = { name: "Stair", start: new Vec3(0, 0, 0), totalRise: LEVEL, width: 1, shape, turn, landingDepth, gap };
+function buildStair(shape: StairShape, turn: "left" | "right", landingDepth: number, gap: number, structure: StairStructure): Stair {
+  const opts = { name: "Stair", start: new Vec3(0, 0, 0), totalRise: LEVEL, width: 1, shape, turn, landingDepth, gap, structure };
   const ring = new Stair(opts).footprint();
   const xs = ring.map(p => p.x), ys = ring.map(p => p.y);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
@@ -66,6 +66,7 @@ export default function (container: HTMLElement) {
       northSouth: { type: "bool", default: false, label: "Joists N–S" },
       shape: { type: "select", options: ["straight_run", "two_straight_run", "quarter_turn", "half_turn"], default: "half_turn", label: "Shape" },
       turn: { type: "select", options: ["left", "right"], default: "left", label: "Turn" },
+      structure: { type: "select", options: ["timber", "steel", "concrete", "solid"], default: "timber", label: "Structure" },
       landingDepth: { type: "float", min: 1, max: 1.8, default: 1, step: 0.05, label: "Landing depth" },
       gap: { type: "float", min: 0, max: 0.4, default: 0.1, step: 0.02, label: "Gap (U)" },
       plates: { type: "bool", default: false, label: "Sheathing + ceiling" },
@@ -74,7 +75,7 @@ export default function (container: HTMLElement) {
     },
     groups: {
       Floor: ["spacing", "northSouth"],
-      Stair: ["shape", "turn", "landingDepth", "gap"],
+      Stair: ["shape", "turn", "structure", "landingDepth", "gap"],
       Show: ["plates", "callouts"],
       File: ["ifc"],
     },
@@ -83,7 +84,7 @@ export default function (container: HTMLElement) {
   app.onBuild(() => {
     app.scene.clear();
     const p = app.params;
-    stair = buildStair(p.get("shape") as StairShape, p.get("turn") as "left" | "right", p.get("landingDepth"), p.get("gap"));
+    stair = buildStair(p.get("shape") as StairShape, p.get("turn") as "left" | "right", p.get("landingDepth"), p.get("gap"), p.get("structure") as StairStructure);
     slab = buildFloor(p.get("spacing"), p.get("northSouth"), stair);
     parts = realizeSlab(slab).parts;
     const plates = p.get("plates");
@@ -96,10 +97,10 @@ export default function (container: HTMLElement) {
     });
     app.scene.withKey("stair", () => {
       for (const f of stair!.flights()) {
-        app.scene.addMesh(new Mesh(f.positions, f.indices), { color: STAIR_COLOUR, flatShading: true, label: f.name, layer: "stair" });
+        app.scene.addMesh(new Mesh(f.positions, f.indices), { color: STAIR_COLOUR[stair!.structure], flatShading: true, label: f.name, layer: "stair" });
       }
       const landing = stair!.landing();
-      if (landing) app.scene.addMesh(landing.toMesh(), { color: STAIR_COLOUR, label: landing.name, layer: "stair" });
+      if (landing) app.scene.addMesh(landing.toMesh(), { color: STAIR_COLOUR[stair!.structure], label: landing.name, layer: "stair" });
     });
   });
 

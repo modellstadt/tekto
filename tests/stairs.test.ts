@@ -95,6 +95,73 @@ describe("Stair risers and landing", () => {
   });
 });
 
+describe("Stair structure", () => {
+  const volume = (s: Stair) => s.flights().reduce((v, f) => v + new Mesh(f.positions, f.indices).volume(), 0);
+
+  it("every structure builds closed flights with their faces pointing out, lighter than the solid", () => {
+    const solid = volume(stair({ shape: "half_turn" }));
+    for (const structure of ["concrete", "timber", "steel"] as const) {
+      for (const shape of ["straight_run", "quarter_turn", "half_turn"] as const) {
+        const s = stair({ structure, shape, turn: "right", direction: new Vec2(1, 2) });
+        for (const f of s.flights()) {
+          const check = new Mesh(f.positions, f.indices).validate();
+          expect(check.closed, `${structure} ${shape}`).toBe(true);
+          expect(check.issues, `${structure} ${shape}`).toEqual([]);
+          expect(check.signedVolume!).toBeGreaterThan(0);
+        }
+      }
+      expect(volume(stair({ structure, shape: "half_turn" }))).toBeLessThan(solid * 0.6);
+    }
+  });
+
+  it("a concrete flight is a waist slab: the steps on top, 160 mm under their inner corners", () => {
+    const s = stair({ structure: "concrete" });
+    const [part] = s.parts()[0].parts;
+    expect(part.name).toBe("flight");
+    const L = (s.risers - 1) * G, waist = 0.16 / Math.cos(Math.atan2(R, G));
+    const has = (x: number, y: number) => part.outline.some((p) => Math.abs(p.x - x) < 1e-9 && Math.abs(p.y - y) < 1e-9);
+    expect(has(L, RISE - R)).toBe(true);                               // the last tread: its riser is the floor's edge
+    expect(has(L, (s.risers - 1) * R - waist)).toBe(true);             // the soffit, plumb under the last inner corner
+    expect(has(waist * (G / R), 0)).toBe(true);                        // and where it meets the floor
+    expect(has(0, 0)).toBe(true);
+  });
+
+  it("a timber flight: treads between two stringers, open risers, each tread over the one below", () => {
+    const s = stair({ structure: "timber" });
+    const parts = s.parts()[0].parts;
+    const treads = parts.filter((p) => p.name === "tread"), stringers = parts.filter((p) => p.name === "stringer");
+    expect(treads).toHaveLength(s.risers - 1);
+    expect(stringers.map((p) => p.across)).toEqual([[-0.5, -0.44], [0.44, 0.5]]);
+    expect(treads[0].across).toEqual([-0.44, 0.44]);
+    const xs = (i: number) => treads[i].outline.map((p) => p.x);
+    expect(Math.min(...xs(1))).toBeCloseTo(G - 0.03, 9);                // 30 mm over tread 0
+    expect(Math.max(...treads[0].outline.map((p) => p.y))).toBeCloseTo(R, 9);
+    // The stringers stand on the floor and stop at the floor above.
+    for (const st of stringers) {
+      expect(Math.min(...st.outline.map((p) => p.y))).toBeCloseTo(0, 9);
+      expect(Math.max(...st.outline.map((p) => p.y))).toBeCloseTo(RISE, 9);
+    }
+  });
+
+  it("a steel flight: one plate folded into treads and risers, on two flat stringers", () => {
+    const s = stair({ structure: "steel" });
+    const parts = s.parts()[0].parts;
+    expect(parts.map((p) => p.name)).toEqual(["plate", "stringer", "stringer"]);
+    const plate = parts[0].outline;
+    // The walking line is the stepped line: up each riser, along each tread.
+    expect(plate.some((p) => Math.abs(p.x - G) < 1e-9 && Math.abs(p.y - 2 * R) < 1e-9)).toBe(true);
+    expect(plate.some((p) => Math.abs(p.x - (G + 0.008)) < 1e-9 && Math.abs(p.y - (2 * R - 0.008)) < 1e-9)).toBe(true);
+  });
+
+  it("the landing is as thick as the structure needs, unless given", () => {
+    expect(stair({ shape: "half_turn" }).landing()!.thickness).toBe(0.2);
+    expect(stair({ shape: "half_turn", structure: "timber" }).landing()!.thickness).toBe(0.12);
+    expect(stair({ shape: "half_turn", structure: "steel" }).landing()!.thickness).toBe(0.08);
+    expect(stair({ shape: "half_turn", structure: "steel", landingThickness: 0.15 }).landing()!.thickness).toBe(0.15);
+    expect(() => stair({ structure: "glass" as never })).toThrow(/structure must be "solid", "concrete", "timber", "steel", got "glass"/);
+  });
+});
+
 describe("Stair footprint", () => {
   it("a straight run is a rectangle, its length the treads' goings", () => {
     const ring = stair().footprint();

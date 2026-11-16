@@ -48,7 +48,7 @@ const EXAMPLE: BuildingData = {
     roof: { storey: "og", kind: "gable", pitch: 35, footprint: rect(-0.125, -0.125, 10.125, 8.125), overhang: 0.5, gableOverhang: 0.3, name: "Roof" },
   },
   stairs: {
-    stair: { storey: "eg", at: [0.6, 7.3], direction: [1, 0], shape: "half_turn", turn: "right", name: "Stair" },
+    stair: { storey: "eg", at: [0.6, 7.3], direction: [1, 0], shape: "half_turn", turn: "right", structure: "timber", name: "Stair" },
   },
   walls: {
     s: { storey: "eg", path: [[0, 0], [10, 0]], name: "South" }, e: { storey: "eg", path: [[10, 0], [10, 8]], name: "East" },
