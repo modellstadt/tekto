@@ -2,7 +2,8 @@
  * Drawing Sheet — one model, a 3D view and a dimensioned drawing, one selection.
  *
  *   Sheet          plan 1:100, two elevations projected from the model's 3D points, a 1:20
- *                  detail; dimensions, grid, levels, a leader — annotation sized in paper mm
+ *                  detail; dimensions, grid, levels, a leader — annotation sized in paper mm;
+ *                  a title block (Plankopf), greyscale with pale fills for what is cut
  *   SheetCanvas    the drawing over the viewport (app.overlay()): wheel zooms, drag pans,
  *                  double-click fits; a slider keeps the zoom while the sheet is rebuilt
  *   Selection      click a column in the plan, an elevation, the detail or in 3D: it lights
@@ -10,7 +11,7 @@
  *   toSVG / toDXF  the export draws the same primitives as the screen
  */
 import {
-  appShell, Sheet, SheetCanvas, Selection, selectOnClick, MeshFactory, MeshTransform, Vec3, download,
+  appShell, Sheet, SheetCanvas, DRAWING_PALETTE, Selection, selectOnClick, MeshFactory, MeshTransform, Vec3, download,
   type SheetView,
 } from "../../src";
 
@@ -38,20 +39,20 @@ function drawing(m: Model): Sheet {
     layers: {
       cut: { weight: 0.5 },
       view: { weight: 0.25 },
-      hidden: { weight: 0.18, dash: "hidden", color: "#666666" },
-      axis: { weight: 0.13, dash: "center", color: "#c62828" },
-      dims: { weight: 0.13 },
+      hidden: { weight: 0.18, dash: "hidden", color: DRAWING_PALETTE.annotation },
+      axis: { weight: 0.13, dash: "center", color: DRAWING_PALETTE.faint },
+      dims: { weight: 0.13, color: DRAWING_PALETTE.annotation },
       ground: { weight: 0.7 },
     },
   });
   const o = OVERHANG, r = m.col / 2, cols = columns(m);
-  const R = sheet.paper(4);                                     // grid bubble radius: 4 mm on paper
+  const R = sheet.paper(2.6);                                   // grid bubble radius: 2.6 mm on paper
 
   // ── Plan 1:100 ──
-  const plan = sheet.view("plan", { title: "Plan 1:100" });
+  const plan = sheet.view("plan", { title: "Plan" });     // the title says its scale: "Plan 1:100"
   const bubble = (v: SheetView, x: number, y: number, label: string) => {
     v.circle([x, y], R, { layer: "axis", dash: "solid" });
-    v.text(label, [x, y], { layer: "axis", size: 3.5, align: "center", baseline: "middle" });
+    v.text(label, [x, y], { layer: "dims", size: 2.2, align: "center", baseline: "middle" });
   };
   for (let i = 0; i <= m.bays; i++) {
     const x = (m.w * i) / m.bays;
@@ -64,7 +65,7 @@ function drawing(m: Model): Sheet {
   }
   plan.rect(-o, -o, m.w + 2 * o, m.d + 2 * o, { layer: "hidden", key: "roof/main" });
   for (const c of cols) {
-    plan.fill(disc(c.x, c.y, r), { color: "#9e9e9e", key: c.key });
+    plan.fill(disc(c.x, c.y, r), { color: DRAWING_PALETTE.steel, key: c.key });
     plan.circle([c.x, c.y], r, { layer: "cut", key: c.key });
   }
   for (let i = 0; i < m.bays; i++) plan.dim([(m.w * i) / m.bays, m.d + o], [(m.w * (i + 1)) / m.bays, m.d + o], { layer: "dims", offset: 8 });
@@ -76,8 +77,8 @@ function drawing(m: Model): Sheet {
 
   // ── Elevations 1:100, projected from the model ──
   const elevY = -(o + 5) - (m.h + m.roof);
-  const south = sheet.view("south", { at: [0, elevY], title: "South elevation 1:100", project: { right: new Vec3(1, 0, 0), up: new Vec3(0, 0, 1) } });
-  const east = sheet.view("east", { at: [m.w + 2 * o + 6, elevY], title: "East elevation 1:100", project: { right: new Vec3(0, 1, 0), up: new Vec3(0, 0, 1) } });
+  const south = sheet.view("south", { at: [0, elevY], title: "South elevation", project: { right: new Vec3(1, 0, 0), up: new Vec3(0, 0, 1) } });
+  const east = sheet.view("east", { at: [m.w + 2 * o + 6, elevY], title: "East elevation", project: { right: new Vec3(0, 1, 0), up: new Vec3(0, 0, 1) } });
   for (const [v, along, span, front] of [[south, "x", m.w, 0], [east, "y", m.d, m.w]] as const) {
     const P = (u: number, z: number) => (along === "x" ? new Vec3(u, front, z) : new Vec3(front, u, z));
     v.line(P(-o - 1.5, 0), P(span + o + 1.5, 0), { layer: "ground" });
@@ -91,14 +92,28 @@ function drawing(m: Model): Sheet {
   }
 
   // ── Detail 1:20: the column head at A1, cut through row A ──
-  const det = sheet.view("detail", { at: [m.w + 2 * o + 6 + 5 * o, 1.5], scale: 5, title: "Column head 1:20" });
+  const det = sheet.view("detail", { at: [m.w + 2 * o + 6 + 5 * o, 1.5], scale: 5, title: "Column head" });
   const reach = 1.0, below = 0.6;
-  det.rect(-r, -below, 2 * r, below, { layer: "cut", fill: "#9e9e9e", key: "columns/A1" });
-  det.rect(-o, 0, o + reach, m.roof, { layer: "cut", fill: "#d6d6d6", key: "roof/main" });
+  det.rect(-r, -below, 2 * r, below, { layer: "cut", fill: DRAWING_PALETTE.steel, key: "columns/A1" });
+  det.rect(-o, 0, o + reach, m.roof, { layer: "cut", fill: DRAWING_PALETTE.timber, key: "roof/main" });
   det.dim([-r, -below], [r, -below], { layer: "dims", offset: -8 });
   det.dim([reach, 0], [reach, m.roof], { layer: "dims", offset: -8 });
   det.dim([-o, m.roof], [0, m.roof], { layer: "dims", offset: 8 });
   det.leader([[r, -below / 2], [r + 0.3, -below / 2 - 0.15], [r + 0.6, -below / 2 - 0.15]], `Steel tube Ø ${Math.round(m.col * 1000)}`, { layer: "dims" });
+  det.leader([[reach * 0.6, m.roof / 2], [reach * 0.6 + 0.3, m.roof + 0.25], [reach * 0.6 + 0.6, m.roof + 0.25]], "Glulam slab GL24h", { layer: "dims" });
+
+  sheet.titleBlock({
+    office: "Digital Building Technologies · ETH Zurich",
+    project: "Tekto pavilion",
+    title: "Plan, elevations, detail",
+    phase: "Concept",
+    number: "001.100",
+    date: new Date().toLocaleDateString("de-CH"),
+    drawn: "tekto",
+    format: "A3",
+    revisions: [{ index: "a", note: `${m.bays} bays, ${m.w.toFixed(1)} × ${m.d.toFixed(1)} m` }],
+    notes: ["Dimensions in metres, levels relative to ±0.00.", "Columns: steel tubes, roof: glulam slab."],
+  });
   return sheet;
 }
 
