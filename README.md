@@ -20,7 +20,7 @@ Underneath is a full computational geometry toolkit: meshes, curves & **NURBS** 
 ## Quick Start
 
 ```bash
-npm install github:modellstadt/tekto three
+npm install github:dbt-ethz/tekto three
 # add `react react-dom` only if you import from "tekto/react"
 ```
 
@@ -628,7 +628,7 @@ The testbench's *Timber + IFC* page is the canonical showcase of the BIM walls/s
 ### Option A — install straight from GitHub (recommended)
 
 ```bash
-npm install github:modellstadt/tekto three
+npm install github:dbt-ethz/tekto three
 ```
 
 This builds tekto automatically on install (via its `prepare` hook). Then in any file:

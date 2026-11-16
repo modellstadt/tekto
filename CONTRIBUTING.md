@@ -78,7 +78,7 @@ Apps in other repos must depend on a release, never on the moving `main`. Two
 ways, same effect:
 
 ```json
-"tekto": "github:modellstadt/tekto#v0.4.0"
+"tekto": "github:dbt-ethz/tekto#v0.4.0"
 ```
 
 or a **vendored copy** of a release — its `package.json` plus `dist/` checked

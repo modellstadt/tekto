@@ -112,6 +112,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/modellstadt/tekto.git"
+    "url": "https://github.com/dbt-ethz/tekto.git"
   }
 }
