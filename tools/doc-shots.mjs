@@ -51,6 +51,7 @@ const SHOTS = [
   { name: "roof-hip", page: "roofs", o: { studio: true, sun: "sunset", ao: true, back: 1.2, params: { Kind: "hip" } } },
   { name: "roof-gable", page: "roofs", o: { studio: true, sun: "morning", ao: true, back: 1.35, params: { Kind: "gable" } } },
   { name: "floor-stair-well", page: "framed-floor", o: { studio: true, ao: true } },
+  { name: "stair-timber", page: "framed-floor", o: { studio: true, ao: true, params: { Callouts: false, Structure: "timber" }, section: { axis: "z", coordinate: 2.75 }, camera: [[7.2, -2.6, 4.4], [3, 2.3, 1.1]] } },
   { name: "timber-frame", page: "timber", o: { studio: true, ao: true, back: 2.1, params: { Storeys: 3 } } },
   { name: "framed-wall-callouts", page: "framed-wall", o: { studio: true, ao: true, frame: false } },
   { name: "twisted-tower", page: "app-shell", o: { studio: true, sun: "sunset", ao: true, back: 1.15, params: { Floors: 24, "Twist (°)": 120 } } },

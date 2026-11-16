@@ -1,8 +1,8 @@
 # Stairs
 
-![A half-turn stair under a joisted floor, with its well framed](/shots/floor-stair-well.webp)
+![A half-turn timber stair under a joisted floor, with its well framed](/shots/floor-stair-well.webp)
 
-`Stair` is a stair from plain numbers: where it starts, which way it runs, the height it climbs, its width, and a shape: one straight flight, two flights in line, a quarter turn (L) or a half turn (U), the last three with a landing. The riser is the total rise divided evenly. `footprint()` is its outline in plan, and `slabOpening(floor)` is the well the floor above needs, over every tread with less than 2 m of headroom.
+`Stair` is a stair from plain numbers: where it starts, which way it runs, the height it climbs, its width, and a shape: one straight flight, two flights in line, a quarter turn (L) or a half turn (U), the last three with a landing. The riser is the total rise divided evenly. Its `structure` says how it is built: `"concrete"` steps on a 160 mm waist slab, `"timber"` treads between two stringers with open risers, a `"steel"` plate folded into treads and risers on flat stringers, or `"solid"` blocks down to the floor (the default, a massing). `footprint()` is its outline in plan, and `slabOpening(floor)` is the well the floor above needs, over every tread with less than 2 m of headroom.
 
 ```ts
 import { IfcWriter, JoistedSlab, Slab, SlabType, Stair, Vec2, Vec3 } from "tekto/core";
@@ -16,6 +16,7 @@ const stair = new Stair({
   shape: "half_turn",                    // "straight_run" | "two_straight_run" | "quarter_turn" | "half_turn"
   turn: "left",
   landingDepth: 1.1,
+  structure: "timber",                   // "solid" | "concrete" | "timber" | "steel"
 });
 stair.risers;                            // 17
 stair.actualRiser;                       // 3 / 17 m
@@ -35,12 +36,12 @@ ifc.addSlab(floor, { storey: upper });
 console.log(stair.flights().length, stair.landing()?.area, ifc.save().length);
 ```
 
-In a [building](/buildings/records), a stair is a record on its storey (`{ storey, at, direction, shape, turn }`); it climbs that storey's height and cuts its well in the floor above by itself.
+![A timber stair, the floor above cut away: treads between two stringers, open risers](/shots/stair-timber.webp)
 
-::: info Coming in the next release
-A stair will choose how it is built: `structure: "solid"` (the default, as now), `"concrete"` (steps on a waist slab), `"timber"` (treads between two stringers) or `"steel"` (a folded plate on flat stringers), and `stair.parts()` will give each flight's parts as side profiles, for sections drawn from the same stair as the model.
-:::
+`stair.parts()` gives each flight's parts as side profiles (the outline along the flight and its height, and where the part runs across the width), so a section or an elevation is drawn from the same stair as the model: the *Sketch + drawing* page cuts a section A-A through it.
+
+In a [building](/buildings/records), a stair is a record on its storey (`{ storey, at, direction, shape, turn, structure }`); it climbs that storey's height and cuts its well in the floor above by itself.
 
 ::: tip Playground
-[Framed Floor](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/framed-floor.ts): `?page=framed-floor`, every shape, the well and its framing, IFC export.
+[Framed Floor](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/framed-floor.ts): `?page=framed-floor`, every shape and structure, the well and its framing, IFC export. [Sketch + drawing](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/sketch-drawing.ts): `?page=sketch-drawing`, a plan and a section through the stair.
 :::
