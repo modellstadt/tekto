@@ -6,6 +6,17 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Stairs built as timber, steel or concrete.** `new Stair({ structure })`, and `structure` on
+  a building's stair record, choose how the flights are built: `"concrete"` puts the steps on a
+  160 mm waist slab, `"timber"` sets 50 mm treads between two 60 × 300 mm stringers with open
+  risers, `"steel"` folds an 8 mm plate into treads and risers on two flat stringers. The default
+  stays `"solid"` (each step a block down to the floor, the massing), so existing stairs are
+  unchanged. The landing defaults to the structure's thickness (0.2 m, 0.12 timber, 0.08 steel).
+  `stair.parts()` gives each flight's parts as side profiles (`StairPart`: the outline along the
+  flight and its height, and where it runs across), for sections and elevations drawn from the
+  same stair; the Sketch + drawing page draws a section through it. The House page's stair is
+  timber; Framed Floor chooses the structure.
+
 - **Drawings that read as architectural plans.** A `Sheet` now draws in a minimal graphic
   language, the way an office's plans do. Annotation is smaller: text 2 mm on paper (was 2.5),
   dimensions, levels and leaders 1.8 mm. View titles sit above the view on the left, at 3.5 mm,
