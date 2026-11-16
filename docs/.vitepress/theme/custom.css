@@ -1,0 +1,86 @@
+/* Neutral greys with a restrained slate-blue accent; no gradients. */
+:root {
+  --vp-c-brand-1: #2f4a64;
+  --vp-c-brand-2: #3e5f7f;
+  --vp-c-brand-3: #4e7398;
+  --vp-c-brand-soft: rgba(62, 95, 127, 0.12);
+
+  --vp-home-hero-name-color: var(--vp-c-text-1);
+  --vp-button-brand-bg: #1f2328;
+  --vp-button-brand-hover-bg: #3a3f45;
+  --vp-button-brand-active-bg: #3a3f45;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: #ffffff;
+
+  --vp-custom-block-tip-bg: var(--vp-c-default-soft);
+  --vp-custom-block-tip-text: var(--vp-c-text-1);
+  --vp-custom-block-tip-code-bg: var(--vp-c-default-soft);
+}
+
+.dark {
+  --vp-c-brand-1: #b2c4d6;
+  --vp-c-brand-2: #93abc3;
+  --vp-c-brand-3: #7391af;
+  --vp-c-brand-soft: rgba(147, 171, 195, 0.16);
+
+  --vp-button-brand-bg: #e8eaed;
+  --vp-button-brand-hover-bg: #ffffff;
+  --vp-button-brand-active-bg: #ffffff;
+  --vp-button-brand-text: #1b1d20;
+}
+
+/* Screenshots: the dark viewer framed by a hairline, rounded a little. */
+.vp-doc img {
+  border-radius: 6px;
+  border: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc h1 + p > img:only-child {
+  width: 100%;
+  margin: 8px 0 4px;
+}
+
+/* The home page: a screenshot instead of a logo in the hero, no glow behind it. */
+.VPHero .image-bg { display: none; }
+.VPHero .image-container { width: 100%; height: auto; transform: none; }
+.VPHero .image-src {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  max-height: none;
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+}
+@media (max-width: 959px) {
+  .VPHero .image { margin: 0 0 32px; }
+}
+@media (min-width: 960px) {
+  .VPHero .image { flex-basis: 50%; }
+  .VPHero .image-container { width: 100%; }
+}
+
+/* The home page's gallery. */
+.gallery {
+  max-width: 1152px;
+  margin: 48px auto 0;
+  padding: 0 24px;
+}
+.gallery p {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.gallery img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--vp-c-divider);
+}
+@media (max-width: 768px) {
+  .gallery p { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .gallery { padding: 0 16px; }
+  .gallery p { grid-template-columns: 1fr; }
+}

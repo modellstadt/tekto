@@ -768,6 +768,7 @@ npm run lint       # tsc --noEmit -p tsconfig.lint.json
                    # covers src/, playground/, tests/ — catches type
                    # errors in demos before they reach the browser
 npm run playground # vite playground (testbench with all demos)
+npm run docs:dev   # the documentation site (docs/, VitePress)
 ```
 
 `tsconfig.lint.json` extends `tsconfig.json` with `noEmit: true` and a
