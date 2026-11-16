@@ -4,7 +4,7 @@
  * shape of an app like the stair: one function builds the model, and the drawing is drawn
  * from the same numbers, so the plan, the elevation, the DXF and the 3D view can't disagree.
  */
-import { sketch, MeshFactory, Sheet, SheetCanvas, Vec3, download, type SketchInstance } from "../../src";
+import { sketch, MeshFactory, Sheet, DRAWING_PALETTE, SheetCanvas, Vec3, download, type SketchInstance } from "../../src";
 
 export default function (container: HTMLElement): SketchInstance {
   let sheetView: SheetCanvas | null = null;          // made once, kept across re-runs
@@ -27,17 +27,17 @@ export default function (container: HTMLElement): SketchInstance {
     }
 
     // ── The drawing, from the same numbers ──
-    sheet = new Sheet({ scale: 50, layers: { cut: { weight: 0.5 }, view: { weight: 0.25 }, dims: { weight: 0.13 } } });
-    const plan = sheet.view("plan", { title: "Plan 1:50" });
+    sheet = new Sheet({ scale: 50, layers: { cut: { weight: 0.5 }, view: { weight: 0.25 }, dims: { weight: 0.13, color: DRAWING_PALETTE.annotation } } });
+    const plan = sheet.view("plan", { title: "Plan" });
     for (let i = 0; i < n; i++) plan.rect(t * i, 0, t, w, { layer: "view" });
     plan.dim([0, 0], [t * n, 0], { layer: "dims", offset: -8 });
     plan.dim([t * n, 0], [t * n, w], { layer: "dims", offset: -8 });
     plan.leader([[t * 0.5, w * 0.5], [-0.4, w + 0.4]], `${n} steps ${Math.round(r * 1000)}/${Math.round(t * 1000)}`, { layer: "dims" });
-    const side = sheet.view("side", { at: [0, -(r * n) - 2.2], title: "Elevation 1:50", project: { right: new Vec3(1, 0, 0), up: new Vec3(0, 0, 1) } });
+    const side = sheet.view("side", { at: [0, -(r * n) - 2.2], title: "Elevation", project: { right: new Vec3(1, 0, 0), up: new Vec3(0, 0, 1) } });
     const profile: Vec3[] = [new Vec3(0, 0, 0)];
     for (let i = 0; i < n; i++) profile.push(new Vec3(t * i, 0, r * (i + 1)), new Vec3(t * (i + 1), 0, r * (i + 1)));
     profile.push(new Vec3(t * n, 0, 0));
-    side.polyline(profile, { layer: "cut", closed: true, fill: "#dddddd" });
+    side.polyline(profile, { layer: "cut", closed: true, fill: DRAWING_PALETTE.concrete });
     side.dim(new Vec3(t * n, 0, 0), new Vec3(t * n, 0, r * n), { layer: "dims", offset: -8 });
     side.level(new Vec3(-0.5, 0, 0), { layer: "dims" });
     side.level(new Vec3(-0.5, 0, r * n), { layer: "dims" });

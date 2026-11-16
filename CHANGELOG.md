@@ -6,6 +6,20 @@ before 1.0, breaking changes bump the minor version. See
 
 ## Unreleased
 
+- **Drawings that read as architectural plans.** A `Sheet` now draws in a minimal graphic
+  language, the way an office's plans do. Annotation is smaller: text 2 mm on paper (was 2.5),
+  dimensions, levels and leaders 1.8 mm. View titles sit above the view on the left, at 3.5 mm,
+  and say their scale: `{ title: "Plan" }` on a 1:50 sheet reads "Plan 1:50", a detail enlarged
+  five times "Column head 1:10". A title that already gives a scale keeps it as written, and
+  `titleScale: false` leaves it off. `sheet.titleBlock({ office, project, title, phase, number,
+  date, drawn, checked, format, revisions, notes })` adds the plan head (Plankopf) beside the
+  drawing, level with its top: who and what, the plan number in a ruled box with its date, scale
+  and format, a revisions table and notes. `DRAWING_PALETTE` gives the colours to draw with:
+  ink and greys for lines and annotation, pale fills for what is cut (steel, concrete, timber,
+  poche) and one accent to use sparingly. The view titles and annotation sizes are visible
+  changes: apps that set `size` or give titles with a scale ("Plan 1:50") draw as before,
+  except that titles now sit above-left rather than centred below.
+
 ## 0.10.1 — 2026-11-15
 
 Callouts as a key beside the model: one label with a leader to each thing it names, curved leaders, labels as a list, and leader ends for an app's own column (BuildGraph's products view).
