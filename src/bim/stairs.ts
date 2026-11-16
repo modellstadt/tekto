@@ -17,7 +17,9 @@
 //
 // Shapes: a straight run (one flight), two straight runs in line, a quarter
 // turn (L) and a half turn (U), each of the last three with one landing.
-// Not yet: winders, spirals, railings, stringers.
+// Structures: solid steps, a concrete waist slab, timber treads between
+// stringers, a folded steel plate on flat stringers (`structure`).
+// Not yet: winders, spirals, railings.
 
 import { Vec2, Vec3 } from "../core/math/vectors";
 import { Polygon2D } from "../core/geometry/Polygon2D";
@@ -36,6 +38,34 @@ export type StairShape =
 
 /** The shapes `Stair` has geometry for. */
 const BUILT_SHAPES: readonly StairShape[] = ["straight_run", "two_straight_run", "quarter_turn", "half_turn"];
+
+/**
+ * How a stair is built — what its flights are made of and how much of them there is:
+ * - "solid": every step a block down to the stair's base (the massing).
+ * - "concrete": the steps on a sloping waist slab, 160 mm thick under the steps' inner corners.
+ * - "timber": 50 mm treads between two 60 × 300 mm stringers, open risers, each tread 30 mm over
+ *   the one below.
+ * - "steel": an 8 mm plate folded into treads and risers, on two 12 × 200 mm flat stringers.
+ */
+export type StairStructure = "solid" | "concrete" | "timber" | "steel";
+
+/** The structures `Stair` builds, and the landing thickness each defaults to (m). */
+const STRUCTURES: Record<StairStructure, { landing: number }> = {
+  solid: { landing: 0.2 }, concrete: { landing: 0.2 }, timber: { landing: 0.12 }, steel: { landing: 0.08 },
+};
+
+/**
+ * One part of a flight as its side profile: `outline` in the flight's own plane — x along the
+ * flight from its first riser, y the absolute height — swept across the flight from `across[0]`
+ * to `across[1]` (from the centre of its width, positive to the left walking up). What a section
+ * along the flight cuts, or an elevation from its side sees.
+ */
+export interface StairPart {
+  /** "step" (solid), "flight" (concrete), "stringer", "tread", "plate". */
+  name: "step" | "flight" | "stringer" | "tread" | "plate";
+  outline: Vec2[];
+  across: [number, number];
+}
 
 /** Options for `new StairType(...)`: name, overall shape (default "straight_run"), material, description and Psets. */
 export interface StairTypeOptions {
@@ -114,8 +144,10 @@ export interface StairOptions {
    * `width`: the second flight leaves from its side, flush with its far edge.
    */
   landingDepth?: number;
-  /** Thickness of the landing slab under its top. Default 0.2 m, at most down to the stair's base. */
+  /** Thickness of the landing slab under its top. Default by `structure`: 0.2 m (solid, concrete), 0.12 (timber), 0.08 (steel); at most down to the stair's base. */
   landingThickness?: number;
+  /** How the flights are built: "solid" blocks (default), a "concrete" waist slab, "timber" treads between stringers, a folded "steel" plate. */
+  structure?: StairStructure;
   /** Clear gap between the two flights of a half turn. Default 0.1 m. */
   gap?: number;
   type?: StairType;
@@ -163,6 +195,7 @@ export class Stair {
   landingAfter?: number;
   landingDepth: number;
   landingThickness: number;
+  structure: StairStructure;
   gap: number;
   type?: StairType;
   properties: PropertyMap;
@@ -179,7 +212,9 @@ export class Stair {
     this.turn = opts.turn ?? "left";
     this.landingAfter = opts.landingAfter;
     this.landingDepth = opts.landingDepth ?? this.width;
-    this.landingThickness = opts.landingThickness ?? 0.2;
+    this.structure = opts.structure ?? "solid";
+    if (!STRUCTURES[this.structure]) throw new Error(`Stair "${this.name}": structure must be ${Object.keys(STRUCTURES).map((k) => `"${k}"`).join(", ")}, got "${this.structure}".`);
+    this.landingThickness = opts.landingThickness ?? STRUCTURES[this.structure].landing;
     this.gap = opts.gap ?? 0.1;
     this.type = opts.type;
     this.properties = opts.properties ?? {};
@@ -196,43 +231,26 @@ export class Stair {
   }
 
   /**
-   * Compute the flight geometry: one flight per run, each built as a
-   * stepped solid. Tread i of a flight is a box spanning going
-   * [i·tread, (i+1)·tread] across the full width, from the stair's base
-   * level up to its walking surface, (i+1) risers above the flight's start.
+   * The flights' geometry, one closed solid per flight in world coordinates, built as
+   * `structure` says from the parts `parts()` describes, with the code metrics. Tread i of a
+   * flight spans going [i·tread, (i+1)·tread], (i+1) risers above the flight's start.
    */
   flights(): StairFlight[] {
     const { runs } = this.plan();
     const riser = this.actualRiser;
     const tread = this.treadDepth;
-    const halfW = this.width * 0.5;
-    const z0 = this.start.z;
-
     return runs.map((run, k) => {
       // Local frame: along = run.dir, across = its left-hand perpendicular.
       const across = run.dir.perp();
       const positions: number[] = [];
       const indices: number[] = [];
-
-      // World point from (along travel, across width, absolute z).
-      const push = (along: number, side: number, z: number): number => {
-        const p = run.at.add(run.dir.mul(along)).add(across.mul(side));
-        positions.push(p.x, p.y, z);
-        return positions.length / 3 - 1;
-      };
-
-      for (let i = 0; i < run.risers - 1; i++) {
-        const a0 = i * tread;
-        const a1 = (i + 1) * tread;
-        const z1 = run.z + (i + 1) * riser;
-        // 8 corners: front/back × left/right × bottom/top.
-        const flb = push(a0, -halfW, z0), frb = push(a1, -halfW, z0);
-        const blb = push(a0, +halfW, z0), brb = push(a1, +halfW, z0);
-        const flt = push(a0, -halfW, z1), frt = push(a1, -halfW, z1);
-        const blt = push(a0, +halfW, z1), brt = push(a1, +halfW, z1);
-        pushBox(indices, flb, frb, brb, blb, flt, frt, brt, blt);
+      for (const part of this.flightParts(run, k)) {
+        prism(part, (along, side, z) => {
+          const p = run.at.add(run.dir.mul(along)).add(across.mul(side));
+          positions.push(p.x, p.y, z);
+          return positions.length / 3 - 1;
+        }, indices);
       }
-
       return {
         name: runs.length === 1 ? `${this.name} flight` : `${this.name} flight ${k + 1}`,
         positions,
@@ -243,6 +261,94 @@ export class Stair {
         treadDepth: tread,
       };
     });
+  }
+
+  /**
+   * Each flight's parts as side profiles: where the flight starts and runs in plan (`at`, the
+   * centre of its width at its first riser; `dir`, a unit vector) and the parts `structure`
+   * builds it from. Draw `outline`s for a section along a flight or an elevation from its side:
+   * a point (x, y) of an outline is at `at + dir·x`, height y.
+   */
+  parts(): { at: Vec2; dir: Vec2; parts: StairPart[] }[] {
+    return this.plan().runs.map((run, k) => ({ at: run.at, dir: run.dir, parts: this.flightParts(run, k) }));
+  }
+
+  /** One flight's parts, as `structure` builds it. */
+  private flightParts(run: FlightRun, k: number): StairPart[] {
+    const WAIST = 0.16;                                     // concrete: under the steps' inner corners
+    const TIMBER = { stringer: 0.06, depth: 0.3, above: 0.05, tread: 0.05, nosing: 0.03 };
+    const STEEL = { plate: 0.008, stringer: 0.012, depth: 0.2 };
+    const r = this.actualRiser, g = this.treadDepth, halfW = this.width * 0.5;
+    const n = run.risers, z0 = run.z, top = z0 + n * r, L = (n - 1) * g;
+    // The flight rests on the stair's base, or on the landing below it (down to the landing's underside).
+    const base = k === 0 ? this.start.z : Math.max(this.start.z, z0 - this.landingThickness);
+    const cos = g / Math.hypot(g, r);                       // of the pitch
+    const corner = (a: number) => z0 + (a * r) / g;         // the line through the steps' inner corners
+    const full: [number, number] = [-halfW, halfW];
+    const out: StairPart[] = [];
+    // The stepped line: up the first riser, along each tread, up the last riser to the arrival.
+    const steps = (dx = 0, dz = 0): Vec2[] => {
+      const pts: Vec2[] = [];
+      for (let i = 0; i < n; i++) pts.push(new Vec2(i * g + dx, z0 + i * r + dz), new Vec2(i * g + dx, z0 + (i + 1) * r + dz));
+      return pts;
+    };
+    // A band parallel to the pitch, `from`..`to` above the inner-corner line, cut level at the
+    // base and the arrival and plumb at the last riser.
+    const band = (from: number, to: number, plumbStart = false): Vec2[] => {
+      const X = L + 2 * (top - base) * (g / r) + 1;          // far enough to be cut on both sides
+      let ring = [new Vec2(-X, corner(-X) + from), new Vec2(L, corner(L) + from), new Vec2(L, corner(L) + to), new Vec2(-X, corner(-X) + to)];
+      ring = clip(ring, (p) => p.y - base);
+      ring = clip(ring, (p) => top - p.y);
+      if (plumbStart) ring = clip(ring, (p) => p.x);
+      return ring;
+    };
+
+    switch (this.structure) {
+      case "solid":
+        for (let i = 0; i < n - 1; i++) {
+          const a0 = i * g, a1 = (i + 1) * g, z1 = z0 + (i + 1) * r;
+          out.push({ name: "step", outline: [new Vec2(a0, this.start.z), new Vec2(a1, this.start.z), new Vec2(a1, z1), new Vec2(a0, z1)], across: full });
+        }
+        break;
+      case "concrete": {
+        const soffit = -WAIST / cos;
+        let ring = [...steps(), new Vec2(L, corner(L) + soffit), new Vec2(-L - 10, corner(-L - 10) + soffit)];
+        ring = clip(clip(clip(ring, (p) => p.y - base), (p) => p.x), (p) => top - p.y);
+        out.push({ name: "flight", outline: ring, across: full });
+        break;
+      }
+      case "timber": {
+        const t = TIMBER, depth = t.depth / cos;
+        // The stringers' top edge runs `above` over the nosings, which are one riser over the corner line.
+        const upper = r + t.above / cos;
+        for (const side of [-1, 1]) {
+          const s0 = side < 0 ? -halfW : halfW - t.stringer;
+          out.push({ name: "stringer", outline: band(upper - depth, upper), across: [s0, s0 + t.stringer] });
+        }
+        for (let i = 0; i < n - 1; i++) {
+          const z1 = z0 + (i + 1) * r, a0 = i * g - t.nosing, a1 = (i + 1) * g;
+          out.push({ name: "tread", outline: [new Vec2(a0, z1 - t.tread), new Vec2(a1, z1 - t.tread), new Vec2(a1, z1), new Vec2(a0, z1)], across: [-halfW + t.stringer, halfW - t.stringer] });
+        }
+        break;
+      }
+      case "steel": {
+        const t = STEEL;
+        // The plate: the stepped line and its offset `plate` inside (behind each riser, under each tread).
+        const outer = steps();
+        const inner: Vec2[] = [];
+        for (let i = 0; i < n; i++) {
+          inner.push(new Vec2(i * g + t.plate, z0 + i * r - (i === 0 ? 0 : t.plate)), new Vec2(i * g + t.plate, z0 + (i + 1) * r - (i === n - 1 ? 0 : t.plate)));
+        }
+        out.push({ name: "plate", outline: [...outer, ...inner.reverse()], across: full });
+        const under = -t.plate / cos;
+        for (const side of [-1, 1]) {
+          const s0 = side < 0 ? -halfW : halfW - t.stringer;
+          out.push({ name: "stringer", outline: band(under - t.depth / cos, under, true), across: [s0, s0 + t.stringer] });
+        }
+        break;
+      }
+    }
+    return out.map((p) => ({ ...p, outline: tidy(p.outline) })).filter((p) => p.outline.length >= 3);
   }
 
   /**
@@ -418,23 +524,47 @@ export class Stair {
   }
 }
 
+/** The ring's part where `f(p) ≥ 0` (Sutherland–Hodgman against one half-plane, `f` linear). */
+function clip(ring: Vec2[], f: (p: Vec2) => number): Vec2[] {
+  const out: Vec2[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length], fa = f(a), fb = f(b);
+    if (fa >= 0) out.push(a);
+    if ((fa >= 0) !== (fb >= 0)) out.push(a.add(b.sub(a).mul(fa / (fa - fb))));
+  }
+  return out;
+}
+
+/** The ring counter-clockwise, without repeated points or points on a straight line. */
+function tidy(ring: Vec2[]): Vec2[] {
+  const EPS = 1e-9;
+  let pts = ring.filter((p, i) => p.sub(ring[(i + 1) % ring.length]).len() > EPS);
+  let changed = true;
+  while (changed && pts.length >= 3) {
+    changed = false;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[(i - 1 + pts.length) % pts.length], b = pts[i], c = pts[(i + 1) % pts.length];
+      if (Math.abs(Polygon2D.cross2D(a, b, c)) < EPS) { pts = pts.filter((_, j) => j !== i); changed = true; break; }
+    }
+  }
+  return Polygon2D.signedArea(pts) < 0 ? pts.reverse() : pts;
+}
+
 /**
- * Append the 12 triangles (6 quads) of a box to `indices`, given its 8
- * corner indices: bottom face flb,frb,brb,blb and top face flt,frt,brt,blt
- * (front/back along travel, left/right across width). Winding is outward.
+ * A part as a closed solid: its outline (counter-clockwise, x along, y height) at both
+ * `across` ends, and a quad for each edge. `at(along, across, z)` adds a vertex and returns its index.
  */
-function pushBox(
-  out: number[],
-  flb: number, frb: number, brb: number, blb: number,
-  flt: number, frt: number, brt: number, blt: number,
-): void {
-  const quad = (a: number, b: number, c: number, d: number) => {
-    out.push(a, b, c, a, c, d);
-  };
-  quad(flb, blb, brb, frb); // bottom (−Z)
-  quad(flt, frt, brt, blt); // top (+Z)
-  quad(flb, frb, frt, flt); // front (−across side / +travel start) — left face
-  quad(brb, blb, blt, brt); // back — right face
-  quad(frb, brb, brt, frt); // +travel end
-  quad(blb, flb, flt, blt); // −travel start
+function prism(part: StairPart, at: (along: number, side: number, z: number) => number, out: number[]): void {
+  const ring = part.outline, [s0, s1] = part.across, n = ring.length;
+  const near = ring.map((p) => at(p.x, s0, p.y));
+  const far = ring.map((p) => at(p.x, s1, p.y));
+  // (along, across, up) is right-handed, so a ring counter-clockwise in (along, up) faces −across.
+  for (const [a, b, c] of Polygon2D.triangulate2D(ring)) {
+    out.push(near[a], near[b], near[c]);
+    out.push(far[a], far[c], far[b]);
+  }
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    out.push(near[i], far[i], far[j], near[i], far[j], near[j]);
+  }
 }
