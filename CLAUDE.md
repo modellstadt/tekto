@@ -6,7 +6,7 @@ Read this before you make changes. The companion document is [README.md](README.
 
 This repo is the **public library**. It ships the library plus the playground/testbench.
 
-Stand-alone applications that *consume* the library live in their own separate, independent repos and pin a release — a tag (`"tekto": "github:modellstadt/tekto#vX.Y.Z"`) or a vendored copy of a release (`"tekto": "file:vendor/tekto"`, as buchholz-stair does); only the maintainer's local workspace links `"file:../tekto"`. Keep this repo to the library and its playground — if you find yourself wanting to add an `apps/` directory here, stop: an app belongs in its own consumer repo, not in the library.
+Stand-alone applications that *consume* the library live in their own separate, independent repos and pin a release — a tag (`"tekto": "github:dbt-ethz/tekto#vX.Y.Z"`) or a vendored copy of a release (`"tekto": "file:vendor/tekto"`, as buchholz-stair does); only the maintainer's local workspace links `"file:../tekto"`. Keep this repo to the library and its playground — if you find yourself wanting to add an `apps/` directory here, stop: an app belongs in its own consumer repo, not in the library.
 
 Tekto is an **AI-first platform for online CAD experiments**: people and agents iterate on the same browser-based model (sketch apps, Markup, `snap`). Keeping the library easy for an agent to read, drive and check is part of the job, not a side concern. It is a teaching/research platform, not a shipping product. The maintainer is iterating quickly on architectural-geometry experiments. Optimise for:
 - **Readable diffs** over clever refactors.
