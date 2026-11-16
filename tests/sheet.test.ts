@@ -184,11 +184,16 @@ describe("annotations", () => {
     const sheet = new Sheet({ scale: 50 });
     sheet.main.leader([[0, 0], [1, 1], [2, 1]], "Oak, oiled");
     sheet.main.leader([[0, 0], [-1, 1]], "left");
-    const [right, left] = texts(sheet.explode());
+    const prims = sheet.explode();
+    const [right, left] = texts(prims);
     expect(right.align).toBe("left");
     expect(right.at.x).toBeGreaterThan(2);
+    expect(right.at.y).toBeCloseTo(1);
     expect(left.align).toBe("right");
-    expect(left.at.x).toBeLessThan(-1);
+    expect(left.at.x).toBeLessThan(-1.15);             // past a 3 mm shoulder (0.15 at 1:50) …
+    expect(left.at.y).toBeCloseTo(1);                  // … level with the leader's end
+    const ends = prims.flatMap((p) => (p.kind === "polyline" ? [p.points.at(-1)!] : []));
+    expect(ends.some((e) => Math.abs(e.x + 1.15) < 1e-9 && e.y === 1)).toBe(true);   // the shoulder
   });
 
   it("a level mark writes the height with its sign, from the point or a value", () => {
@@ -197,7 +202,13 @@ describe("annotations", () => {
     east.level(new Vec3(0, 0, 2.45));
     east.level([0, 0]);
     east.level([0, 0], { value: -0.5 });
-    expect(texts(sheet.explode()).map(t => t.text)).toEqual(["+2.450", "±0.000", "-0.500"]);
+    const prims = sheet.explode();
+    expect(texts(prims).map(t => t.text)).toEqual(["+2.450", "±0.000", "-0.500"]);
+    // The text stands on a level line through the triangle's tip.
+    const t = texts(prims)[1];
+    expect([t.baseline, t.at.y > 0]).toEqual(["bottom", true]);
+    const line = prims.find((p) => p.kind === "polyline" && p.points.length === 2 && p.points[0].y === 0 && p.points[1].y === 0);
+    expect(line && line.kind === "polyline" && line.points[1].x).toBeGreaterThan(t.at.x);
   });
 });
 

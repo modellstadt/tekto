@@ -269,14 +269,15 @@ export class SheetView {
     return this;
   }
   /** A leader: an arrow at `points[0]` (what it points at), lines through the rest, and the
-   *  text beside the last point. */
+   *  text beside the last point, level with it. A leader that does not end level gets a short
+   *  level shoulder (3 mm), so its text always continues a level line. */
   leader(points: readonly (PtIn | Vec3)[], text: string, opts: TextOptions = {}): this {
     const pts = points.map(p => this.local(p));
     if (pts.length >= 2) this.entities.push({ t: "leader", points: pts, text, o: opts });
     return this;
   }
-  /** A level mark: a triangle standing on the level at `at`, and the level in metres with
-   *  its sign ("+2.450", "±0.000"). */
+  /** A level mark: a triangle with its tip on the level at `at`, a level line under it, and on
+   *  that line the level in metres with its sign ("+2.450", "±0.000"). */
   level(at: PtIn | Vec3, opts: LevelOptions = {}): this {
     this.entities.push({ t: "level", at: this.local(at), o: opts });
     return this;
@@ -531,23 +532,32 @@ function explodeRadius(c: Pt, radius: number, angle: number, o: DimOptions, st: 
 }
 
 function explodeLeader(points: Pt[], text: string, o: TextOptions, st: ResolvedStyle, P: (mm: number) => number, out: SheetPrim[]): void {
+  const SHOULDER_MM = 3;
+  // A leader ends level, so its text continues a level line: add a shoulder if it does not.
+  const a = points[points.length - 2], end = points[points.length - 1];
+  const right = end.x >= a.x;
+  const level = Math.abs(end.y - a.y) <= 0.02 * Math.abs(end.x - a.x);
+  if (!level) points = [...points, { x: end.x + (right ? 1 : -1) * P(SHOULDER_MM), y: end.y }];
   out.push({ kind: "polyline", points, closed: false, style: st });
   const [p0, p1] = points, L = Math.hypot(p1.x - p0.x, p1.y - p0.y);
   if (L > 0) out.push(arrow(p0, (p0.x - p1.x) / L, (p0.y - p1.y) / L, P, st));
-  // The text sits past the end, on the side the last segment runs towards.
-  const a = points[points.length - 2], b = points[points.length - 1];
-  const right = b.x >= a.x;
+  // The text sits past the end, on the side the leader runs towards.
+  const b = points[points.length - 1];
   const at = { x: b.x + (right ? P(1) : -P(1)), y: b.y };
   out.push(textPrim(text, at, P(o.size ?? NOTE_MM), 0, o.align ?? (right ? "left" : "right"), o.baseline ?? "middle", st));
 }
 
 function explodeLevel(at: Pt, o: LevelOptions, st: ResolvedStyle, P: (mm: number) => number, out: SheetPrim[]): void {
-  const h = P(2.2), w = P(1.3);
+  const h = P(2.2), w = P(1.3), gap = P(0.8);
   out.push({ kind: "polyline", points: [at, { x: at.x - w, y: at.y + h }, { x: at.x + w, y: at.y + h }], closed: true, style: st });
   const v = o.value ?? at.y;
   const s = v.toFixed(o.decimals ?? 3);
   const text = o.text ?? (Number(s) === 0 ? `±${s.replace("-", "")}` : v > 0 ? `+${s}` : s);
-  out.push(textPrim(text, { x: at.x + w + P(1), y: at.y + h / 2 }, P(o.size ?? NOTE_MM), 0, "left", "middle", st));
+  // The text stands on the level line, beside the triangle; the line runs under both.
+  const t = textPrim(text, { x: at.x + w + gap, y: at.y + P(0.6) }, P(o.size ?? NOTE_MM), 0, "left", "bottom", st);
+  const right = Math.max(...textCorners(t as Extract<SheetPrim, { kind: "text" }>).map((c) => c.x));
+  out.push({ kind: "polyline", points: [{ x: at.x - w, y: at.y }, { x: right, y: at.y }], closed: false, style: st });
+  out.push(t);
 }
 
 /** An open arrowhead at `p`, pointing along (ux, uy). */

@@ -99,8 +99,10 @@ function drawing(m: Model): Sheet {
   det.dim([-r, -below], [r, -below], { layer: "dims", offset: -8 });
   det.dim([reach, 0], [reach, m.roof], { layer: "dims", offset: -8 });
   det.dim([-o, m.roof], [0, m.roof], { layer: "dims", offset: 8 });
-  det.leader([[r, -below / 2], [r + 0.3, -below / 2 - 0.15], [r + 0.6, -below / 2 - 0.15]], `Steel tube Ø ${Math.round(m.col * 1000)}`, { layer: "dims" });
-  det.leader([[reach * 0.6, m.roof / 2], [reach * 0.6 + 0.3, m.roof + 0.25], [reach * 0.6 + 0.6, m.roof + 0.25]], "Glulam slab GL24h", { layer: "dims" });
+  // The detail's notes in one column right of it, each on a level shoulder.
+  const notes = reach + 0.35;
+  det.leader([[r, -below / 2], [r + 0.25, -below / 2 - 0.12], [notes, -below / 2 - 0.12]], `Steel tube Ø ${Math.round(m.col * 1000)}`, { layer: "dims" });
+  det.leader([[reach * 0.6, m.roof / 2], [reach * 0.6 + 0.25, m.roof + 0.2], [notes, m.roof + 0.2]], "Glulam slab GL24h", { layer: "dims" });
 
   sheet.titleBlock({
     office: "Digital Building Technologies · ETH Zurich",
