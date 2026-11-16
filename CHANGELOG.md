@@ -30,6 +30,9 @@ before 1.0, breaking changes bump the minor version. See
   poche) and one accent to use sparingly. The view titles and annotation sizes are visible
   changes: apps that set `size` or give titles with a scale ("Plan 1:50") draw as before,
   except that titles now sit above-left rather than centred below.
+- **Labels line up in drawings.** A level mark's text stands on a level line through the
+  triangle's tip (it was centred beside the triangle, floating), and a leader that does not end
+  level gets a 3 mm level shoulder, so its text always continues a level line.
 
 ## 0.10.1 — 2026-11-15
 
