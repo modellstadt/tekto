@@ -192,7 +192,7 @@ describe("annotations", () => {
     expect(left.align).toBe("right");
     expect(left.at.x).toBeLessThan(-1.15);             // past a 3 mm shoulder (0.15 at 1:50) …
     expect(left.at.y).toBeCloseTo(1);                  // … level with the leader's end
-    const ends = prims.flatMap((p) => (p.kind === "polyline" ? [p.points.at(-1)!] : []));
+    const ends = prims.flatMap((p) => (p.kind === "polyline" ? [p.points[p.points.length - 1]] : []));
     expect(ends.some((e) => Math.abs(e.x + 1.15) < 1e-9 && e.y === 1)).toBe(true);   // the shoulder
   });
 
