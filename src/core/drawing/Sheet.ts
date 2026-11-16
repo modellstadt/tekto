@@ -9,7 +9,7 @@
  * export, by construction.
  *
  * Units, the way CAD does it: geometry in model units (metres), annotation in paper
- * millimetres at the sheet's scale (`scale: 50` = 1:50). A 2.5 mm label stays 2.5 mm on
+ * millimetres at the sheet's scale (`scale: 50` = 1:50). A 2 mm label stays 2 mm on
  * paper whether the view is a site plan or a joint detail.
  *
  *   const sheet = new Sheet({ scale: 50, layers: { cut: { weight: 0.5 }, hidden: { dash: "hidden" } } });
@@ -19,6 +19,11 @@
  *   const east = sheet.view("east", { at: [0, 12], project: { right: new Vec3(0, 1, 0), up: new Vec3(0, 0, 1) } });
  *   east.polyline(points3D, { layer: "cut" });                   // 3D points, projected into the view
  *   download(sheet.toDXF(), "drawings.dxf"); download(sheet.toSVG(), "drawings.svg");
+ *
+ * The graphic language is a plan's, kept minimal: a view's title sits above it on the left
+ * with its scale ("Plan 1:50"), annotation is small (2 mm text, 1.8 mm dimensions and levels),
+ * and `titleBlock` adds the title block (Plankopf) — office, project, drawing, plan number,
+ * dates, revisions, notes. Colour is for meaning, sparingly: `DRAWING_PALETTE`.
  */
 import type { Vec3 } from "../math/vectors";
 import { Polygon2D } from "../geometry/Polygon2D";
@@ -47,7 +52,7 @@ export interface DrawOptions extends LineStyle {
 
 /** Style, size and placement of a view's `text` and of a `leader`'s label. */
 export interface TextOptions extends DrawOptions {
-  /** Height in paper millimetres (default 2.5). */
+  /** Height in paper millimetres (default 2; a leader's label 1.8). */
   size?: number;
   /** Degrees, counter-clockwise, in the view. */
   rotation?: number;
@@ -67,7 +72,7 @@ export interface DimOptions extends DrawOptions {
   /** Unit of the measured text (default "mm", the drawing convention). */
   unit?: "mm" | "cm" | "m";
   decimals?: number;
-  /** Text height in paper mm (default 2.5). */
+  /** Text height in paper mm (default 1.8). */
   size?: number;
 }
 
@@ -79,7 +84,7 @@ export interface LevelOptions extends DrawOptions {
   text?: string;
   /** Decimals of the value in metres (default 3: "+2.450"). */
   decimals?: number;
-  /** Text height in paper mm (default 2.5). */
+  /** Text height in paper mm (default 1.8). */
   size?: number;
 }
 
@@ -95,8 +100,12 @@ export interface ViewOptions {
    *  `Vec3` are projected onto them (an elevation: right = east, up = z). Or a function for
    *  any other mapping (an unrolled strip); circles and arcs then map their centre only. */
   project?: { right: Vec3; up: Vec3; origin?: Vec3 } | ((p: Vec3) => PtIn);
-  /** Title drawn under the view's bounds ("Plan 1:50"); sized in paper mm. */
+  /** The view's title, above it on the left ("Plan", "Section A-A"), 3.5 mm on paper. Its
+   *  scale follows ("Plan 1:50", from the sheet's and the view's scale) unless the title
+   *  already gives one or `titleScale` is false. */
   title?: string;
+  /** Write the view's scale after its title (default true). */
+  titleScale?: boolean;
 }
 
 /** Options for `new Sheet(...)`: the drawing scale and the named layer styles. */
@@ -128,6 +137,66 @@ export const DASH_PATTERNS: Record<Exclude<Dash, "solid">, number[]> = {
 };
 
 const DEFAULT_STYLE = { color: "#000000", weight: 0.25, dash: "solid" as Dash };
+/** Paper mm: text, annotation (dimensions, levels, leaders), a view's title. */
+const TEXT_MM = 2, NOTE_MM = 1.8, TITLE_MM = 3.5;
+
+/**
+ * Colours for drawings in a minimal graphic language: black and greys carry the drawing,
+ * a few pale fills say what is cut and of what, and one strong colour is kept for what must
+ * stand out (loads, a change). Suggestions, not rules: pass them as layer and fill colours.
+ *
+ *   new Sheet({ layers: { cut: { weight: 0.35 }, dims: { weight: 0.13, color: DRAWING_PALETTE.annotation } } });
+ *   plan.fill(section, { color: DRAWING_PALETTE.cut });
+ */
+export const DRAWING_PALETTE = {
+  /** Lines and text. */
+  ink: "#1a1a1a",
+  /** Dimensions, levels, leaders, secondary text. */
+  annotation: "#6b6b6b",
+  /** Hidden and overhead lines, axes. */
+  faint: "#a6a6a6",
+  /** What is cut, in general (pale blue). */
+  cut: "#cfe2f2",
+  /** Cut steel or metal. */
+  steel: "#9fb4c7",
+  /** Cut concrete or masonry (pale green). */
+  concrete: "#dbe9d2",
+  /** Cut timber. */
+  timber: "#ead9bd",
+  /** Poché in greyscale. */
+  poche: "#d4d4d4",
+  /** The one strong colour: loads, forces, what changed. */
+  accent: "#d0453b",
+} as const;
+
+/** The title block (Plankopf) of a sheet: who, what, which drawing — `sheet.titleBlock(…)`. */
+export interface TitleBlockOptions {
+  /** The drawing: "Stair details". The sheet's scale follows unless `scale` is given. */
+  title: string;
+  /** The office, first and small. */
+  office?: string;
+  /** The project: "Schloss Buchholz, stair". */
+  project?: string;
+  /** The phase or purpose under the title: "Submission", "For construction". */
+  phase?: string;
+  /** The plan number, large in its box: "2471.012". */
+  number?: string;
+  date?: string;
+  drawn?: string;
+  checked?: string;
+  /** Default the scales of the sheet's views, largest first: "1:50", "1:100 / 1:20". */
+  scale?: string;
+  /** Paper format: "A1", "84 x 59 cm". */
+  format?: string;
+  /** Revisions, oldest first: index, date, by whom, what changed. */
+  revisions?: { index: string; date?: string; by?: string; note?: string }[];
+  /** Notes under the block, one line each; an empty string leaves a gap. */
+  notes?: string[];
+  /** Width in paper mm (default 150). */
+  width?: number;
+  /** Its top-left corner on the sheet (sheet units). Default: left of the drawing, level with its top. */
+  at?: PtIn;
+}
 
 // ── Entities as stored (view-local coordinates) ────────────────────────────────
 
@@ -200,14 +269,15 @@ export class SheetView {
     return this;
   }
   /** A leader: an arrow at `points[0]` (what it points at), lines through the rest, and the
-   *  text beside the last point. */
+   *  text beside the last point, level with it. A leader that does not end level gets a short
+   *  level shoulder (3 mm), so its text always continues a level line. */
   leader(points: readonly (PtIn | Vec3)[], text: string, opts: TextOptions = {}): this {
     const pts = points.map(p => this.local(p));
     if (pts.length >= 2) this.entities.push({ t: "leader", points: pts, text, o: opts });
     return this;
   }
-  /** A level mark: a triangle standing on the level at `at`, and the level in metres with
-   *  its sign ("+2.450", "±0.000"). */
+  /** A level mark: a triangle with its tip on the level at `at`, a level line under it, and on
+   *  that line the level in metres with its sign ("+2.450", "±0.000"). */
   level(at: PtIn | Vec3, opts: LevelOptions = {}): this {
     this.entities.push({ t: "level", at: this.local(at), o: opts });
     return this;
@@ -244,6 +314,7 @@ export class Sheet {
   readonly scale: number;
   private layerStyles = new Map<string, LineStyle & { fill?: string }>();
   private views = new Map<string, SheetView>();
+  private block: TitleBlockOptions | null = null;
 
   constructor(opts: SheetOptions = {}) {
     this.scale = opts.scale ?? 1;
@@ -261,6 +332,9 @@ export class Sheet {
     if (!v) { v = new SheetView(this, name, opts); this.views.set(name, v); }
     return v;
   }
+  /** The sheet's title block (Plankopf): drawn left of the views, level with their top, unless `at` places it. */
+  titleBlock(opts: TitleBlockOptions): this { this.block = opts; return this; }
+
   /** The default view at the origin (`sheet.main.polyline(…)`). */
   get main(): SheetView { return this.view("main"); }
   viewNames(): string[] { return [...this.views.keys()]; }
@@ -282,15 +356,68 @@ export class Sheet {
       const local: SheetPrim[] = [];
       for (const e of view.entities) this.explodeEntity(e, P, local);
       if (vo.title) {
+        // Above the view, on the left: "Plan 1:50", as a plan titles its views.
         const b = boundsOf(local);
-        if (b) local.push(textPrim(vo.title, { x: (b.min.x + b.max.x) / 2, y: b.min.y - P(8) }, P(3.5), 0, "center", "top", this.style({})));
+        const scaleText = vo.titleScale === false || /\b1\s*:\s*\d/.test(vo.title) ? "" : ` ${this.ratio(k)}`;
+        if (b) local.push(textPrim(vo.title + scaleText, { x: b.min.x, y: b.max.y + P(5) }, P(TITLE_MM), 0, "left", "bottom", this.style({})));
       }
       for (const p of local) {
         const q = transformPrim(p, T, k, vo.rotation ?? 0);
         (q.kind === "fill" ? fills : rest).push(q);
       }
     }
+    if (this.block) rest.push(...this.explodeTitleBlock(this.block, boundsOf([...fills, ...rest])));
     return [...fills, ...rest];   // fills under lines
+  }
+
+  /** "1:20" for a view enlarged `k` times on this sheet. */
+  private ratio(k: number): string {
+    const r = this.scale / k;
+    return `1:${Number.isInteger(r) ? r : r.toFixed(1)}`;
+  }
+
+  /** The title block's lines and text, in sheet units, top-left at `at` (or left of `drawing`). */
+  private explodeTitleBlock(o: TitleBlockOptions, drawing: { min: Pt; max: Pt } | null): SheetPrim[] {
+    const P = (mm: number) => this.paper(mm);
+    const W = o.width ?? 150;
+    const top = o.at ? toPt(o.at) : { x: (drawing?.min.x ?? 0) - P(W + 20), y: drawing?.max.y ?? 0 };
+    const at = (x: number, y: number): Pt => ({ x: top.x + P(x), y: top.y - P(y) });   // paper mm from the top-left, y down
+    const ink = this.style({ color: DRAWING_PALETTE.ink, weight: 0.18 });
+    const grey = this.style({ color: DRAWING_PALETTE.annotation, weight: 0.18 });
+    const out: SheetPrim[] = [];
+    const text = (t: string, x: number, y: number, mm: number, st = ink) => { out.push(textPrim(t, at(x, y), P(mm), 0, "left", "top", st)); };
+    const line = (x0: number, y0: number, x1: number, y1: number) => { out.push({ kind: "polyline", points: [at(x0, y0), at(x1, y1)], closed: false, style: ink }); };
+    const ks = [...new Set([...this.views.values()].filter((v) => v.entities.length).map((v) => v.options.scale ?? 1))].sort((a, b) => a - b);
+    const scale = o.scale ?? (ks.length ? ks.map((k) => this.ratio(k)).join(" / ") : this.ratio(1));
+    let y = 0;
+    if (o.office) { text(o.office, 0, y, 1.6, grey); y += 4; }
+    if (o.project) { text(o.project, 0, y, 2); y += 7; }
+    text(`${o.title} ${scale}`, 0, y, 3.5); y += 6;
+    if (o.phase) { text(o.phase, 0, y, 2.2); y += 4; }
+    // The plan number and the facts beside it, in a ruled box.
+    const facts: [string, string | undefined][] = [["DATE", o.date], ["DRAWN", o.drawn], ["CHECKED", o.checked], ["SCALE", scale], ["FORMAT", o.format]];
+    const rows = facts.filter((r): r is [string, string] => !!r[1]);
+    const box0 = y + 4, rowH = 3.2, boxH = Math.max(16, rows.length * rowH + 3), split = W * 0.45;
+    line(0, box0, W, box0); line(0, box0 + boxH, W, box0 + boxH); line(0, box0, 0, box0 + boxH); line(W, box0, W, box0 + boxH);
+    line(split, box0, split, box0 + boxH);
+    text("PLAN NO.", 2, box0 + 2, 1.4, grey);
+    if (o.number) text(o.number, 2, box0 + 7, 4.5);
+    rows.forEach(([k, v], i) => { text(k, split + 2, box0 + 2 + i * rowH, 1.4, grey); text(v, split + 22, box0 + 1.9 + i * rowH, 1.6); });
+    y = box0 + boxH;
+    // Revisions: a ruled table under the box.
+    if (o.revisions?.length) {
+      const cols = [0, 14, 36, 54, W];
+      const h = 3.6, n = o.revisions.length + 1;
+      for (let r = 0; r <= n; r++) line(0, y + r * h, W, y + r * h);
+      for (const c of cols) line(c, y, c, y + n * h);
+      ["INDEX", "DATE", "BY", "CHANGE"].forEach((t, i) => text(t, cols[i] + 1.2, y + 1, 1.4, grey));
+      o.revisions.forEach((rv, r) => [rv.index, rv.date ?? "", rv.by ?? "", rv.note ?? ""].forEach((t, i) => { if (t) text(t, cols[i] + 1.2, y + (r + 1) * h + 1, 1.6); }));
+      y += n * h;
+    }
+    // Notes: plain lines under it.
+    y += 8;
+    for (const n of o.notes ?? []) { if (n) text(n, 0, y, 2); y += 3.4; }
+    return out;
   }
 
   /** Bounds of the exploded drawing (text estimated), or null when empty. */
@@ -341,7 +468,7 @@ export class Sheet {
       }
       case "text": {
         const o = e.o;
-        out.push({ ...textPrim(e.text, e.at, P(o.size ?? 2.5), o.rotation ?? 0, o.align ?? "left", o.baseline ?? "bottom", st), ...(key ? { key } : {}) });
+        out.push({ ...textPrim(e.text, e.at, P(o.size ?? TEXT_MM), o.rotation ?? 0, o.align ?? "left", o.baseline ?? "bottom", st), ...(key ? { key } : {}) });
         break;
       }
       case "dim": explodeDim(e.a, e.b, e.o, st, P, out); break;
@@ -388,7 +515,7 @@ function explodeDim(a: Pt, b: Pt, o: DimOptions, st: ResolvedStyle, P: (mm: numb
   const text = o.text ?? formatLength(measured, o);
   const ang = upright(ux, uy), r = (ang * Math.PI) / 180;
   const mid = { x: (da.x + db.x) / 2 - Math.sin(r) * P(1), y: (da.y + db.y) / 2 + Math.cos(r) * P(1) };
-  out.push(textPrim(text, mid, P(o.size ?? 2.5), ang, "center", "bottom", st));
+  out.push(textPrim(text, mid, P(o.size ?? NOTE_MM), ang, "center", "bottom", st));
 }
 
 function explodeRadius(c: Pt, radius: number, angle: number, o: DimOptions, st: ResolvedStyle, P: (mm: number) => number, out: SheetPrim[]): void {
@@ -401,27 +528,36 @@ function explodeRadius(c: Pt, radius: number, angle: number, o: DimOptions, st: 
   out.push(arrow(end, ux, uy, P, st));
   const ang = upright(ux, uy), r = (ang * Math.PI) / 180;
   const mid = { x: c.x + ux * radius / 2 - Math.sin(r) * P(1), y: c.y + uy * radius / 2 + Math.cos(r) * P(1) };
-  out.push(textPrim(o.text ?? `R ${formatLength(radius, o)}`, mid, P(o.size ?? 2.5), ang, "center", "bottom", st));
+  out.push(textPrim(o.text ?? `R ${formatLength(radius, o)}`, mid, P(o.size ?? NOTE_MM), ang, "center", "bottom", st));
 }
 
 function explodeLeader(points: Pt[], text: string, o: TextOptions, st: ResolvedStyle, P: (mm: number) => number, out: SheetPrim[]): void {
+  const SHOULDER_MM = 3;
+  // A leader ends level, so its text continues a level line: add a shoulder if it does not.
+  const a = points[points.length - 2], end = points[points.length - 1];
+  const right = end.x >= a.x;
+  const level = Math.abs(end.y - a.y) <= 0.02 * Math.abs(end.x - a.x);
+  if (!level) points = [...points, { x: end.x + (right ? 1 : -1) * P(SHOULDER_MM), y: end.y }];
   out.push({ kind: "polyline", points, closed: false, style: st });
   const [p0, p1] = points, L = Math.hypot(p1.x - p0.x, p1.y - p0.y);
   if (L > 0) out.push(arrow(p0, (p0.x - p1.x) / L, (p0.y - p1.y) / L, P, st));
-  // The text sits past the end, on the side the last segment runs towards.
-  const a = points[points.length - 2], b = points[points.length - 1];
-  const right = b.x >= a.x;
+  // The text sits past the end, on the side the leader runs towards.
+  const b = points[points.length - 1];
   const at = { x: b.x + (right ? P(1) : -P(1)), y: b.y };
-  out.push(textPrim(text, at, P(o.size ?? 2.5), 0, o.align ?? (right ? "left" : "right"), o.baseline ?? "middle", st));
+  out.push(textPrim(text, at, P(o.size ?? NOTE_MM), 0, o.align ?? (right ? "left" : "right"), o.baseline ?? "middle", st));
 }
 
 function explodeLevel(at: Pt, o: LevelOptions, st: ResolvedStyle, P: (mm: number) => number, out: SheetPrim[]): void {
-  const h = P(2.2), w = P(1.3);
+  const h = P(2.2), w = P(1.3), gap = P(0.8);
   out.push({ kind: "polyline", points: [at, { x: at.x - w, y: at.y + h }, { x: at.x + w, y: at.y + h }], closed: true, style: st });
   const v = o.value ?? at.y;
   const s = v.toFixed(o.decimals ?? 3);
   const text = o.text ?? (Number(s) === 0 ? `±${s.replace("-", "")}` : v > 0 ? `+${s}` : s);
-  out.push(textPrim(text, { x: at.x + w + P(1), y: at.y + h / 2 }, P(o.size ?? 2.5), 0, "left", "middle", st));
+  // The text stands on the level line, beside the triangle; the line runs under both.
+  const t = textPrim(text, { x: at.x + w + gap, y: at.y + P(0.6) }, P(o.size ?? NOTE_MM), 0, "left", "bottom", st);
+  const right = Math.max(...textCorners(t as Extract<SheetPrim, { kind: "text" }>).map((c) => c.x));
+  out.push({ kind: "polyline", points: [{ x: at.x - w, y: at.y }, { x: right, y: at.y }], closed: false, style: st });
+  out.push(t);
 }
 
 /** An open arrowhead at `p`, pointing along (ux, uy). */
