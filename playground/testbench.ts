@@ -213,9 +213,9 @@ app.dataset.shell = "testbench";
 
 const REPO = "https://github.com/dbt-ethz/tekto/blob/main";
 // Built into the docs site (docs:build puts the playground at <docs>/play/), the docs are one
-// folder up; from the dev server, the docs page's markdown on GitHub.
+// folder up; from the dev server, the published docs.
 const BESIDE_DOCS = /\/play\/(index\.html)?$/.test(location.pathname);
-const docsUrl = (path: string) => BESIDE_DOCS ? `../${path}.html` : `${REPO}/docs/${path}.md`;
+const docsUrl = (path: string) => `${BESIDE_DOCS ? ".." : "https://dbt-ethz.github.io/tekto"}/${path}.html`;
 
 function updateLinks(entry: PageEntry) {
   docsLink.hidden = !entry.docs;
