@@ -4,7 +4,7 @@ import { build } from "vite";
 import { defineConfig } from "vitepress";
 
 // The documentation site: `npm run docs:dev`, `npm run docs:build` (→ docs/.vitepress/dist).
-// `base` is where it would be served on GitHub Pages (dbt-ethz.github.io/tekto); nothing publishes it yet.
+// Published to GitHub Pages (dbt-ethz.github.io/tekto) from main by .github/workflows/docs.yml.
 // Screenshots in docs/public/shots come from the playground: `node tools/doc-shots.mjs`.
 
 const GITHUB = "https://github.com/dbt-ethz/tekto";
