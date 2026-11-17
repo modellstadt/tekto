@@ -62,61 +62,63 @@ type MountedPage = SketchInstance | Sketch2DInstance | { dispose(): void };
 interface PageEntry {
   slug: string;
   label: string;
+  /** The docs page about it, as a path under docs/ without ".md" ("buildings/house"). */
+  docs?: string;
   load: () => Promise<{ default: (container: HTMLElement) => MountedPage }>;
 }
 interface PageGroup { name: string; pages: PageEntry[]; }
 
 const GROUPS: PageGroup[] = [
   { name: "Basics", pages: [
-    { slug: "primitives",   label: "Primitives",     load: () => import("./pages/primitives") },
-    { slug: "transforms",   label: "Transforms",     load: () => import("./pages/transforms") },
-    { slug: "lines-points", label: "Lines & Points", load: () => import("./pages/lines-points") },
-    { slug: "shape-modes",  label: "Shape Modes",    load: () => import("./pages/shape-modes") },
+    { slug: "primitives",   label: "Primitives",     docs: "apps/sketch", load: () => import("./pages/primitives") },
+    { slug: "transforms",   label: "Transforms",     docs: "apps/sketch", load: () => import("./pages/transforms") },
+    { slug: "lines-points", label: "Lines & Points", docs: "geometry/vectors", load: () => import("./pages/lines-points") },
+    { slug: "shape-modes",  label: "Shape Modes",    docs: "viewer/render-modes", load: () => import("./pages/shape-modes") },
     { slug: "colors",       label: "Colors",         load: () => import("./pages/colors") },
     { slug: "layers",       label: "Layers",         load: () => import("./pages/layers") },
   ]},
   { name: "Geometry", pages: [
-    { slug: "mesh-factory",   label: "MeshFactory",     load: () => import("./pages/mesh-factory") },
-    { slug: "curves",         label: "Curves",          load: () => import("./pages/curves") },
-    { slug: "nurbs-surfaces", label: "NURBS Surfaces",  load: () => import("./pages/nurbs-surfaces") },
-    { slug: "mesh-ops",       label: "Mesh Operations", load: () => import("./pages/mesh-ops") },
-    { slug: "curvature",      label: "Curvature (Taubin)", load: () => import("./pages/curvature") },
-    { slug: "streamlines",    label: "Streamlines",     load: () => import("./pages/streamlines") },
-    { slug: "bsp-csg",        label: "BSP & CSG",       load: () => import("./pages/bsp-csg") },
+    { slug: "mesh-factory",   label: "MeshFactory",     docs: "geometry/mesh-factory", load: () => import("./pages/mesh-factory") },
+    { slug: "curves",         label: "Curves",          docs: "curves/curves", load: () => import("./pages/curves") },
+    { slug: "nurbs-surfaces", label: "NURBS Surfaces",  docs: "curves/nurbs", load: () => import("./pages/nurbs-surfaces") },
+    { slug: "mesh-ops",       label: "Mesh Operations", docs: "geometry/mesh", load: () => import("./pages/mesh-ops") },
+    { slug: "curvature",      label: "Curvature (Taubin)", docs: "curves/streamlines", load: () => import("./pages/curvature") },
+    { slug: "streamlines",    label: "Streamlines",     docs: "curves/streamlines", load: () => import("./pages/streamlines") },
+    { slug: "bsp-csg",        label: "BSP & CSG",       docs: "geometry/booleans", load: () => import("./pages/bsp-csg") },
   ]},
   { name: "Fields & Graphs", pages: [
     { slug: "sdf",          label: "SDF + Marching", load: () => import("./pages/sdf") },
     { slug: "graph",        label: "Graph",          load: () => import("./pages/graph") },
-    { slug: "planar-graph", label: "Planar Graph",   load: () => import("./pages/planar-graph") },
-    { slug: "voronoi",      label: "Voronoi",        load: () => import("./pages/voronoi") },
-    { slug: "steps", label: "Steps (a program as a graph)", load: () => import("./pages/steps") },
+    { slug: "planar-graph", label: "Planar Graph",   docs: "2d/polygons", load: () => import("./pages/planar-graph") },
+    { slug: "voronoi",      label: "Voronoi",        docs: "2d/voronoi", load: () => import("./pages/voronoi") },
+    { slug: "steps", label: "Steps (a program as a graph)", docs: "claude/steps", load: () => import("./pages/steps") },
     { slug: "voxel-2d",     label: "Voxel Grid 2D",  load: () => import("./pages/voxel-2d") },
   ]},
   { name: "Motion & Camera", pages: [
-    { slug: "particles", label: "Particles 2D", load: () => import("./pages/particles") },
-    { slug: "circle-packing", label: "Circle Packing", load: () => import("./pages/circle-packing") },
-    { slug: "camera",    label: "Camera",       load: () => import("./pages/camera") },
-    { slug: "gizmo",     label: "Pick & Gizmo", load: () => import("./pages/gizmo") },
-    { slug: "shared-editing", label: "Shared Editing", load: () => import("./pages/shared-editing") },
+    { slug: "particles", label: "Particles 2D", docs: "2d/packing", load: () => import("./pages/particles") },
+    { slug: "circle-packing", label: "Circle Packing", docs: "2d/packing", load: () => import("./pages/circle-packing") },
+    { slug: "camera",    label: "Camera",       docs: "interface/view", load: () => import("./pages/camera") },
+    { slug: "gizmo",     label: "Pick & Gizmo", docs: "interface/editing", load: () => import("./pages/gizmo") },
+    { slug: "shared-editing", label: "Shared Editing", docs: "collaboration/shared-editing", load: () => import("./pages/shared-editing") },
   ]},
   { name: "App Shell", pages: [
-    { slug: "app-shell", label: "App Shell (retained)", load: () => import("./pages/app-shell") },
-    { slug: "site-editor", label: "Site Editor (Doc + undo)", load: () => import("./pages/site-editor") },
-    { slug: "drawing-sheet", label: "Drawing Sheet (plan, elevations, DXF)", load: () => import("./pages/drawing-sheet") },
-    { slug: "sketch-drawing", label: "Sketch + drawing (lab.overlay)", load: () => import("./pages/sketch-drawing") },
+    { slug: "app-shell", label: "App Shell (retained)", docs: "apps/app-shell", load: () => import("./pages/app-shell") },
+    { slug: "site-editor", label: "Site Editor (Doc + undo)", docs: "buildings/doc", load: () => import("./pages/site-editor") },
+    { slug: "drawing-sheet", label: "Drawing Sheet (plan, elevations, DXF)", docs: "drawings/sheet", load: () => import("./pages/drawing-sheet") },
+    { slug: "sketch-drawing", label: "Sketch + drawing (lab.overlay)", docs: "drawings/sheet-canvas", load: () => import("./pages/sketch-drawing") },
   ]},
   { name: "Sketch2D", pages: [
-    { slug: "pointer-2d", label: "Pointer Input", load: () => import("./pages/pointer-2d") },
+    { slug: "pointer-2d", label: "Pointer Input", docs: "apps/sketch2d", load: () => import("./pages/pointer-2d") },
   ]},
   { name: "BIM", pages: [
-    { slug: "timber",   label: "Timber + IFC", load: () => import("./pages/timber") },
-    { slug: "framed-wall", label: "Framed Wall (modes, cut, views)", load: () => import("./pages/framed-wall") },
-    { slug: "framed-floor", label: "Framed Floor (stair + well, IFC)", load: () => import("./pages/framed-floor") },
-    { slug: "house", label: "House (building as data)", load: () => import("./pages/house") },
-    { slug: "roofs", label: "Roofs (flat, shed, gable, hip)", load: () => import("./pages/roofs") },
+    { slug: "timber",   label: "Timber + IFC", docs: "buildings/framing", load: () => import("./pages/timber") },
+    { slug: "framed-wall", label: "Framed Wall (modes, cut, views)", docs: "buildings/framing", load: () => import("./pages/framed-wall") },
+    { slug: "framed-floor", label: "Framed Floor (stair + well, IFC)", docs: "buildings/stairs", load: () => import("./pages/framed-floor") },
+    { slug: "house", label: "House (building as data)", docs: "buildings/house", load: () => import("./pages/house") },
+    { slug: "roofs", label: "Roofs (flat, shed, gable, hip)", docs: "buildings/roofs", load: () => import("./pages/roofs") },
     { slug: "custom-viewer", label: "Custom Viewer (your own UI)", load: () => import("./pages/custom-viewer") },
-    { slug: "dxf-test", label: "DXF Test",     load: () => import("./pages/dxf-test") },
-    { slug: "dxf-3d",   label: "DXF 3D Writer", load: () => import("./pages/dxf-3d") },
+    { slug: "dxf-test", label: "DXF Test",     docs: "io/dxf", load: () => import("./pages/dxf-test") },
+    { slug: "dxf-3d",   label: "DXF 3D Writer", docs: "io/dxf", load: () => import("./pages/dxf-3d") },
   ]},
 ];
 
@@ -189,6 +191,8 @@ const sunNowBtn       = document.getElementById("sun-now") as HTMLButtonElement;
 const renderGroup     = document.getElementById("render-group") as HTMLElement;
 const lightGroup      = document.getElementById("light-group") as HTMLElement;
 const sunMenu         = document.getElementById("sun-menu") as HTMLElement;
+const docsLink        = document.getElementById("docs-link") as HTMLAnchorElement;
+const sourceLink      = document.getElementById("source-link") as HTMLAnchorElement;
 
 // Show the 3D-only top-bar controls for 3D pages, hide them for 2D (sketch2d)
 // pages where render mode / lighting / sun have no meaning. (`.group` is
@@ -204,6 +208,22 @@ function setShellMode(is2D: boolean) {
 // Tag the container so sketches can detect they're inside a shell and
 // suppress their internal header (see SketchConfig.showHeader).
 app.dataset.shell = "testbench";
+
+// ─── Docs and Source links ──────────────────────────────────────────
+
+const REPO = "https://github.com/dbt-ethz/tekto/blob/main";
+// Built into the docs site (docs:build puts the playground at <docs>/play/), the docs are one
+// folder up; from the dev server, the docs page's markdown on GitHub.
+const BESIDE_DOCS = /\/play\/(index\.html)?$/.test(location.pathname);
+const docsUrl = (path: string) => BESIDE_DOCS ? `../${path}.html` : `${REPO}/docs/${path}.md`;
+
+function updateLinks(entry: PageEntry) {
+  docsLink.hidden = !entry.docs;
+  if (entry.docs) docsLink.href = docsUrl(entry.docs);
+  sourceLink.href = `${REPO}/playground/pages/${entry.slug}.ts`;
+}
+
+if (new URLSearchParams(location.search).has("embed")) document.body.classList.add("embed");
 
 // ─── Page chooser ───────────────────────────────────────────────────
 
@@ -428,6 +448,7 @@ async function loadPage(slug: string) {
 
   currentPage = slug;
   pageChooser.value = slug;
+  updateLinks(entry);
 
   try {
     const mod = await entry.load();
@@ -435,6 +456,7 @@ async function loadPage(slug: string) {
     currentSketch = mod.default(app);
     const s3d = as3D();
     setShellMode(!s3d); // hide render/lighting/sun for 2D pages
+    document.body.classList.toggle("own-bar", !s3d); // a 2D or appShell page: the shell's view controls don't apply
     if (s3d) {
       if (currentRenderMode !== "solid")  s3d.setRenderMode(currentRenderMode);
       if (sectionAxisSel.value) requestAnimationFrame(applySection);   // once the page has built its content

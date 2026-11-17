@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 *.log
 .DS_Store
 
@@ -16,3 +16,7 @@ node_modules/.vite/
 # Playwright
 test-results/
 playwright-report/
+
+# Docs site (VitePress): cache and build output
+docs/.vitepress/cache/
+docs/.vitepress/dist/

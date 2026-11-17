@@ -23,6 +23,8 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: the docs build, with no dead links
+        run: npm run docs:build
 
       # Scripts and agents import tekto in plain Node, without a bundler: the built
       # package must load there, ESM and CommonJS (three's addons need the `.js` path).
