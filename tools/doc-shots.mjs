@@ -79,8 +79,8 @@ const SHOTS = [
   { name: "voronoi", page: "voronoi", o: { frame: false } },
   { name: "circle-packing", page: "circle-packing", wait: 5000, o: {} },
   { name: "pointer-2d", page: "pointer-2d", clicks: [[0.3, 0.3], [0.62, 0.22], [0.75, 0.6], [0.5, 0.8], [0.25, 0.65]], o: {} },
-  { name: "drawing-sheet", page: "drawing-sheet", o: { frame: false } },
-  { name: "sketch-drawing", page: "sketch-drawing", o: { studio: true, ao: true, params: { Drawing: true }, frame: false } },
+  { name: "drawing-sheet", page: "drawing-sheet", o: { frame: false, bare: true } },
+  { name: "sketch-drawing", page: "sketch-drawing", o: { studio: true, ao: true, params: { Drawing: true }, frame: false, bare: true } },
   { name: "dxf-3d", page: "dxf-3d", o: {} },
   { name: "shared-editing", page: "shared-editing", query: "&doc=doc-shots", o: { frame: false } },
   { name: "steps-panel", page: "steps", crop: false, steps: "massing", o: { studio: true, ao: true, camera: [[60, -70, 115], [60, 18, -22]] } },
@@ -164,6 +164,10 @@ function finish(o) {
   const t = window.__tekto, r = t.owner.renderer, s = t.owner.scene;
   if (!r) return;
   if (o.hide) for (const obj of s.byType("mesh")) if (o.hide.includes(obj.style.layer)) s.setStyle(obj.id, { visible: false });
+  if (o.bare) {                                    // a drawing over the view: keep it, take off the app's own controls
+    document.querySelectorAll("[data-tekto-status],[data-tekto-shading-bar],[data-tekto-viewer-header],[data-tekto-nav-column]").forEach((el) => { el.style.visibility = "hidden"; });
+    document.querySelectorAll("button").forEach((b) => { if (/Markup/.test(b.textContent)) b.style.visibility = "hidden"; });
+  }
   if (o.chrome !== false) return;
   r.setOverlays({ grid: false, axes: false });
   const view = r.canvasEl, box = view.getBoundingClientRect();

@@ -42,6 +42,15 @@ export default defineConfig({
         ],
       },
       {
+        text: "The interface",
+        items: [
+          { text: "A tekto app", link: "/interface/tour" },
+          { text: "Looking at the model", link: "/interface/view" },
+          { text: "Selecting, editing, telling Claude", link: "/interface/editing" },
+          { text: "The playground", link: "/interface/playground" },
+        ],
+      },
+      {
         text: "Apps",
         items: [
           { text: "sketch: a 3D study", link: "/apps/sketch" },

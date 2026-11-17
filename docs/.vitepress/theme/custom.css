@@ -59,28 +59,51 @@
   .VPHero .image-container { width: 100%; }
 }
 
-/* The home page's gallery. */
-.gallery {
+/* The home page's hero: a clip of the model, framed like the screenshots. */
+.hero-clip {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+  background: #ffffff;
+}
+
+/* The home page's showcase: line drawings, each a link to its page. */
+.showcase {
   max-width: 1152px;
-  margin: 48px auto 0;
+  margin: 56px auto 0;
   padding: 0 24px;
 }
-.gallery p {
+.showcase p {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 16px;
 }
-.gallery img {
+.showcase a {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--vp-c-text-2);
+  font-size: 14px;
+  text-decoration: none;
+}
+.showcase a:hover { color: var(--vp-c-text-1); }
+.showcase img {
   width: 100%;
   aspect-ratio: 16 / 10;
-  object-fit: cover;
+  object-fit: contain;
+  background: #ffffff;
   border-radius: 6px;
   border: 1px solid var(--vp-c-divider);
+  transition: border-color 0.2s;
 }
+.showcase a:hover img { border-color: var(--vp-c-text-3); }
 @media (max-width: 768px) {
-  .gallery p { grid-template-columns: repeat(2, 1fr); }
+  .showcase p { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 480px) {
-  .gallery { padding: 0 16px; }
-  .gallery p { grid-template-columns: 1fr; }
+  .showcase { padding: 0 16px; }
+  .showcase p { grid-template-columns: 1fr; }
 }
