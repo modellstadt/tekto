@@ -60,24 +60,32 @@ async function blocks(page: Page, n: number) {
 
 test("a label with hundreds of leaders is checked a slice per frame, not in one long frame", async ({ page }) => {
   const keys = await blocks(page, 400);
-  const longest = await page.evaluate((objects) => new Promise<{ ends: number; longest: number }>((done) => {
-    let longest = 0;
-    new PerformanceObserver((list) => {
-      for (const e of list.getEntries()) longest = Math.max(longest, e.duration);
-    }).observe({ type: "longtask", buffered: false });
+  // Timed where the work is: each call of the check is one frame's slice. (A long task would
+  // time the whole frame, and drawing 400 blocks in software WebGL on a busy machine is
+  // longer than any limit one could set for the callouts.)
+  const run = await page.evaluate((objects) => new Promise<{ ends: number; slices: number[] }>((done) => {
     const r = (window as any).__tekto.owner.renderer;
+    const marks = r.marks;
+    const check = marks._checkCalloutVisibility.bind(marks);
+    const slices: number[] = [];
+    marks._checkCalloutVisibility = (deadline: number) => {
+      const t = performance.now();
+      check(deadline);
+      slices.push(performance.now() - t);
+    };
     r.setCallouts([{ id: "all", text: "all", objects, leaders: "each" }], {
       labels: false,
       onEnds: (ends: { id: string; ends: unknown[] }[]) => {
         const n = ends[0]?.ends.length ?? 0;
-        if (n >= 300) done({ ends: n, longest });
+        if (n >= 300) done({ ends: n, slices });
       },
     });
   }), keys);
-  expect(longest.ends).toBeGreaterThanOrEqual(300);
-  // one slice is the frame's 6 ms budget plus one leader's rays; checked whole, this fan
-  // took about 200 ms in a single frame
-  expect(longest.longest).toBeLessThan(100);
+  expect(run.ends).toBeGreaterThanOrEqual(300);
+  // 400 leaders don't fit one frame's 6 ms: the check goes on over several frames
+  expect(run.slices.length).toBeGreaterThan(1);
+  // and each slice is the budget plus one leader's rays, with room for a slow machine
+  expect(Math.max(...run.slices)).toBeLessThan(40);
 });
 
 test("what a section has cut away gets no leader", async ({ page }) => {
