@@ -1,6 +1,6 @@
 # Walls, slabs and framing
 
-![A three-storey timber frame from the Timber + IFC page](/shots/timber-frame.webp)
+<Live page="framed-wall" label="Framed Wall" poster="/shots/timber-frame.webp" alt="A three-storey timber frame from the Timber + IFC page" />
 
 The BIM layer separates a *type* from its *instances*, as IFC does. A `WallType` carries a construction (`HolzrahmenBau`, `BalloonFrame`, solid CLT) and its material layers; a `Wall` is a centreline with a thickness, a height and openings. `realize(wall)` applies the type and returns the parts a carpenter would cut: studs, plates, headers, sills, sheathing. Slabs work the same way: a `SlabType` with `JoistedSlab` frames a `Slab` with joists, rim joists, trimmers and headers around its openings.
 

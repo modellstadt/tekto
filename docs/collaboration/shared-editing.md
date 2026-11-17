@@ -2,6 +2,9 @@
 
 ![One NURBS curve edited from two windows](/shots/shared-editing.webp)
 
+<Live page="site-editor" label="Site Editor" />
+<Live page="house" label="House" />
+
 `SharedStore` is a document of keyed records that everyone with the same document name edits together. A write applies locally at once, is stored by the backend and reaches the other clients live. Per key the last write wins, which suits small teams, especially with **presence** showing who is on what. Broadcasts carry passing messages, such as a point while it is dragged, that are never stored. A [`Doc`](/buildings/doc) sits on a `SharedStore`, so a retained app becomes shared by choosing its adapter.
 
 ```ts
@@ -51,5 +54,5 @@ export default { plugins: [tektoCollab()] };
 In a retained app, `shareSelection(selection, doc.store, app.renderer, app.scene)` sends this window's selection with its presence and outlines what the others have selected, each in their colour. The README has the SQL for the Supabase tables and their row-level security.
 
 ::: tip Playground
-[Shared Editing](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/shared-editing.ts) (`?page=shared-editing`): open it in two windows and drag the points. The [Site Editor](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/site-editor.ts) and [House](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/house.ts) share with `&shared=1`.
+[Shared Editing](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/shared-editing.ts) (`?page=shared-editing`): open it in two windows and drag the points. It talks to the dev server, so it runs from a clone (`npm run playground`), not on this site. The [Site Editor](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/site-editor.ts) and [House](https://github.com/dbt-ethz/tekto/blob/main/playground/pages/house.ts) share with `&shared=1`.
 :::

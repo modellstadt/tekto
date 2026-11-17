@@ -1,6 +1,6 @@
 # Booleans
 
-![A sphere subtracted from a box](/shots/booleans.webp)
+<Live page="bsp-csg" label="BSP &amp; CSG" poster="/shots/booleans.webp" alt="A sphere subtracted from a box" />
 
 `BspTree` does constructive solid geometry on closed meshes: union, subtract and intersect. Build a tree from a mesh's arrays, combine two trees into a new one (the inputs stay as they were), and read the result back as arrays. It can also tell whether a point is inside, outside or on the result.
 

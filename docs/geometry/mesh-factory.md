@@ -1,6 +1,6 @@
 # MeshFactory
 
-![Box, spheres, cylinder, torus, a height grid, an extrusion, a revolve and a loft](/shots/mesh-factory.webp)
+<Live page="mesh-factory" label="MeshFactory" poster="/shots/mesh-factory.webp" alt="Box, spheres, cylinder, torus, a height grid, an extrusion, a revolve and a loft" />
 
 `MeshFactory` makes meshes from parameters: primitives, a height-mapped grid, extrusions, revolutions, lofts, pipes, and subdivision. Every generator returns a `Mesh`. The primitives are built Y-up, as three.js expects; in a Z-up app turn them with [`MeshTransform.swapAxes`](/geometry/mesh-transform).
 

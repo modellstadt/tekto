@@ -1,6 +1,8 @@
 # SheetCanvas
 
-![A stair drawn as a plan and an elevation over the 3D view](/shots/sketch-drawing.webp)
+<Live page="sketch-drawing" label="Sketch + drawing" poster="/shots/sketch-drawing.webp" alt="A stair drawn as a plan and an elevation over the 3D view" />
+
+<Live page="drawing-sheet" label="Drawing Sheet" />
 
 `SheetCanvas` shows a [`Sheet`](/drawings/sheet) in any container: it fills it, fits the drawing, zooms with the wheel about the cursor, pans by dragging and fits again on double-click. Mounted in `lab.overlay()` (or `app.overlay()` in an `appShell`), it lies over the 3D view, and the sketch builds the model and the drawing from the same numbers, so the plan, the elevation, the DXF and the 3D view cannot disagree.
 

@@ -1,6 +1,6 @@
 # A house
 
-![The example house: two storeys, a gable roof, a half-turn stair](/shots/house-sunset.webp)
+<Live page="house" label="House" poster="/shots/house-sunset.webp" alt="The example house: two storeys, a gable roof, a half-turn stair" />
 
 In an app, `bindBuilding(doc, scene)` keeps a scene in step with the building records of a [`Doc`](/buildings/doc). Any change to a record rebuilds the house; every object is keyed by its record (`"walls/s"`), so selection, ✎ Markup and callouts name records, and the checks can point at the walls they are about. Add `agentDoc` and an agent edits the same records: see [Working with Claude](/claude/mcp).
 

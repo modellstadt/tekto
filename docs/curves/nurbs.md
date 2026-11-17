@@ -1,6 +1,7 @@
 # NURBS
 
-![A column whose capital is a NURBS surface, with isocurves and principal curves](/shots/nurbs.webp)
+<Live page="nurbs-surfaces" label="NURBS Surfaces" poster="/shots/nurbs.webp" alt="A column whose capital is a NURBS surface, with isocurves and principal curves" />
+
 
 `NurbsCurve` and `NurbsSurface` are non-uniform rational B-splines: control points, a degree, a knot vector and optional weights. A surface can be built from its control net, lofted through compatible curves, or revolved around an axis; revolving uses rational weights, so circles are exact. `toMesh` tessellates it into a `Mesh` for display and export.
 

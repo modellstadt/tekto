@@ -1,6 +1,6 @@
 # The MCP server
 
-![The example house: what Claude writes from a short brief](/shots/house-framing.webp)
+<Live page="house" label="House" poster="/shots/house-framing.webp" alt="The example house: what Claude writes from a short brief" />
 
 `tools/mcp.mjs` is an MCP server for the tekto app a person has open. Claude Code, Claude Desktop or any MCP client gets the app's document as tools: it reads the records and their schema, applies a patch, checks the result, looks at the view, and answers the notes people left on the model. All of it happens in the open tab while the person watches, and every edit is one undo step for them. It has no dependencies: JSON-RPC over stdio.
 

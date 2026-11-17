@@ -1,6 +1,6 @@
 # Curves
 
-![A line, an arc, a Bézier and a polyline with arc-length marks](/shots/curves.webp)
+<Live page="curves" label="Curves" poster="/shots/curves.webp" alt="A line, an arc, a Bézier and a polyline with arc-length marks" />
 
 Every curve in tekto answers the same questions: `getPoint(t)` and `getTangent(t)` for `t` from 0 to 1, its `length`, and `getPointAtDistance(d)` for points evenly spaced along it. `LineCurve`, `ArcCurve`, `HelixCurve`, `CubicBezierCurve`, `PolylineCurve` and [`NurbsCurve`](/curves/nurbs) all share that interface, so code that divides or sweeps a curve works on any of them.
 

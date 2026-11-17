@@ -1,6 +1,6 @@
 # Roofs
 
-![A hip roof at sunset](/shots/roof-hip.webp)
+<Live page="roofs" label="Roofs" poster="/shots/roof-hip.webp" alt="A hip roof at sunset" />
 
 `Roof` makes a flat, shed (mono-pitch), gable or hip roof from plain data: the outside face of the walls as a footprint, the eaves elevation, the pitch, the overhangs and the build-up. It gives the top surfaces and slab meshes of its planes, the ridge, and the gables: the infill above the end walls, since walls have one height. A flat roof takes any footprint; the pitched kinds take a rectangle whose first edge is an eave.
 

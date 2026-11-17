@@ -1,6 +1,8 @@
 # sketch2d: a 2D canvas
 
-![Dragging handles to shape a polygon](/shots/pointer-2d.webp)
+<Live page="pointer-2d" label="Pointer Input" poster="/shots/pointer-2d.webp" alt="Dragging handles to shape a polygon" />
+
+<Live page="circle-packing" label="Circle Packing" />
 
 `sketch2d(fn)` is the 2D counterpart of `sketch()`, close to p5.js: the same panel of controls, and a `lab.draw` callback that gets a plain `CanvasRenderingContext2D`. There is no WebGL and no three.js; import it from `tekto/2d` and the page stays small.
 

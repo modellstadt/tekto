@@ -1,6 +1,8 @@
 # Curvature and streamlines
 
-![Streamlines along the principal curvature directions of a bumpy sphere](/shots/streamlines.webp)
+<Live page="streamlines" label="Streamlines" poster="/shots/streamlines.webp" alt="Streamlines along the principal curvature directions of a bumpy sphere" />
+
+<Live page="curvature" label="Curvature (Taubin)" />
 
 `Curvature.taubin` estimates the principal curvatures and directions at every node of a mesh. Combed into consistent signs and averaged per face, they form a direction field, and `StreamlineTracer.trace` follows that field across the faces into polylines that wrap the form: a basis for rib layouts, hatching or fibre paths.
 

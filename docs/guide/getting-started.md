@@ -4,6 +4,8 @@
 
 tekto is installed straight from GitHub. The built files are in the repository, so there is no build step on install.
 
+To see what it does first, nothing to install: <Live />
+
 ## Install
 
 In a project that uses [Vite](https://vitejs.dev/) (or any bundler for ES modules):

@@ -1,6 +1,9 @@
 # Render modes
 
-![The house in hidden line on white](/shots/house-hidden-line.webp)
+<Live page="house" label="House" poster="/shots/house-hidden-line.webp" alt="The house in hidden line on white" />
+
+<Live page="framed-wall" label="Framed Wall" />
+<Live page="shape-modes" label="Shape Modes" />
 
 One renderer, `ThreeRenderer`, sits under every `sketch()` and `appShell()`. It draws a scene in four modes: **solid**, **wireframe**, **hidden line** (sharp edges only, like a technical drawing) and **ghost** (every surface faint in its own colour, with its creases, so what is inside reads through what is in front). The top bar and the shading bar switch them; code does the same.
 

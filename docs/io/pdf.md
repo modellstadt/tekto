@@ -1,6 +1,6 @@
 # PDF
 
-![A dimensioned drawing, the kind of content a PDF carries at scale](/shots/drawing-sheet.webp)
+<Live page="drawing-sheet" label="Drawing Sheet" poster="/shots/drawing-sheet.webp" alt="A dimensioned drawing, the kind of content a PDF carries at scale" />
 
 `writePdf2D` writes the same 2D content as `writeDxf2D` as a vector PDF at a true scale: one page sized to the drawing plus margins, a title with the scale, and a scale bar. Print it at 100 % and 1 m measures 2 cm at 1:50. Colours are darkened enough for white paper unless you ask for them as given.
 

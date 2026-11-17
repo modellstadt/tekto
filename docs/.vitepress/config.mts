@@ -1,3 +1,6 @@
+import { renameSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { build } from "vite";
 import { defineConfig } from "vitepress";
 
 // The documentation site: `npm run docs:dev`, `npm run docs:build` (→ docs/.vitepress/dist).
@@ -6,20 +9,50 @@ import { defineConfig } from "vitepress";
 
 const GITHUB = "https://github.com/dbt-ethz/tekto";
 
+// The playground lives next to the docs: `docs:build` builds it into dist/play/, and every
+// "Open live" button opens a page of it there. `docs:dev` doesn't serve it, so while writing
+// the docs the buttons go to the playground's own dev server (`npm run playground`).
+const DEV = process.argv.includes("dev");
+const PLAYGROUND = DEV ? "http://localhost:5173/testbench.html" : "/play/";
+
+/** After the docs: the playground's page shell, built static into <outDir>/play. */
+async function buildPlayground(outDir: string, base: string) {
+  const root = resolve(__dirname, "../../playground");
+  const out = join(outDir, "play");
+  await build({
+    root,
+    base: `${base}play/`,
+    configFile: join(root, "vite.config.mjs"),
+    logLevel: "warn",
+    build: {
+      outDir: out,
+      emptyOutDir: true,
+      chunkSizeWarningLimit: 4000,
+      rollupOptions: { input: join(root, "testbench.html") },
+    },
+  });
+  renameSync(join(out, "testbench.html"), join(out, "index.html"));
+}
+
 export default defineConfig({
   title: "tekto",
   description: "An AI-first CAD and computational geometry library for the browser, from DBT, ETH Zurich.",
   base: "/tekto/",
   lang: "en",
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/tekto/logo.svg" }]],
+  ignoreDeadLinks: [/^\/play\//],
+  buildEnd: (site) => buildPlayground(site.outDir, site.site.base),
   markdown: {
     image: { lazyLoading: true },
   },
   themeConfig: {
     logo: "/logo.svg",
     siteTitle: "tekto",
+    playground: PLAYGROUND,
+    repo: GITHUB,
     nav: [
       { text: "Guide", link: "/guide/why" },
+      { text: "Playground", link: PLAYGROUND, target: "_blank" },
       { text: "API index", link: `${GITHUB}/blob/main/llms-full.txt` },
       { text: "Changelog", link: `${GITHUB}/blob/main/CHANGELOG.md` },
     ],

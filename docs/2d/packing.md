@@ -1,6 +1,8 @@
 # Packing
 
-![Circles packed into an L-shaped outline](/shots/circle-packing.webp)
+<Live page="circle-packing" label="Circle Packing" poster="/shots/circle-packing.webp" alt="Circles packed into an L-shaped outline" />
+
+<Live page="particles" label="Particles 2D" />
 
 `Particles2D` relaxes circles in the plane: overlapping circles push apart, springs pull pairs toward a rest length, pinned circles stay put, and a boundary ring (any simple polygon) keeps every circle inside. `Particles2D.pack` does the whole of a classic packing in one call: scatter about area / (2√3 r²) points, relax them for 200 steps, drop any left outside.
 

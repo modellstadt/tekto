@@ -1,6 +1,6 @@
 # OBJ
 
-![The house, exported as OBJ grouped by layer](/shots/house.webp)
+<Live page="house" label="House" poster="/shots/house.webp" alt="The house, exported as OBJ grouped by layer" />
 
 `ObjFile` reads and writes Wavefront OBJ, keeping its `g` groups and `usemtl` materials both ways, and writes the matching `.mtl`. `scene.toMeshData({ groupBy: "layer" })` (or `"object"`) gives a whole scene as one OBJ with a group per layer and its colours as materials, ready for Rhino or Cinema 4D. Coordinates pass through unchanged: no axis swap, no unit scaling.
 

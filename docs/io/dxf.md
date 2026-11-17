@@ -1,6 +1,9 @@
 # DXF
 
-![A helix with rings, an arc and an axis, written as a true-3D DXF](/shots/dxf-3d.webp)
+<Live page="dxf-3d" label="DXF 3D Writer" poster="/shots/dxf-3d.webp" alt="A helix with rings, an arc and an axis, written as a true-3D DXF" />
+
+<Live page="dxf-test" label="DXF Test" />
+<Live page="drawing-sheet" label="Drawing Sheet" />
 
 There are three ways to DXF, all writing AutoCAD-safe R12 (every layer declared, R12-safe names, plain decimals):
 

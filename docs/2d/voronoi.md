@@ -1,6 +1,8 @@
 # Voronoi
 
-![Voronoi cells clipped to an L-shaped outline, coloured so neighbours differ](/shots/voronoi.webp)
+<Live page="voronoi" label="Voronoi" poster="/shots/voronoi.webp" alt="Voronoi cells clipped to an L-shaped outline, coloured so neighbours differ" />
+
+<Live page="steps" label="Steps" />
 
 `Voronoi2D.cells(sites, { clip })` gives each site the part of a region that is nearer to it than to any other site. The region can be any simple ring, convex or not. Every edge of every cell names the site across it (or `-1` along the clip), so the diagram doubles as an adjacency graph: which plots touch, where a street runs between them. With `radii` it becomes a power diagram, whose boundaries pass through the contact points of touching circles.
 

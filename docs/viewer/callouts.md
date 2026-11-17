@@ -1,6 +1,9 @@
 # Callouts
 
-![A callout per kind of member on a framed wall](/shots/framed-wall-callouts.webp)
+<Live page="framed-wall" label="Framed Wall" poster="/shots/framed-wall-callouts.webp" alt="A callout per kind of member on a framed wall" />
+
+<Live page="framed-floor" label="Framed Floor" />
+<Live page="house" label="House" />
 
 Callouts are labels in the margins of the view with leaders to the objects they name. They are laid out so they don't overlap, follow the model as it turns, and leave out what is hidden behind other objects. Name objects by scene id or by record key (`"walls/s"`, and everything drawn for it). Use them for a key of materials, for the issues a check found, or for what an agent changed.
 

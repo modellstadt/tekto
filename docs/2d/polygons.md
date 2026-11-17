@@ -1,6 +1,6 @@
 # Polygons
 
-![A planar graph built from random segments](/shots/planar-graph.webp)
+<Live page="planar-graph" label="Planar Graph" poster="/shots/planar-graph.webp" alt="A planar graph built from random segments" />
 
 Plan geometry in tekto is lists of `Vec2`. `Polygon2D` works on one ring at a time: area, centroid, point-in-polygon, offset, simplify, convex hull, triangulation, the smallest enclosing rectangle. `PolygonBool` does robust booleans on polygons with holes. Both come with `tekto/2d`, so a 2D sketch can use them without three.js.
 

@@ -1,6 +1,8 @@
 # Stairs
 
-![A half-turn timber stair under a joisted floor, with its well framed](/shots/floor-stair-well.webp)
+<Live page="framed-floor" label="Framed Floor" poster="/shots/floor-stair-well.webp" alt="A half-turn timber stair under a joisted floor, with its well framed" />
+
+<Live page="sketch-drawing" label="Sketch + drawing" />
 
 `Stair` is a stair from plain numbers: where it starts, which way it runs, the height it climbs, its width, and a shape: one straight flight, two flights in line, a quarter turn (L) or a half turn (U), the last three with a landing. The riser is the total rise divided evenly. Its `structure` says how it is built: `"concrete"` steps on a 160 mm waist slab, `"timber"` treads between two stringers with open risers, a `"steel"` plate folded into treads and risers on flat stringers, or `"solid"` blocks down to the floor (the default, a massing). `footprint()` is its outline in plan, and `slabOpening(floor)` is the well the floor above needs, over every tread with less than 2 m of headroom.
 

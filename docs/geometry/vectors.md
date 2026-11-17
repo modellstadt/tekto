@@ -1,6 +1,6 @@
 # Vectors
 
-![Points, lines and a spiral](/shots/lines-points.webp)
+<Live page="lines-points" label="Lines &amp; Points" poster="/shots/lines-points.webp" alt="Points, lines and a spiral" />
 
 `Vec2`, `Vec3`, `Vec4` and `Mat4` are small immutable value types. Their fields are `readonly` and every operation returns a new instance, so a vector you hand to a function cannot change under you. Units are metres; plan coordinates are x, y.
 

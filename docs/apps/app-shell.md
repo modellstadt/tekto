@@ -1,6 +1,8 @@
 # appShell: an app people edit
 
-![A twisting tower in an appShell](/shots/twisted-tower.webp)
+<Live page="app-shell" label="App Shell" poster="/shots/twisted-tower.webp" alt="A twisting tower in an appShell" />
+
+<Live page="site-editor" label="Site Editor" />
 
 `appShell()` is the harness for a real app: a panel built once from a declared schema of params, a Z-up 3D view, and a top bar for light, render mode, camera, section and sun. Unlike `sketch()`, nothing is rebuilt unless you rebuild it: the app owns its `Scene` and decides what changes. That makes it the place for the retained model, with a [`Doc`](/buildings/doc), selection, undo and saving.
 

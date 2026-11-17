@@ -1,6 +1,8 @@
 # MeshTransform
 
-![Slabs rotated floor by floor](/shots/twisted-tower.webp)
+<Live page="app-shell" label="App Shell" poster="/shots/twisted-tower.webp" alt="Slabs rotated floor by floor" />
+
+<Live page="transforms" label="Transforms" />
 
 `MeshTransform` moves, turns, scales and mirrors a `Mesh` in place, and swaps axes between the Y-up and Z-up conventions. It works on the mesh's arrays directly, so it is cheap on large meshes.
 

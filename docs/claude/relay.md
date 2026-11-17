@@ -1,6 +1,6 @@
 # The agent relay
 
-![The house in ghost mode: records an agent reads and edits](/shots/house-ghost-framing.webp)
+<Live page="house" label="House" poster="/shots/house-ghost-framing.webp" alt="The house in ghost mode: records an agent reads and edits" />
 
 Underneath the MCP server is a plain HTTP relay. An app that calls `agentDoc` puts its document on `window.__tekto.doc`: the collections with their schema, the records, and `apply` for a patch. With `tekto/markup-vite` in the dev server, the same calls reach the page from outside through `POST /__tekto/agent/call`; the newest tab to connect takes them. Any script can drive an open app this way, not only an MCP client.
 

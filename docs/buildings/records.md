@@ -1,6 +1,6 @@
 # Building records
 
-![The house built from its records, framing on](/shots/house-framing.webp)
+<Live page="house" label="House (building as data)" poster="/shots/house-framing.webp" alt="The house built from its records, framing on" />
 
 A building can be plain JSON: `storeys`, `walls`, `openings`, `slabs`, `spaces`, `roofs` and `stairs`, referring to each other by id. A person, a script or an agent writes the records; `realizeBuilding` builds them into BIM elements: framed walls with their openings, joisted floors, a roof on its storey's walls, a stair that climbs its storey and cuts its well in the floor above. `BUILDING_SCHEMA` is the JSON Schema of each collection, so the same description validates input and serves as an agent's tool schema.
 

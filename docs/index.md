@@ -10,6 +10,10 @@ hero:
       text: Get started
       link: /guide/getting-started
     - theme: alt
+      text: Open the playground
+      link: /play/
+      target: _blank
+    - theme: alt
       text: Tour an app
       link: /interface/tour
     - theme: alt

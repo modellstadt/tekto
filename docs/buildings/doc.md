@@ -1,6 +1,6 @@
 # Doc: the retained model
 
-![Blocks in the Site Editor, each a record in a Doc](/shots/site-editor.webp)
+<Live page="site-editor" label="Site Editor" poster="/shots/site-editor.webp" alt="Blocks in the Site Editor, each a record in a Doc" />
 
 A `Doc` is the document of a retained CAD app: typed records in named collections, each with a stable id. It keeps the history (`transact` groups writes into one undo step, `coalesce` makes a slider drag one step), saves and opens as plain JSON, and persists through an adapter: this browser, the dev server, or Supabase. `bindScene` derives the scene from one collection and rebuilds only the records that changed. Store decisions in the document, never meshes: geometry is derived.
 

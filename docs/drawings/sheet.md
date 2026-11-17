@@ -1,6 +1,6 @@
 # Sheet
 
-![A plan, two elevations and a detail on one sheet](/shots/drawing-sheet.webp)
+<Live page="drawing-sheet" label="Drawing Sheet" poster="/shots/drawing-sheet.webp" alt="A plan, two elevations and a detail on one sheet" />
 
 A `Sheet` is a drawing at a scale: views placed on a sheet (a plan, elevations projected from 3D points, a detail at a larger scale) with lines, arcs, fills, text, dimensions, leaders and level marks on named layers, and a title block. It draws in the minimal language of an office's plans: small grey annotation sized in paper millimetres (2 mm text, 1.8 mm dimensions), view titles above each view stating their scale, black ink for what is cut, and colour only as pale fills for materials. Everything is exploded into one list of primitives, and the screen ([`SheetCanvas`](/drawings/sheet-canvas)), `toSVG` and `toDXF` all draw that list: what you see is what you export.
 

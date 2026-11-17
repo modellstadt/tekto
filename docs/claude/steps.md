@@ -1,6 +1,6 @@
 # Steps: a program as a graph
 
-![A generated site plan and its steps panel](/shots/steps-panel.webp)
+<Live page="steps" label="Steps" poster="/shots/steps-panel.webp" alt="A generated site plan and its steps panel" />
 
 Generated code is read, checked and steered more than it is written. A generator that wraps its parts in steps, `lab.step(name, inputs, fn)` in a `sketch()` or `app.step` in an `appShell()`, is recorded as it runs: each step's inputs, its output, its time, an error, the line that called it and the objects it drew. Which step fed which is read off the values themselves, so nothing is declared twice. The **steps panel** at the bottom of the view draws the run as a graph; click a step for its details, click geometry for the step that made it, and leave a note on a step for an agent.
 

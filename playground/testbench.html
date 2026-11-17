@@ -94,17 +94,30 @@
       color: #7a80a0; font-variant-numeric: tabular-nums; margin-left: 4px;
     }
 
+    #topbar a.link { color: #7a80a0; text-decoration: none; font-size: 11px; }
+    #topbar a.link:hover { color: #ffffff; }
+    #topbar a.link[hidden] { display: none; }
+
     #app { position: absolute; left: 0; top: 36px; right: 0; bottom: 0; }
+
+    /* ?embed: shown inside a docs page, which picked the page and links its docs and source:
+       only the view controls stay, and no bar at all for a page that brings its own. */
+    body.embed #topbar .brand, body.embed #topbar .brand + .sep, body.embed #page-group,
+    body.embed #topbar a.link { display: none; }
+    body.embed.own-bar #topbar { display: none; }
+    body.embed.own-bar #app { top: 0; }
   </style>
 </head>
 <body>
   <header id="topbar">
     <span class="brand">&#x2B21; Tekto</span>
     <span class="sep"></span>
-    <span class="group">
+    <span class="group" id="page-group">
       <span class="label">Page</span>
       <select id="page-chooser" title="Switch demo"></select>
     </span>
+    <a id="docs-link" class="link" target="_blank" rel="noopener" title="What this page shows, in the docs" hidden>Docs</a>
+    <a id="source-link" class="link" target="_blank" rel="noopener" title="This page's code: one function">Source</a>
 
     <span class="spacer"></span>
 

@@ -1,6 +1,8 @@
 # Sections
 
-![A plan cut through the house at 4.2 m](/shots/house-plan-cut.webp)
+<Live page="house" label="House" poster="/shots/house-plan-cut.webp" alt="A plan cut through the house at 4.2 m" />
+
+<Live page="framed-wall" label="Framed Wall" />
 
 A section cuts the model with a plane and fills the cut. The cut face is drawn flat as poché on opaque surfaces, so it needs no closed meshes; translucent ones are just clipped. Clicks pick only what is still there. A section costs nothing until it is used.
 

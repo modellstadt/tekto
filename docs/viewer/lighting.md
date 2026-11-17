@@ -1,6 +1,8 @@
 # Lighting
 
-![The house in Studio light with a sunset sun](/shots/house-sunset.webp)
+<Live page="house" label="House" poster="/shots/house-sunset.webp" alt="The house in Studio light with a sunset sun" />
+
+<Live page="app-shell" label="App Shell" />
 
 There are two lighting presets. **Flat** is the default: cheap lights, no shadows, fast for inspection and large models. **Studio** uses physically based materials, one sun with soft shadows framed to the content, ACES tone mapping and an invisible ground that catches contact shadows; it is two to three times slower per frame and made for renderings and daylight studies. Ambient occlusion darkens corners and contacts in either.
 

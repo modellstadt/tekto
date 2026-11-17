@@ -1,6 +1,6 @@
 # Mesh
 
-![A box subdivided and smoothed](/shots/mesh-ops.webp)
+<Live page="mesh-ops" label="Mesh Operations" poster="/shots/mesh-ops.webp" alt="A box subdivided and smoothed" />
 
 There is one mesh class. A `Mesh` is edited by id (`addNode`, `addFace`, `splitEdge`, …) and read as typed arrays (`positions`, `indices`, `normals`) on the same object. Every edit keeps the connectivity up to date: which nodes, edges and faces meet where. There is no conversion step between an "editing mesh" and a "render mesh".
 

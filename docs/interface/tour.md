@@ -1,6 +1,8 @@
 # A tekto app
 
-Every tekto app has the same parts in the same places, whether Claude wrote it this morning or it ships in the playground. Learn them once and every app reads the same.
+Every tekto app has the same parts in the same places, whether Claude wrote it this morning or it ships in the playground. Learn them once and every app reads the same. Open the app below next to this page and find each part.
+
+<Live page="framed-floor" label="Framed Floor" />
 
 ![The Framed Floor app with its parts numbered](/shots/ui-tour.webp)
 

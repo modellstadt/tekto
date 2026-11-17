@@ -107,3 +107,104 @@
   .showcase { padding: 0 16px; }
   .showcase p { grid-template-columns: 1fr; }
 }
+
+/* <Live>: a playground page, opened live or run in the page. */
+.live-bar {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 18px 4px 0;
+  font-size: 14px;
+}
+.vp-doc .live-bar a { text-decoration: none; }
+.vp-doc .live-open {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 14px;
+  background: var(--vp-button-brand-bg);
+  color: var(--vp-button-brand-text);
+  font-weight: 500;
+}
+.vp-doc .live-open:hover { background: var(--vp-button-brand-hover-bg); color: var(--vp-button-brand-text); }
+.vp-doc .live-source { color: var(--vp-c-text-2); font-size: 13px; }
+
+.live-view { margin: 16px 0 20px; }
+.live-start {
+  all: unset;
+  position: relative;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+.vp-doc .live-start img { display: block; width: 100%; margin: 0; }
+.live-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 8px 18px;
+  border-radius: 20px;
+  background: rgba(31, 35, 40, 0.88);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.live-start:hover .live-play, .live-start:focus-visible .live-play { background: #1f2328; }
+.live-links {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.vp-doc .live-links a { color: var(--vp-c-text-2); text-decoration: none; }
+.vp-doc .live-links a:hover { color: var(--vp-c-brand-1); }
+
+/* The app running over the docs page. */
+.live-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.live-window {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #07080e;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+.live-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 8px 0 16px;
+  height: 38px;
+  background: var(--vp-c-bg);
+  border-bottom: 1px solid var(--vp-c-divider);
+  font-size: 13px;
+}
+.live-title { font-weight: 600; margin-right: auto; }
+.live-head a { color: var(--vp-c-text-2); text-decoration: none; }
+.live-head a:hover { color: var(--vp-c-brand-1); }
+.live-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--vp-c-text-2);
+}
+.live-close:hover { background: var(--vp-c-default-soft); color: var(--vp-c-text-1); }
+.live-window iframe { flex: 1; width: 100%; border: 0; display: block; }
+@media (max-width: 640px) {
+  .live-overlay { padding: 0; }
+  .live-window { border-radius: 0; }
+  .live-head a:not(:first-of-type) { display: none; }
+}
+.vp-doc a.live-link { text-decoration: none; font-weight: 500; white-space: nowrap; }

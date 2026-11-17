@@ -1,6 +1,8 @@
 # sketch: a 3D study
 
-![Translation, rotation and scale in a sketch](/shots/transforms.webp)
+<Live page="transforms" label="Transforms" poster="/shots/transforms.webp" alt="Translation, rotation and scale in a sketch" />
+
+<Live page="mesh-factory" label="MeshFactory" />
 
 `sketch(fn)` turns one function into an interactive 3D app. Each `lab.slider`, `lab.toggle` or `lab.select` adds a control to the panel and returns its value. When a control changes, the whole function runs again and the scene is rebuilt from scratch. This is the fast way to a parametric study: the design is a function of its parameters.
 

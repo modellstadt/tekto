@@ -1,6 +1,9 @@
 # IFC
 
-![A gable roof: IfcWriter writes it as an IfcRoof of roof slabs](/shots/roof-gable.webp)
+<Live page="roofs" label="Roofs" poster="/shots/roof-gable.webp" alt="A gable roof: IfcWriter writes it as an IfcRoof of roof slabs" />
+
+<Live page="framed-floor" label="Framed Floor" />
+<Live page="house" label="House" />
 
 tekto writes IFC4 itself: `IfcWriter` produces STEP text with no extra dependency. It covers wall types and material layers, walls with their openings (doors and windows with frame, glass and leaves), framed members, joints, slabs, roofs, stairs, spaces and several storeys. A [building from records](/buildings/records) writes itself with `building.toIfc()`. For reading, `IfcModel.parse` keeps each element apart, with its IFC class, property sets and relations; it needs the optional `web-ifc` package.
 

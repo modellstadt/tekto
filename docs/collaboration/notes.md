@@ -1,6 +1,8 @@
 # Markup and notes
 
-![A note on the roof, answered by Claude](/shots/notes-with-claude.webp)
+<Live page="house" label="House" poster="/shots/notes-with-claude.webp" alt="A note on the roof, answered by Claude" />
+
+<Live page="site-editor" label="Site Editor" />
 
 Every 3D app has a **✎ Markup** button. Draw on the view, give each mark a short note and press Save. Each mark keeps its strokes and the objects they touch, resolved when it is drawn: their layer, label and colour, the world points it lands on, and the source line that created each object. So a note says which wall, where and in which file.
 
