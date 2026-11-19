@@ -15,7 +15,13 @@ const PAGES = [
   "app-shell", "site-editor", "drawing-sheet", "sketch-drawing",
   "pointer-2d",
   "timber", "framed-wall", "framed-floor", "roofs", "custom-viewer", "dxf-test", "dxf-3d",
-] as const;
+  // the lecture apps (pages/lecture/)
+  ...["house", "subdivision", "grammar", "lsystem", "landscape", "pareto", "biomorph",
+    "chain", "soft", "rigid", "boids", "walking", "isovist",
+    "teach", "playground", "latent", "textgen", "diffusion",
+    "camera", "light", "cornell", "translucency",
+    "slicing", "milling", "hotwire", "bricks", "woodfloor", "marble"].map((n) => `lecture-${n}`),
+];
 
 /** Console errors and uncaught exceptions seen since the call. */
 function watchErrors(page: Page): string[] {

@@ -2,7 +2,7 @@
 
 **An AI-first platform for online CAD experiments.** Describe a design idea to a coding agent and get a running, interactive CAD app in the browser. Then point at what to change, right in the viewport, and iterate together.
 
-**[Documentation](https://dbt-ethz.github.io/tekto/)** · **[Playground](https://dbt-ethz.github.io/tekto/play/)**: 36 apps, live in the browser.
+**[Documentation](https://dbt-ethz.github.io/tekto/)** · **[Playground](https://dbt-ethz.github.io/tekto/play/)**: 64 apps, live in the browser, among them the 28 of the lecture *Digital Theory and Culture in Architecture*.
 
 Tekto is designed so that people and AI agents work on the same model:
 
