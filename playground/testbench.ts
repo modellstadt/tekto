@@ -64,9 +64,26 @@ interface PageEntry {
   label: string;
   /** The docs page about it, as a path under docs/ without ".md" ("buildings/house"). */
   docs?: string;
+  /** Its source under pages/ without ".ts", when that isn't the slug ("lecture/house"). */
+  source?: string;
   load: () => Promise<{ default: (container: HTMLElement) => MountedPage }>;
 }
 interface PageGroup { name: string; pages: PageEntry[]; }
+
+/**
+ * One of the apps of the lecture script "Digital Theory and Culture in
+ * Architecture" (pages/lecture/, one file each, exporting an app named like
+ * its file), mounted on its own by `page` from pages/lecture/shared.
+ */
+const lecture = (name: string, label: string): PageEntry => ({
+  slug: `lecture-${name}`,
+  label,
+  source: `lecture/${name}`,
+  load: async () => {
+    const [app, { page }] = await Promise.all([import(`./pages/lecture/${name}.ts`), import("./pages/lecture/shared")]);
+    return { default: page(app[name]) };
+  },
+});
 
 const GROUPS: PageGroup[] = [
   { name: "Basics", pages: [
@@ -119,6 +136,47 @@ const GROUPS: PageGroup[] = [
     { slug: "custom-viewer", label: "Custom Viewer (your own UI)", load: () => import("./pages/custom-viewer") },
     { slug: "dxf-test", label: "DXF Test",     docs: "io/dxf", load: () => import("./pages/dxf-test") },
     { slug: "dxf-3d",   label: "DXF 3D Writer", docs: "io/dxf", load: () => import("./pages/dxf-3d") },
+  ]},
+  // the apps of the lecture script, in its six parts
+  { name: "Lecture · Computational design", pages: [
+    lecture("house", "Parametric house"),
+    lecture("subdivision", "Parametric subdivision"),
+    lecture("grammar", "Shape grammar house"),
+    lecture("lsystem", "L-system"),
+  ]},
+  { name: "Lecture · Optimisation", pages: [
+    lecture("landscape", "Fitness landscape"),
+    lecture("pareto", "Pareto front"),
+    lecture("biomorph", "Biomorphs"),
+  ]},
+  { name: "Lecture · Analysis and simulation", pages: [
+    lecture("chain", "Hanging chain"),
+    lecture("soft", "Soft bodies: air cushions"),
+    lecture("rigid", "Rigid bodies: a timber pile"),
+    lecture("boids", "Boids"),
+    lecture("walking", "Walking: distance, path, crowd"),
+    lecture("isovist", "Isovist and visibility"),
+  ]},
+  { name: "Lecture · Machine learning", pages: [
+    lecture("teach", "Teach the machine"),
+    lecture("playground", "Neural network playground"),
+    lecture("latent", "Latent space of sketches"),
+    lecture("textgen", "Next word: a tiny language model"),
+    lecture("diffusion", "Diffusion: from noise to form"),
+  ]},
+  { name: "Lecture · Visualisation", pages: [
+    lecture("camera", "Camera: lens, exposure, focus"),
+    lecture("light", "Light and shadow"),
+    lecture("cornell", "Cornell box"),
+    lecture("translucency", "Light inside stone"),
+  ]},
+  { name: "Lecture · Digital fabrication", pages: [
+    lecture("slicing", "3D printing: slicing"),
+    lecture("milling", "CNC milling"),
+    lecture("hotwire", "Hot-wire cutting"),
+    lecture("bricks", "Brick bonds"),
+    lecture("woodfloor", "Timber floor"),
+    lecture("marble", "Marble: bookmatching"),
   ]},
 ];
 
@@ -220,7 +278,7 @@ const docsUrl = (path: string) => `${BESIDE_DOCS ? ".." : "https://dbt-ethz.gith
 function updateLinks(entry: PageEntry) {
   docsLink.hidden = !entry.docs;
   if (entry.docs) docsLink.href = docsUrl(entry.docs);
-  sourceLink.href = `${REPO}/playground/pages/${entry.slug}.ts`;
+  sourceLink.href = `${REPO}/playground/pages/${entry.source ?? entry.slug}.ts`;
 }
 
 if (new URLSearchParams(location.search).has("embed")) document.body.classList.add("embed");

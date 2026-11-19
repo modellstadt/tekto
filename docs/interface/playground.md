@@ -41,3 +41,16 @@ The left side and the view are the app's own, as in any [tekto app](/interface/t
 | `shared-editing` | Two windows editing the same model (from a clone) |
 
 Each page is one file in `playground/pages/`: open it next to the running page to see how it is made.
+
+## The lecture apps
+
+The six groups named **Lecture** hold the 28 apps of the lecture script *Digital Theory and Culture in Architecture* (ETH Zurich). Each makes one idea of computational design legible: a parametric house whose stair follows Blondel's rule, shape grammars and L-systems, fitness landscapes and Pareto fronts, hanging chains and boids, a neural network and a tiny language model, a camera, the Cornell box, and 3D printing, milling, hot-wire cutting, brick bonds and stone.
+
+They are 2D sketches ([sketch2d](/apps/sketch2d)): a panel of parameters, a drawing, and a status bar with the numbers the model computes. Their sources are in `playground/pages/lecture/`, one file each. In the lecture, the language model is trained on the script's own chapters. Here it is trained on these docs.
+
+| Start with | What it shows |
+|---|---|
+| <Live page="lecture-house" label="Parametric house" link /> | Eight numbers make the house; the stair is derived from them |
+| <Live page="lecture-walking" label="Walking" link /> | Distance, shortest path and a crowd, in a plan you draw |
+| <Live page="lecture-cornell" label="Cornell box" link /> | Path tracing, one bounce at a time |
+| <Live page="lecture-bricks" label="Brick bonds" link /> | Bonds, and bricks rotated by an attractor |
